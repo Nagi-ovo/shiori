@@ -1,0 +1,10 @@
+{
+  "en": "Interface\n• The Windows window looks cleaner. A simpler top edge, with buttons that follow the light and dark themes.\n• Neater scrollbars on Windows and Linux.\n\nFixed\n• You can move the window while a dialog is open.\n• Notifications can be closed.\n• Clearer message when a file has been moved or deleted.",
+  "zh": "界面\n• Windows 版窗口更美观了。顶部更简洁，按钮跟着浅色和深色主题走。\n• Windows 和 Linux 上的滚动条更精致了。\n\n修复\n• 弹窗打开时也能拖动窗口了。\n• 提示消息可以随手关掉了。\n• 文件被移动或删除后，提示说得更清楚了。",
+  "ja": "インターフェース\n• Windows 版のウィンドウがすっきりしました。上部がシンプルになり、ボタンもライト／ダークのテーマに合わせて表示されます。\n• Windows と Linux のスクロールバーが見やすくなりました。\n\n修正\n• ダイアログを開いたままでもウィンドウを動かせるようになりました。\n• 通知を閉じられるようになりました。\n• ファイルが移動・削除されたときの表示がわかりやすくなりました。",
+  "markdown": {
+    "en": "### Interface\n\n- **The Windows window looks cleaner.** A simpler top edge, with buttons that follow the light and dark themes.\n- **Neater scrollbars on Windows and Linux.**\n\n### Fixed\n\n- **You can move the window while a dialog is open.**\n- **Notifications can be closed.**\n- **Clearer message when a file has been moved or deleted.**",
+    "zh": "### 界面\n\n- **Windows 版窗口更美观了。** 顶部更简洁，按钮跟着浅色和深色主题走。\n- **Windows 和 Linux 上的滚动条更精致了。**\n\n### 修复\n\n- **弹窗打开时也能拖动窗口了。**\n- **提示消息可以随手关掉了。**\n- **文件被移动或删除后，提示说得更清楚了。**",
+    "ja": "### インターフェース\n\n- **Windows 版のウィンドウがすっきりしました。** 上部がシンプルになり、ボタンもライト／ダークのテーマに合わせて表示されます。\n- **Windows と Linux のスクロールバーが見やすくなりました。**\n\n### 修正\n\n- **ダイアログを開いたままでもウィンドウを動かせるようになりました。**\n- **通知を閉じられるようになりました。**\n- **ファイルが移動・削除されたときの表示がわかりやすくなりました。**"
+  }
+}
