@@ -11,7 +11,7 @@ allowlist, so a new reachable npm dependency fails closed. It also pins the
 audited metadata of every directly bundled package, the adjacent canvas
 runtime and native target package, and the two font hashes. The 49-file static
 license tree is pinned by SHA-256
-`18094e5993e884e8337a7fa75a01eda73972547966b49fcc98522a61ed9c165a`;
+`7165c4ab9909ad1e206f7643842683f3f61894f39858b8132f8e273f17a11425`;
 the build fails if a notice is added, removed, or changed, forcing this
 inventory to be reviewed.
 

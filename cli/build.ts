@@ -96,7 +96,7 @@ const AUDITED_CANVAS_VERSION = "0.1.99";
 export const AUDITED_BUN_VERSION = "1.3.12";
 export const AUDITED_NODE_VERSION = "26.5.0";
 export const AUDITED_LICENSE_TREE_SHA256 =
-  "18094e5993e884e8337a7fa75a01eda73972547966b49fcc98522a61ed9c165a";
+  "7165c4ab9909ad1e206f7643842683f3f61894f39858b8132f8e273f17a11425";
 export const AUDITED_LICENSE_FILES = [
   "Apache-2.0.txt",
   "fontkit-bundle/base64-arraybuffer-MIT.txt",
