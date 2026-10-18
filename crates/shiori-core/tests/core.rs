@@ -186,12 +186,19 @@ fn a_glyph_whose_ink_overhangs_ends_at_its_advance_not_its_ink() {
     let doc = core().open(fixture("text.pdf"), None).unwrap();
     let chars = doc.chars(3).unwrap();
     let f = chars.iter().find(|ch| ch.text == "f").unwrap();
-    // Helvetica f advances 278/1000 em: at 12 pt from x = 100 it ends at 103.336.
-    assert!(close(f.end.0, 103.336, 0.01), "f end {}", f.end.0);
-    // PDFium draws standard Helvetica with its own substitute, so the ink's
-    // exact edge is its business; that it overhangs is what makes this glyph
-    // tell the advance apart from the loose box.
-    assert!(f.loose.right > f.end.0 + 0.1, "f ink {}", f.loose.right);
+    // The f is set in an embedded Liberation Sans Italic, so its ink is the
+    // file's, not a platform substitute's. Its /W is 569/2048 em = 277.83/1000,
+    // which PDFium reads as the integer 277: at 12 pt from x = 100 the advance
+    // ends at 103.324.
+    assert!(close(f.end.0, 103.324, 0.01), "f end {}", f.end.0);
+    // Its ink reaches 746/2048 em = 364.26/1000, 104.371 at 12 pt, over a
+    // point past the advance: the loose box ends there, the advance does not.
+    assert!(
+        close(f.loose.right, 104.371, 0.01),
+        "f ink {}",
+        f.loose.right
+    );
+    assert!(f.loose.right > f.end.0 + 1.0, "f ink {}", f.loose.right);
 }
 
 #[test]

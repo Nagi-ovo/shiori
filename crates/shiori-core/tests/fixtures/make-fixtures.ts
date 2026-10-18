@@ -1,9 +1,11 @@
 /**
  * Regenerates text.pdf, the fixture whose geometry tests/core.rs asserts by
  * hand: plain Latin text, a rotated crop box, an /ActualText ligature, a
- * quarter-turned glyph, a hyphenated line break, a /ToUnicode that maps two
- * codes to one character, annotations plus a form field to draw, and a font
- * whose descriptor gives its metrics; the catalog names the language (ja-JP). Built with pdf-lib, a path independent of PDFium.
+ * quarter-turned glyph, a glyph whose embedded ink overhangs its advance, a
+ * hyphenated line break, a /ToUnicode that maps two codes to one character,
+ * annotations plus a form field to draw, and a font whose descriptor gives its
+ * metrics; the catalog names the language (ja-JP). Built with pdf-lib, a path
+ * independent of PDFium.
  * Run: bun crates/shiori-core/tests/fixtures/make-fixtures.ts
  * locked.pdf (one blank Letter page, AES-128, user password "shiori") was made
  * once with pypdf: `uvx --with pypdf --with cryptography python`.
@@ -35,7 +37,9 @@ import {
   showText,
 } from "pdf-lib";
 
+const root = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const doc = await PDFDocument.create();
+doc.registerFontkit(fontkit);
 const font = await doc.embedFont(StandardFonts.Helvetica);
 
 // Page 1: plain Letter, "Shiori" in 12 pt Helvetica with its origin at (72, 700).
@@ -73,8 +77,8 @@ ligature.pushOperators(
 );
 
 // Page 4: "S" set a quarter turn counter-clockwise, origin (300, 400), and an
-// "f" alone at (100, 100), whose ink (to 356/1000 em) overhangs its 278/1000
-// advance.
+// "f" alone at (100, 100) in an embedded font whose ink overhangs its advance
+// (added below, after the other pages, so no other object is renumbered).
 const turned = doc.addPage([612, 792]);
 const f4 = turned.node.newFontDictionary("F", font.ref);
 turned.pushOperators(
@@ -82,11 +86,6 @@ turned.pushOperators(
   setFontAndSize(f4, 12),
   setTextMatrix(0, 1, -1, 0, 300, 400),
   showText(font.encodeText("S")),
-  endText(),
-  beginText(),
-  setFontAndSize(f4, 12),
-  moveText(100, 100),
-  showText(font.encodeText("f")),
   endText(),
 );
 
@@ -256,6 +255,22 @@ doc.catalog.set(PDFName.of("Outlines"), outlines);
 // The document's language, for the text layer's choice of CJK glyphs.
 doc.catalog.set(PDFName.of("Lang"), PDFString.of("ja-JP"));
 
+// Page 4's "f", in Liberation Sans Italic, embedded so that no platform's
+// substitute for a standard font decides its ink: it advances 569/2048 em
+// (Helvetica-Oblique's 278/1000) and its ink reaches 746/2048 em, overhanging
+// by 177/2048 em, 1.04 pt at 12 pt.
+const italic = await doc.embedFont(
+  readFileSync(join(root, "node_modules/@docx-editor.dev/fonts/assets/LiberationSans-Italic.ttf")),
+  { subset: true },
+);
+turned.pushOperators(
+  beginText(),
+  setFontAndSize(turned.node.newFontDictionary("FI", italic.ref), 12),
+  moveText(100, 100),
+  showText(italic.encodeText("f")),
+  endText(),
+);
+
 const out = join(dirname(fileURLToPath(import.meta.url)), "text.pdf");
 writeFileSync(out, await doc.save({ useObjectStreams: false }));
 console.log(out);
@@ -269,7 +284,6 @@ console.log(out);
 // /ToUnicode.
 const fonts = await PDFDocument.create();
 fonts.registerFontkit(fontkit);
-const root = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const liberation = await fonts.embedFont(
   readFileSync(join(root, "node_modules/@docx-editor.dev/fonts/assets/LiberationSans-Regular.ttf")),
   { subset: true },
