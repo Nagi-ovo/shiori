@@ -8,9 +8,12 @@ Last reconciled against reality: **2026-10-17**.
 
 ## Current state
 
-- **Open-sourcing is prepared, not yet published** (2026-10-17). Don't tag a
-  release from this stack until it is: its release workflows publish to the
-  repo they run in.
+- **Shiori is open source** (2026-10-18). `Nagi-ovo/shiori` is the public
+  source repo (formerly `shiori-releases`; releases, tags and the updater's
+  `gh-pages` live there too). The old private source repo is `shiori-dev`,
+  Actions off, to be archived. Still open: Cloudflare Pages has to be
+  reconnected to the public repo (it still deploys from `shiori-dev`), and
+  the `release` environment lacks the Apple and macOS certificate secrets.
 
 - **The encryption, Canvas, tab strip and lib.rs work is on `main`, not in
   a release yet** (58 changes sealed 2026-10-07, rebased onto `a48fb9de` and
