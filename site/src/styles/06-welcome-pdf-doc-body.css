@@ -1,0 +1,82 @@
+/* ───────── welcome.pdf doc body ───────── */
+/* The mock page mirrors site/public/welcome.pdf — same title block,
+   same Lorem Ipsum, same annotation positions. */
+
+.doc-welcome {
+  padding: 16px 22px 24px;
+}
+.doc-welcome::before { display: none; }
+
+.doc-arxiv-head {
+  font-family: "Courier", "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: #999;
+  letter-spacing: .06em;
+  margin-bottom: 14px;
+}
+.doc-shiori-rule {
+  border-top: 1.6px solid #111;
+  margin: 0 0 14px;
+}
+.doc-shiori-rule.thin {
+  border-top-width: 0.6px;
+  margin: 8px 0 16px;
+}
+.doc-shiori-title {
+  font-family: "Times New Roman", Times, serif;
+  font-weight: 700;
+  font-size: 36px;
+  letter-spacing: -.01em;
+  text-align: center;
+  margin: 6px 0 6px;
+  color: #111;
+}
+.doc-shiori-sub {
+  font-family: "Times New Roman", Times, serif;
+  font-style: italic;
+  font-size: 14px;
+  text-align: center;
+  color: #3a4050;
+}
+.doc-shiori-author {
+  font-family: "Times New Roman", Times, serif;
+  font-size: 11.5px;
+  text-align: center;
+  color: #2a323b;
+  margin-top: 4px;
+}
+.doc-shiori-affil {
+  font-family: "Courier", "JetBrains Mono", monospace;
+  font-size: 10px;
+  text-align: center;
+  color: #888;
+  margin-top: 4px;
+  letter-spacing: .04em;
+}
+.doc-section-head {
+  font-family: "Times New Roman", Times, serif;
+  font-weight: 700;
+  font-size: 14.5px;
+  text-align: center;
+  margin-top: 20px;
+  color: #111;
+}
+.doc-section-head.left {
+  text-align: left;
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+.doc-abstract {
+  font-family: "Times New Roman", Times, serif;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #1a1a1a;
+  margin: 12px 18px 0;
+  text-align: justify;
+}
+.doc-abstract mark {
+  background: #f4d674;
+  padding: 0 1px;
+  color: #1a1a1a;
+}
+

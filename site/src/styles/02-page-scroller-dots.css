@@ -1,0 +1,56 @@
+/* ───────── PageScroller dots ─────────
+   Right-edge page indicators. Active dot grows + uses accent. */
+.page-dot {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+.page-dot::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--rule);
+  background: color-mix(in oklab, var(--bg-2) 80%, transparent);
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+@media (hover: hover) {
+  .page-dot:hover::after {
+    border-color: var(--accent);
+  }
+}
+.page-dot[data-active="true"]::after {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.page-dot:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Numeric labels read cleaner with tabular figures. */
+.mono, kbd, .ver, .spec .v, .dl-row .meta,
+.win-title, .win-status, .zoom-meta, .pages-col .ph,
+.spec .k, .spec .sub, .footer-base { font-variant-numeric: tabular-nums; }
+
+.mono {
+  font-family: var(--mono);
+  /* clamp so kicker labels (— 02 / Features) read properly on 27"
+     monitors instead of looking like footnotes. Floor 11px keeps
+     14" laptops compact, ceiling 15px for ultrawide. */
+  font-size: clamp(11px, 0.9vw, 15px);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.wrap { max-width: var(--max); margin: 0 auto; padding: 0 28px; }
+

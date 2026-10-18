@@ -1,0 +1,71 @@
+/* ───────── privacy ─────────
+   A short, single-page privacy disclosure. Two-column key/value list
+   so readers can scan rather than read left-to-right. */
+.section-privacy { padding: 96px 0 88px; }
+.privacy {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 40px;
+  align-items: start;
+}
+.privacy-lede {
+  grid-column: 2;
+  font-family: var(--serif);
+  font-style: normal;
+  font-size: clamp(18px, 1.4vw, 22px);
+  line-height: 1.5;
+  color: var(--ink);
+  margin: 0 0 36px;
+  max-width: 36ch;
+  text-wrap: balance;
+}
+html[lang^="zh"] .privacy-lede,
+html[lang^="ja"] .privacy-lede {
+  font-style: normal;
+  font-size: clamp(16px, 1.2vw, 19px);
+  line-height: 1.7;
+  word-break: keep-all;
+  line-break: strict;
+  max-width: 30ch;
+}
+.privacy-list {
+  grid-column: 2;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+.privacy-row {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 32px;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.privacy-row dt {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 4px 0 0;
+}
+.privacy-row dd {
+  font-family: var(--prose);
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: var(--ink-2);
+  max-width: 60ch;
+}
+html[lang^="zh"] .privacy-row dd,
+html[lang^="ja"] .privacy-row dd {
+  word-break: keep-all;
+  line-break: strict;
+  max-width: 44ch;
+}
+@media (max-width: 980px) {
+  .privacy { grid-template-columns: 1fr; gap: 24px; }
+  .privacy-lede, .privacy-list { grid-column: 1; }
+  .privacy-row { grid-template-columns: 1fr; gap: 8px; padding: 18px 0; }
+}
+

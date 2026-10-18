@@ -1,0 +1,60 @@
+/* ───────── sections ───────── */
+.section {
+  padding: 110px 0;
+  border-top: 1px solid var(--rule);
+}
+.section-h {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 40px;
+  align-items: baseline;
+  margin-bottom: 56px;
+  position: relative;
+}
+.section-h .label {
+  color: var(--ink-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-h .label::before {
+  content: "";
+  display: inline-block;
+  width: 22px;
+  height: 1px;
+  background: var(--accent);
+  flex: 0 0 auto;
+}
+.section-h h2 {
+  font-family: var(--serif);
+  font-style: normal;
+  font-weight: 400;
+  font-size: clamp(34px, 4.2vw, 56px);
+  line-height: 1.05;
+  letter-spacing: 0;
+  margin: 0;
+  color: var(--ink);
+  max-width: 22ch;
+  white-space: pre-line;
+}
+.section-h h2 em {
+  font-style: normal;
+  color: var(--accent);
+  font-weight: 400;
+}
+html[lang^="zh"] .section-h h2,
+html[lang^="ja"] .section-h h2 {
+  font-style: normal;
+  letter-spacing: -.005em;
+  font-size: clamp(28px, 3.6vw, 48px);
+  line-height: 1.18;
+  /* Don't break inside CJK words; prefer breaks at punctuation
+     ("，", "。") so phrases like 沉默 stay on one line. */
+  word-break: keep-all;
+  line-break: strict;
+  overflow-wrap: break-word;
+  text-wrap: balance;
+}
+html[lang^="zh"] .section-h h2 em,
+html[lang^="ja"] .section-h h2 em { font-style: normal; }
+

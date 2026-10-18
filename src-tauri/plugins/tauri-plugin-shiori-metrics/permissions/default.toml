@@ -1,0 +1,8 @@
+"$schema" = "schemas/schema.json"
+
+# This plugin is driven entirely from Rust (the app's get_process_metrics command
+# forwards to it on Android); it exposes no JavaScript commands, so the default
+# permission set is intentionally empty.
+[default]
+description = "Shiori metrics plugin — Rust-driven, no JS command surface."
+permissions = []

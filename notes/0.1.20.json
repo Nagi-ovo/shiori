@@ -1,5 +1,0 @@
-{
-  "en": "Fixed\n• Android direct updates now download the right APK version instead of falling back to an older release.\n• Android release packages generate the correct install permissions for direct APK and Google Play channels.\n• Reopening a PDF returns to the last page you read instead of defaulting back to page one.\n\nImproved\n• Refined the website hero so the copy matches Shiori's broader document workflow and the demo/download area is more stable.",
-  "zh": "修复\n• Android 直装版更新会下载正确版本，不再跳到旧 APK。\n• Android 直装 APK 和 Google Play 包会按渠道生成正确权限。\n• 重新打开 PDF 会回到上次阅读页，不再默认跳回第一页。\n\n改进\n• 优化官网首屏展示，文案更贴近 Shiori 现在支持的文档工作流，demo 和下载入口更稳定。",
-  "ja": "修正\n• Android 直接インストール版の更新で、古い APK ではなく正しいバージョンをダウンロードします。\n• Android の直接 APK と Google Play ビルドが、配布チャネルごとに正しい権限を生成します。\n• PDF を開き直すと、1 ページ目ではなく前回読んでいたページに戻ります。\n\n改善\n• Web サイトのファーストビューを調整し、Shiori の文書ワークフローに合う文案と安定した demo / ダウンロード表示にしました。"
-}

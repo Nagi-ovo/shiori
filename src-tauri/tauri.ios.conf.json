@@ -1,0 +1,39 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "app": {
+    "security": {
+      "capabilities": ["mobile"]
+    }
+  },
+  "bundle": {
+    "fileAssociations": [
+      {
+        "ext": ["pdf"],
+        "contentTypes": ["com.adobe.pdf"],
+        "description": "PDF document",
+        "role": "Editor"
+      },
+      {
+        "ext": ["md", "markdown"],
+        "contentTypes": ["net.daringfireball.markdown", "public.markdown"],
+        "description": "Markdown document",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["html", "htm"],
+        "contentTypes": ["public.html"],
+        "description": "HTML document",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["docx"],
+        "contentTypes": ["org.openxmlformats.wordprocessingml.document"],
+        "description": "Word document",
+        "role": "Viewer"
+      }
+    ],
+    "iOS": {
+      "minimumSystemVersion": "16.4"
+    }
+  }
+}

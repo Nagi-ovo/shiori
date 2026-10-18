@@ -1,0 +1,23 @@
+# cli/build.ts pins a SHA-256 over the raw bytes of every file in
+# cli/licenses/ (AUDITED_LICENSE_TREE_SHA256). Git's Windows checkout would
+# otherwise rewrite their LF endings to CRLF, changing those bytes and failing
+# `cli:build` with "CLI license texts changed; refresh SBOM.md and the license
+# audit before release" on windows runners only. Marking them non-text keeps
+# the working tree byte-identical on every platform.
+cli/licenses/** -text
+# Upstream license texts that scripts/pdfium/rust-notices.ts copies into those
+# notices verbatim: a CRLF checkout made the rendered notices differ on
+# windows runners only ("Rust dependency notices are stale", cli-verify run
+# 36192226215, first difference "MIT License\r").
+scripts/pdfium/*-LICENSE.txt -text
+
+# Same class of problem, different blast radius: the installers.
+#
+# A Windows checkout hands these back as CRLF, and two things break at once.
+# The hosted-installer freshness test compares an assembly joined with "\n"
+# against a file read as "\r\n" — that is the win32-x64 and win32-arm64
+# failure in cli-release run 34751204216. Far worse, a CRLF site/public/cli.sh
+# served to `curl | sh` begins `#!/bin/sh\r`, which is a bad interpreter on
+# every Unix that matters.
+*.sh text eol=lf
+*.ps1 text eol=lf

@@ -1,0 +1,48 @@
+/* ───────── specs ───────── */
+.specs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+.spec {
+  padding: 28px 22px;
+  border-right: 1px solid var(--rule);
+}
+.spec:last-child { border-right: none; }
+.spec .k {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  letter-spacing: .12em;
+}
+.spec .v {
+  font-family: var(--serif);
+  font-style: normal;
+  font-weight: 400;
+  font-size: 38px;
+  margin-top: 14px;
+  letter-spacing: -.02em;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.spec .v em {
+  font-style: normal;
+  color: var(--accent);
+}
+.spec .v .sep {
+  font-style: normal;
+  color: var(--ink-4);
+  margin: 0 .12em;
+  font-weight: 300;
+}
+.spec .sub {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+  margin-top: 10px;
+  letter-spacing: .06em;
+}
+

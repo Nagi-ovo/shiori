@@ -1,0 +1,28 @@
+/* ── Doc-page responsive ── */
+@media (max-width: 980px) {
+  .doc-main { padding-top: 40px; }
+  .doc-section { padding: 24px 0 64px; }
+  .doc-head {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin: 18px 0 40px;
+  }
+  .doc-h1, .doc-lede { grid-column: 1; }
+  .cl-release {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding: 32px 0;
+  }
+  .cl-rail { position: static; }
+  .cl-group {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .cl-body { max-width: none; }
+  .sc-grid {
+    grid-template-columns: 1fr;
+    gap: 36px;
+    padding-top: 28px;
+  }
+}
+

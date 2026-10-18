@@ -1,0 +1,155 @@
+/* ───────── hero scripted demo ─────────
+   The hero ProductWindow is wrapped in HeroDemo, which drives a 7s loop
+   through highlight → note → ink → export. The CSS hooks below are the
+   "stage" the framer-motion props animate against. */
+
+.hero-demo {
+  /* Block wrapper so IntersectionObserver (via useInView) can measure a
+     real bounding box — `display: contents` would erase the box and the
+     play-when-visible loop would never start. The wrapper still spans
+     the grid cell so the .win inside fills the same area as before.
+     Now also an <a> linking to the browser build of the app, so clicking
+     anywhere on the demo opens the live editor in a new tab. */
+  display: block;
+  width: 100%;
+  position: relative;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.hero-demo .win {
+  /* Soften the lift on hover so the affordance reads without screaming. */
+  transition: transform .35s ease, box-shadow .35s ease;
+  will-change: transform;
+  width: 100%;
+}
+@media (min-width: 601px) {
+  .hero-demo .win-body {
+    height: clamp(400px, calc(100dvh - 320px), 560px);
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+.hero-demo:hover .win,
+.hero-demo:focus-visible .win {
+  transform: translateY(-3px);
+  box-shadow:
+    0 28px 60px -28px color-mix(in oklab, var(--accent) 35%, transparent),
+    0 12px 28px rgba(0, 0, 0, .06);
+}
+.hero-demo:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
+
+/* Touch devices: the hover lift on .win triggers on tap — the demo
+   "jumps" before the navigation kicks in. Drop it on no-hover pointers
+   (phones, tablets) regardless of viewport width. */
+@media (hover: none) {
+  .hero-demo:hover .win {
+    transform: none;
+    box-shadow: none;
+  }
+}
+
+/* Animated highlight host. A yellow fill sits absolutely behind the
+   marked text and animates `transform: scaleX(0 → 1)` from the left
+   edge, simulating a highlighter sweep. Transform is GPU-accelerated and
+   numerically interpolatable — framer-motion can't tween compound CSS
+   string values like `background-size: "0% 100%"`, so this approach is
+   both smoother and more reliable. */
+.doc-mark-anim {
+  position: relative;
+  display: inline-block;
+  /* Stay on one line so the sweep reads as a single continuous pass. */
+  white-space: nowrap;
+  color: #1a1a1a;
+  padding: 0 1px;
+}
+.doc-mark-fill {
+  position: absolute;
+  /* Inset top/bottom by 6% so the band sits inside the cap-height like
+     a real highlighter pass with a thin lip of paper above + below. */
+  inset: 6% 0 6% 0;
+  background: #f4d674;
+  transform-origin: left center;
+  pointer-events: none;
+  z-index: 0;
+}
+.doc-mark-text {
+  position: relative;
+  z-index: 1;
+}
+
+/* Ink underline host. Inline-block wrapper holds an absolutely positioned
+   SVG below the text baseline; the SVG path's pathLength animates 0 → 1
+   so the wave appears to draw under the words in real time. */
+.doc-anno-ink-host {
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+}
+.doc-anno-ink-svg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -3px;
+  width: 100%;
+  height: 5px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* Page-1 sticky note — positioned over the right edge of the Abstract
+   paragraph. The existing .doc-anno-note styling (yellow paper, folded
+   corner, dashed connector) carries through; this override only shifts
+   the absolute coords for the page-1 layout. */
+.doc-anno-note-p1 {
+  top: 175px;
+  right: 10px;
+  width: 132px;
+  z-index: 2;
+}
+/* Connector points leftward into the Abstract body text — angle a touch
+   steeper than page 2 since the note sits below the highlight target. */
+.doc-anno-note-p1::before {
+  top: 18px;
+  left: -64px;
+  width: 64px;
+  transform: rotate(14deg);
+}
+
+/* Demo doc page — establishes the positioning context for the absolutely
+   placed sticky note. .doc already has position: relative, but make it
+   explicit here so future moves of the rule don't break the demo. */
+.doc-welcome-demo {
+  position: relative;
+  /* Reserve a touch more bottom padding so the sticky note never tucks
+     under the chrome's status row when min-height clips. */
+  padding-bottom: 32px;
+}
+
+@media (max-width: 600px) {
+  /* On phones the doc body is narrower and the sticky note overlaps the
+     ink target. Trim every dimension so the chrome still reads against
+     the 8.5px abstract text and ~190px doc area. */
+  .doc-anno-note-p1 {
+    top: 92px;
+    right: 8px;
+    width: 78px;
+    font-size: 7.5px;
+    padding: 5px 6px 7px;
+    line-height: 1.3;
+  }
+  .doc-anno-note-p1::before {
+    top: 12px;
+    left: -42px;
+    width: 42px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { transition: none !important; }
+}
+

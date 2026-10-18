@@ -1,0 +1,289 @@
+/* ───────── features ─────────
+   Asymmetric 12-col grid: feat 1 spans 7 cols (the marquee local-first
+   story); feats 2 + 3 stack to the right at 5 cols each. Breaks the
+   "three equal towers" AI default. */
+.feat-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 0;
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--bg-2);
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--bg-2) 60%, white) inset,
+    0 24px 60px -36px rgba(20, 30, 60, .18);
+}
+.feat {
+  padding: 36px 32px 40px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+}
+/* Single-row 3-equal-column layout. Was 2 rows (7+5 / 12) which gave
+   nice editorial asymmetry but pushed Features past one viewport on
+   14" laptops. With all 3 cards in one row each card is 4 cols wide
+   (~330px in the 1440 wrap) — content fits, section reads in one slot. */
+.feat:nth-child(1) {
+  grid-column: span 4;
+  border-right: 1px solid var(--rule);
+  min-height: 0;
+}
+.feat:nth-child(2) {
+  grid-column: span 4;
+  border-right: 1px solid var(--rule);
+  min-height: 0;
+}
+/* Top row stretches both feats to match height; art flows naturally
+   right under the copy rather than being pinned to bottom — avoids
+   awkward middle whitespace in the lighter card. */
+.feat-grid > .feat:nth-child(1) > .art { margin-top: 24px; }
+.feat-grid > .feat:nth-child(2) > .art { margin-top: 24px; }
+/* Card 03 sits as the third column in the single row now — same
+   structure as cards 1+2 (column-stacked content + bottom art). */
+.feat:nth-child(3) {
+  grid-column: span 4;
+  min-height: 0;
+}
+/* A faint accent corner on the marquee feature so it reads as primary. */
+.feat:nth-child(1)::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 4px;
+  height: 56px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+  opacity: .9;
+}
+/* Hover lifts the .num counter and brightens the rule. */
+.feat { transition: background .2s ease; }
+@media (hover: hover) {
+  .feat:hover {
+    background: color-mix(in oklab, var(--bg-2) 96%, var(--accent));
+  }
+}
+.feat .num {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--accent);
+  letter-spacing: .14em;
+}
+.feat h3 {
+  font-family: var(--serif);
+  font-style: normal;
+  font-weight: 400;
+  font-size: 26px;
+  line-height: 1.2;
+  letter-spacing: -.01em;
+  margin: 14px 0 10px;
+  color: var(--ink);
+  text-wrap: balance;
+}
+/* Marquee feature gets a larger headline. */
+.feat:nth-child(1) h3 {
+  font-size: 34px;
+  line-height: 1.1;
+  margin-top: 18px;
+}
+html[lang^="zh"] .feat:nth-child(1) h3,
+html[lang^="ja"] .feat:nth-child(1) h3 {
+  font-size: 28px;
+  line-height: 1.35;
+}
+html[lang^="zh"] .feat h3,
+html[lang^="ja"] .feat h3 {
+  font-style: normal;
+  font-size: 22px;
+  line-height: 1.4;
+  word-break: keep-all;
+  line-break: strict;
+  overflow-wrap: break-word;
+}
+.feat h3 .jp {
+  display: block;
+  font-family: var(--serif-jp);
+  font-style: normal;
+  font-size: 13px;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+.feat p {
+  font-family: var(--prose);
+  color: var(--ink-3);
+  font-size: 15px;
+  line-height: 1.55;
+  margin: 0 0 18px;
+  max-width: 34ch;
+}
+.feat p code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--bg-panel);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--ink-2);
+}
+.feat .art { margin-top: auto; }
+
+.art-jar {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  background:
+    linear-gradient(180deg, var(--bg-panel), color-mix(in oklab, var(--bg-panel) 92%, var(--accent)));
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 22px 22px 18px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  letter-spacing: .04em;
+  position: relative;
+}
+.art-jar::before {
+  content: "FILESYSTEM · LOCAL";
+  position: absolute;
+  top: -8px; left: 14px;
+  background: var(--bg-2);
+  padding: 0 8px;
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  color: var(--ink-4);
+}
+.art-jar .row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--rule);
+}
+.art-jar .row:last-child { border-bottom: none; }
+.art-jar .row b { color: var(--ink); font-weight: 500; }
+.art-jar .ok {
+  color: var(--accent);
+  font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+.art-jar .x {
+  color: var(--ink-4);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.art-jar .full { grid-column: 1 / -1; }
+
+/* Annotate card — 6-tool palette grid. Visual echo of the editor
+   toolbar so the "六件工具，没有菜单" claim is shown, not just told.
+   2×3 grid of tool chips: each card is 4 cols wide (~330px), so 2
+   inner columns at ~145px each give icon + name + Kbd room to breathe. */
+.art-tools {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 10px;
+}
+.art-tool {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink);
+  transition: border-color .15s ease, background .15s ease;
+}
+.art-tool:hover {
+  border-color: var(--accent-line);
+  background: color-mix(in oklab, var(--bg-2) 92%, var(--accent));
+}
+.art-tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 14px;
+  color: var(--ink-2);
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.art-tool-icon .swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+.art-tool-name {
+  flex: 1;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Export card — vertical 4-row list. Card 03 is one of three equal
+   columns now (~330px wide), so a horizontal strip would crush each
+   cell. Keep the per-cell vertical layout (chip on left, description,
+   Kbd on right) but stack the rows. */
+.art-export {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 10px;
+}
+.art-export .opt {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  transition: border-color .15s ease, background .15s ease;
+}
+@media (hover: hover) {
+  .art-export .opt:hover {
+    border-color: var(--accent-line);
+    background: color-mix(in oklab, var(--bg-2) 92%, var(--accent));
+  }
+}
+.art-export .opt .ext {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--bg);
+  letter-spacing: .08em;
+}
+.art-export .opt .ext.alt { background: var(--accent); }
+.art-export .opt .opt-desc {
+  font-size: 12.5px;
+  color: var(--ink);
+  font-weight: 500;
+  line-height: 1.3;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.art-export .opt .opt-kbd {
+  display: inline-flex;
+  align-items: center;
+}
+

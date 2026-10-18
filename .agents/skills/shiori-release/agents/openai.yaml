@@ -1,0 +1,4 @@
+interface:
+  display_name: "Shiori Release"
+  short_description: "Release Shiori safely with updater manifest checks."
+  default_prompt: "Use this when preparing or verifying a Shiori release, especially Tauri updater manifests and release assets."

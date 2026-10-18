@@ -1,0 +1,1093 @@
+{
+  "app": {
+    "brand": "Shiori",
+    "subtitle": "栞"
+  },
+  "changelog": {
+    "title": "変更履歴",
+    "close": "閉じる"
+  },
+  "sponsor": {
+    "entry": "Shiori を応援",
+    "title": "Shiori を応援",
+    "thanks": "Shiori は無料で、これからもローカル優先のままです。読書の役に立っていたら、少しの応援が開発の支えになります。ありがとうございます。",
+    "wechat": "WeChat Pay",
+    "alipay": "Alipay",
+    "more": "その他の方法"
+  },
+  "deferred": {
+    "loading": "読み込み中…",
+    "loadingBody": "このパネルはまだ読み込み中です。",
+    "failedTitle": "このパネルを読み込めませんでした",
+    "failedBody": "接続を確認してから、もう一度お試しください。",
+    "retry": "再試行"
+  },
+  "common": {
+    "close": "閉じる",
+    "increase": "増やす",
+    "decrease": "減らす"
+  },
+  "windowCaption": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "元に戻す (縮小)"
+  },
+  "nav": {
+    "thumbnails": "サムネイル",
+    "outline": "アウトライン",
+    "find": "検索",
+    "shortcuts": "ショートカット",
+    "settings": "設定",
+    "importPdf": "別の PDF を読み込む",
+    "print": "印刷 · ⌘P",
+    "export": "書き出し",
+    "exportPdf": "PDF を書き出し",
+    "untitled": "無題.pdf",
+    "home": "ホームに戻る · タブは保持",
+    "terminal": "ターミナル",
+    "readerMode": "リーダーモード · ツールバーを隠す",
+    "readerModeExit": "リーダーモードを終了",
+    "annotateEnter": "注釈",
+    "annotateExit": "注釈を終了",
+    "pdfChromeCollapse": "ツールバーを隠す",
+    "pdfChromeExpand": "ツールバーを表示",
+    "browser": "ブラウザ",
+    "switcherLabel": "ファイルをすばやく切替",
+    "switcherHint": "← → で選択 · Ctrl を離して切替 · Esc で取消",
+    "skipToContent": "本文へスキップ",
+    "mainLandmark": "ドキュメント"
+  },
+  "navigator": {
+    "label": "ナビゲーター",
+    "outline": "アウトライン",
+    "documents": "ドキュメント",
+    "pages": "ページ",
+    "collapse": "ナビゲーターを隠す",
+    "show": "ナビゲーターを表示",
+    "marks": "注釈",
+    "marksEmpty": "この文書にはまだ注釈がありません。",
+    "showMarks": "この文書の注釈を表示",
+    "markEditedText": "本文編集",
+    "markThread_one": "会話 {{count}} 件",
+    "markThread_other": "会話 {{count}} 件",
+    "markClipped": "（省略）",
+    "toggle": "サイドバーを開閉",
+    "resize": "ドラッグで幅を調整 · ダブルクリックでリセット"
+  },
+  "documentTree": {
+    "label": "ドキュメント",
+    "show": "ドキュメントツリーを表示",
+    "collapse": "ドキュメントツリーを隠す",
+    "empty": "まだ何も開いていません。",
+    "unavailable": "ファイルが見つかりません",
+    "expandMarks": "注釈を表示",
+    "collapseMarks": "注釈を隠す",
+    "page": "{{page}} ページ",
+    "sectionUnfiled": "未整理",
+    "pin": "ワークスペースに追加",
+    "unpin": "ワークスペースから外す",
+    "addFolder": "フォルダを追加…",
+    "addDocument": "文書を追加…",
+    "addTarget": "文書またはフォルダを追加…",
+    "unmountFolder": "このフォルダを閉じる",
+    "mountUnsupported": "フォルダを開くにはデスクトップ版が必要です。"
+  },
+  "tabs": {
+    "label": "開いている文書",
+    "new": "文書を開く",
+    "close": "タブを閉じる",
+    "closeNamed": "「{{title}}」を閉じる",
+    "closeOverflow_one": "この非表示タブを閉じる",
+    "closeOverflow_other": "非表示の {{count}} 個のタブを閉じる",
+    "overflowMenuLabel": "非表示のタブ",
+    "previewLabel": "「{{title}}」のプレビュー",
+    "previewPage": "{{page}} ページ · {{zoom}}",
+    "previewPosition": "前回の位置 · {{zoom}}",
+    "previewPositionUnknown": "前回の位置",
+    "previewLoading": "プレビューを読み込み中…",
+    "previewUnavailable": "プレビューはまだありません",
+    "restoreFailed": "タブを復元できません",
+    "restoreRetry": "もう一度試す",
+    "restoreAuthorize": "再度許可",
+    "restorePickAgain": "ファイルを選び直す",
+    "restoreErrors": {
+      "pathUnavailable": "元のファイルが移動または削除されています",
+      "unsupported": "このファイル形式には対応していません",
+      "cacheMissing": "ローカルキャッシュのコピーが削除されています",
+      "ephemeral": "このタブはこのブラウザでは自動的に再び開けません",
+      "handleMissing": "ブラウザが保存済みのファイル権限を失いました",
+      "permissionDenied": "ブラウザでファイルへのアクセスを再度許可する必要があります",
+      "fileUnavailable": "許可済みのファイルをブラウザが読み取れません"
+    },
+    "overflowTitle_one": "他 {{count}} 個のタブ",
+    "overflowTitle_other": "他 {{count}} 個のタブ"
+  },
+  "documents": {
+    "loading": "文書を読み込み中…",
+    "renderFailed": "この文書を表示できません: {{message}}",
+    "openPolicy": {
+      "tooLarge": {
+        "title": "この文書は大きすぎます。",
+        "message": "{{name}} は {{maxSize}} の上限を超えているため、読み込みませんでした。"
+      },
+      "invalidDocx": {
+        "title": "読み取り可能な Word 文書ではありません。",
+        "message": "{{name}} には必要な DOCX データがないか、未対応の ZIP 形式が使われています。"
+      },
+      "docxTooComplex": {
+        "title": "この Word 文書は複雑すぎるため、安全に開けません。",
+        "message": "{{name}} は Shiori の DOCX 展開上限を超えるため、ファイルには触れていません。"
+      }
+    },
+    "runHtml": "実行",
+    "runHtmlHint": "このファイルのスクリプトを隔離されたサンドボックスで実行します（オフライン、ファイルやデータにはアクセスできません）。",
+    "stopHtml": "停止",
+    "refreshHtml": "プレビューを更新",
+    "markdownMode": "Markdown モード",
+    "previewMarkdown": "Markdown をプレビュー",
+    "editMarkdown": "Markdown を編集",
+    "markdownEditorLabel": "Markdown エディター",
+    "editMarkdownMetadata": "文書のメタデータを編集",
+    "textSaveFailed": "最新のテキスト編集を保存できませんでした。再試行できるようタブは開いたままです。",
+    "closeSaveFailed": "最新の変更を保存できなかったため、ウインドウを開いたままにしました。デバイスの空き容量を確保してから、もう一度閉じてください。",
+    "workspaceSaveFailed": "ワークスペースの配置を保存できませんでした。",
+    "workspaceSaveFailedDetail": "再起動後に開いていたタブやフォルダーを復元できない可能性があります。空き容量を増やしてから、もう一度変更して再試行してください。",
+    "runtimeStorageFailed": "別の PDF 用にメモリを空けられませんでした。",
+    "runtimeStorageFailedDetail": "現在の PDF は安全なまま開いています。デバイスの空き容量を増やすかタブを閉じてから、もう一度お試しください。",
+    "workspaceSourceQuotaFailed": "ローカル文書ストレージの空き容量がありません。",
+    "workspaceSourceSaveFailed": "ローカル作業コピーを保存できませんでした。",
+    "workspaceSourceSaveFailedDetail": "編集内容は開いたままで、Shiori が再試行します。タブを閉じる前に空き容量を増やしてください。",
+    "workingCopyMissing": "ローカル作業コピーが見つかりません。古い原本を最新内容として自動表示しないため、原本は開きませんでした。原本から続ける場合は、もう一度開いてください。",
+    "saveToFile": "保存",
+    "saveToFileHint": "変更を元のファイルに書き戻します（⌘S）",
+    "saved": "{{name}} に保存しました",
+    "savedNoChanges": "未保存の変更はありません",
+    "saveOriginMissing": "元のファイルが見つからないため、何も書き込みませんでした。",
+    "savePermissionDenied": "そのファイルへの書き込み許可がブラウザーで拒否されました。",
+    "saveFailed": "元のファイルに書き戻せませんでした: {{message}}",
+    "unsavedEdits": "未保存の変更があります",
+    "appearance": {
+      "open": "表示設定",
+      "title": "Markdown の表示設定",
+      "documentOverride": "この文書専用の設定を使用中",
+      "followingGlobal": "全体の既定値を使用中",
+      "tabs": {
+        "body": "本文",
+        "code": "コード",
+        "layout": "レイアウト",
+        "color": "色"
+      },
+      "searchFonts": "フォントを検索",
+      "useGlobal": "全体設定を使用 · {{family}}",
+      "globalBadge": "全体",
+      "automatic": "自動",
+      "fallbackBadge": "自動",
+      "recentFonts": "最近使用",
+      "builtinFonts": "Shiori 内蔵",
+      "systemFonts": "このコンピューター",
+      "loadingSystemFonts": "システムフォントを読み込み中",
+      "systemFontPrivacy": "インストール済みフォントの名前を共有する前に、ブラウザーが許可を求めます。フォントファイルやパスは読み取りません。",
+      "requestSystemFonts": "インストール済みフォントを表示",
+      "fontKinds": {
+        "sans": "ゴシック",
+        "serif": "明朝",
+        "mono": "等幅"
+      },
+      "refineSearch_one": "{{count}} 件あります。検索語を追加して絞り込んでください。",
+      "refineSearch_other": "{{count}} 件あります。検索語を追加して絞り込んでください。",
+      "noFontResults": "一致するフォントがありません。",
+      "noSystemFonts": "システムフォントを取得できませんでした。",
+      "systemFontState": {
+        "unsupported": "この端末またはブラウザーではフォント一覧を取得できません。下にインストール済みのフォント名を入力できます。",
+        "denied": "フォント一覧へのアクセスが許可されていません。再試行するか、下にフォント名を入力してください。",
+        "error": "システムフォントを読み込めませんでした。再試行するか、下にフォント名を入力してください。"
+      },
+      "retrySystemFonts": "フォントを再読み込み",
+      "manualFont": "インストール済みフォントを入力",
+      "manualFontPlaceholder": "例：Yu Mincho",
+      "manualFontHint": "一覧を取得できない場合や、フォントが一覧にない場合に使用します。",
+      "manualFontInvalid": "有効なフォントファミリー名を入力してください。",
+      "addFont": "使用",
+      "fontMissing": "現在のシステム一覧に「{{family}}」がありません。利用できない場合は Shiori が自動的に代替フォントを使用します。",
+      "fontSize": "文字サイズ",
+      "lineHeight": "行間",
+      "contentWidth": "本文の幅",
+      "widths": {
+        "narrow": "狭い",
+        "standard": "標準",
+        "wide": "広い"
+      },
+      "globalLayoutSummary": "全体設定：{{size}}px · 行間 {{lineHeight}} · 幅 {{width}}px",
+      "useGlobalLayout": "全体のレイアウトを使用",
+      "headingColor": "見出しの色",
+      "useGlobalColor": "全体設定を使用 · {{color}}",
+      "automaticHeadingColor": "現在のテーマに合わせる",
+      "customColor": "カスタム HEX カラー",
+      "applyColor": "適用",
+      "invalidColor": "#RGB または #RRGGBB 形式の不透明色を入力してください。",
+      "effectiveColor": "実際の表示色 {{color}}",
+      "contrastAdjusted": "読みやすさのため自動調整済み",
+      "resetDocument": "すべて全体設定に戻す",
+      "setGlobal": "現在の設定を全体に適用"
+    },
+    "runningStatus": "実行中 · オフラインサンドボックス",
+    "remoteImagesBlocked": "リモート画像は IP アドレスや開いた文書の情報を外部に伝える可能性があるため、既定では読み込みません。",
+    "loadRemoteImages": "リモート画像を読み込む",
+    "dismissRemoteImages": "ブロックしたままにする",
+    "runDepsBlocked_other": "この文書は {{count}} 件のリモート依存を参照しています。実行モードは既定でオフラインのため、ブロックしました。",
+    "runDepsAllowed_other": "{{count}} 件のリモート依存をこの実行で許可しています。",
+    "runDepsAllowSelected": "選択した項目を許可して再実行",
+    "runDepsShow": "詳細を表示",
+    "runDepsHide": "詳細を隠す",
+    "runDepsKindScript": "スクリプト",
+    "runDepsKindStylesheet": "スタイルシート",
+    "runDepsKindImage": "画像",
+    "runDepsKindMedia": "メディア",
+    "runDepsKindFrame": "フレーム",
+    "runDepsKindFont": "フォント",
+    "runDepsKindConnect": "通信",
+    "runDepsKindOther": "その他"
+  },
+  "meta": {
+    "ppAbbr": "ページ",
+    "local": "ローカル",
+    "localOnly": "● ローカルのみ",
+    "editsNotSaved": "未保存の変更",
+    "pageShort": "ページ",
+    "pageLabel": "{{page}} ページ",
+    "pageOfTotal": "{{page}} / {{total}} ページ",
+    "copyFileName": "ファイル名をコピー",
+    "fileNameCopied": "ファイル名をコピーしました",
+    "fileNameCopyFailed": "ファイル名をコピーできませんでした"
+  },
+  "toast": {
+    "savedTo": "{{path}} に保存しました",
+    "savedAs": "{{path}} として保存しました",
+    "savedAsHint": "ブラウザのダウンロードフォルダをご確認ください。",
+    "sharedAs": "{{path}} を共有できます",
+    "openSavedFile": "開く",
+    "openSavedFileFailed": "書き出した PDF を開けませんでした。",
+    "revealSavedFile": "フォルダで表示",
+    "revealSavedFileFailed": "書き出した PDF をフォルダで表示できませんでした。",
+    "imagePageAdded": "画像を新しいページとして追加しました。",
+    "pdfPagesInserted_one": "{{name}} から 1 ページ挿入しました。",
+    "pdfPagesInserted_other": "{{name}} から {{count}} ページ挿入しました。",
+    "pdfPagesInsertedDetail": "元の PDF は変更されません。ページ、ページ内注釈、内部リンクに必要なリンク先のみを取り込み、添付ファイルなど他の文書レベルの内容は取り込みません。",
+    "linkOpenFailed": "リンクを開けませんでした。",
+    "printFailed": "印刷の準備に失敗しました。再試行するかエクスポートをご利用ください。",
+    "paragraphEditMathRefused": "この段落には数式が含まれるため、段落全体の編集はできません。編集したいテキストを選択してください。",
+    "paragraphEditComplexRefused": "この段落はレイアウトが複雑なため、段落全体の編集はできません。編集したいテキストを選択してください。",
+    "recentMissing": "このファイルを開けません — 移動または削除された可能性があります。",
+    "recentWebAccessLost": "ブラウザでファイルの再許可が必要です。",
+    "recentWebUnsupported": "このブラウザでは最近使ったファイルを自動で開けません。ファイルを開くから PDF を選び直してください。",
+    "recentWebAccess": {
+      "handleMissing": "保存されたファイル権限をブラウザが忘れています。",
+      "permissionDenied": "ファイルへのアクセスが拒否されました。",
+      "fileUnavailable": "保存されたファイルを読み込めませんでした。"
+    },
+    "recentWebAccessAction": "ファイルを選択",
+    "openPermissionDenied": "現在のアプリのファイル権限ではこのファイルを読み込めません。",
+    "removedAnnotations_other": "{{count}} 件の注釈を削除しました",
+    "copiedAnnotations_other": "{{count}} 件の注釈をコピーしました",
+    "duplicatedAnnotations_other": "{{count}} 件の注釈を複製しました",
+    "pastedAnnotations_other": "{{count}} 件の注釈を {{page}} ページに貼り付けました",
+    "deletedPage": "{{page}} ページを削除しました",
+    "undo": "元に戻す",
+    "liveAnnotations_one": "Shiori CLI が {{count}} 件の注釈を追加しました",
+    "liveAnnotations_other": "Shiori CLI が {{count}} 件の注釈を追加しました",
+    "placedAnnotation": "注釈を配置しました"
+  },
+  "drafts": {
+    "saving": "保存中…",
+    "unsaved": "未保存",
+    "saveFailed": "下書きの保存に失敗",
+    "saveFailedToast": "下書きの保存に失敗しました。直前の編集は復元できない可能性があります。",
+    "saveQuotaFailedToast": "下書きの保存容量が不足しています。",
+    "saveQuotaFailedDetail": "設定 → ストレージで古い下書きを削除してから、もう一度お試しください。",
+    "saveTransientFailedToast": "下書きの保存に失敗しました。",
+    "saveTransientFailedDetail": "しばらくしてからもう一度お試しください。",
+    "saved": "保存済み",
+    "storageTooltip": "ローカル下書きの使用量 / 上限",
+    "restoreTitle": "編集すると未読込の下書きが上書きされます",
+    "restoreBody": "このファイルには {{rel}} の下書きが未読込のまま残っています。編集を続ける前に、下書きの扱いを決めてください。",
+    "restoredNotice": "{{rel}} の編集を復元しました",
+    "openOriginal": "元のファイルで開く",
+    "setAside": "下書き未読込",
+    "restoreSetAside": "下書きを復元",
+    "restore": "復元",
+    "discard": "破棄",
+    "discardConfirmTitle": "この下書きを削除しますか？",
+    "discardConfirmBody": "このファイルの保存済み下書きを完全に削除します。元の PDF は変更されません。",
+    "discardCancel": "下書きを残す",
+    "discardConfirm": "下書きを削除"
+  },
+  "exportStatus": {
+    "clean": "書き出し不要",
+    "cleanTitle": "この PDF には書き出す必要のある変更はありません。",
+    "needsExport": "未書き出し",
+    "needsExportTitle": "最新の変更はローカル下書きに保存されていますが、PDF にはまだ書き出されていません。",
+    "exported": "書き出し済み",
+    "exportedTitle": "現在の変更は {{path}} に書き出し済みです。",
+    "unknownPath": "選択したファイル"
+  },
+  "diagnostics": {
+    "copy": "診断情報をコピー",
+    "copied": "コピーしました",
+    "copyFailed": "コピー失敗",
+    "code": "診断コード：{{code}}",
+    "dialogLabel": "Shiori レンダリング診断"
+  },
+  "canvasWarning": {
+    "title": "Canvas が制限されている可能性があります",
+    "body": "Shiori の Web 版は、PDF をこのデバイス上で Canvas に描画します。Canvas の読み書きが制限または変更されているようです。多くの場合、CanvasBlocker などのプライバシー拡張が原因です。通常どおり使うには、その拡張機能で現在のサイトを許可してください。",
+    "siteLabel": "許可する現在のサイト",
+    "copySite": "サイトをコピー",
+    "copied": "コピーしました",
+    "copyFailed": "コピー失敗",
+    "effectsTitle": "影響を受ける可能性",
+    "effectRender": "PDF ページが空白になる、または描画に失敗する可能性があります。",
+    "effectThumbs": "最近使った文書のサムネイルを生成できない可能性があります。",
+    "effectExport": "小さいファイルのサイズ計算ができない、または標準書き出しに戻る可能性があります。",
+    "footer": "プライバシー拡張を完全に無効化する必要はありません。このサイトを許可すれば十分です。デスクトップ版はブラウザ拡張の影響を受けません。",
+    "retry": "再チェック",
+    "checking": "チェック中…",
+    "continue": "続行",
+    "okToast": "Canvas チェックに成功しました。"
+  },
+  "storage": {
+    "section": "ストレージ",
+    "used": "{{used}} / {{cap}} 使用中",
+    "draftCount_one": "{{count}} 件の下書き",
+    "draftCount_other": "{{count}} 件の下書き",
+    "empty": "下書きはありません。",
+    "evictionNotice_one": "空き容量のため、古い下書きを {{count}} 件削除しました：{{names}}。",
+    "evictionNotice_other": "空き容量のため、古い下書きを {{count}} 件削除しました：{{names}}。",
+    "evictionDismiss": "閉じる",
+    "lastEdited": "{{rel}}に編集",
+    "uses": "{{size}} 使用",
+    "delete": "削除",
+    "clearAll": "下書きをすべて削除",
+    "openManager": "ローカルキャッシュと下書きを管理",
+    "usedOfQuota": "{{used}} / {{quota}} 使用中",
+    "capNote": "これはアプリの上限であり、デバイスのストレージ容量ではありません。",
+    "persistent": "自動削除から保護されています",
+    "bestEffort": "ストレージ逼迫時や長期間の未使用時に削除される場合があります",
+    "clearAllCancel": "下書きを残す",
+    "clearAllConfirm_one": "{{count}} 件の下書きをすべて削除",
+    "clearAllConfirm_other": "{{count}} 件の下書きをすべて削除"
+  },
+  "history": {
+    "undo": "直前の編集を取り消しました",
+    "redo": "編集をやり直しました"
+  },
+  "signatures": {
+    "title": "署名",
+    "subtitle": "ローカル保存",
+    "name": "名前",
+    "defaultName": "署名 {{count}}",
+    "import": "PNG/JPEG を読み込む",
+    "clear": "クリア",
+    "save": "署名を保存",
+    "saved": "保存済み",
+    "empty": "保存済みの署名はありません。",
+    "choose": "署名を選択",
+    "use": "使用",
+    "kinds": {
+      "ink": "手書き",
+      "image": "画像"
+    },
+    "errors": {
+      "unsupported": "PNG または JPEG 画像のみ対応しています。",
+      "tooLarge": "画像は 5 MB 以下にしてください。",
+      "storage": "保存済みの署名を更新できませんでした。端末の空き容量を増やしてから、もう一度お試しください。"
+    }
+  },
+  "tools": {
+    "select": "選択",
+    "markup": "マークアップ",
+    "draw": "描画",
+    "highlight": "ハイライト",
+    "underline": "下線",
+    "strikethrough": "取り消し線",
+    "ink": "ペン",
+    "signature": "署名",
+    "stamp": "スタンプ",
+    "sign": "署名",
+    "rect": "矩形",
+    "note": "付箋",
+    "callout": "注釈",
+    "text": "テキスト",
+    "selectLong": "選択",
+    "markupLong": "マークアップ",
+    "highlightLong": "ハイライト",
+    "underlineLong": "下線",
+    "strikethroughLong": "取り消し線",
+    "inkLong": "ペン / 手書き",
+    "signatureLong": "署名",
+    "stampLong": "チェック印",
+    "rectLong": "矩形",
+    "noteLong": "付箋",
+    "calloutLong": "注釈",
+    "textLong": "テキスト"
+  },
+  "inspector": {
+    "selectionPrefix": "選択中 · {{type}}",
+    "labels": {
+      "highlight": "ハイライト",
+      "markup": "マークアップ",
+      "underline": "下線",
+      "strikethrough": "取り消し線",
+      "ink": "ペン",
+      "signature": "署名",
+      "stamp": "チェック印",
+      "rectangle": "矩形",
+      "note": "付箋",
+      "callout": "注釈",
+      "text": "テキスト",
+      "select": "選択"
+    },
+    "fields": {
+      "opacity": "不透明度",
+      "markupMode": "マークアップスタイル",
+      "drawMode": "描画モード",
+      "signMode": "署名モード",
+      "weight": "太さ",
+      "size": "サイズ",
+      "color": "色",
+      "fill": "塗り",
+      "fillNone": "塗りつぶし · なし",
+      "content": "テキスト内容",
+      "font": "フォント",
+      "lineWeight": "線の太さ {{value}}",
+      "width": "幅",
+      "height": "高さ",
+      "angle": "角度"
+    },
+    "hints": {
+      "highlight": "ドラッグして範囲を選択",
+      "underline": "テキストをドラッグして下線を追加",
+      "strikethrough": "テキストをドラッグして取り消し線を追加",
+      "ink": "フリーハンドで描画 · Shift で直線",
+      "signature": "選択またはドラッグで署名を配置",
+      "signatureEmpty": "先に署名を選択",
+      "stamp": "チェックまたはバツを選択 · 選択して配置",
+      "rect": "ドラッグして描画 · 離して確定",
+      "note": "選択して配置 · ダブルクリック / ダブルタップで編集",
+      "callout": "テキストまたは範囲を選択して注釈を入力",
+      "select": "注釈を選択して編集 · Shift で複数選択 · ドラッグで移動 · ⌘ ドラッグで複製"
+    },
+    "align": {
+      "label": "配置",
+      "left": "左揃え",
+      "center": "中央揃え",
+      "right": "右揃え"
+    }
+  },
+  "types": {
+    "highlight": "ハイライト",
+    "underline": "下線",
+    "strikethrough": "取り消し線",
+    "ink": "ペン",
+    "signature": "署名",
+    "image": "画像",
+    "stamp": "スタンプ",
+    "rect": "矩形",
+    "note": "付箋",
+    "callout": "注釈",
+    "contentText": "編集済み本文",
+    "text": "テキスト"
+  },
+  "thumbs": {
+    "header": "ページ",
+    "total": "{{count}} ページ",
+    "rotate": "回転",
+    "duplicate": "複製",
+    "delete": "削除",
+    "pageActions": "ページ操作",
+    "insertPage": "ページを挿入",
+    "addPages": "ページを追加",
+    "insertBlankPage": "空白ページを挿入",
+    "insertPdfPages": "PDF からページを挿入…",
+    "insertingPdf": "PDF ページを挿入中…",
+    "dragHint": "ドラッグで並べ替え"
+  },
+  "insertPdf": {
+    "encryptedIncoming": {
+      "title": "選択した PDF はパスワードで保護されています。",
+      "message": "パスワードで保護された PDF のページは挿入できません。暗号化されていない PDF を選択してください。"
+    },
+    "baseEncryption": {
+      "title": "現在の PDF の暗号化を安全に維持できません。",
+      "message": "元の暗号化を検証または再現できませんでした。ページは挿入されていません。"
+    },
+    "pagesPermission": {
+      "title": "このパスワードではページを挿入できません。",
+      "message": "ページを挿入するには、現在の PDF を所有者パスワードで開いてください。"
+    },
+    "targetMissing": {
+      "title": "そのページは利用できなくなりました。",
+      "message": "挿入位置を選び直してください。現在の文書は変更されていません。"
+    },
+    "targetChanged": {
+      "title": "挿入先が現在の対象ではなくなりました。",
+      "message": "何も挿入されていません。対象の文書に戻って、もう一度お試しください。"
+    },
+    "interactive": {
+      "title": "この PDF には未対応の対話型コンテンツがあります。",
+      "message": "フォーム、署名、スクリプト、メディア操作を安全にページだけへ変換することはできません。"
+    },
+    "navigation": {
+      "title": "この PDF のページ内リンクを安全に保持できません。",
+      "message": "何も挿入されず、現在の文書は変更されていません。"
+    },
+    "empty": {
+      "title": "この PDF にはページがありません。",
+      "message": "1 ページ以上ある PDF を選択してください。"
+    },
+    "invalidPosition": {
+      "title": "挿入位置が変わりました。",
+      "message": "ページを選び直してください。現在の文書は変更されていません。"
+    },
+    "documentFiles": {
+      "title": "この PDF の埋め込みファイルを安全に分離できません。",
+      "message": "何も挿入されず、現在の文書は変更されていません。"
+    },
+    "baseDocumentFiles": {
+      "title": "現在の PDF の添付ファイルを保持できません。",
+      "message": "何も挿入されず、現在の文書は変更されていません。"
+    },
+    "baseSigned": {
+      "title": "署名済み PDF にはページを挿入できません。",
+      "message": "書き換えるとデジタル署名が無効になるため、現在の文書は変更されていません。"
+    }
+  },
+  "rail": {
+    "outline": "アウトライン",
+    "comments": "付箋",
+    "terminal": "ターミナル",
+    "browser": "ブラウザ",
+    "close": "閉じる",
+    "outlineLoading": "アウトラインを読み込み中…",
+    "outlineEmpty": "この文書には目次が含まれていません。",
+    "commentsEmpty": "付箋がありません。付箋を追加すると議論を始められます。",
+    "pagePrefix": "p.",
+    "undated": "日付なし",
+    "resize": "ドラッグしてパネル幅を変更",
+    "outlineExpand": "この項目を展開",
+    "outlineCollapse": "この項目を折りたたむ",
+    "outlineTargetMissing": "移動先のページはこの文書にありません"
+  },
+  "terminal": {
+    "title": "ターミナル",
+    "connecting": "shell を起動中…",
+    "sessionEnded": "Shell セッションが終了しました。",
+    "resize": "ドラッグしてターミナル幅を変更",
+    "openFailed": "ターミナルを開けませんでした",
+    "external": {
+      "choose": "外部ターミナルを選択",
+      "menuLabel": "文書のフォルダを外部ターミナルで開く",
+      "openIn": "{{name}} で開く",
+      "opening": "{{name}} を開いています…",
+      "loading": "インストール済みのターミナルを検索中…",
+      "noneAvailable": "対応する外部ターミナルが見つかりません。",
+      "discoveryFailed": "インストール済みのターミナルを確認できませんでした",
+      "discoveryFailedDetail": "もう一度試すか、ターミナルをインストールした後に Shiori を再起動してください。",
+      "retry": "もう一度試す",
+      "openFailed": "{{name}} で開けませんでした",
+      "openFailedDetail": "アプリがインストールされていることを確認して、もう一度お試しください。"
+    },
+    "errors": {
+      "unsupported": "内蔵ターミナルはデスクトップ版でのみ利用できます。",
+      "unavailable": "システム shell を起動できませんでした。shell がインストールされているか確認してから、もう一度お試しください。",
+      "cwdUnavailable": "作業フォルダを特定できませんでした。このデバイスに保存された文書を開いてから、もう一度お試しください。",
+      "cwdNotDirectory": "選択した作業フォルダを利用できません。別のフォルダを選んでから、もう一度お試しください。",
+      "sessionMissing": "このターミナルセッションはもう存在しません。新しいターミナルを開いて続けてください。",
+      "expired": "この beta ビルドは期限切れです。"
+    },
+    "sessions": "ターミナルセッション",
+    "newSession": "新しいターミナル",
+    "closeSession": "ターミナルを閉じる"
+  },
+  "browser": {
+    "title": "ブラウザ",
+    "addressPlaceholder": "検索またはアドレスを入力",
+    "back": "戻る",
+    "forward": "進む",
+    "reload": "再読み込み",
+    "copyLink": "リンクをコピー",
+    "copied": "リンクをコピーしました",
+    "openExternal": "システムブラウザで開く",
+    "resize": "ドラッグしてブラウザ幅を変更",
+    "empty": "ターミナルで `open https://…` を実行するか、上にアドレスを入力してください。",
+    "unavailable": "ブラウザパネルはデスクトップ版でのみ利用できます。",
+    "loadFailed": "このページを読み込めませんでした。アドレスを確認して再読み込みしてください。"
+  },
+  "export": {
+    "title": "PDF を書き出し",
+    "sections": {
+      "pages": "ページ範囲",
+      "annotations": "注釈",
+      "quality": "ファイルサイズ"
+    },
+    "range": {
+      "all": "すべてのページ",
+      "allHint_one": "{{count}} ページ",
+      "allHint_other": "{{count}} ページ",
+      "current": "現在のページのみ",
+      "currentHint": "ページ {{page}}",
+      "custom": "カスタム範囲",
+      "customPlaceholder": "例：1–4, 7",
+      "attachmentsOmitted": "一部のページだけを書き出す場合、元の PDF の文書添付ファイルは書き出し先に含まれません。"
+    },
+    "annot": {
+      "editable": "編集可能な注釈",
+      "editableHint": "ハイライト、付箋、図形、ペン、テキストを PDF 注釈として保持します。Acrobat、Foxit、PDF Expert などで再編集できます。",
+      "flatten": "ページに焼き込み",
+      "flattenHint": "注釈をページ内容に焼き込みます。以後は削除も再編集もできません — 署名や押印向き。",
+      "none": "元の PDF のみ",
+      "noneHint": "選択したページだけを、注釈なしで書き出します。"
+    },
+    "quality": {
+      "original": "オリジナル",
+      "originalHint": "{{size}} · 互換性を優先",
+      "standard": "標準",
+      "standardHint": "{{size}} · ベクターと編集可能な注釈を保持",
+      "compact": "小さいファイル",
+      "compactHint": "{{size}} · 小さい方の PDF を保存",
+      "sizeOnSelect": "選択するとサイズを計算",
+      "sizeCalculating": "サイズを計算中…",
+      "sizeUnavailable": "サイズを計算できません",
+      "notice": "小さいファイルでは、ページを画像として平坦化することがあります。書き出し後はテキストの選択・検索・コピーができない、リンクやアウトラインが動かない、注釈を再編集できない場合があります。これらを保持するには標準を選んでください。"
+    },
+    "footer": "ローカルに保存されます。データはデバイスから出ません。",
+    "cancel": "キャンセル",
+    "busy": "書き出し中…",
+    "action": "PDF を書き出し",
+    "emptyError": "書き出せるページがありません — 範囲が空です。",
+    "fontError": "書き出し用フォントの読み込みに失敗したため、日本語・中国語テキストを安全に書き出せません。",
+    "integrityError": "書き出した PDF が整合性チェックに通らなかったため、保存を中止しました。もう一度お試しください。",
+    "signedSourceError": "この PDF にはデジタル署名または証明があります。再構築すると署名が無効になるため、Shiori は書き出しを中止しました。",
+    "encryptedSourceError": "この PDF の暗号化情報を読み取れないため、変更をファイルに書き込めません。注釈はこのまま保持されます。",
+    "lostCharsWarning_other": "{{count}} 文字がエンコードできず「?」に置き換えられました。",
+    "lostCharsConfirmTitle": "一部の文字が置き換わります",
+    "lostCharsConfirmBody_other": "{{count}} 文字をエンコードできないため、書き出す PDF では「?」に置き換わります。",
+    "lostCharsConfirmCancel": "戻って確認",
+    "lostCharsConfirmAction": "置き換えて書き出す",
+    "lostCharsPrintConfirm_other": "{{count}} 文字をエンコードできないため、印刷内容では「?」に置き換わります。このまま印刷しますか？",
+    "cjkAnnotationsHint": "annotations モードでは日本語文字はベクター輪郭として書き出されます。外部エディタでは文字列を取り出せますが、スタイルは再編集できません。編集可能な文字列が必要な場合は flatten を選んでください。",
+    "closedUnexported": "未エクスポートの編集を残して閉じました — 下書きとして保存済みです。続けるにはこのファイルを再度開くか、共有できる PDF を書き出してください。",
+    "permissionError": "この PDF の権限では{{edits}}が許可されていません。所有者パスワードで開くと、これらの編集を書き出せます。",
+    "permissionEdits": {
+      "annotations": "注釈の変更",
+      "content": "ページ内容の変更",
+      "pages": "ページの並べ替え"
+    },
+    "encryptionUnsupportedError": "この PDF の暗号化方式をそのまま再現できないため、パスワードのないファイルを書き出さないよう書き出しを中止しました。注釈はこのまま保持されます。",
+    "encryptionVerifyError": "書き出した PDF が元のパスワードで開けなかったため、保存を中止しました。もう一度お試しください。",
+    "printPermissionError": "この PDF の権限では印刷が許可されていません。所有者パスワードで開くと印刷できます。",
+    "printSecurityUnknownError": "この PDF のセキュリティ設定を読み取れないため、印刷しませんでした。",
+    "signedPrintError": "この PDF にはデジタル署名または証明があります。ここで印刷するには再構築したコピーが必要ですが、Shiori は署名済みファイルを再構築しません。システムの PDF ビューアで印刷してください。"
+  },
+  "settings": {
+    "title": "設定",
+    "subtitle": "これらの設定はこのデバイスにのみ保存されます。",
+    "close": "閉じる",
+    "sections": {
+      "appearance": "外観",
+      "language": "言語",
+      "privacy": "プライバシー",
+      "performance": "パフォーマンス",
+      "about": "情報"
+    },
+    "colorMode": "カラーモード",
+    "colorModeOptions": {
+      "Auto": "システムに合わせる",
+      "Light": "ライト",
+      "Dark": "ダーク"
+    },
+    "theme": "テーマ",
+    "themeOptions": {
+      "Default": "デフォルト",
+      "Everforest": "常緑"
+    },
+    "pdfPaperTone": "PDF の紙色",
+    "pdfPaperToneHint": "画面上の PDF ページ表示だけを変更します。元の PDF と書き出し結果の色は変わりません。",
+    "pdfPaperToneOptions": {
+      "Original": "オリジナル",
+      "Everforest": "常緑",
+      "Custom": "カスタム"
+    },
+    "pdfPaperCustom": "カスタム PDF 用紙色",
+    "pdfPaperCustomReset": "常緑の用紙色に戻す",
+    "pdfPaperCustomHex": "カスタム HEX カラー",
+    "pdfPaperCustomApply": "適用",
+    "pdfPaperCustomInvalid": "不透明色を #RGB または #RRGGBB で入力してください。",
+    "pdfPaperCustomEffective": "実際の表示 {{color}}",
+    "pdfPaperCustomAdjusted": "読みやすさのため自動的に明るくしました",
+    "accentColor": "アクセントカラー",
+    "accentColorHint": "選んだ色をフォーカスと主要操作にそのまま使い、文字色だけ読みやすく自動調整します。",
+    "accentThemeDefault": "テーマの既定色",
+    "accentCustomize": "アクセントカラーを変更",
+    "accentReset": "テーマの既定色に戻す",
+    "accentCustom": "カスタム HEX カラー",
+    "accentInvalid": "不透明色を #RGB または #RRGGBB で入力してください。",
+    "terminalColorMode": "ターミナルのカラーモード",
+    "terminalColorModeAuto": "アプリに合わせる",
+    "terminalColorModeHint": "自動ではアプリのカラーモードに合わせます。変更しても現在のシェルは再起動しません。",
+    "terminalTheme": "ターミナルテーマ",
+    "terminalThemeAuto": "アプリに合わせる",
+    "terminalThemeHint": "自動ではアプリのテーマに合わせます。変更しても現在のシェルは再起動しません。",
+    "serifAccents": "セリフのアクセント",
+    "serifAccentsHint": "見出しやダイアログでセリフイタリックを使用。",
+    "pageMargin": "ページ余白",
+    "pageMarginHint": "開いた文書の周囲の余白。",
+    "annotationAnimations": "注釈をアニメーション表示",
+    "annotationAnimationsHint": "PDF を開いたときに注釈を再生し、アプリや CLI の新しい注釈を筆跡に沿って描画します。オフでは完成形をすぐ表示します。",
+    "calloutFollowUp": "注釈のフォローアップを表示",
+    "calloutFollowUpHint": "このコンピュータに Claude Code または Codex がある場合だけ入力欄を表示します。",
+    "marginOptions": {
+      "Tight": "狭い",
+      "Comfortable": "標準",
+      "Roomy": "広い"
+    },
+    "language": "表示言語",
+    "languageHint": "UI の表示言語を切り替えます。",
+    "languageOptions": {
+      "en": "English",
+      "zh": "中文",
+      "ja": "日本語"
+    },
+    "remoteImagePolicy": "リモート画像",
+    "remoteImagePolicyHint": "リモート画像は IP アドレスや開いた文書の情報を外部に伝える可能性があります。既定では確認します。",
+    "remoteImagePolicyOptions": {
+      "ask": "確認",
+      "always": "常に許可",
+      "never": "許可しない"
+    },
+    "browserPersistSession": "ブラウザのログインを保持",
+    "browserPersistSessionHint": "内蔵ブラウザの Cookie とサイトストレージを保存します。オフにすると一時セッションになります。切り替えると現在のブラウザページを閉じます。",
+    "preRender": "サムネイルを事前描画",
+    "preRenderHint": "メモリを多く使用します。100 ページを超えると自動的に遅延描画に切り替わります。",
+    "resourceMetrics": "リソース使用量",
+    "resourceMetricsInterval": "3 秒ごと",
+    "resourceMetricsWindow": "直近 10 分",
+    "resourceMetricsHint": "3 秒ごとの低頻度サンプリングは環境設定を開いている間だけ実行されます。色は Shiori プロセスのアプリ内圧力を示します。この WebView は正確な GPU 使用率を公開しないため、GPU のベンダーとレンダラーを表示します。",
+    "resourceMetricsError": "現在、ネイティブのプロセス指標を読み取れません。",
+    "metricCpu": "CPU",
+    "metricMemory": "メモリ",
+    "metricGpu": "GPU",
+    "metricJsHeap": "JS ヒープ",
+    "metricCurrentProcess": "現在のプロセス",
+    "metricPressure": {
+      "normal": "圧力正常",
+      "elevated": "圧力高め",
+      "critical": "圧力ピーク"
+    },
+    "metricLoading": "取得中",
+    "metricUnavailable": "利用不可",
+    "gpuRendererUnknown": "レンダラー利用不可",
+    "metricMemoryProcess": "アプリプロセス",
+    "metricMemoryHeap": "JS ヒープ",
+    "resourceMetricsProcessNote": "ネイティブの CPU／メモリはアプリのホストプロセスを計測します。ウェブコンテンツのレンダラーは別途計測されます。",
+    "resourceMetricsUnsupported": "このプラットフォームではライブのリソース指標はまだ利用できません。",
+    "about": "ローカル優先。データはデバイスから出ません。",
+    "viewDisclaimer": "ベータ版のお知らせをもう一度表示",
+    "copyVersion": "バージョンをコピー",
+    "versionCopied": "バージョンをコピーしました。",
+    "versionCopyFailed": "バージョンをコピーできませんでした。",
+    "aboutLinks": {
+      "website": "公式サイト",
+      "releases": "GitHub Releases"
+    },
+    "directApkUpdates": "この直接インストール用 APK ビルドは、Shiori 内でアップデートをダウンロードできます。新しい APK のインストール前には Android の確認が表示されます。",
+    "checkForUpdates": "アップデートを確認",
+    "checkingForUpdates": "確認中…",
+    "upToDate": "最新バージョンです。"
+  },
+  "betaDisclaimer": {
+    "title": "使い始める前に少しだけ",
+    "body1": "Shiori はまだベータ版です。重要なファイルを編集する前に、必ずオリジナルのバックアップをお取りください — 特に他のエディタで編集済みの PDF にはご注意を。こうしたファイルには内部構造に小さな不整合があり、保存時に問題が起きることがあります。",
+    "body2": "すべてのデータはこのデバイスにのみ残ります。ベータ期間中はバグが出ることもあり、編集結果について責任は負いかねますが、不具合に遭遇した際はぜひお知らせください。",
+    "footerHint": "このお知らせは 設定 → 情報 からいつでも再表示できます。",
+    "acknowledge": "了解"
+  },
+  "goto": {
+    "title": "ページへジャンプ",
+    "subtitle_one": "{{count}} ページ",
+    "subtitle_other": "{{count}} ページ",
+    "input": "ページ番号",
+    "hint": "この文書内のページを選択します。",
+    "invalid": "1 から {{count}} までのページ番号を入力してください。",
+    "cancel": "キャンセル",
+    "action": "ジャンプ"
+  },
+  "find": {
+    "placeholder": "文書内を検索",
+    "loading": "インデックス作成中 {{loaded}} / {{total}} ページ",
+    "empty": "この PDF を検索するには入力してください",
+    "error": "この文書の検索インデックスを作成できませんでした。ファイルを閉じて開き直すと検索できます。",
+    "noMatches": "一致する項目はありません",
+    "count": "{{current}} / {{total}} 件",
+    "page": "ページ {{page}}",
+    "pageShort": "p. {{page}}",
+    "previous": "前の一致",
+    "next": "次の一致",
+    "close": "検索を閉じる"
+  },
+  "shortcuts": {
+    "title": "キーボードショートカット",
+    "subtitle": "クイックリファレンス",
+    "groups": {
+      "tools": "ツール",
+      "edit": "編集",
+      "navigation": "ナビゲーション",
+      "zoom": "ズーム"
+    },
+    "rows": {
+      "select": "選択",
+      "markup": "マークアップ",
+      "highlight": "ハイライト",
+      "underline": "下線",
+      "strikethrough": "取り消し線",
+      "ink": "ペン / 手書き",
+      "signature": "署名",
+      "stamp": "チェック印",
+      "rect": "矩形",
+      "text": "テキスト",
+      "undo": "取り消し",
+      "redo": "やり直し",
+      "deleteSel": "選択を削除",
+      "copy": "注釈をコピー",
+      "paste": "注釈を貼り付け",
+      "duplicate": "複製",
+      "selectAll": "ページ内をすべて選択",
+      "nudge": "選択を移動",
+      "rotate": "選択を回転（ハンドルをドラッグ、⇧ = 15° スナップ）",
+      "print": "印刷",
+      "find": "文書内を検索",
+      "nextPrev": "次 / 前のページ",
+      "goto": "ページへジャンプ…",
+      "pan": "長押しでパン",
+      "zoomIn": "ズームイン",
+      "zoomOut": "ズームアウト",
+      "fit": "幅に合わせる",
+      "actual": "実寸",
+      "readerMode": "リーダーモードを切り替え",
+      "callout": "引き出しコメント"
+    }
+  },
+  "landing": {
+    "heroLine1": "読むものすべてを、",
+    "heroAccent": "静かに読み、注釈し、届ける。",
+    "dropTitleIdle": "文書をここにドロップ",
+    "dropTitleActive": "ドロップして開く",
+    "dropHint": "または選んで開く — Word / Markdown / HTML も対応 · ベータ制限 {{maxSize}} / {{maxPages}} ページ · その場で開きます",
+    "openFile": "ファイルを開く",
+    "continueLast": "前回の続きから",
+    "valueProps": {
+      "offline": "完全オフライン動作",
+      "noSignin": "サインイン不要",
+      "keyboard": "キーボード優先",
+      "oss": "データはデバイスから出ません"
+    },
+    "footer": {
+      "version": "Shiori · v {{version}}",
+      "feedback": "フィードバック",
+      "feedbackTitle": "フィードバックとロードマップを開く",
+      "shortcuts": "⌘ ? でショートカット"
+    },
+    "recentHeader": "最近の文書",
+    "recentEmpty": "まだ何もありません。文書を開くとここに表示されます。",
+    "recentUnsupported": "このブラウザでは最近使った文書を自動で開けません。ファイルを開くから同じファイルを選び直してください — 注釈は端末内に保存されており、そのまま戻ります。",
+    "forgetRecent": "最近の文書から削除",
+    "recentNeedsAccess": "再許可が必要",
+    "recentNeedsAccessHint": "同じファイルを選び直すと開けます — 注釈は端末内に保存されており、そのまま戻ります。",
+    "recentPages_other": "{{count}} ページ",
+    "themeToggleToLight": "ライトモードに切り替え",
+    "themeToggleToDark": "ダークモードに切り替え"
+  },
+  "empty": {
+    "title": "ページが残っていません。",
+    "message": "別の PDF を開いて続けてください。",
+    "import": "PDF を開く",
+    "addPage": "空のページを追加"
+  },
+  "error": {
+    "title": "このファイルは開けません。",
+    "message": "開けませんでした。",
+    "tooLarge": {
+      "title": "この PDF はベータ版のサイズ上限を超えています。",
+      "message": "ベータ版のファイルサイズ上限 {{maxSize}} を超えています。現在の文書はそのまま保持されています。"
+    },
+    "tooManyPages": {
+      "title": "この PDF はベータ版のページ数上限を超えています。",
+      "message": "ベータ版の {{maxPages}} ページ上限を超えています。現在の文書はそのまま保持されています。"
+    },
+    "pageTooLarge": {
+      "title": "この PDF ページはベータ版のサイズ上限を超えています。",
+      "message": "Shiori のレンダリング予算を超えるページが含まれています。現在の文書はそのまま保持されています。"
+    },
+    "renderTooLarge": {
+      "title": "この PDF ページは安全にレンダリングするには大きすぎます。",
+      "message": "現在のズームでは Shiori のキャンバスメモリ予算を超えます。現在の文書はそのまま保持されています。"
+    },
+    "password": {
+      "title": "この PDF はパスワードで保護されています。",
+      "message": "読み込むにはパスワードが必要です。現在の文書はそのまま保持されています。"
+    },
+    "damaged": {
+      "title": "この PDF は破損している可能性があります。",
+      "message": "ページツリーを解析できませんでした。現在の文書はそのまま保持されています。"
+    },
+    "engineUnavailable": {
+      "title": "Shiori の PDF エンジンが起動しませんでした。",
+      "message": "起動するまで PDF を開けません。Shiori を再起動してください。繰り返す場合は再インストールするか、新しいブラウザーをお使いください。現在の文書はそのまま保持されています。"
+    },
+    "unknown": {
+      "title": "このファイルは開けません。",
+      "message": "予期しない PDF 読み込みエラーが発生しました。現在の文書はそのまま保持されています。"
+    },
+    "unsupportedDocument": {
+      "title": "対応していない文書形式です。",
+      "message": "PDF、Word、Markdown、HTML ファイルを開いてください。"
+    },
+    "retry": "別のファイルを試す",
+    "dismiss": "閉じる",
+    "codePrefix": "ERR_PDF_PARSE"
+  },
+  "password": {
+    "title": "パスワードが必要です",
+    "hint": "この PDF はパスワードで保護されています。パスワードを入力してください。",
+    "input": "PDF パスワード",
+    "placeholder": "パスワード",
+    "wrong": "パスワードが正しくありません。もう一度お試しください。",
+    "unlock": "解除",
+    "cancel": "キャンセル"
+  },
+  "encryptedPdfWarning": {
+    "title": "この PDF は編集が制限されています",
+    "body": "開いたときのパスワードでは閲覧はできますが、{{edits}}は許可されていません。書き出したファイルには元のパスワードが残ります。これらの編集を書き出すには、所有者パスワードで開いてください。",
+    "continue": "閲覧を続ける"
+  },
+  "expired": {
+    "title": "この Shiori ビルドは期限切れです。",
+    "body": "ビルド日: {{built}}、有効期限: {{expired}}。このクローズド beta ビルドはテスト期間を終了しました。最新ビルドをダウンロードしてテストを続けてください — 下書きはローカルに保存されたまま引き継がれます。",
+    "copy": "リンクをコピー",
+    "copied": "コピーしました",
+    "footnote": "このリンクをブラウザに貼り付けて最新版をダウンロードしてください。"
+  },
+  "overlays": {
+    "textPlaceholder": "テキスト…",
+    "calloutPlaceholder": "短い注釈を書く…",
+    "contentTextOverflow": "元のテキスト幅を超えています。書き出し時に折り返し・はみ出しの可能性があります",
+    "contentTextMissingGlyphs_other": "{{count}} 文字が元のフォントにない可能性があります。書き出しは内蔵フォントになります",
+    "notePlaceholder": "ダブルクリックまたはタップで編集…",
+    "noteAuthor": "メモ",
+    "noteCollapse": "メモを折りたたむ",
+    "noteExpand": "メモを展開",
+    "calloutCollapse": "注釈を折りたたむ",
+    "calloutExpand": "注釈を展開",
+    "threadYou": "あなた",
+    "threadAgent": "Agent",
+    "threadReplyPlaceholder": "返信…",
+    "threadCollapse": "会話を折りたたむ",
+    "threadExpand": "会話を展開",
+    "threadCount_one": "会話 {{count}} 件",
+    "threadCount_other": "会話 {{count}} 件",
+    "threadDeleteTurn": "この発言を削除",
+    "threadNoTerminalToast": "追記は注釈に保存されました",
+    "threadNoTerminalDetail": "ターミナルでエージェントセッションを開始すると、質問を受け取れます。"
+  },
+  "selectionPopup": {
+    "label": "選択テキストにマークアップ",
+    "highlight": "ハイライト",
+    "underline": "下線",
+    "strikethrough": "取り消し線",
+    "callout": "注釈",
+    "crossPageHint": "ページをまたぐマークアップには未対応です"
+  },
+  "color": {
+    "recent": "最近使った色",
+    "palette": "パレット",
+    "custom": "カスタム",
+    "more": "他の色",
+    "swatch": "色 {{hex}}"
+  },
+  "tooltips": {
+    "undo": "取り消し (⌘Z)",
+    "redo": "やり直し (⇧⌘Z)",
+    "zoomIn": "ズームイン",
+    "zoomOut": "ズームアウト",
+    "actualSize": "実際のサイズ (100%)",
+    "zoomLevel": "ズーム — クリックして%入力",
+    "fitWidth": "幅に合わせる",
+    "find": "検索 (⌘F)",
+    "delete": "削除 (⌫)",
+    "lock": "注釈をロック",
+    "unlock": "注釈のロックを解除",
+    "bold": "太字",
+    "italic": "斜体",
+    "copyTextEditDebug": "文字編集の診断ログをコピー",
+    "stamp": "チェック印 (S)",
+    "rotate": "回転"
+  },
+  "update": {
+    "title": "アップデートがあります",
+    "subtitle": "Shiori {{from}} → {{to}}",
+    "installNow": "今すぐ更新",
+    "later": "後で",
+    "installing": "インストール中…",
+    "openingDownload": "ダウンロードを開いています…",
+    "downloadingApk": "APK をダウンロード中…",
+    "downloadApk": "APK をダウンロード",
+    "downloadAndInstallApk": "ダウンロードしてインストール",
+    "starting": "準備中…",
+    "noNotes": "このバージョンのリリースノートはありません。",
+    "error": "アップデート失敗：{{message}}",
+    "errors": {
+      "android-install-permission-required": "Android 設定で Shiori に不明なアプリのインストールを許可してから、もう一度お試しください。",
+      "android-update-sha256-mismatch": "ダウンロードした APK のチェックサムが一致しません。もう一度アップデートをお試しください。",
+      "android-update-sha256-missing": "アップデート情報に有効な SHA-256 チェックサムがないため、Shiori はダウンロードもインストールも行いませんでした。",
+      "android-update-size-mismatch": "ダウンロードした APK のサイズがリリース情報と一致しません。もう一度アップデートをお試しください。",
+      "android-update-package-mismatch": "ダウンロードした APK は Shiori のアップデートではありません。Shiori の公式サイトからダウンロードしてください。",
+      "android-update-apk-invalid": "ダウンロードした APK を読み取れませんでした。もう一度アップデートをお試しください。",
+      "android-update-version-not-newer": "ダウンロードした APK は現在のアプリより新しくないため、インストールしませんでした。すでに最新版です。",
+      "android-update-version-mismatch": "ダウンロードした APK のバージョンがリリース情報と一致しません。もう一度アップデートをお試しください。",
+      "android-update-url-not-allowed": "このアップデート URL は信頼できません。Shiori の公式サイトからダウンロードしてください。",
+      "android-direct-updater-disabled": "このビルドは直接 APK アップデートに対応していません。インストール元のストアから Shiori を更新してください。",
+      "android-install-launch-failed": "Android が APK インストーラーを開けませんでした。",
+      "android-update-failed": "アップデートをインストールできませんでした。もう一度お試しください。",
+      "android-update-request-failed": "アップデートを開始できませんでした。もう一度お試しください。",
+      "android-update-request-invalid": "アップデート要求が無効として拒否されました。",
+      "android-update-id-missing": "アップデートの識別情報が不足しているため、インストールを中止しました。",
+      "android-update-url-missing": "アップデートのダウンロード先が不足しているため、インストールを中止しました。",
+      "android-update-download-failed": "アップデートのダウンロードに失敗しました（HTTP {{code}}）。接続を確認して再度お試しください。"
+    }
+  },
+  "folderTree": {
+    "loading": "読み込み中…",
+    "empty": "Shiori で開けるファイルがありません。",
+    "unreadable": "このフォルダを読めませんでした。",
+    "retry": "再試行",
+    "truncated": "ファイルが多すぎるため一部のみ表示しています。"
+  },
+  "a11y": {
+    "annotation": {
+      "replies_one": "返信 {{count}} 件",
+      "replies_other": "返信 {{count}} 件",
+      "locked": "ロック中",
+      "empty": "空",
+      "marks_one": "{{count}} 箇所",
+      "marks_other": "{{count}} 箇所"
+    },
+    "landmarks": {
+      "thumbnails": "ページ",
+      "rail": "ワークスペース"
+    }
+  },
+  "docx": {
+    "viewerLabel": "Word 文書",
+    "loadFailed": "この Word 文書を表示できませんでした。",
+    "retry": "再読み込みして再試行"
+  }
+}

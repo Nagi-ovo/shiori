@@ -1,0 +1,936 @@
+/* Self-hosted webfonts — Vite inlines this at build so the woff2 files
+   are copied into dist/assets and the app stays network-free. */
+@import "./styles/fonts.css";
+
+/* Intentional native-feel trade-off (REFACTOR_PLAN A3): the Latin chrome
+   deliberately ships brand webfonts (Inter Tight / Instrument Serif /
+   JetBrains Mono) rather than the system UI font. Ship-readiness flags
+   non-system chrome fonts, but the typeface is part of Shiori's visual
+   identity, and CJK already falls back to the platform stack below. Not a
+   bug — do not "correct" this to -apple-system/Segoe.
+
+   Font stacks centralised as CSS variables so the entire UI follows the
+   current document language without every component wiring an
+   `i18n.language`-aware hook. Root defaults target Latin scripts; the
+   `html[lang^="zh"]` / `html[lang^="ja"]` overrides flip the stack for
+   CJK users, which also gets Han glyph variants right (说 vs 說 vs 説
+   are fallback-dependent on the locale font). The values mirror
+   `T.sans / T.serif / T.mono / T.sansZh / T.serifZh / T.monoZh /
+   T.sansJa / T.serifJa / T.monoJa` in `src/design/tokens.ts`. Keep in
+   sync manually — we don't inject these from TS to avoid a runtime
+   dependency on the design tokens module at first paint. */
+:root {
+  --opx-font-sans: "Inter Tight", "Inter", -apple-system, "Helvetica Neue",
+    Helvetica, Arial, sans-serif;
+  --opx-font-serif: "Instrument Serif", "Spectral", Charter, "Iowan Old Style",
+    Georgia, serif;
+  --opx-font-mono: "JetBrains Mono", "IBM Plex Mono", "SF Mono", Menlo,
+    "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+}
+
+html[lang^="zh"] {
+  --opx-font-sans: "PingFang SC", "Heiti SC", "Microsoft YaHei",
+    "Source Han Sans SC", "Noto Sans SC", "Inter Tight", "Inter", -apple-system,
+    Helvetica, Arial, sans-serif;
+  --opx-font-serif: "Songti SC", "STSong", "Source Han Serif SC",
+    "Noto Serif SC", "PingFang SC", "Microsoft YaHei", "Instrument Serif",
+    Georgia, serif;
+  --opx-font-mono: "JetBrains Mono", "SF Mono", Menlo, "Cascadia Code",
+    "Cascadia Mono", Consolas, "PingFang SC", "Heiti SC", "Songti SC",
+    "Microsoft YaHei", monospace;
+}
+
+html[lang^="ja"] {
+  --opx-font-sans: "Hiragino Sans", "Yu Gothic", "Yu Gothic UI", "Meiryo",
+    "Meiryo UI", "MS PGothic", "MS Gothic", "Source Han Sans JP",
+    "Noto Sans JP", "Inter Tight", "Inter", -apple-system, Helvetica, Arial,
+    sans-serif;
+  --opx-font-serif: "Hiragino Mincho ProN", "Yu Mincho", "MS PMincho",
+    "MS Mincho", "Shippori Mincho", "Source Han Serif JP", "Noto Serif JP",
+    "Instrument Serif", Georgia, serif;
+  --opx-font-mono: "JetBrains Mono", "SF Mono", Menlo, "Cascadia Code",
+    "Cascadia Mono", Consolas, "Hiragino Sans", "Yu Gothic", "Meiryo",
+    monospace;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+/* Expose iOS notch / Android gesture-bar insets as CSS vars so layout
+   pieces (mobile sticky bars, drawer headers) can reserve room when
+   running inside an iOS standalone web app or in landscape on a
+   notched phone. Falls back to 0 on every desktop browser. */
+:root {
+  --shiori-safe-top: env(safe-area-inset-top, 0px);
+  --shiori-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --shiori-safe-left: env(safe-area-inset-left, 0px);
+  --shiori-safe-right: env(safe-area-inset-right, 0px);
+}
+
+/* Lock the window-level scroll. Landing + editor both manage their
+   own internal scroll regions (page list, right rail, canvas); the
+   outer document should never scroll. Without this, WKWebView on
+   macOS lets users rubber-band the whole Landing up and down even
+   when nothing actually overflows. */
+html,
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+  /* iOS Safari pinch-zooms the entire page by default, fighting the
+     in-app pinch-zoom on the PDF canvas. Disable text auto-scaling
+     and outer touch-action so the canvas's gesture handler can own
+     all multi-touch input on the document. */
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  /* Android flashes its default highlight on every tapped element — page,
+     toolbar, tab — which reads as a glitch on a paper UI. Controls carry
+     their own pressed states. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* #root is a flex column so child screens (Landing, ErrorScreen, the
+   editor layout) can flex-grow to fill the window. Without this, short
+   content (like the Landing hero on a tall window) leaves dead space
+   that shows the NSWindow default background through in Night mode. */
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Native-desktop selection policy: the app shell is chrome — the toolbar,
+     the tool-hint line, the thumbnail rail and its header, the tab strip, the
+     status bar — and none of it should ever join a text selection. Default
+     the whole root to non-selectable; selection is opted back in below only
+     on real content. This replaces the per-surface user-select:none guards
+     that kept missing new chrome and let a PDF text drag bleed into it. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Opt selection back in where content is meant to be selected or edited.
+   (The PDF text layer opts in via .shioriTextLayer.is-active further down;
+   HTML documents render in an isolated <iframe> and are unaffected.) */
+input,
+textarea,
+[contenteditable="true"],
+.shioriDocumentViewer {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Intentional native-feel trade-off (REFACTOR_PLAN A3): a solid, fully
+   opaque paper background — no window vibrancy / acrylic. A PDF reader
+   needs a stable, predictable canvas; translucent material bleeding page
+   content through the chrome would fight legibility. Not an oversight —
+   do not add NSVisualEffectView vibrancy here. */
+body {
+  font-family: var(--opx-font-sans);
+  color: var(--opx-ink, #13161d);
+  background: var(--opx-paper, #f6f8fb);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth light ⇄ dark swap. Added as a transient class on <html>
+   for ~320ms around the setPrefs call, so transitions only fire
+   during the theme toggle — not during every hover that happens to
+   change background/colour. !important is needed to beat inline
+   `transition:` declarations on interactive elements (buttons etc.)
+   for the duration of the swap. */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition: background-color 320ms ease,
+              color 320ms ease,
+              border-color 320ms ease,
+              fill 320ms ease,
+              stroke 320ms ease,
+              box-shadow 320ms ease !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transitioning,
+  html.theme-transitioning *,
+  html.theme-transitioning *::before,
+  html.theme-transitioning *::after {
+    transition: none !important;
+  }
+}
+
+/* Live CLI annotation choreography. The PDF model is committed in full before
+   these presentation-only keyframes begin; only composited paint properties
+   move, so large PDF canvases never reflow while a batch is being revealed. */
+@keyframes shioriLiveHighlightSweep {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes shioriLiveStrokeDraw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes shioriLiveSurfaceUnfold {
+  from { clip-path: inset(0 100% 0 0 round 2px); opacity: 0.25; }
+  to { clip-path: inset(0 0 0 0 round 2px); opacity: 1; }
+}
+
+@keyframes shioriLiveTypeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes shioriLiveTextFloat {
+  from { opacity: 0; transform: translate3d(0, 0.18em, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes shioriPdfInsertionSpin {
+  to { transform: rotate(360deg); }
+}
+
+.shioriPdfInsertionSpinner {
+  animation: shioriPdfInsertionSpin 900ms linear infinite;
+  transform-origin: center;
+}
+
+/* Page menus share one quiet native-feeling interaction language. Pointer
+   hover is deliberately transient; data-active only drives roving tabindex,
+   while keyboard users get the explicit focus-visible ring below. */
+.shioriPageMenuItem {
+  appearance: none;
+  background: transparent;
+  transition-property: background-color, color, opacity;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.shioriPageMenuItem:hover:not(:disabled) {
+  background: var(--opx-hoverTint);
+}
+
+.shioriPageMenuItem:focus-visible {
+  outline: 2px solid var(--opx-accent);
+  outline-offset: -2px;
+}
+
+.shioriPageMenuItem:disabled {
+  cursor: progress;
+  opacity: 0.58;
+}
+
+.shioriPageMenuItemIcon {
+  color: var(--opx-dim);
+  transition-property: color;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.shioriPageMenuItem:hover:not(:disabled) .shioriPageMenuItemIcon {
+  color: var(--opx-accentText);
+}
+
+.shioriPageMenuItem[data-tone="danger"],
+.shioriPageMenuItem[data-tone="danger"] .shioriPageMenuItemIcon,
+.shioriPageMenuItem[data-tone="danger"]:hover:not(:disabled)
+  .shioriPageMenuItemIcon {
+  color: var(--opx-rect);
+}
+
+.shioriPageMenuItem[data-tone="danger"]:hover:not(:disabled) {
+  background: var(--opx-rectGhost);
+}
+
+/* Landing metadata sits in normal flow now, so its controls can use real
+   hit areas instead of a tiny floating pill. Keep the interaction treatment
+   deliberately quiet: the document CTA remains the page's primary action. */
+.shioriLandingSystemButton,
+.shioriLandingFooterAction {
+  appearance: none;
+  transition-property: background-color, border-color, color;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.shioriLandingSystemButton:hover {
+  background: var(--opx-accentGhost) !important;
+  border-color: var(--opx-accent) !important;
+  color: var(--opx-accentText) !important;
+}
+
+.shioriLandingFooterAction:hover {
+  background: var(--opx-hoverTint) !important;
+  color: var(--opx-ink) !important;
+}
+
+.shioriLandingSystemButton:active,
+.shioriLandingFooterAction:active {
+  background: var(--opx-accentSoft) !important;
+}
+
+/* Global reduced-motion (WCAG 2.3.3): snap every CSS animation and transition
+   to near-instant when the OS asks to minimise motion — covers the toast and
+   settings-panel keyframes and any future ones. Kept at 0.01ms rather than
+   `none` so animationend/transitionend still fire for code awaiting them.
+   Decorative JS loops (the landing ink-drip) gate themselves via matchMedia. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* The status bar scrolls rather than wrapping (see StatusBar.tsx). Flex
+   items shrink by default, which is how its labels wrapped instead of
+   overflowing; pin them at their natural width and hide the scrollbar so a
+   28px chrome row never shows one. */
+.shioriStatusBar > * {
+  flex: 0 0 auto;
+}
+.shioriStatusBar {
+  scrollbar-width: none;
+}
+.shioriStatusBar::-webkit-scrollbar {
+  display: none;
+}
+
+/* The phone's floating inspector. Its controls are the only thing on that
+   part of the screen to hit, and the shared IconBtn is 32px — under the 44px
+   touch minimum. Clamp inside this panel only: the same buttons keep their
+   compact size in the desktop and tablet inspector row, which is pointer
+   first. min-height/min-width constrain the used height regardless of the
+   inline `height`, so no component needs a mobile branch. The panel already
+   scrolls sideways, which is where the extra width goes. */
+.shioriFloatingInspector button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.shioriFloatingInspector {
+  scrollbar-width: none;
+}
+.shioriFloatingInspector::-webkit-scrollbar {
+  display: none;
+}
+
+/* No global ::-webkit-scrollbar rules. Styling them at all opts the whole
+   app out of the system's overlay scrollbars — WebKit swaps in classic
+   always-visible bars, so every scroller grew a permanently parked 8px
+   thumb (the stubby pill living in the seam next to the right rail).
+   Native overlay bars fade in on scroll, match the OS, and need zero CSS.
+   Surfaces with a considered reason to differ opt in by class below. */
+
+/* Windows and Linux: classic scrollbars are 17px, always drawn, with arrow
+   buttons — the grey slab down the right edge of the home screen. Slim them
+   to a thin, ink-tinted thumb on a clear track. Scoped by the attribute
+   platform/scrollbars.ts sets, so macOS overlay bars stay untouched (see the
+   note above). scrollbar-color inherits; scrollbar-width does not, hence the
+   universal selector. :where() keeps both at zero specificity so every class
+   below (and the scrollbar-width: none surfaces above) still wins. */
+:where(:root[data-shiori-scrollbars="classic"]) {
+  scrollbar-color: color-mix(in srgb, var(--opx-ink) 26%, transparent)
+    transparent;
+}
+:where(:root[data-shiori-scrollbars="classic"]) * {
+  scrollbar-width: thin;
+}
+
+/* Thumbnails rail is the primary fast-scroll surface for long PDFs;
+   the default 16% thumb is hard to spot, and overlay-style scrollbars
+   on macOS hide entirely when idle. Pin it always-visible and bump the
+   thumb opacity / width so it's actually grabbable with a mouse. */
+.shioriThumbsRail::-webkit-scrollbar {
+  width: 10px;
+}
+.shioriThumbsRail::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--opx-ink) 32%, transparent);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.shioriThumbsRail::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--opx-ink) 50%, transparent);
+  background-clip: padding-box;
+}
+.shioriThumbsRail {
+  scrollbar-gutter: stable;
+  scrollbar-color: color-mix(in srgb, var(--opx-ink) 32%, transparent)
+    transparent;
+}
+
+/* The workspace rail sits immediately beside short kind labels such as PDF
+   and DOCX. Give it a fixed, narrow hit area instead of letting WebKit switch
+   between the macOS overlay width and the much thicker classic scrollbar.
+   The transparent border keeps the visible thumb at 4px without shrinking
+   the draggable 8px target. DocumentList reserves this rail with
+   scrollbar-gutter, so the thumb never paints over the file suffix. */
+.shioriWorkspaceRail {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--opx-ink) 30%, transparent)
+    transparent;
+}
+.shioriWorkspaceRail::-webkit-scrollbar {
+  width: 8px;
+}
+.shioriWorkspaceRail::-webkit-scrollbar-track {
+  background: transparent;
+}
+.shioriWorkspaceRail::-webkit-scrollbar-thumb {
+  min-height: 28px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--opx-ink) 30%, transparent);
+  background-clip: padding-box;
+}
+.shioriWorkspaceRail::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--opx-ink) 46%, transparent);
+  background-clip: padding-box;
+}
+
+/* Touch scroll surfaces (e.g. the update-notes box on phones/tablets) should
+   read as native: momentum scrolling and no always-on scrollbar. On Android
+   WebView the default 8px bar looks like a chunky desktop affordance against a
+   small modal; hiding it and letting the content clip at the box edge matches
+   the platform's own scroll views. Applied conditionally so desktop keeps a
+   visible scrollbar. */
+.shioriTouchScroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.shioriTouchScroll::-webkit-scrollbar {
+  display: none;
+}
+
+kbd {
+  font-family: var(--opx-font-mono);
+}
+
+button {
+  font-family: inherit;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.shioriCanvas,
+.shioriPageViewport,
+.shioriPageLabel,
+.shioriPage,
+.shioriPageCanvas,
+.shioriPageTile {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  /* Keep pdf.js selection geometry out of Shiori's self-hosted UI
+     font stack. The textLayer is invisible and pdf.js assigns per-span
+     fallback fonts itself; inheriting Inter Tight from body changes
+     WebKit selection metrics at line ends. */
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif;
+  text-align: initial;
+  line-height: 1;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+  transform-origin: 0 0;
+  forced-color-adjust: none;
+  caret-color: CanvasText;
+  --min-font-size: 1;
+  --min-font-size-inv: 1;
+  --text-scale-factor: calc(var(--total-scale-factor, 1) * var(--min-font-size));
+}
+
+.textLayer :is(span, br) {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x))
+    scale(var(--min-font-size-inv));
+}
+
+.textLayer .markedContent {
+  display: contents;
+}
+
+.textLayer span[role="img"] {
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+/* Tinted with the colour the active markup tool will apply, falling back to
+   the app accent for the plain select tool. TextHighlightLayer sets
+   --shiori-selection-tint per page layer; without it the highlighter showed a
+   blue selection right up until the moment it painted yellow. */
+.textLayer ::selection {
+  background: color-mix(
+    in srgb,
+    var(--shiori-selection-tint, var(--opx-accent, #3388bb)),
+    transparent 60%
+  );
+}
+
+.textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.textLayer.selecting .endOfContent {
+  top: 0;
+}
+
+/* The text layer's measuring canvases (src/pdf/render/textLayer.ts) sit in the
+   document so their lang picks the same fallback fonts as the spans, and are
+   never shown. */
+.hiddenCanvasElement {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.shioriTextLayer {
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+  z-index: 1;
+}
+
+.shioriTextLayer :is(span, br) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.shioriTextLayer.is-active {
+  pointer-events: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.shioriTextLayer.is-active :is(span, br) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.shioriTextLayer.is-content-text-edit ::selection {
+  background: transparent;
+}
+
+.shioriTextLayer.is-accurate-selection ::selection {
+  background: transparent;
+}
+
+.shioriCanvas.is-gesture-zooming .shioriTextLayer,
+.shioriCanvas.is-gesture-zooming .shioriTextLayer.is-active {
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+  caret-color: transparent;
+}
+
+.shioriCanvas.is-gesture-zooming .shioriTextLayer :is(span, br),
+.shioriCanvas.is-gesture-zooming .shioriTextLayer.is-active :is(span, br) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The callout disclosure is chrome, not content: it appears on hover, on
+   selection, and on keyboard focus, and is always present once collapsed
+   (there the whole seal IS the button). */
+.shioriCalloutDisclosure {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.shioriCalloutCard:hover > .shioriCalloutDisclosure,
+.shioriCalloutCard.is-selected > .shioriCalloutDisclosure,
+.shioriCalloutCard.is-collapsed > .shioriCalloutDisclosure,
+.shioriCalloutDisclosure:focus-visible {
+  opacity: 1;
+}
+
+.shioriCalloutDisclosure:hover {
+  color: rgba(35, 26, 15, 0.72);
+}
+
+/* The focus ring itself comes from the global button:focus-visible rule. */
+
+.shioriCalloutCard.is-collapsed:hover {
+  filter: brightness(1.06);
+}
+
+.shioriTabStrip {
+  -ms-overflow-style: none;
+}
+
+/* Without this the flex children compress instead of overflowing, so the row
+   never scrolls — it just squeezes the buttons into each other. */
+.shioriToolbarRow > * {
+  flex: none;
+}
+
+.shioriToolbarRow::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.shioriTabStrip::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.shioriSegTabs::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.shioriHtmlFrameShell {
+  scrollbar-gutter: stable;
+}
+
+.shioriHtmlFrame {
+  color-scheme: light dark;
+}
+
+.shioriDocumentViewer {
+  font: 16px/1.7 var(--opx-font-sans);
+}
+
+.shioriDocumentMetadata {
+  margin: 0 0 28px;
+  padding: 12px 0 14px;
+  border-top: 1px solid var(--opx-rule);
+  border-bottom: 1px solid var(--opx-rule);
+}
+
+.shioriDocumentMetadata dl {
+  display: grid;
+  grid-template-columns: minmax(96px, 150px) minmax(0, 1fr);
+  column-gap: 18px;
+  row-gap: 7px;
+  margin: 0;
+}
+
+.shioriDocumentMetadata dt {
+  min-width: 0;
+  color: var(--opx-dim);
+  font: 700 10.5px/1.45 var(--opx-font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.shioriDocumentMetadata dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--opx-ink2);
+  font: 500 13px/1.5 var(--opx-font-sans);
+  overflow-wrap: anywhere;
+}
+
+.shioriDocumentMetadata + :is(h1, h2, h3) {
+  margin-top: 0;
+}
+
+@media (max-width: 640px) {
+  .shioriDocumentMetadata dl {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 2px;
+  }
+
+  .shioriDocumentMetadata dt:not(:first-child) {
+    margin-top: 8px;
+  }
+}
+
+.shioriDocumentViewer h1,
+.shioriDocumentViewer h2,
+.shioriDocumentViewer h3,
+.shioriDocumentViewer h4,
+.shioriDocumentViewer h5,
+.shioriDocumentViewer h6 {
+  color: var(--shiori-markdown-heading-color, var(--opx-ink));
+  line-height: 1.18;
+  letter-spacing: 0;
+  margin: 1.8em 0 0.55em;
+}
+
+.shioriDocumentViewer h1 {
+  font-size: clamp(2em, 4.5vw, 2.875em);
+}
+
+.shioriDocumentViewer h2 {
+  font-size: clamp(1.5em, 3vw, 1.9375em);
+}
+
+.shioriDocumentViewer h3 {
+  font-size: 1.25em;
+}
+
+.shioriDocumentViewer p,
+.shioriDocumentViewer ul,
+.shioriDocumentViewer ol,
+.shioriDocumentViewer blockquote,
+.shioriDocumentViewer pre,
+.shioriDocumentViewer table {
+  margin: 0 0 1.15em;
+}
+
+.shioriDocumentViewer a {
+  color: var(--opx-accentText, #2a6f99);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.shioriDocumentViewer code,
+.shioriDocumentViewer pre {
+  font-family: var(--shiori-markdown-code-font, var(--opx-font-mono));
+}
+
+.shioriDocumentViewer :not(pre) > code {
+  padding: 0.1em 0.28em;
+  border: 1px solid var(--opx-rule);
+  border-radius: 4px;
+  background: var(--opx-cream);
+  font-size: 0.9em;
+}
+
+.shioriDocumentViewer pre {
+  overflow: auto;
+  padding: 14px 16px;
+  border: 1px solid var(--opx-rule);
+  border-radius: 6px;
+  background: var(--opx-cream);
+  font-size: 0.8125em;
+}
+
+/* Code tokens (Lezer's classHighlighter), shared by the Markdown preview and
+   the live editor's code blocks (MarkdownLiveEditorCore.ts). Quiet on
+   purpose: one accent for keywords, the tool red for literals, dim comments;
+   everything else stays ink. Scoped to code so Markdown's own tok-heading /
+   tok-link classes in the editor keep the editor's styling. */
+:is(.shioriDocumentViewer pre, .cm-shiori-md-code-line) :is(.tok-keyword, .tok-operator.tok-keyword) {
+  color: var(--opx-accentText);
+}
+:is(.shioriDocumentViewer pre, .cm-shiori-md-code-line) :is(.tok-string, .tok-string2, .tok-number, .tok-bool, .tok-atom, .tok-literal) {
+  color: var(--opx-rect);
+}
+:is(.shioriDocumentViewer pre, .cm-shiori-md-code-line) :is(.tok-comment, .tok-meta) {
+  color: var(--opx-dim);
+}
+:is(.shioriDocumentViewer pre, .cm-shiori-md-code-line) .tok-comment {
+  font-style: italic;
+}
+:is(.shioriDocumentViewer pre, .cm-shiori-md-code-line) :is(.tok-typeName, .tok-className, .tok-namespace, .tok-macroName) {
+  color: var(--opx-accentDeep);
+}
+:is(.shioriDocumentViewer pre, .cm-shiori-md-code-line) :is(.tok-definition, .tok-propertyName.tok-definition) {
+  color: var(--opx-ink);
+  font-weight: 600;
+}
+:is(.shioriDocumentViewer pre, .cm-shiori-md-code-line) :is(.tok-punctuation, .tok-operator) {
+  color: var(--opx-ink2);
+}
+:is(.shioriDocumentViewer pre, .cm-shiori-md-code-line) .tok-invalid {
+  text-decoration: underline wavy var(--opx-rect);
+}
+
+.shioriDocumentViewer blockquote {
+  border-left: 3px solid var(--opx-rule);
+  padding-left: 16px;
+  color: var(--opx-dim);
+}
+
+.shioriDocumentViewer img,
+.shioriDocumentViewer video,
+.shioriDocumentViewer canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+.shioriDocumentViewer p > :is(img, video, canvas):only-child,
+.shioriDocumentViewer p > a:only-child > img:only-child {
+  display: block;
+  max-height: min(72vh, 720px);
+  margin: 1.35em auto;
+  object-fit: contain;
+}
+
+.shioriDocumentViewer table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875em;
+}
+
+.shioriDocumentViewer th,
+.shioriDocumentViewer td {
+  border: 1px solid var(--opx-rule);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.shioriPdfLinkLayer {
+  pointer-events: none;
+  z-index: 2;
+  transform-origin: 0 0;
+}
+
+.shioriPdfLinkLayer section {
+  position: absolute;
+  box-sizing: border-box;
+  transform-origin: 0 0;
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.shioriPdfLinkLayer.is-active section.linkAnnotation {
+  pointer-events: auto;
+}
+
+.shioriPdfLinkLayer a[data-shiori-pdf-link="true"] {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  background: transparent;
+  color: transparent;
+}
+
+.shioriPdfLinkLayer a[data-shiori-pdf-link="true"]:hover {
+  background: var(--shiori-link-hover);
+}
+
+.shioriPdfLinkLayer a[data-shiori-pdf-link="true"].is-shiori-hovered {
+  background: var(--shiori-link-hover);
+}
+
+/* Native-feel keyboard accessibility: one focus-visible
+   ring for interactive chrome. :focus-visible only paints for keyboard or
+   programmatic focus — never a mouse click — so it stays invisible during
+   normal pointer use. Components that draw their own focus treatment override
+   with a more specific `…:focus-visible` rule (the PDF link layer below is
+   one such case). */
+button:focus-visible,
+[role="button"]:focus-visible,
+a[href]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--opx-accent, #3388bb);
+  outline-offset: 2px;
+}
+
+/* Skip link. Off-screen until focused, then the first thing a keyboard user
+   lands on — so reaching the document no longer means tabbing through the top
+   bar, navigator, tab strip and toolbar every time. Kept out of the flow when
+   idle rather than display:none, which would drop it from the tab order and
+   defeat the point. */
+.shioriSkipLink {
+  position: absolute;
+  left: 12px;
+  top: -120px;
+  z-index: 60;
+  padding: 10px 16px;
+  border-radius: 4px;
+  background: var(--opx-accent, #3388bb);
+  color: var(--opx-onAccent, #ffffff);
+  font: 600 13px/1 var(--opx-font-sans);
+  text-decoration: none;
+  transition: top 0.16s ease;
+}
+
+.shioriSkipLink:focus {
+  top: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shioriSkipLink { transition: none; }
+}
+
+/* Radio rows clip their real <input> to a pixel so the styled dot can stand in
+   for it. The input is what receives focus, but it is invisible — so the row
+   wears the ring on its behalf. Without this, tabbing into a radio group would
+   move focus with nothing on screen changing. */
+.shioriRadioRow:has(> input:focus-visible) {
+  outline: 2px solid var(--opx-accent, #3388bb);
+  outline-offset: -2px;
+}
+
+.shioriPdfLinkLayer a[data-shiori-pdf-link="true"]:focus-visible {
+  outline: 2px solid var(--shiori-link-focus);
+  outline-offset: 1px;
+}
+
+@media print {
+  .shioriPrintHide { display: none !important; }
+}
+
+/* Windows caption buttons (WindowCaption.tsx). Native metrics: 46px wide,
+   a faint ink wash on hover, and the system red behind a white glyph on
+   close. */
+.shioriCaptionButton {
+  width: 46px;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--opx-ink);
+  cursor: default;
+}
+.shioriCaptionButton:hover {
+  background: color-mix(in srgb, var(--opx-ink) 8%, transparent);
+}
+.shioriCaptionButton:active {
+  background: color-mix(in srgb, var(--opx-ink) 14%, transparent);
+}
+.shioriCaptionButton[data-close]:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+.shioriCaptionButton[data-close]:active {
+  background: color-mix(in srgb, #c42b1c 82%, #fff);
+  color: #fff;
+}

@@ -1,0 +1,76 @@
+/* ───────── small screens ───────── */
+@media (max-width: 980px) {
+  .nav-links { display: none; }
+  .nav-burger { display: inline-flex; }
+  .nav-links.open {
+    display: flex;
+    position: absolute;
+    top: 60px; left: 0; right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 12px 28px 16px;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--rule);
+  }
+  .nav-links.open a, .nav-links.open .ver, .nav-links.open .nav-cta {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--rule-2);
+  }
+  .nav-links.open .nav-icon-link {
+    width: 100%;
+    height: 42px;
+    border-left: 0;
+    border-right: 0;
+    border-top: 0;
+    border-radius: 0;
+    background: transparent;
+    justify-content: flex-start;
+  }
+  .nav-links.open .nav-cta {
+    justify-content: center;
+    border-bottom: none;
+    margin-top: 6px;
+  }
+
+  .hero {
+    padding: 56px 0 32px;
+    /* On phones the demo stacks below the copy — total content easily
+       exceeds viewport, so drop the centered-fill behavior. */
+    min-height: 0;
+    display: block;
+  }
+  .hero-grid, .preview-wrap, .manifesto, .section-h, .cta, .footer-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .feat-grid { grid-template-columns: 1fr; }
+  .feat,
+  .feat:nth-child(1),
+  .feat:nth-child(2),
+  .feat:nth-child(3) {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--rule);
+    min-height: auto;
+  }
+  .feat:last-child { border-bottom: none; }
+  .specs { grid-template-columns: repeat(2, 1fr); }
+  .spec:nth-child(2) { border-right: none; }
+  .spec:nth-child(1), .spec:nth-child(2) {
+    border-bottom: 1px solid var(--rule);
+  }
+  .section { padding: 72px 0; }
+  .cta { padding: 36px 24px; }
+  .footer-base { font-size: 9.5px; }
+}
+
+@media (max-width: 640px) {
+  .dl-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 14px 0;
+  }
+}
+

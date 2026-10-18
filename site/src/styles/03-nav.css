@@ -1,0 +1,149 @@
+/* ───────── nav ───────── */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: color-mix(in oklab, var(--bg) 88%, transparent);
+  -webkit-backdrop-filter: saturate(140%) blur(10px);
+  backdrop-filter: saturate(140%) blur(10px);
+  border-bottom: 1px solid var(--rule);
+}
+.nav-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 60px;
+  position: relative;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-tile {
+  display: inline-grid;
+  place-items: center;
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--kanji);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .18) inset,
+    0 2px 8px rgba(51, 136, 187, .35);
+  transform: translateY(-1px);
+  user-select: none;
+}
+.brand-tile.small {
+  width: 18px; height: 18px;
+  font-size: 12px;
+  border-radius: 4px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .18) inset,
+    0 1px 4px rgba(51, 136, 187, .35);
+}
+.brand-word {
+  font-family: var(--klee);
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+.brand-kana {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+  letter-spacing: .22em;
+  text-transform: lowercase;
+  margin-left: 2px;
+}
+
+.nav-links {
+  margin-left: auto;
+  display: flex;
+  gap: 22px;
+  align-items: center;
+}
+.nav-links a {
+  color: var(--ink-3);
+  font-size: 13.5px;
+  transition: color .15s ease;
+}
+.nav-links a.nav-cta {
+  color: var(--bg);
+}
+@media (hover: hover) {
+  .nav-links a:hover { color: var(--ink); }
+  .nav-links a.nav-cta:hover { color: #fff; }
+}
+.nav-icon-link {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-3);
+  background: color-mix(in oklab, var(--bg-2) 82%, transparent);
+  transition:
+    background .15s ease,
+    border-color .15s ease,
+    color .15s ease;
+}
+.nav-icon-link:hover {
+  color: var(--ink);
+  border-color: color-mix(in oklab, var(--ink) 24%, var(--rule));
+  background: var(--bg-2);
+}
+.nav-cta {
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+  padding: 7px 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+@media (hover: hover) {
+  .nav-cta:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+}
+/* .nav-cta key chip moved to .nav-cta .kbd-key (see Kbd component). */
+.nav .ver {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+  letter-spacing: .12em;
+}
+
+.nav-burger {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  width: 36px; height: 32px;
+  padding: 0;
+  margin-left: auto;
+  cursor: pointer;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.nav-burger span {
+  display: block;
+  width: 16px; height: 1.5px;
+  background: var(--ink);
+  border-radius: 1px;
+}
+

@@ -1,0 +1,34 @@
+@pdf-lib/fontkit 1.1.1 bundled notices
+
+This distribution preserves the following notices found in the published
+fontkit bundle. A complete module-level inventory and the original license
+files recovered from the upstream v1.1.x build graph are included in the
+fontkit-bundle/ directory and listed in SBOM.md. The full Apache License 2.0
+terms are reproduced in Apache-2.0.txt.
+
+Node string_decoder compatibility code
+--------------------------------------
+
+Copyright Joyent, Inc. and other Node contributors.
+Licensed under the MIT license.
+
+base64-arraybuffer
+------------------
+
+https://github.com/niklasvh/base64-arraybuffer
+Copyright (c) 2012 Niklas von Hertzen
+Licensed under the MIT license.
+
+Google Brotli decoder code
+--------------------------
+
+Copyright 2013 Google Inc. All Rights Reserved.
+Licensed under the Apache License, Version 2.0.
+https://www.apache.org/licenses/LICENSE-2.0
+
+HarfBuzz-derived shaping logic
+------------------------------
+
+Several fontkit shaping routines identify themselves as ports of HarfBuzz.
+The HarfBuzz old-MIT terms and copyright notices are reproduced in
+fontkit-bundle/HarfBuzz-old-MIT.txt.

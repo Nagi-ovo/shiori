@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "description": "Explicit Pages Functions routing. The auto-detection on this project lost track of functions/ at one point and silently fell back to static SPA serving for /download/*, /api/*, and /cli; this file is the fix. /cli must stay listed — otherwise curl | sh receives index.html with HTTP 200.",
+  "include": ["/download/*", "/api/*", "/cli"],
+  "exclude": []
+}

@@ -1,0 +1,112 @@
+import { useCallback, useEffect, useMemo, useRef } from "react";
+
+import { getRecent } from "../../editor/recentDocs";
+import {
+  cleanupWorkspaceSources,
+  saveWorkspaceState,
+  type WorkspaceTabMeta,
+} from "../../storage/workspace";
+
+interface WorkspacePersistenceParams<T> {
+  tabs: T[];
+  activeTabId: string | null;
+  /** Latest tabs, read inside the debounced cleanup timer. */
+  getTabs: () => T[];
+  toMeta: (tab: T) => WorkspaceTabMeta;
+  cacheIdsForTab: (tab: T) => string[];
+  /** Mounted folder roots, persisted alongside the tabs. */
+  folderPaths: readonly string[];
+  onSaveError?: () => void;
+}
+
+/**
+ * Workspace tab persistence lifecycle: persist the
+ * tab set + active tab on every change, and debounce-sweep orphaned workspace
+ * cache sources whenever the set of protected cache ids changes.
+ *
+ * Deliberately generic over the runtime tab type `T`, with the two tab->data
+ * mappers injected as parameters. That keeps the App-local `WorkspaceRuntimeTab`
+ * type (used in ~50 sites) in App rather than cascading it into a shared module
+ * just to move ~30 lines of effects — the render-coupled tab STATE and its
+ * manipulation callbacks stay in App by design; only this persistence lifecycle
+ * moves out. Moved verbatim from the App God-component.
+ */
+export function useWorkspacePersistence<T>({
+  tabs,
+  activeTabId,
+  getTabs,
+  toMeta,
+  cacheIdsForTab,
+  folderPaths,
+  onSaveError,
+}: WorkspacePersistenceParams<T>): void {
+  const saveFailureReportedRef = useRef(false);
+  const saveTimerRef = useRef<number | null>(null);
+  const saveLatestRef = useRef<() => void>(() => undefined);
+  const saveCurrent = useCallback(() => {
+    const saved = saveWorkspaceState({
+      version: 1,
+      activeTabId,
+      tabs: tabs.map(toMeta),
+      ...(folderPaths.length > 0 ? { folderPaths: [...folderPaths] } : {}),
+    });
+    if (saved) {
+      saveFailureReportedRef.current = false;
+    } else if (!saveFailureReportedRef.current) {
+      saveFailureReportedRef.current = true;
+      onSaveError?.();
+    }
+  }, [activeTabId, folderPaths, onSaveError, tabs, toMeta]);
+
+  useEffect(() => {
+    saveLatestRef.current = saveCurrent;
+  }, [saveCurrent]);
+
+  useEffect(() => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null;
+      saveLatestRef.current();
+    }, 250);
+    return () => {
+      if (saveTimerRef.current !== null) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
+  }, [saveCurrent]);
+
+  useEffect(() => {
+    const flush = () => {
+      if (saveTimerRef.current !== null) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      saveLatestRef.current();
+    };
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, []);
+
+  const protectedWorkspaceCacheKey = useMemo(
+    () => tabs.flatMap(cacheIdsForTab).sort().join("\0"),
+    [tabs, cacheIdsForTab],
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const currentTabs = getTabs();
+      const protectedCacheIds = new Set(currentTabs.flatMap(cacheIdsForTab));
+      for (const entry of getRecent()) {
+        if (entry.cacheId) protectedCacheIds.add(entry.cacheId);
+      }
+      void cleanupWorkspaceSources(protectedCacheIds);
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [protectedWorkspaceCacheKey, cacheIdsForTab, getTabs]);
+}

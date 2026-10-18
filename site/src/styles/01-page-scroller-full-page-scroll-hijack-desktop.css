@@ -1,0 +1,134 @@
+/* ───────── PageScroller — full-page scroll hijack (desktop) ─────────
+   Layout sized so each child of <PageScroller> fits in one viewport
+   minus the 60px sticky nav. The hijack itself lives in
+   src/components/PageScroller.tsx; below is just the per-page sizing
+   that lets each section land cleanly inside one page slot.
+
+   The condition MUST mirror PageScroller's `enabled` exactly — it is
+   `!useReducedMotion() && (min-width: 981px) and (pointer: fine)`. When
+   this block only matched the width/pointer half, a visitor with
+   "reduce motion" on got the worst of both: the component fell back to
+   a plain vertical stack, but every section stayed pinned to one
+   viewport with `overflow-y: auto` + `overscroll-behavior: contain`.
+   The wheel was swallowed by whichever section the cursor sat in, and
+   `contain` blocked it from chaining back to the document — the page
+   simply refused to scroll past the first screen. */
+@media (min-width: 981px) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .hero,
+  .section,
+  .footer {
+    /* Each page = viewport - nav. Flex-center the inner .wrap so short
+       sections (Specs, Privacy) don't pile their content at the top of
+       a 700+ px slot. */
+    height: calc(100dvh - 60px);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    /* Adaptive fallback: if a section's content is taller than the slot
+       (small laptops, future content growth), allow inner scroll. The
+       PageScroller wheel hijack hands off to native scroll while the
+       cursor's inside, and resumes page advancement only at the
+       scroll boundary — so reachability never breaks. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  .hero > .wrap,
+  .section > .wrap,
+  .footer > .wrap {
+    width: 100%;
+  }
+  /* Footer was originally a tall block with margin-top. As a page slot
+     it just needs to read centered. */
+  .footer {
+    margin-top: 0;
+    padding: 0;
+  }
+
+  /* …but only inside the PageScroller marketing tree. Doc pages
+     (changelog / shortcuts / privacy / support) render the same <Footer>
+     in normal document flow, where the 100dvh + overflow-y:auto +
+     overscroll-behavior:contain above turns the footer into a full-screen
+     scroll trap — you reach it, the wheel scrolls inside the (empty)
+     footer, and `contain` blocks the scroll from chaining back up. Reset
+     the footer to its natural flow layout on doc pages. */
+  .doc-main .footer {
+    height: auto;
+    min-height: 0;
+    display: block;
+    overflow: visible;
+    overscroll-behavior: auto;
+    margin-top: 72px;
+    padding: 72px 0 88px;
+  }
+
+  /* ── Compress internal spacing so each "page" fits a 14" laptop ──
+     The original padding/margin scale was tuned for a long-scroll page
+     where each section had room to breathe. In PageScroller mode every
+     section must squeeze into one viewport (~740-840px on 14" MBPs),
+     so we override the spacious tokens with tight ones inside the
+     desktop pointer-fine bracket. */
+  .section {
+    padding: 32px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .section-h {
+    margin-bottom: 28px;
+    gap: 32px;
+  }
+  .section-h h2 {
+    /* Floor lets 14" stay compact, ceiling gives 4K monitors actual
+       editorial scale. The 3.4vw slope hits ~49px around 1440px which
+       still fits in the 14" page slot. */
+    font-size: clamp(28px, 3.4vw, 56px);
+  }
+  html[lang^="zh"] .section-h h2,
+  html[lang^="ja"] .section-h h2 {
+    font-size: clamp(24px, 2.8vw, 46px);
+  }
+  /* Features cards: trim padding + lower min-height so the 2-row grid
+     (cards 1+2 over card 3) fits within the page slot. */
+  .feat {
+    padding: 22px 26px 26px;
+  }
+  .feat:nth-child(1) > .art,
+  .feat:nth-child(2) > .art,
+  .feat:nth-child(3) > .art {
+    margin-top: 16px;
+  }
+  .feat:nth-child(3) {
+    padding: 22px 26px 26px;
+  }
+  /* All 3 cards same title size now (single equal-column row) — the
+     marquee bump was for the asymmetric 2-row layout we left behind. */
+  .feat:nth-child(1) h3,
+  .feat h3 {
+    font-size: clamp(22px, 1.7vw, 28px);
+    line-height: 1.25;
+    margin: 10px 0 8px;
+  }
+  html[lang^="zh"] .feat:nth-child(1) h3,
+  html[lang^="ja"] .feat:nth-child(1) h3,
+  html[lang^="zh"] .feat h3,
+  html[lang^="ja"] .feat h3 {
+    font-size: clamp(19px, 1.5vw, 24px);
+  }
+  .feat p {
+    margin: 0 0 12px;
+  }
+  /* Card 02 tools grid: trim the inner cells so 3×2 stays compact. */
+  .art-tool {
+    padding: 9px 12px;
+    font-size: 12px;
+  }
+  /* Card 03 export grid: same compression on cell padding + spacing. */
+  .art-export .opt {
+    padding: 12px 14px 10px;
+    gap: 8px;
+  }
+  .art-export .opt .opt-desc {
+    font-size: 12.5px;
+  }
+}
+

@@ -1,0 +1,223 @@
+// Run by `bun run test:core` after scripts/pdfium/build-wasm.ts.
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { join } from "node:path";
+import { beforeAll, describe, expect, test } from "bun:test";
+import fontkit from "@pdf-lib/fontkit";
+import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
+import { PDFDocument, PDFHexString, PDFName } from "pdf-lib";
+import { openCoreDocument } from "../../../cli/src/coreEngine";
+import { decodeEmbeddedFonts } from "../../../src/pdf/engine/fontContainer";
+import { buildOutlineFont, decodeFontOutlines } from "../../../src/pdf/engine/fontOutlines";
+import { loadWasmCore, type WasmCore } from "../../../src/pdf/engine/wasm/loadCore";
+
+const ROOT = join(import.meta.dir, "../../..");
+const GENERATED = join(ROOT, "src/pdf/engine/wasm/generated");
+const FIXTURE = readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures/text.pdf"));
+let wasm: WasmCore;
+
+beforeAll(async () => {
+  wasm = await loadWasmCore({
+    pdfium: readFileSync(join(GENERATED, "pdfium.wasm")),
+    core: readFileSync(join(GENERATED, "shiori_core_wasm_bg.wasm")),
+    fonts: [{ file: "NotoSansSC-Regular.otf", bytes: readFileSync(join(ROOT, "src/assets/fonts/NotoSansSC-Regular.otf")) }],
+    require: createRequire(import.meta.url),
+  });
+});
+
+describe("shiori-core in wasm", () => {
+  test("reads every page as the native core does", () => {
+    const fromWasm = wasm.CoreDocument.open(FIXTURE, undefined);
+    const native = openCoreDocument(FIXTURE);
+    try {
+      expect(fromWasm.pageCount()).toBe(native.pageCount());
+      for (let index = 0; index < native.pageCount(); index += 1) {
+        const glyphs = JSON.parse(fromWasm.pageText(index)).glyphs as Array<{ text: string; origin: number[]; end: number[] }>;
+        const expected = native.glyphs(index);
+        expect(glyphs.map((g) => g.text)).toEqual(expected.map((g) => g.text));
+        glyphs.forEach((g, i) => {
+          for (const k of [0, 1]) {
+            expect(Math.abs(g.origin[k]! - expected[i]!.origin[k]!)).toBeLessThan(1e-3);
+            expect(Math.abs(g.end[k]! - expected[i]!.end[k]!)).toBeLessThan(1e-3);
+          }
+        });
+      }
+      expect(JSON.parse(fromWasm.outline())).toHaveLength(2);
+    } finally {
+      fromWasm.free();
+      native.close();
+    }
+  });
+
+  test("draws a page with embedded fonts pixel for pixel as the native core does", async () => {
+    // Fonts the file does not embed come from the system natively and from
+    // PDFium's own set in wasm, so only embedded text can match exactly.
+    const pdf = await PDFDocument.create();
+    pdf.registerFontkit(fontkit);
+    const font = await pdf.embedFont(readFileSync(join(ROOT, "src/assets/fonts/NotoSansJP-Regular.otf")), { subset: true });
+    const page = pdf.addPage([240, 160]);
+    page.drawText("Shiori 栞 しおり", { x: 12, y: 100, size: 24, font });
+    page.drawRectangle({ x: 12, y: 20, width: 80, height: 40, borderWidth: 3, opacity: 0.5 });
+    const bytes = await pdf.save();
+    const fromWasm = wasm.CoreDocument.open(bytes, undefined);
+    const native = openCoreDocument(bytes);
+    try {
+      for (const scale of [1, 2.5]) {
+        const args = [0, 0, scale, 0, 0, Math.floor(240 * scale), Math.floor(160 * scale)] as const;
+        expect(Buffer.from(fromWasm.render(...args)).equals(Buffer.from(native.render(...args)))).toBe(true);
+      }
+    } finally {
+      fromWasm.free();
+      native.close();
+    }
+  });
+
+  test("draws text in a font the file does not embed, from the font folder", async () => {
+    // Chinese in STSong-Light, a CJK font PDFs name without embedding.
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage([300, 120]);
+    const ctx = pdf.context;
+    const font = ctx.register(ctx.obj({
+      Type: "Font", Subtype: "Type0", BaseFont: "STSong-Light", Encoding: "UniGB-UCS2-H",
+      DescendantFonts: [ctx.obj({ Type: "Font", Subtype: "CIDFontType0", BaseFont: "STSong-Light",
+        CIDSystemInfo: { Registry: PDFHexString.fromText("Adobe"), Ordering: PDFHexString.fromText("GB1"), Supplement: 4 } })],
+    }));
+    page.node.setFontDictionary(PDFName.of("F1"), font);
+    const hex = [..."中文批注"].map((c) => c.charCodeAt(0).toString(16).padStart(4, "0")).join("");
+    page.node.set(PDFName.of("Contents"), ctx.register(ctx.stream(`BT /F1 40 Tf 20 40 Td <${hex}> Tj ET`)));
+    const doc = wasm.CoreDocument.open(await pdf.save(), undefined);
+    try {
+      const rgba = doc.render(0, 0, 1, 0, 0, 300, 120);
+      let ink = 0;
+      for (let i = 0; i < rgba.length; i += 4) if (rgba[i]! < 128) ink += 1;
+      // Four 40 pt characters; without the font folder PDFium draws none.
+      expect(ink).toBeGreaterThan(1000);
+    } finally {
+      doc.free();
+    }
+  });
+
+  test("rewrites an encrypted document in the clear, byte for byte as the native core does", () => {
+    const encrypted = readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures/encrypted-notes.pdf"));
+    const fromWasm = wasm.CoreDocument.open(encrypted, undefined);
+    const native = openCoreDocument(encrypted);
+    try {
+      const copy = wasm.decryptedCopy(fromWasm);
+      expect(Buffer.from(copy).includes("/Encrypt")).toBe(false);
+      // Every byte alike but the /ID PDFium draws fresh for each save.
+      const withoutId = (bytes: Uint8Array) => Buffer.from(bytes).toString("latin1").replace(/\/ID\[[^\]]*\]/, "");
+      expect(withoutId(copy)).toBe(withoutId(native.decryptedCopy()));
+    } finally {
+      fromWasm.free();
+      native.close();
+    }
+  });
+
+  test("hands over a page's embedded fonts, packed and unpacked intact", () => {
+    const doc = wasm.CoreDocument.open(readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures/embedded-fonts.pdf")), undefined);
+    try {
+      const fonts = decodeEmbeddedFonts(doc.embeddedFonts(0));
+      expect(fonts.map((font) => font.format)).toEqual(["truetype", "cff"]);
+      expect(fonts[0]!.name.startsWith("LiberationSans")).toBe(true);
+      expect(Buffer.from(fonts[0]!.data.subarray(0, 4)).toString("latin1")).toBe("true");
+      expect(Buffer.from(fonts[0]!.data).includes("glyf")).toBe(true);
+    } finally {
+      doc.free();
+    }
+  });
+
+  test("rebuilds embedded fonts a browser refuses so they draw as PDFium draws them", async () => {
+    // Bare CFF (as XeTeX and InDesign embed) and pdf-lib's TrueType subset,
+    // rebuilt from PDFium's glyphs, set in Skia at the runs' own positions.
+    const doc = wasm.CoreDocument.open(readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures/embedded-fonts.pdf")), undefined);
+    try {
+      const [liberation] = decodeEmbeddedFonts(doc.embeddedFonts(0));
+      const runs = [
+        { name: "FoxitSerif", text: "Top compact", x: 170, left: 330, right: 600 },
+        { name: liberation!.name, text: "Liberation", x: 20, left: 30, right: 250 },
+      ];
+      const scale = 2;
+      const [width, height] = [300 * scale, 200 * scale];
+      const page = doc.render(0, 0, scale, 0, 0, width, height, true);
+      const fonts = decodeFontOutlines(doc.fontOutlines(0, JSON.stringify(runs.map((run) => run.name))));
+      for (const run of runs) {
+        const font = fonts.find((f) => f.name === run.name)!;
+        const family = `rebuilt-${run.name}`;
+        GlobalFonts.register(Buffer.from(await buildOutlineFont(font)), family);
+        const canvas = createCanvas(width, height);
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = "#000";
+        ctx.font = `${20 * scale}px "${family}"`;
+        // Both runs sit on the baseline 150 pt up a 200 pt page.
+        ctx.fillText(run.text, run.x * scale, 50 * scale);
+        const drawn = ctx.getImageData(0, 0, width, height).data;
+        let ink = 0;
+        let differing = 0;
+        for (let y = 20; y < 130; y += 1) {
+          for (let x = run.left; x < run.right; x += 1) {
+            const i = (y * width + x) * 4;
+            ink += Number(page[i]! < 128);
+            differing += Number(page[i]! < 128 !== drawn[i]! < 128);
+          }
+        }
+        // Only the two rasterisers' edge weights differ (about 15%); a
+        // metric-compatible Times differs by more than the ink itself.
+        expect(ink).toBeGreaterThan(1000);
+        expect(differing / ink).toBeLessThan(0.25);
+      }
+    } finally {
+      doc.free();
+    }
+  });
+
+  // The wasm path reads security through PDFium's own exports, because
+  // pdfium-render's wasm bridge saturates a /P with bit 32 set (every real
+  // one) to 0; and it encrypts with the same shiori-core code built for wasm.
+  test("reports an encrypted file's security and re-encrypts it as the native core does", () => {
+    const ENCRYPTED = join(ROOT, "crates/shiori-core/tests/fixtures/encrypted");
+    for (const [name, user] of [
+      ["rc4-40", "user-pw"],
+      ["aes-128-nometa", "user-pw"],
+      ["restricted", "user-pw"],
+      ["empty-user", ""],
+      ["cjk-password", "密码パス"],
+    ] as const) {
+      const bytes = new Uint8Array(readFileSync(join(ENCRYPTED, `${name}.pdf`)));
+      for (const password of [user, "owner-pw"]) {
+        const fromWasm = wasm.CoreDocument.open(bytes, password);
+        const native = openCoreDocument(bytes, password);
+        try {
+          const report = native.security();
+          expect(wasm.security(fromWasm)).toEqual({
+            revision: report.revision ?? null,
+            permissions: report.permissions >>> 0,
+            userPermissions: report.userPermissions >>> 0,
+          });
+          const encrypted = fromWasm.encryptLikeSource(wasm.decryptedCopy(fromWasm));
+          for (const reopenWith of [user, "owner-pw"]) {
+            const reopened = openCoreDocument(encrypted, reopenWith);
+            try {
+              expect(reopened.security().revision).toBe(report.revision);
+              expect(reopened.pageCount()).toBe(2);
+            } finally {
+              reopened.close();
+            }
+          }
+          expect(() => openCoreDocument(encrypted, "not-the-password")).toThrow("password");
+        } finally {
+          fromWasm.free();
+          native.close();
+        }
+      }
+    }
+    const plain = wasm.CoreDocument.open(FIXTURE, undefined);
+    try {
+      expect(wasm.security(plain).revision).toBeNull();
+      expect(() => plain.encryptLikeSource(wasm.decryptedCopy(plain))).toThrow("re-encryption unsupported");
+    } finally {
+      plain.free();
+    }
+  });
+});

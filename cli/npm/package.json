@@ -1,0 +1,22 @@
+{
+  "name": "@nagi-ovo/shiori",
+  "version": "0.1.25",
+  "private": false,
+  "license": "MIT",
+  "description": "Downloads the Shiori CLI binary and runs it. Not the CLI source.",
+  "type": "module",
+  "bin": {
+    "shiori": "./bin/shiori.js"
+  },
+  "files": [
+    "bin/shiori.js",
+    "install.mjs"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://shiori.nagi.fun",
+  "bugs": {
+    "url": "https://github.com/Nagi-ovo/shiori-releases/issues"
+  }
+}

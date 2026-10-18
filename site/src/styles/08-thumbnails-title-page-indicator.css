@@ -1,0 +1,29 @@
+/* ───────── thumbnails — title-page indicator ─────────
+   Add a tiny visible "title block" inside page 1's thumbnail so the
+   user can read which page is which at a glance. */
+.thumb-title-block {
+  position: absolute;
+  top: 18%;
+  left: 24%;
+  right: 24%;
+  height: 14%;
+  background: var(--win-ink-3);
+  opacity: .55;
+  border-radius: 1px;
+  z-index: 1;
+}
+.thumb-title-block::after {
+  content: "";
+  position: absolute;
+  top: 130%;
+  left: 14%;
+  right: 14%;
+  height: 36%;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--win-ink-3) 0 1px,
+    transparent 1px 3px
+  );
+  opacity: .5;
+}
+

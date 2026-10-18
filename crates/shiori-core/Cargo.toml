@@ -1,0 +1,33 @@
+[package]
+name = "shiori-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+description = "Shiori's PDF reading core on PDFium (docs/PLAN-RUST-PDF-CORE-2026-09.md)"
+
+[dependencies]
+# Pinned with the PDFium build in scripts/pdfium/fetch.ts: 0.9.4's
+# `pdfium_latest` is PDFium 7881. Default features also pull the `image`
+# crate for bitmap conversion, which the core does not use.
+pdfium-render = { version = "=0.9.4", default-features = false, features = ["pdfium_7881"] }
+# Re-encrypting an export with the source file's own Standard security
+# handler (src/encryption.rs): pure Rust, so it builds for wasm32 too.
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+md-5 = "0.10"
+sha2 = "0.10"
+rc4 = "0.1"
+# Object streams in pdf-lib's output are Flate-compressed.
+miniz_oxide = "0.8"
+# AES initialisation vectors and the new second /ID entry.
+getrandom = "0.2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# crypto.getRandomValues in the web worker.
+getrandom = { version = "0.2", features = ["js"] }
+
+# Native builds share PDFium across threads (the Tauri render thread, the CLI
+# addon); a wasm build runs in one worker and skips the per-call lock.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pdfium-render = { version = "=0.9.4", default-features = false, features = ["pdfium_7881", "thread_safe"] }

@@ -1,0 +1,87 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Shiori",
+  "version": "26.9.27",
+  "identifier": "fun.nagi.shiori",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1573",
+    "beforeDevCommand": "bun run dev",
+    "beforeBuildCommand": "bun scripts/pdfium/stage-app.ts && bun run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Shiori 栞",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 600,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; script-src 'self' data: 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' asset: http://asset.localhost data: blob: https:; connect-src 'self' ipc: http://ipc.localhost https://updates.shiori.nagi.fun https://shiori.nagi.fun; frame-src 'self' blob:; object-src 'none'; base-uri 'self';"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFFQ0U5Nzg0OUFDMUQ5RTAKUldUZzJjR2FoSmZPSGxPbWNvd0hqWGdEVHR4RHVDT3E3Wkl4SDdiT0p6OGZqT1ducllIVjBYdFQK",
+      "endpoints": [
+        "https://updates.shiori.nagi.fun/alpha/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": false,
+    "targets": ["app", "dmg", "msi", "deb", "appimage"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Productivity",
+    "shortDescription": "Quiet, local document reader and PDF editor",
+    "longDescription": "Shiori 栞 — a local-first document reader and PDF editor. Read Word, Markdown, and HTML; annotate, arrange, and export PDFs. Everything stays on your machine.",
+    "fileAssociations": [
+      {
+        "ext": ["pdf"],
+        "mimeType": "application/pdf",
+        "description": "PDF document",
+        "role": "Editor"
+      },
+      {
+        "ext": ["md", "markdown"],
+        "mimeType": "text/markdown",
+        "description": "Markdown document",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["html", "htm"],
+        "mimeType": "text/html",
+        "description": "HTML document",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["docx"],
+        "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "description": "Word document",
+        "role": "Viewer"
+      }
+    ],
+    "macOS": {
+      "frameworks": ["pdfium/libpdfium.dylib"],
+      "signingIdentity": "Developer ID Application: Zexi Zhang (PJM828YBFJ)"
+    }
+  }
+}

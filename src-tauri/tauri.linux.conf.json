@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "resources": {
+      "pdfium/libpdfium.so": "pdfium/libpdfium.so",
+      "pdfium/licenses/": "licenses/pdfium/"
+    }
+  }
+}

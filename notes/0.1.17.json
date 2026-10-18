@@ -1,5 +1,0 @@
-{
-  "en": "Fixed\n• Android direct updates now open the APK download instead of silently doing nothing inside the app WebView.\n• Mobile recent documents now stay available on iPhone, iPad, and Android after opening PDFs, Markdown files, or HTML files.",
-  "zh": "修复\n• Android 直装更新按钮现在会打开 APK 下载，不再在应用 WebView 里静默无响应。\n• 移动端最近文档会保留了。iPhone、iPad 和 Android 上打开过的 PDF、Markdown、HTML 会回到首页最近列表。",
-  "ja": "修正\n• Android 直接インストール版の更新ボタンで APK ダウンロードを開けるようにしました。アプリ内 WebView で無反応になる問題を修正しました。\n• モバイル版の最近使った文書を保持します。iPhone、iPad、Android で開いた PDF、Markdown、HTML がホームの最近リストに戻るようになりました。"
-}

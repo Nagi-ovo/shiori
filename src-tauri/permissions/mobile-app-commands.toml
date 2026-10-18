@@ -1,0 +1,19 @@
+[[permission]]
+identifier = "mobile-app-commands"
+description = "Allows Shiori's mobile application commands from the trusted main webview only."
+commands.allow = [
+  "set_reader_immersive",
+  "save_pdf_dialog",
+  "share_exported_file",
+  "web_panel_open",
+  "web_panel_navigate",
+  "web_panel_set_bounds",
+  "web_panel_hide",
+  "web_panel_back",
+  "web_panel_forward",
+  "web_panel_reload",
+  "web_panel_close",
+  "get_process_metrics",
+  "drain_pending_open_paths",
+  "ack_pending_open_path",
+]

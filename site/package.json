@@ -1,0 +1,28 @@
+{
+  "name": "shiori-site",
+  "private": true,
+  "license": "MIT",
+  "version": "26.9.27",
+  "type": "module",
+  "description": "Shiori 栞 — public homepage. Standalone Vite + React project, deployed independently of the main app and Tauri bundle.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "framer-motion": "^12.38.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260426.1",
+    "@types/bun": "^1.4.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.5",
+    "typescript": "~5.9.0",
+    "vite": "^8.2.1"
+  }
+}

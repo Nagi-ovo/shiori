@@ -1,0 +1,85 @@
+/* ───────── manifesto ───────── */
+.manifesto {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 40px;
+  align-items: start;
+  position: relative;
+}
+/* Quiet right-side anchor — a giant outlined 栞 sits in the empty right
+   column so the editorial whitespace has a visual mark without
+   crowding the type. Hidden on small screens. */
+.manifesto::after {
+  content: "栞";
+  position: absolute;
+  bottom: -64px;
+  right: 6%;
+  font-family: var(--kanji);
+  font-size: 460px;
+  line-height: 1;
+  color: transparent;
+  /* Accent-blue outline so the kanji actually anchors the right column
+     instead of vanishing into the background. Stroke at 60% so it still
+     reads as a watermark, not a heading. */
+  -webkit-text-stroke: 1.6px color-mix(in oklab, var(--accent) 60%, transparent);
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+}
+@media (max-width: 1440px) { .manifesto::after { font-size: 380px; right: 4%; } }
+@media (max-width: 1240px) { .manifesto::after { font-size: 300px; right: 3%; } }
+@media (max-width: 980px) { .manifesto::after { display: none; } }
+.manifesto p {
+  font-family: var(--serif);
+  font-size: clamp(20px, 2vw, 28px);
+  line-height: 1.4;
+  color: var(--ink);
+  max-width: 24ch;
+  margin: 0 0 26px;
+  letter-spacing: -.005em;
+}
+html[lang^="zh"] .manifesto p,
+html[lang^="ja"] .manifesto p {
+  font-size: clamp(18px, 1.6vw, 22px);
+  line-height: 1.7;
+  /* CJK chars are ~2× the width of a Latin "0" — bump max-width so
+     phrases like 训练数据 don't get force-broken at characters. */
+  max-width: 32ch;
+  word-break: keep-all;
+  line-break: strict;
+  overflow-wrap: normal;
+}
+.manifesto p .jp {
+  display: block;
+  font-family: var(--serif-jp);
+  font-size: 15px;
+  color: var(--ink-3);
+  margin-top: 6px;
+  letter-spacing: 0;
+  line-height: 1.5;
+}
+.manifesto-quote {
+  border-left: 2px solid var(--accent);
+  padding: 4px 0 4px 18px;
+  margin: 32px 0 0;
+  font-family: var(--serif);
+  font-style: normal;
+  font-size: 17px;
+  color: var(--ink-2);
+  /* Wide enough that the new short quote stays on a single line in all
+     three languages (EN ~43 chars, ZH/JA ~14-15 chars at 17px). */
+  max-width: 52ch;
+  line-height: 1.55;
+}
+html[lang^="zh"] .manifesto-quote,
+html[lang^="ja"] .manifesto-quote { font-style: normal; }
+.manifesto-quote .src {
+  display: block;
+  margin-top: 8px;
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+  letter-spacing: .06em;
+}
+

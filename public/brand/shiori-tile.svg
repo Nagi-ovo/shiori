@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="1024" height="1024">
+  <rect x="0" y="0" width="400" height="400" rx="76" fill="#3388bb"/>
+  <text
+    x="200"
+    y="292"
+    text-anchor="middle"
+    font-family="'Shippori Mincho', 'Hiragino Mincho ProN', 'Noto Serif CJK JP', 'Yu Mincho', 'MS Mincho', serif"
+    font-size="260"
+    font-weight="700"
+    fill="#eef3f8"
+  >栞</text>
+</svg>

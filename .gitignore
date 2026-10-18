@@ -1,0 +1,70 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+*.tsbuildinfo
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Claude Code local state and overrides (settings, scheduler lock, MCP tokens)
+.claude/
+
+# Release-prep working doc (internal, not for remote)
+plan.md
+
+# Locally downloaded release artifacts for hand-distribution
+releases/
+
+# Generated PDF regression artifacts
+test-artifacts/
+cli/.build/
+
+# Local source TTFs used to regenerate committed UI font subsets
+src/assets/fonts/source/
+
+# Generated brand/campaign imagery — large PNGs, regenerated on demand
+output/
+
+# PDFium binaries fetched by scripts/pdfium/fetch.ts, and Rust crate builds
+/vendor/pdfium/
+/vendor/tools/
+/crates/*/target/
+# shiori-core built for the web by scripts/pdfium/build-wasm.ts
+/src/pdf/engine/wasm/generated/
+/src-tauri/pdfium/
+
+# Private working notes, studies and third-party skills kept on disk only
+/todo.md
+/skills-lock.json
+/docs/inkwash-study.md
+/docs/prototypes/
+/docs/mockups/
+/.agents/skills/gpt-taste/
+/.agents/skills/image-to-code/
+/.agents/skills/design-taste-frontend/
+/.agents/skills/redesign-existing-projects/
+/.agents/skills/better-*/
+/.agents/skills/native-feel-*/
+
+# Unused Vite template assets
+/src/assets/hero.png
+/src/assets/react.svg
+/src/assets/vite.svg

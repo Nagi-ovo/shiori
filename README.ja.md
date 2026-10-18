@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./logo.png" width="96" height="96" alt="Shiori logo" />
+  <img src="./.github/readme/logo.png" width="96" height="96" alt="Shiori logo" />
 </p>
 
 <h1 align="center">Shiori 栞</h1>
@@ -19,47 +19,54 @@
 <p align="center">
   <a href="https://shiori.nagi.fun">Web サイト</a>
   ·
-  <a href="https://github.com/Nagi-ovo/shiori-releases/releases/latest">ダウンロード</a>
+  <a href="https://github.com/Nagi-ovo/shiori/releases/latest">ダウンロード</a>
+  ·
+  <a href="https://github.com/Nagi-ovo/shiori/releases/latest"><img src="https://img.shields.io/github/v/release/Nagi-ovo/shiori?include_prereleases&label=latest&color=5b6b7a" alt="latest release" /></a>
 </p>
 
-![Shiori Japanese home screen](./assets/screenshots/home-ja.jpg)
+![Shiori Japanese home screen](./.github/readme/screenshots/home-ja.jpg)
 
 Shiori は、文書をクラウドに預けず、静かに読み、書き込み、書き出すための
-文書ワークスペースです。中心となるのは PDF 注釈ですが、最近のビルドでは
-Markdown と HTML のプレビュー、文書ごとのタブ状態、次回起動時の復元にも対応しています。
+文書ワークスペースです。中心となるのは PDF 注釈ですが、Markdown、HTML、Word の
+文書も隣のタブで開けます。各タブは自分の状態を保持し、再起動後も復元されます。
 
 ## 主な機能
 
-- **PDF の閲覧と注釈**：ハイライト、マークアップ、サムネイル、書き出し、
-  ローカル草稿の復元。
-- **文書タブ**：PDF、Markdown、HTML を複数開けます。各タブは表示位置や状態を保持し、
-  閉じない限り次回起動時にも復元されます。
+- **PDF の閲覧と注釈**：ハイライト、マークアップ、サムネイル、ページ管理、
+  書き出し、ローカル草稿の復元。
+- **文書タブ**：PDF、Markdown、HTML、Word（DOCX）を複数開けます。各タブは表示位置や
+  状態を保持し、閉じない限り次回起動時にも復元されます。
 - **Markdown / HTML プレビュー**：Markdown の front matter を読みやすく表示し、
   HTML は明示的に実行したときだけ隔離サンドボックスで動きます。
 - **デスクトップ用サイドツール**：PDF の横に内蔵ブラウザやターミナルを置けます。
   `cc` / Claude Code がローカルに入っていれば、Shiori の内蔵ターミナルから起動できます。
 - **ローカルファースト**：文書、注釈、最近使ったファイル、設定はあなたの端末に残ります。
+  アカウントもクラウドもテレメトリもありません。
 - **デスクトップとモバイル**：macOS、Windows、Linux、Android 直接インストール版。
   iOS / iPadOS と Google Play は各ストア経由で配布します。
 
 ## スクリーンショット
 
-![サムネイル、注釈、サイドパネルを開いた PDF ワークスペース](./assets/screenshots/pdf-workspace.jpg)
+![ページサムネイル、ハイライト、付箋を表示した PDF ワークスペース](./.github/readme/screenshots/pdf-workspace.jpg)
 
-![PDF、Markdown、HTML を同時に開いたタブ付きワークスペース](./assets/screenshots/desktop-tabs.jpg)
+![グラフと表に枠、テキスト、手書きの注釈](./.github/readme/screenshots/pdf-annotations.jpg)
 
-![内蔵ブラウザを横に開いた PDF ワークスペース](./assets/screenshots/desktop-browser.jpg)
+![ダークモードの PDF ワークスペース](./.github/readme/screenshots/pdf-dark.jpg)
 
-![内蔵ターミナルで cc から Claude Code を起動している PDF ワークスペース](./assets/screenshots/desktop-terminal-cc.jpg)
+![PDF の横の内蔵ブラウザで開いた Shiori の公式サイト](./.github/readme/screenshots/desktop-browser.jpg)
 
-![Shiori の Markdown プレビュー](./assets/screenshots/markdown-document.jpg)
+![PDF の横の内蔵ターミナルで動く Claude Code](./.github/readme/screenshots/desktop-terminal-cc.jpg)
 
-![Shiori で実行中の HTML 文書](./assets/screenshots/html-document.jpg)
+![front matter、表、引用を含む Markdown プレビュー](./.github/readme/screenshots/markdown-document.jpg)
+
+![コードをハイライトする Markdown ライブエディタ](./.github/readme/screenshots/markdown-editor.jpg)
+
+![オフラインのサンドボックスで動くインタラクティブな HTML 文書](./.github/readme/screenshots/html-document.jpg)
 
 ## ダウンロード
 
 インストーラーは
-[GitHub Releases](https://github.com/Nagi-ovo/shiori-releases/releases) で公開しています。
+[GitHub Releases](https://github.com/Nagi-ovo/shiori/releases) で公開しています。
 
 | プラットフォーム | 推奨パッケージ | 更新方法 |
 | --- | --- | --- |
@@ -76,45 +83,59 @@ Android 直接インストール版は APK をアプリ内でダウンロード�
 Android のパッケージインストーラーへ渡します。ストア版は各ストアで更新されるため、
 このリポジトリには `.aab` や `.ipa` としてミラーしません。
 
-## Agent skill
+公開ビルドに有効期限はありません。ビルドの有効期限は、クローズドベータ向けの
+オプトインのフラグ（ビルド時に `SHIORI_ENABLE_BUILD_EXPIRY=true`）としてだけ存在し、
+リリース版やストア版では有効にしません。
 
-オープンソースの [Shiori CLI skill](./skills/shiori) は、Codex、Claude Code、
-その他の対応 coding agent に、Shiori で開いている文書の読み取り、本文検索、
-テキストに結び付いた注釈の追加、callout thread への返信方法を伝えます。
-利用するには `shiori` CLI が `PATH` に含まれている必要があります。
+## コマンドラインと Agent skill
 
-> [!IMPORTANT]
-> Shiori CLI はまだ公開されていないため、この skill は現時点では利用できません。
-> 今インストールしても Agent 連携の準備だけで、実際に使えるのは CLI 公開後です。
-
-<details>
-<summary>将来のインストール方法を表示（CLI 公開後）</summary>
-
-通常は、Agent 横断の `skills` installer でグローバルにインストールし、
-利用する coding agent を選択します。
+`shiori` CLI は、スクリプトや coding agent から PDF を調べ、検索し、描画し、
+注釈を付けるためのツールで、Shiori で開いている文書とも連携できます。
+[`cli/`](./cli) にあり、独自の `cli-v*` タグでリリースされます。
 
 ```sh
-npx skills@latest add Nagi-ovo/shiori-releases --skill shiori --global
+curl -fsSL https://shiori.nagi.fun/cli | sh      # macOS、Linux
+irm https://shiori.nagi.fun/cli.ps1 | iex        # Windows
+npm install -g @nagi-ovo/shiori                  # Node のある環境ならどこでも
 ```
 
-skill をローカルで開発する場合は、このリポジトリを clone したあと、
-macOS / Linux で対象 Agent のユーザーレベル skill ディレクトリへリンクできます。
+[`skills/shiori`](./skills/shiori) の agent skill は、Codex、Claude Code、
+その他の対応 coding agent に、この CLI の使い方を伝えます。Shiori で開いている
+文書の読み取り、本文検索、テキストに結び付いた注釈の追加、callout thread への
+返信などです。このフォルダを使っている Agent の skill ディレクトリへリンクするか
+コピーしてください（対応する一行だけを実行します）。
 
 ```sh
 ln -s "$(pwd)/skills/shiori" "${CODEX_HOME:-$HOME/.codex}/skills/shiori"
 ln -s "$(pwd)/skills/shiori" "$HOME/.claude/skills/shiori"
 ```
 
-開発対象の Agent に対応する一行だけを実行してください。
+## ソースからビルドする
 
-</details>
+[bun](https://bun.sh) と、`wasm32-unknown-unknown` ターゲットを含む Rust
+ツールチェーンが必要です。デスクトップ版のビルドには Tauri 2 のシステム依存関係も
+必要です。コマンドの一覧は英語版 README の
+[Build from source](./README.md#build-from-source) を参照してください。
 
-この skill 自体は独立して [MIT License](./skills/shiori/LICENSE) で公開されます。
-このライセンスは Shiori アプリケーションおよび CLI バイナリには適用されません。
+```bash
+bun install
+rustup target add wasm32-unknown-unknown
+bun run dev            # Web 開発サーバー
+bun run tauri:dev      # デスクトップアプリ（ホットリロード）
+bun run verify         # build + lint + test + サイトのビルド
+```
 
-## このリポジトリについて
+## コントリビュート
 
-このリポジトリは、Shiori のインストーラー、更新署名、ローカライズされた
-リリースノート、スクリーンショット、およびオープンソースの Shiori CLI Agent
-skill をホストしています。Shiori アプリケーションのソースリポジトリは非公開で、
-議論・機能要望・不具合報告はこのリポジトリでは扱いません。
+バグ報告、機能要望、pull request を歓迎します。着手する前に
+[`CONTRIBUTING.md`](./CONTRIBUTING.md)（英語）をお読みください。
+
+## ライセンス
+
+- コードは [MIT License](./LICENSE) で公開しています。
+- 「Shiori」/「栞」という名称、ロゴ、アプリアイコン、その他のブランド素材は MIT
+  License の対象外です。[`TRADEMARK.md`](./TRADEMARK.md) を参照してください。
+- [`docs/`](./docs) 以下のドキュメントは
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.ja) です。
+- 同梱のサードパーティ製フォントとコードはそれぞれのライセンスに従います。
+  [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md) を参照してください。

@@ -1,0 +1,42 @@
+/* Site styles, in cascade order. Tokens, reset and global base rules live
+   in styles/base.css; each page section has its own styles/NN-*.css, named
+   after the section. Edit the section's file; the numbers are the cascade
+   order, so a new section gets the next number and its own @import below.
+   (@import must precede every other rule, so nothing goes above them.) */
+@import "./styles/base.css";
+@import "./styles/01-page-scroller-full-page-scroll-hijack-desktop.css";
+@import "./styles/02-page-scroller-dots.css";
+@import "./styles/03-nav.css";
+@import "./styles/04-hero.css";
+@import "./styles/05-product-window-mock.css";
+@import "./styles/06-welcome-pdf-doc-body.css";
+@import "./styles/07-page-2-layout-annotations.css";
+@import "./styles/08-thumbnails-title-page-indicator.css";
+@import "./styles/09-sections.css";
+@import "./styles/10-manifesto.css";
+@import "./styles/11-features.css";
+@import "./styles/12-preview.css";
+@import "./styles/13-cli-preview.css";
+@import "./styles/14-specs.css";
+@import "./styles/15-cta.css";
+@import "./styles/16-privacy.css";
+@import "./styles/17-legal-support-documents.css";
+@import "./styles/18-footer.css";
+@import "./styles/19-chrome-theme-lang-pickers.css";
+@import "./styles/20-small-screens.css";
+@import "./styles/21-phones.css";
+@import "./styles/22-unified-keyboard-chip-kbd-component.css";
+@import "./styles/23-hero-scripted-demo.css";
+@import "./styles/24-doc-subpages-changelog-shortcuts.css";
+@import "./styles/25-changelog-list.css";
+@import "./styles/26-shortcuts-grid.css";
+@import "./styles/27-doc-page-responsive.css";
+@import "./styles/28-print-shortcuts-as-a-single-page-cheatsheet.css";
+
+@media (prefers-contrast: more) {
+  :root {
+    --ink-3: var(--ink-2);
+    --ink-4: var(--ink-2);
+  }
+  .legal-body a { color: var(--ink); }
+}

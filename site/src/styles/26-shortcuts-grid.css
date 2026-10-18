@@ -1,0 +1,55 @@
+/* ── Shortcuts grid ──
+   Two-column on desktop, single-column on mobile. Each group reads as
+   its own dl table: action on the left, chord chips on the right, dashed
+   row separators that echo the in-app ShortcutsSheet. */
+.sc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px 64px;
+  border-top: 1px solid var(--rule);
+  padding-top: 40px;
+}
+.sc-group { min-width: 0; }
+.sc-kind {
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: .14em;
+  margin: 0 0 14px;
+}
+.sc-rows {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px dashed var(--rule-2);
+}
+.sc-row:last-child { border-bottom: none; }
+.sc-row dt {
+  font-size: 14px;
+  color: var(--ink-2);
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.sc-row dd {
+  margin: 0;
+  flex: 0 0 auto;
+}
+.sc-chord {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sc-or {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-4);
+  letter-spacing: 0;
+}
+

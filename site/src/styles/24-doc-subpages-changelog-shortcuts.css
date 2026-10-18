@@ -1,0 +1,100 @@
+/* ───────── doc subpages (Changelog, Shortcuts) ─────────
+   Long-scrolling sub-pages that share the marketing publication identity
+   but skip PageScroller. Reuses .section-h pattern (kicker label +
+   serif h1 + lede). All chrome borders use --rule so the page feels like
+   one more chapter, not a separate site. */
+
+.doc-main {
+  position: relative;
+  padding: 64px 0 0;
+}
+
+.doc-back {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 6px 0;
+  transition: color .15s ease;
+}
+.doc-back:hover { color: var(--accent); }
+
+.doc-section {
+  padding: 56px 0 96px;
+}
+.doc-head {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 40px;
+  align-items: baseline;
+  margin: 24px 0 64px;
+  position: relative;
+}
+.doc-head .label {
+  color: var(--ink-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.doc-head .label::before {
+  content: "";
+  display: inline-block;
+  width: 22px;
+  height: 1px;
+  background: var(--accent);
+  flex: 0 0 auto;
+}
+.doc-h1 {
+  grid-column: 2;
+  font-family: var(--serif);
+  font-style: normal;
+  font-weight: 400;
+  font-size: clamp(34px, 4.2vw, 56px);
+  line-height: 1.05;
+  letter-spacing: -.02em;
+  margin: 0;
+  color: var(--ink);
+  max-width: 22ch;
+  text-wrap: balance;
+}
+.doc-h1 em {
+  font-style: normal;
+  color: var(--accent);
+  font-weight: 400;
+}
+html[lang^="zh"] .doc-h1,
+html[lang^="ja"] .doc-h1 {
+  font-style: normal;
+  letter-spacing: -.005em;
+  font-size: clamp(28px, 3.6vw, 48px);
+  line-height: 1.18;
+  word-break: keep-all;
+  line-break: strict;
+  overflow-wrap: break-word;
+}
+html[lang^="zh"] .doc-h1 em,
+html[lang^="ja"] .doc-h1 em { font-style: normal; }
+.doc-lede {
+  grid-column: 2;
+  font-family: var(--serif);
+  font-style: normal;
+  font-size: clamp(17px, 1.3vw, 21px);
+  line-height: 1.5;
+  color: var(--ink-2);
+  margin: 18px 0 0;
+  max-width: 42ch;
+  text-wrap: balance;
+}
+html[lang^="zh"] .doc-lede,
+html[lang^="ja"] .doc-lede {
+  font-style: normal;
+  font-size: clamp(15px, 1.1vw, 18px);
+  line-height: 1.7;
+  max-width: 34ch;
+  word-break: keep-all;
+  line-break: strict;
+}
+

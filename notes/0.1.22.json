@@ -1,5 +1,0 @@
-{
-  "en": "Improved\n• Collapse the annotation toolbar on its own (phone / tablet) for more reading room — the tabs and top bar stay in place.\n• Tablet layout polish: inline filename and compact tool buttons instead of a stretched phone layout.\n\nFixed\n• Searching Chinese / Japanese / Korean text in documents now works (CJK queries previously matched nothing; only digits and Latin did).\n• Android in-app updates could fail on direct-install builds; now fixed.",
-  "zh": "改进\n• 可单独收起标注工具栏（手机 / 平板），腾出阅读空间，标签页和顶栏保留。\n• 平板界面适配：文件名内联显示、工具按钮更紧凑，不再是被拉伸的手机布局。\n\n修复\n• 现在能在中文 / 日文 / 韩文文档里查找了（之前 CJK 查询搜不到任何结果，只能搜英文和数字）。\n• 修复 Android 直装版应用内更新可能失败的问题。",
-  "ja": "改善\n• 注釈ツールバーだけを折りたためます（スマートフォン / タブレット）。読書スペースが広がり、タブとトップバーは残ります。\n• タブレットのレイアウト調整：ファイル名のインライン表示とコンパクトなツールボタン。\n\n修正\n• 文書内の中国語 / 日本語 / 韓国語の検索が動作するようになりました（以前は CJK のクエリが一致しませんでした）。\n• Android 直接インストール版のアプリ内更新が失敗することがある問題を修正しました。"
-}

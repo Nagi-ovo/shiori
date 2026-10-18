@@ -1,0 +1,72 @@
+/* ───────── preview ───────── */
+.preview-wrap {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr;
+  gap: 36px;
+  align-items: start;
+}
+.preview-side h3 {
+  font-family: var(--serif);
+  font-style: normal;
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1.15;
+  letter-spacing: -.01em;
+  margin: 0 0 14px;
+  color: var(--ink);
+}
+html[lang^="zh"] .preview-side h3,
+html[lang^="ja"] .preview-side h3 {
+  font-style: normal;
+  font-size: 26px;
+  line-height: 1.4;
+  word-break: keep-all;
+  line-break: strict;
+  overflow-wrap: break-word;
+}
+.preview-side h3 em {
+  font-style: normal;
+  color: var(--accent);
+}
+html[lang^="zh"] .preview-side h3 em,
+html[lang^="ja"] .preview-side h3 em { font-style: normal; }
+.preview-side p {
+  font-family: var(--prose);
+  color: var(--ink-3);
+  font-size: 15.5px;
+  max-width: 38ch;
+  line-height: 1.6;
+}
+.shortcut-list {
+  margin-top: 22px;
+  border-top: 1px solid var(--rule);
+}
+.shortcut-list .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.shortcut-list .row .l .jp {
+  display: inline-block;
+  color: var(--ink-4);
+  font-family: var(--serif-jp);
+  margin-left: 10px;
+  font-size: 12px;
+}
+.shortcut-list .row kbd {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--bg-2);
+  border: 1px solid var(--rule);
+  padding: 5px 11px;
+  border-radius: 6px;
+  color: var(--ink);
+  letter-spacing: .08em;
+  box-shadow: 0 1px 0 var(--rule);
+  font-variant-numeric: tabular-nums;
+}
+

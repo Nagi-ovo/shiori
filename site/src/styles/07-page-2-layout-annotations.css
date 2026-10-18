@@ -1,0 +1,126 @@
+/* ───────── page 2 layout + annotations ───────── */
+
+.doc-welcome-p2 {
+  position: relative;
+  padding-top: 22px;
+}
+.doc-body {
+  font-family: "Times New Roman", Times, serif;
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: #1a1a1a;
+  margin: 0 0 14px;
+  text-align: justify;
+}
+.doc-body-narrow {
+  /* Reserve space on the right for the sticky note. */
+  max-width: 60%;
+}
+
+/* Ink underline — accent blue, slightly hand-drawn via two SVG-style
+   border tricks. We approximate with a wavy underline using
+   text-decoration-style: wavy. */
+.doc-anno-ink {
+  text-decoration: underline wavy var(--accent);
+  text-decoration-thickness: 1.2px;
+  text-underline-offset: 2.5px;
+}
+
+/* Sticky note — yellow paper square in the right margin with a folded
+   corner and a short italic annotation. */
+.doc-anno-note {
+  position: absolute;
+  top: 30px;
+  right: 14px;
+  width: 110px;
+  background: #fdeba0;
+  border: 0.6px solid #c8a648;
+  padding: 7px 9px 9px;
+  font-family: "Times New Roman", Times, serif;
+  font-style: italic;
+  font-size: 9px;
+  line-height: 1.35;
+  color: #5b4a1f;
+  box-shadow: 1px 1px 2px rgba(0, 0, 0, .08);
+}
+.doc-anno-note::after {
+  /* Folded-corner triangle. */
+  content: "";
+  position: absolute;
+  right: 0; bottom: 0;
+  width: 9px; height: 9px;
+  background: linear-gradient(
+    135deg,
+    transparent 50%,
+    #c8a648 50%,
+    #c8a648 calc(50% + 0.6px),
+    rgba(0, 0, 0, 0) calc(50% + 0.6px)
+  );
+}
+/* Dashed connector from the note pointing back into the body text — a
+   thin diagonal line drawn with a pseudo-element. */
+.doc-anno-note::before {
+  content: "";
+  position: absolute;
+  top: 16px;
+  left: -56px;
+  width: 56px;
+  height: 1px;
+  border-top: 0.8px dashed #c8a648;
+  opacity: .8;
+  transform: rotate(8deg);
+  transform-origin: right center;
+}
+
+/* Stamp — green checkmark in the left margin. */
+.doc-anno-stamp {
+  position: absolute;
+  left: 8px;
+  top: 70px;
+  color: #2a994e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Rectangle annotation — accent-blue outlined box around an italic block. */
+.doc-anno-rect {
+  border: 1px solid var(--accent);
+  border-radius: 1px;
+  padding: 8px 12px 6px;
+  margin: 8px 0 14px;
+  background: rgba(51, 136, 187, .04);
+}
+.doc-anno-rect p {
+  margin: 0;
+  font-family: "Times New Roman", Times, serif;
+  font-style: italic;
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: #2a323b;
+  text-align: justify;
+}
+
+/* Block quote with accent left rule. */
+.doc-quote {
+  margin: 12px 0 0;
+  padding: 0 0 0 12px;
+  border-left: 2px solid var(--accent);
+}
+.doc-quote p {
+  margin: 0;
+  font-family: "Times New Roman", Times, serif;
+  font-style: italic;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: #2a323b;
+}
+.doc-quote .src {
+  display: block;
+  font-family: "Courier", "JetBrains Mono", monospace;
+  font-size: 8px;
+  color: #888;
+  margin-top: 4px;
+  letter-spacing: .04em;
+}
+

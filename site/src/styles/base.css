@@ -1,0 +1,138 @@
+/* Shiori homepage — palette, typography, and layout match the real app's
+   design tokens (#3388bb accent, Paper / Night themes, Instrument Serif
+   display, Klee One wordmark, Shippori Mincho 栞, JetBrains Mono labels).
+   The bilingual EN+JP pairing from the design only renders in
+   English mode; ZH and JA use pure CJK display stacks. */
+
+:root {
+  --accent: #3388bb;
+  --accent-deep: #2a72a0;
+  --accent-soft: rgba(51, 136, 187, .12);
+  --accent-ghost: rgba(51, 136, 187, .06);
+  --accent-line: rgba(51, 136, 187, .32);
+
+  /* Light / Paper theme — mirrors src/design/theme.ts in the main app. */
+  --bg: #f6f8fb;
+  --bg-2: #ffffff;
+  --bg-panel: #eef3f8;
+  --ink: #13161d;
+  --ink-2: #3a4050;
+  --ink-3: #697181;
+  --ink-4: #a4abb6;
+  --rule: #dde3ec;
+  --rule-2: #e7ebf1;
+  --soft: #c6cdd9;
+  --paper: #fbfbf9;
+  --highlight: #f4d674;
+
+  --serif: "Instrument Serif", "Iowan Old Style", Charter, "Times New Roman",
+    Georgia, serif;
+  --prose: "Iowan Old Style", Charter, "Bitstream Charter", "Sitka Text",
+    Georgia, serif;
+  --serif-jp: "Shippori Mincho", "Noto Serif JP", "Hiragino Mincho ProN",
+    "Yu Mincho", serif;
+  --sans: "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "Helvetica Neue", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --klee: "Klee One", "Shippori Mincho", "Noto Serif JP", serif;
+  --kanji: "Shippori Mincho", "Noto Serif JP", "Hiragino Mincho ProN",
+    "Yu Mincho", serif;
+
+  --max: 1440px;
+}
+
+[data-theme="dark"] {
+  --bg: #0c1015;
+  --bg-2: #111418;
+  --bg-panel: #191d25;
+  --ink: #eaeff6;
+  --ink-2: #b5bcc8;
+  --ink-3: #7d8595;
+  --ink-4: #5a6172;
+  --rule: #2b313b;
+  --rule-2: #20242d;
+  --soft: #3a4150;
+  --paper: #20242d;
+  --accent: #4da5d8;
+  --accent-deep: #3388bb;
+  --accent-soft: rgba(77, 165, 216, .14);
+  --accent-ghost: rgba(77, 165, 216, .07);
+  --accent-line: rgba(77, 165, 216, .42);
+}
+
+/* CJK font-stack swap per html lang — same approach the main app uses. */
+html[lang^="zh"] {
+  --sans: "Inter Tight", "PingFang SC", "Heiti SC", "Microsoft YaHei",
+    "Source Han Sans SC", "Noto Sans SC", -apple-system, sans-serif;
+  --serif: "Songti SC", "STSong", "Source Han Serif SC", "Noto Serif SC",
+    "PingFang SC", "Instrument Serif", Georgia, serif;
+  --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, "PingFang SC",
+    "Microsoft YaHei", monospace;
+  --prose: "PingFang SC", "Heiti SC", "Microsoft YaHei",
+    "Source Han Sans SC", "Noto Sans SC", -apple-system, sans-serif;
+}
+html[lang^="ja"] {
+  --sans: "Hiragino Sans", "Yu Gothic", "Yu Gothic UI", "Meiryo",
+    "Source Han Sans JP", "Noto Sans JP", "Inter Tight", -apple-system,
+    sans-serif;
+  --serif: "Hiragino Mincho ProN", "Yu Mincho", "Shippori Mincho",
+    "Source Han Serif JP", "Noto Serif JP", "Instrument Serif", Georgia, serif;
+  --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, "Hiragino Sans",
+    "Yu Gothic", monospace;
+  --prose: "Hiragino Sans", "Yu Gothic", "Yu Gothic UI", "Meiryo",
+    "Source Han Sans JP", "Noto Sans JP", -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 80;
+  padding: 8px 12px;
+  background: var(--ink);
+  color: var(--bg);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  transform: translateY(-160%);
+}
+.skip-link:focus {
+  transform: none;
+}
+body {
+  font-family: var(--sans);
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-size: 16px;
+  line-height: 1.55;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background .25s ease, color .25s ease;
+  position: relative;
+}
+/* Ambient grain — breaks the flatness without competing with content. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  opacity: .55;
+  mix-blend-mode: multiply;
+}
+[data-theme="dark"] body::before {
+  mix-blend-mode: screen;
+  opacity: .35;
+}
+a { color: inherit; text-decoration: none; }
+::selection { background: var(--accent-soft); color: var(--ink); }
+
+/* Anchored sections shouldn't slide under the sticky nav. */
+section[id], main[id] { scroll-margin-top: 76px; }
+

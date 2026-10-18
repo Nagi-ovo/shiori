@@ -1,0 +1,38 @@
+/* ── Print: shortcuts as a single-page cheatsheet ──
+   Strip chrome, force pure black-on-white, tighten spacing so all four
+   groups fit on one printed page. The .nav / .footer / .doc-back stay
+   visible on screen but vanish in print so a Cmd+P yields a clean PDF
+   the user can pin up. */
+@media print {
+  body { background: #fff; color: #000; }
+  body::before { display: none; }
+  /* `.chrome` is the fixed bottom-right theme + language cluster
+     (Chrome.tsx). This rule used to list `.chrome-fab, .lang-switch`,
+     neither of which exists anywhere in the project — so the two floating
+     buttons printed on top of the shortcuts sheet the page invites you to
+     print and pin up. */
+  .nav, .footer, .doc-back, .chrome { display: none !important; }
+  .doc-main { padding: 0; }
+  .doc-shortcuts { padding: 16px 0 0; }
+  .doc-head { margin: 0 0 20px; gap: 18px; }
+  .doc-h1 { font-size: 28px; }
+  .doc-lede { font-size: 12px; }
+  .sc-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 28px;
+    padding-top: 18px;
+  }
+  .sc-row { padding: 4px 0; }
+  .sc-row dt { font-size: 11px; color: #000; }
+  .sc-kind { color: #000; }
+  .kbd-key {
+    background: #fff;
+    border: 1px solid #000;
+    box-shadow: none;
+    color: #000;
+    font-size: 10px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+  }
+}

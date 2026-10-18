@@ -1,0 +1,1104 @@
+{
+  "app": {
+    "brand": "Shiori",
+    "subtitle": "しおり"
+  },
+  "changelog": {
+    "title": "What's new",
+    "close": "Close"
+  },
+  "sponsor": {
+    "entry": "Support Shiori",
+    "title": "Support Shiori",
+    "thanks": "Shiori is free and stays local-first. If it has earned a place in your reading, a small tip helps keep it going — thank you.",
+    "wechat": "WeChat Pay",
+    "alipay": "Alipay",
+    "more": "More ways to support"
+  },
+  "deferred": {
+    "loading": "Loading…",
+    "loadingBody": "This panel is still loading.",
+    "failedTitle": "Couldn't load this panel",
+    "failedBody": "Check your connection, then try again.",
+    "retry": "Try again"
+  },
+  "common": {
+    "close": "Close",
+    "increase": "Increase",
+    "decrease": "Decrease"
+  },
+  "windowCaption": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore down"
+  },
+  "nav": {
+    "thumbnails": "Thumbnails",
+    "outline": "Outline",
+    "find": "Find",
+    "shortcuts": "Shortcuts",
+    "settings": "Settings",
+    "importPdf": "Import another PDF",
+    "print": "Print · ⌘P",
+    "export": "Export",
+    "exportPdf": "Export PDF",
+    "untitled": "Untitled.pdf",
+    "home": "Back to home · tab stays open",
+    "terminal": "Terminal",
+    "readerMode": "Reader mode · hide all chrome",
+    "readerModeExit": "Exit reader mode",
+    "annotateEnter": "Annotate",
+    "annotateExit": "Done annotating",
+    "pdfChromeCollapse": "Hide toolbar",
+    "pdfChromeExpand": "Show toolbar",
+    "browser": "Browser",
+    "switcherLabel": "Quick file switcher",
+    "switcherHint": "← → to choose · release Ctrl to switch · Esc to cancel",
+    "skipToContent": "Skip to document",
+    "mainLandmark": "Document"
+  },
+  "navigator": {
+    "label": "Navigator",
+    "outline": "Outline",
+    "documents": "Documents",
+    "pages": "Pages",
+    "collapse": "Hide navigator",
+    "show": "Show navigator",
+    "marksEmpty": "No annotations in this document yet.",
+    "showMarks": "Show this document's annotations",
+    "markEditedText": "edited text",
+    "marks": "Annotations",
+    "markThread_one": "{{count}} turn",
+    "markThread_other": "{{count}} turns",
+    "markClipped": "(truncated)",
+    "toggle": "Toggle sidebar",
+    "resize": "Drag to resize · double-click to reset"
+  },
+  "documentTree": {
+    "label": "Documents",
+    "show": "Show document tree",
+    "collapse": "Hide document tree",
+    "empty": "Nothing open yet.",
+    "unavailable": "File not found",
+    "expandMarks": "Show annotations",
+    "collapseMarks": "Hide annotations",
+    "page": "p{{page}}",
+    "sectionUnfiled": "Unfiled",
+    "pin": "Keep in workspace",
+    "unpin": "Remove from workspace",
+    "addFolder": "Add folder…",
+    "addDocument": "Add document…",
+    "addTarget": "Add document or folder…",
+    "unmountFolder": "Close this folder",
+    "mountUnsupported": "Opening a folder needs the desktop app."
+  },
+  "tabs": {
+    "label": "Open documents",
+    "new": "Open document",
+    "close": "Close tab",
+    "closeNamed": "Close “{{title}}”",
+    "closeOverflow_one": "Close this hidden tab",
+    "closeOverflow_other": "Close these {{count}} hidden tabs",
+    "overflowMenuLabel": "Hidden tabs",
+    "previewLabel": "Preview of {{title}}",
+    "previewPage": "Page {{page}} · {{zoom}}",
+    "previewPosition": "Last position · {{zoom}}",
+    "previewPositionUnknown": "Last position",
+    "previewLoading": "Loading preview…",
+    "previewUnavailable": "Preview not available yet",
+    "restoreFailed": "Couldn't restore tab",
+    "restoreRetry": "Try again",
+    "restoreAuthorize": "Authorize again",
+    "restorePickAgain": "Pick file again",
+    "restoreErrors": {
+      "pathUnavailable": "The original file has moved or was deleted",
+      "unsupported": "This file type is not supported",
+      "cacheMissing": "The cached copy was cleared from local storage",
+      "ephemeral": "This tab can't reopen automatically in this browser",
+      "handleMissing": "The browser forgot the saved file permission",
+      "permissionDenied": "The browser needs file access again",
+      "fileUnavailable": "The browser could not read the authorized file"
+    },
+    "overflowTitle_one": "{{count}} more tab",
+    "overflowTitle_other": "{{count}} more tabs"
+  },
+  "documents": {
+    "loading": "Loading document…",
+    "renderFailed": "Couldn't render this document: {{message}}",
+    "openPolicy": {
+      "tooLarge": {
+        "title": "This document is too large.",
+        "message": "{{name}} exceeds the {{maxSize}} limit and was not read."
+      },
+      "invalidDocx": {
+        "title": "This is not a readable Word document.",
+        "message": "{{name}} is missing required DOCX data or uses an unsupported ZIP format."
+      },
+      "docxTooComplex": {
+        "title": "This Word document is too complex to open safely.",
+        "message": "{{name}} would exceed Shiori's DOCX extraction budget and was left untouched."
+      }
+    },
+    "runHtml": "Run",
+    "runHtmlHint": "Run this file's scripts in a locked-down sandbox — offline, with no access to your files or data.",
+    "stopHtml": "Stop",
+    "refreshHtml": "Refresh preview",
+    "markdownMode": "Markdown mode",
+    "previewMarkdown": "Preview Markdown",
+    "editMarkdown": "Edit Markdown",
+    "markdownEditorLabel": "Markdown editor",
+    "editMarkdownMetadata": "Edit document metadata",
+    "textSaveFailed": "Couldn't save the latest text edits. The tab was kept open so you can retry.",
+    "closeSaveFailed": "Unable to finish saving your latest changes, so the window stayed open. Free some device storage, then close again.",
+    "workspaceSaveFailed": "Shiori couldn't save the workspace layout.",
+    "workspaceSaveFailedDetail": "Your open tabs or folders may not be restored after restart. Free some device storage, then make another change to retry.",
+    "runtimeStorageFailed": "Shiori couldn't free memory for another PDF.",
+    "runtimeStorageFailedDetail": "Your current PDFs are still safe and open. Free some device storage or close a tab, then try again.",
+    "workspaceSourceQuotaFailed": "Local document storage is full.",
+    "workspaceSourceSaveFailed": "Shiori couldn't save the local working copy.",
+    "workspaceSourceSaveFailedDetail": "The edit is still open and Shiori will retry. Free some device storage before closing the tab.",
+    "workingCopyMissing": "The local working copy is missing. Shiori did not open the older original automatically; open the original again if you want to continue from it.",
+    "saveToFile": "Save",
+    "saveToFileHint": "Write these edits back over the original file (⌘S)",
+    "saved": "Saved to {{name}}",
+    "savedNoChanges": "No unsaved changes",
+    "saveOriginMissing": "The original file is no longer there, so Shiori didn't write anything.",
+    "savePermissionDenied": "The browser denied permission to write to that file.",
+    "saveFailed": "Couldn't write to the original file: {{message}}",
+    "unsavedEdits": "Unsaved edits",
+    "appearance": {
+      "open": "Reading appearance",
+      "title": "Markdown appearance",
+      "documentOverride": "Customized for this document",
+      "followingGlobal": "Using the global default",
+      "tabs": {
+        "body": "Body",
+        "code": "Code",
+        "layout": "Layout",
+        "color": "Color"
+      },
+      "searchFonts": "Search fonts",
+      "useGlobal": "Use global · {{family}}",
+      "globalBadge": "GLOBAL",
+      "automatic": "Automatic",
+      "fallbackBadge": "AUTO",
+      "recentFonts": "Recent",
+      "builtinFonts": "Built into Shiori",
+      "systemFonts": "On this computer",
+      "loadingSystemFonts": "Loading installed fonts",
+      "systemFontPrivacy": "Your browser asks before sharing the list of installed fonts. Font files and paths are never read.",
+      "requestSystemFonts": "Show installed fonts",
+      "fontKinds": {
+        "sans": "SANS",
+        "serif": "SERIF",
+        "mono": "MONO"
+      },
+      "refineSearch_one": "{{count}} match. Search to narrow the list.",
+      "refineSearch_other": "{{count}} matches. Search to narrow the list.",
+      "noFontResults": "No matching fonts.",
+      "noSystemFonts": "No system fonts were returned.",
+      "systemFontState": {
+        "unsupported": "This device or browser can't list installed fonts. You can still enter a font name below.",
+        "denied": "Font access wasn't allowed. Retry, or enter a font name below.",
+        "error": "Installed fonts couldn't be loaded. Retry, or enter a font name below."
+      },
+      "retrySystemFonts": "Retry font access",
+      "manualFont": "Enter an installed font",
+      "manualFontPlaceholder": "e.g. Iowan Old Style",
+      "manualFontHint": "Useful when a browser can't list fonts or a font is missing from the list.",
+      "manualFontInvalid": "Enter a valid font family name.",
+      "addFont": "Use font",
+      "fontMissing": "“{{family}}” isn't in the current system list. Shiori will use its fallback if the font is unavailable.",
+      "fontSize": "Font size",
+      "lineHeight": "Line height",
+      "contentWidth": "Text width",
+      "widths": {
+        "narrow": "Narrow",
+        "standard": "Standard",
+        "wide": "Wide"
+      },
+      "globalLayoutSummary": "Global: {{size}}px · {{lineHeight}} line height · {{width}}px width",
+      "useGlobalLayout": "Use global layout",
+      "headingColor": "Heading color",
+      "useGlobalColor": "Use global · {{color}}",
+      "automaticHeadingColor": "Match the current theme",
+      "customColor": "Custom HEX color",
+      "applyColor": "Apply",
+      "invalidColor": "Enter an opaque color as #RGB or #RRGGBB.",
+      "effectiveColor": "Effective {{color}}",
+      "contrastAdjusted": "adjusted for readability",
+      "resetDocument": "Use all global settings",
+      "setGlobal": "Set current as global"
+    },
+    "runningStatus": "Running · offline sandbox",
+    "remoteImagesBlocked": "Remote images are not loaded by default because they can expose your IP address and which document you opened.",
+    "loadRemoteImages": "Load remote images",
+    "dismissRemoteImages": "Keep blocked",
+    "runDepsBlocked_one": "This document references {{count}} remote dependency. Run mode is offline by default, so it was blocked.",
+    "runDepsBlocked_other": "This document references {{count}} remote dependencies. Run mode is offline by default, so they were blocked.",
+    "runDepsAllowed_one": "Allowed {{count}} remote dependency for this run.",
+    "runDepsAllowed_other": "Allowed {{count}} remote dependencies for this run.",
+    "runDepsAllowSelected": "Allow selected and re-run",
+    "runDepsShow": "Show details",
+    "runDepsHide": "Hide details",
+    "runDepsKindScript": "Script",
+    "runDepsKindStylesheet": "Stylesheet",
+    "runDepsKindImage": "Image",
+    "runDepsKindMedia": "Media",
+    "runDepsKindFrame": "Frame",
+    "runDepsKindFont": "Font",
+    "runDepsKindConnect": "Network",
+    "runDepsKindOther": "Other"
+  },
+  "meta": {
+    "ppAbbr": "PP",
+    "local": "LOCAL",
+    "localOnly": "● Local only",
+    "editsNotSaved": "edits not saved",
+    "pageShort": "Page",
+    "pageLabel": "PAGE {{page}}",
+    "pageOfTotal": "Page {{page}} / {{total}}",
+    "copyFileName": "Copy file name",
+    "fileNameCopied": "File name copied",
+    "fileNameCopyFailed": "Couldn't copy file name"
+  },
+  "toast": {
+    "savedTo": "Saved to {{path}}",
+    "savedAs": "Saved as {{path}}",
+    "savedAsHint": "Check your browser's Downloads folder.",
+    "sharedAs": "Ready to share {{path}}",
+    "openSavedFile": "Open",
+    "openSavedFileFailed": "Couldn't open the exported PDF.",
+    "revealSavedFile": "Show in folder",
+    "revealSavedFileFailed": "Couldn't show the exported PDF in its folder.",
+    "imagePageAdded": "Image pasted as a new page.",
+    "pdfPagesInserted_one": "Inserted 1 page from {{name}}.",
+    "pdfPagesInserted_other": "Inserted {{count}} pages from {{name}}.",
+    "pdfPagesInsertedDetail": "The source PDF is unchanged. Shiori imported its pages, page annotations, and the destinations required by internal links—not attachments or other document-level content.",
+    "linkOpenFailed": "Couldn't open that link.",
+    "printFailed": "Couldn't prepare the document for printing — try again or use Export.",
+    "paragraphEditMathRefused": "This paragraph contains math, so it can't be edited as a whole — select just the text you want to change.",
+    "paragraphEditComplexRefused": "This paragraph's layout is too complex to edit as a whole — select just the text you want to change.",
+    "recentMissing": "Can't reopen that file — it may have been moved or deleted.",
+    "recentWebAccessLost": "The browser needs file access again.",
+    "recentWebUnsupported": "This browser can't reopen recent files automatically. Use Open file to pick the PDF again.",
+    "recentWebAccess": {
+      "handleMissing": "The browser forgot this saved file permission.",
+      "permissionDenied": "File access was denied.",
+      "fileUnavailable": "The saved file could not be read."
+    },
+    "recentWebAccessAction": "Choose file",
+    "openPermissionDenied": "Can't read that file from the current app file permission scope.",
+    "removedAnnotations_one": "Removed {{count}} annotation",
+    "removedAnnotations_other": "Removed {{count}} annotations",
+    "copiedAnnotations_one": "Copied {{count}} annotation",
+    "copiedAnnotations_other": "Copied {{count}} annotations",
+    "duplicatedAnnotations_one": "Duplicated {{count}} annotation",
+    "duplicatedAnnotations_other": "Duplicated {{count}} annotations",
+    "pastedAnnotations_one": "Pasted {{count}} annotation onto page {{page}}",
+    "pastedAnnotations_other": "Pasted {{count}} annotations onto page {{page}}",
+    "deletedPage": "Deleted page {{page}}",
+    "undo": "Undo",
+    "liveAnnotations_one": "1 annotation added by the Shiori CLI",
+    "liveAnnotations_other": "{{count}} annotations added by the Shiori CLI",
+    "placedAnnotation": "Annotation placed"
+  },
+  "drafts": {
+    "saving": "Saving…",
+    "unsaved": "Unsaved",
+    "saveFailed": "Draft save failed",
+    "saveFailedToast": "Draft save failed. Your latest edits may not be recoverable.",
+    "saveQuotaFailedToast": "Draft storage is full.",
+    "saveQuotaFailedDetail": "Open Settings → Storage and clear older drafts, then try again.",
+    "saveTransientFailedToast": "Draft save failed.",
+    "saveTransientFailedDetail": "Please try again in a moment.",
+    "saved": "Saved",
+    "storageTooltip": "Local draft storage used / cap",
+    "restoreTitle": "Editing will overwrite the set-aside draft",
+    "restoreBody": "This file still has a draft from {{rel}} that is not loaded. Decide what happens to it before editing.",
+    "restoredNotice": "Restored edits from {{rel}}",
+    "openOriginal": "Open the original",
+    "setAside": "Draft not loaded",
+    "restoreSetAside": "Restore draft",
+    "restore": "Restore",
+    "discard": "Discard",
+    "discardConfirmTitle": "Discard this draft?",
+    "discardConfirmBody": "This permanently removes the saved draft for this file. The original PDF stays untouched.",
+    "discardCancel": "Keep draft",
+    "discardConfirm": "Discard draft"
+  },
+  "exportStatus": {
+    "clean": "No export needed",
+    "cleanTitle": "This PDF has no edits that need exporting.",
+    "needsExport": "Not exported",
+    "needsExportTitle": "Your latest edits are saved locally, but have not been exported to a PDF yet.",
+    "exported": "Exported",
+    "exportedTitle": "Current edits were exported to {{path}}.",
+    "unknownPath": "the selected file"
+  },
+  "diagnostics": {
+    "copy": "Copy diagnostic info",
+    "copied": "Copied",
+    "copyFailed": "Copy failed",
+    "code": "Diagnostic code: {{code}}",
+    "dialogLabel": "Shiori render diagnostic"
+  },
+  "canvasWarning": {
+    "title": "Canvas may be restricted",
+    "body": "Shiori for web uses Canvas to render PDFs locally on your device. Canvas read/write access appears to be limited or modified, usually by CanvasBlocker or a similar privacy extension. To keep Shiori working normally, allow the current site in that extension.",
+    "siteLabel": "Current site to allow",
+    "copySite": "Copy site",
+    "copied": "Copied",
+    "copyFailed": "Copy failed",
+    "effectsTitle": "What may be affected",
+    "effectRender": "PDF pages may render blank or fail to render.",
+    "effectThumbs": "Recent-document thumbnails may not be generated.",
+    "effectExport": "Small-file export may not calculate size, or may fall back to Standard.",
+    "footer": "You do not need to disable your privacy extension entirely; allowing this site is enough. The desktop app is not affected by browser extensions.",
+    "retry": "Check again",
+    "checking": "Checking…",
+    "continue": "Continue",
+    "okToast": "Canvas check passed."
+  },
+  "storage": {
+    "section": "Storage",
+    "used": "{{used}} of {{cap}} used",
+    "draftCount_one": "{{count}} draft",
+    "draftCount_other": "{{count}} drafts",
+    "empty": "No saved drafts.",
+    "evictionNotice_one": "Freed space by clearing {{count}} older draft: {{names}}.",
+    "evictionNotice_other": "Freed space by clearing {{count}} older drafts: {{names}}.",
+    "evictionDismiss": "Dismiss",
+    "lastEdited": "edited {{rel}}",
+    "uses": "{{size}} stored",
+    "delete": "Delete",
+    "clearAll": "Clear all drafts",
+    "openManager": "Manage local cache and drafts",
+    "usedOfQuota": "{{used}} / {{quota}} used",
+    "capNote": "This is an app limit, not your device's storage quota.",
+    "persistent": "Protected from automatic cleanup",
+    "bestEffort": "May be cleared under storage pressure or inactivity",
+    "clearAllCancel": "Keep drafts",
+    "clearAllConfirm_one": "Delete this draft",
+    "clearAllConfirm_other": "Delete all {{count}} drafts"
+  },
+  "history": {
+    "undo": "Undid last edit",
+    "redo": "Redid edit"
+  },
+  "signatures": {
+    "title": "Signature",
+    "subtitle": "Saved locally",
+    "name": "Name",
+    "defaultName": "Signature {{count}}",
+    "import": "Import PNG/JPEG",
+    "clear": "Clear",
+    "save": "Save signature",
+    "saved": "Saved",
+    "empty": "No saved signatures.",
+    "choose": "Choose signature",
+    "use": "Use",
+    "kinds": {
+      "ink": "Handwritten",
+      "image": "Image"
+    },
+    "errors": {
+      "unsupported": "Only PNG or JPEG images are supported.",
+      "tooLarge": "Images must be 5 MB or smaller.",
+      "storage": "Shiori couldn't update your saved signatures. Free some device storage and try again."
+    }
+  },
+  "tools": {
+    "select": "Select",
+    "markup": "Markup",
+    "draw": "Draw",
+    "highlight": "Highlight",
+    "underline": "Underline",
+    "strikethrough": "Strikethrough",
+    "ink": "Ink",
+    "signature": "Signature",
+    "stamp": "Stamp",
+    "sign": "Sign",
+    "rect": "Rectangle",
+    "note": "Note",
+    "callout": "Comment",
+    "text": "Text",
+    "selectLong": "Select",
+    "markupLong": "Markup",
+    "highlightLong": "Highlight",
+    "underlineLong": "Underline",
+    "strikethroughLong": "Strikethrough",
+    "inkLong": "Ink / pen",
+    "signatureLong": "Signature",
+    "stampLong": "Stamp",
+    "rectLong": "Rectangle",
+    "noteLong": "Sticky note",
+    "calloutLong": "Comment",
+    "textLong": "Text"
+  },
+  "inspector": {
+    "selectionPrefix": "Selection · {{type}}",
+    "labels": {
+      "highlight": "Highlight",
+      "markup": "Markup",
+      "underline": "Underline",
+      "strikethrough": "Strikethrough",
+      "ink": "Ink",
+      "signature": "Signature",
+      "stamp": "Stamp",
+      "rectangle": "Rectangle",
+      "note": "Sticky note",
+      "callout": "Comment",
+      "text": "Text",
+      "select": "Select"
+    },
+    "fields": {
+      "opacity": "Opacity",
+      "markupMode": "Markup style",
+      "drawMode": "Draw mode",
+      "signMode": "Sign mode",
+      "weight": "Weight",
+      "size": "Size",
+      "color": "Color",
+      "fill": "Fill",
+      "fillNone": "Fill · None",
+      "content": "Text content",
+      "font": "Font",
+      "lineWeight": "Line weight {{value}}",
+      "width": "Width",
+      "height": "Height",
+      "angle": "Angle"
+    },
+    "hints": {
+      "highlight": "Drag to mark an area",
+      "underline": "Drag across text to underline",
+      "strikethrough": "Drag across text to strike through",
+      "ink": "Freehand draw · Hold Shift for straight lines",
+      "signature": "Select or drag to place the signature",
+      "signatureEmpty": "Choose a signature first",
+      "stamp": "Choose check or cross · select to place",
+      "rect": "Drag to draw · release to commit",
+      "note": "Select to place · double-click or double-tap to edit",
+      "callout": "Select text or drag an area · then write the comment",
+      "select": "Select an annotation to edit · Shift-select to add · Drag to move · ⌘+drag to duplicate"
+    },
+    "align": {
+      "label": "Alignment",
+      "left": "Align left",
+      "center": "Align center",
+      "right": "Align right"
+    }
+  },
+  "types": {
+    "highlight": "highlight",
+    "underline": "underline",
+    "strikethrough": "strikethrough",
+    "ink": "ink",
+    "signature": "signature",
+    "image": "image",
+    "stamp": "stamp",
+    "rect": "rectangle",
+    "note": "note",
+    "callout": "comment",
+    "contentText": "edited text",
+    "text": "text"
+  },
+  "thumbs": {
+    "header": "Pages",
+    "total": "{{count}} TOTAL",
+    "rotate": "Rotate",
+    "duplicate": "Duplicate",
+    "delete": "Delete",
+    "pageActions": "Page actions",
+    "insertPage": "Insert page",
+    "addPages": "Add pages",
+    "insertBlankPage": "Insert blank page",
+    "insertPdfPages": "Insert pages from PDF…",
+    "insertingPdf": "Inserting PDF pages…",
+    "dragHint": "Drag to reorder"
+  },
+  "insertPdf": {
+    "encryptedIncoming": {
+      "title": "The selected PDF is password-protected.",
+      "message": "Pages from a password-protected PDF cannot be inserted. Choose an unencrypted PDF."
+    },
+    "baseEncryption": {
+      "title": "The current PDF cannot be kept encrypted safely.",
+      "message": "Its security could not be verified or reproduced. Nothing was inserted."
+    },
+    "pagesPermission": {
+      "title": "This password does not allow inserting pages.",
+      "message": "Open the current PDF with its owner password to insert pages."
+    },
+    "targetMissing": {
+      "title": "That page is no longer available.",
+      "message": "Choose the insertion point again; the document was left untouched."
+    },
+    "targetChanged": {
+      "title": "The insertion target is no longer active.",
+      "message": "Nothing was inserted. Return to the document and try again."
+    },
+    "interactive": {
+      "title": "This PDF contains unsupported interactive content.",
+      "message": "Forms, signatures, scripts, and media actions can't be reduced to pages safely."
+    },
+    "navigation": {
+      "title": "This PDF's page links can't be preserved safely.",
+      "message": "Nothing was inserted; the current document was left untouched."
+    },
+    "empty": {
+      "title": "This PDF has no pages.",
+      "message": "Choose a PDF that contains at least one page."
+    },
+    "invalidPosition": {
+      "title": "The insertion point changed.",
+      "message": "Choose the page again; the current document was left untouched."
+    },
+    "documentFiles": {
+      "title": "This PDF's embedded files can't be separated safely.",
+      "message": "Nothing was inserted; the current document was left untouched."
+    },
+    "baseDocumentFiles": {
+      "title": "The current PDF's attachments couldn't be preserved.",
+      "message": "Nothing was inserted; the current document was left untouched."
+    },
+    "baseSigned": {
+      "title": "Pages can't be inserted into this signed PDF.",
+      "message": "Rewriting it would invalidate its digital signature, so the current document was left untouched."
+    }
+  },
+  "rail": {
+    "outline": "Outline",
+    "comments": "Notes",
+    "terminal": "Terminal",
+    "browser": "Browser",
+    "close": "Close",
+    "outlineLoading": "Reading outline…",
+    "outlineEmpty": "This document doesn't include a table of contents.",
+    "commentsEmpty": "No notes yet. Add a sticky note to start a discussion.",
+    "pagePrefix": "p.",
+    "undated": "undated",
+    "resize": "Drag to resize panel",
+    "outlineExpand": "Expand section",
+    "outlineCollapse": "Collapse section",
+    "outlineTargetMissing": "The target page is no longer in this document"
+  },
+  "terminal": {
+    "title": "Terminal",
+    "connecting": "Starting shell…",
+    "sessionEnded": "Shell session ended.",
+    "resize": "Drag to resize terminal",
+    "openFailed": "Couldn't open terminal",
+    "external": {
+      "choose": "Choose external terminal",
+      "menuLabel": "Open the document folder in an external terminal",
+      "openIn": "Open in {{name}}",
+      "opening": "Opening {{name}}…",
+      "loading": "Looking for installed terminals…",
+      "noneAvailable": "No supported external terminal is installed.",
+      "discoveryFailed": "Couldn't find installed terminals",
+      "discoveryFailedDetail": "Try again, or restart Shiori after installing a terminal.",
+      "retry": "Try again",
+      "openFailed": "Couldn't open in {{name}}",
+      "openFailedDetail": "Check that the app is still installed, then try again."
+    },
+    "errors": {
+      "unsupported": "The embedded terminal is only available in the desktop app.",
+      "unavailable": "No system shell could be started. Check that a shell is installed, then try again.",
+      "cwdUnavailable": "Unable to resolve a working folder. Open a document saved on this device, then try again.",
+      "cwdNotDirectory": "The selected working folder is unavailable. Choose another folder, then try again.",
+      "sessionMissing": "That terminal session no longer exists. Open a new terminal to continue.",
+      "expired": "This beta build has expired."
+    },
+    "sessions": "Terminal sessions",
+    "newSession": "New terminal",
+    "closeSession": "Close terminal"
+  },
+  "browser": {
+    "title": "Browser",
+    "addressPlaceholder": "Search or enter address",
+    "back": "Back",
+    "forward": "Forward",
+    "reload": "Reload",
+    "copyLink": "Copy link",
+    "copied": "Link copied",
+    "openExternal": "Open in system browser",
+    "resize": "Drag to resize browser",
+    "empty": "Run `open https://…` in the terminal, or type an address above.",
+    "unavailable": "The browser panel is only available in the desktop app.",
+    "loadFailed": "Couldn't load this page. Check the address, then reload."
+  },
+  "export": {
+    "title": "Export PDF",
+    "sections": {
+      "pages": "Pages",
+      "annotations": "Annotations",
+      "quality": "File size"
+    },
+    "range": {
+      "all": "All pages",
+      "allHint_one": "{{count}} page",
+      "allHint_other": "{{count}} pages",
+      "current": "Current page only",
+      "currentHint": "Page {{page}}",
+      "custom": "Custom range",
+      "customPlaceholder": "e.g. 1–4, 7",
+      "attachmentsOmitted": "Document attachments from the original PDF are not included when you export selected pages."
+    },
+    "annot": {
+      "editable": "Editable annotations",
+      "editableHint": "Highlights, notes, shapes, ink, and text stay as real PDF annotations. Reopen and edit in external PDF editors such as Acrobat, Foxit, or PDF Expert.",
+      "flatten": "Flatten into page",
+      "flattenHint": "Burn overlays into the page content. They can't be removed or re-edited — useful for signing or stamping.",
+      "none": "Original only",
+      "noneHint": "Export the selected pages with no annotations at all."
+    },
+    "quality": {
+      "original": "Original",
+      "originalHint": "{{size}} · best compatibility",
+      "standard": "Standard",
+      "standardHint": "{{size}} · vectors and annotations stay editable",
+      "compact": "Small file",
+      "compactHint": "{{size}} · saves the smaller PDF",
+      "sizeOnSelect": "Select to calculate size",
+      "sizeCalculating": "Calculating size…",
+      "sizeUnavailable": "Size unavailable",
+      "notice": "Small file may flatten pages into images. After export, text may not be selectable, searchable, or copyable; links/outlines may stop working; annotations may no longer be editable. Choose Standard to keep those abilities."
+    },
+    "footer": "Saved locally. Nothing leaves your machine.",
+    "cancel": "Cancel",
+    "busy": "Exporting…",
+    "action": "Export PDF",
+    "emptyError": "Nothing to export — empty page range.",
+    "fontError": "Export font failed to load, so Chinese text annotations cannot be exported safely.",
+    "integrityError": "The exported PDF failed an integrity check and was not saved. Please try again.",
+    "signedSourceError": "This PDF is digitally signed or certified. Shiori did not export changes because rebuilding it would invalidate the signature.",
+    "encryptedSourceError": "Shiori could not read this PDF's encryption, so it cannot write your changes into it. Your annotations are still saved here.",
+    "lostCharsWarning_one": "{{count}} character could not be encoded and was replaced with “?”.",
+    "lostCharsWarning_other": "{{count}} characters could not be encoded and were replaced with “?”.",
+    "lostCharsConfirmTitle": "Some characters will change",
+    "lostCharsConfirmBody_one": "{{count}} character cannot be encoded and will be replaced with “?” in the exported PDF.",
+    "lostCharsConfirmBody_other": "{{count}} characters cannot be encoded and will be replaced with “?” in the exported PDF.",
+    "lostCharsConfirmCancel": "Go back",
+    "lostCharsConfirmAction": "Export with replacements",
+    "lostCharsPrintConfirm_one": "{{count}} character cannot be encoded and will be replaced with “?” in the printed document. Print with the replacement?",
+    "lostCharsPrintConfirm_other": "{{count}} characters cannot be encoded and will be replaced with “?” in the printed document. Print with the replacements?",
+    "cjkAnnotationsHint": "In annotations mode, CJK characters are rendered as vector outlines—external PDF editors can recover the text but cannot re-edit its style. Choose flatten for fully-editable text.",
+    "closedUnexported": "Closed with unexported edits — they're saved as a draft; reopen this file to continue, or export to get a shareable PDF.",
+    "permissionError": "This PDF's permissions do not allow {{edits}}. Open it with the owner password to export these edits.",
+    "permissionEdits": {
+      "annotations": "changing annotations",
+      "content": "changing page content",
+      "pages": "rearranging pages"
+    },
+    "encryptionUnsupportedError": "Shiori cannot reproduce this PDF's encryption exactly, so it stopped rather than export your changes without the password. Your annotations are still saved here.",
+    "encryptionVerifyError": "The exported PDF did not reopen with this PDF's password, so it was not saved. Please try again.",
+    "printPermissionError": "This PDF's permissions do not allow printing. Open it with the owner password to print it.",
+    "printSecurityUnknownError": "Shiori could not read this PDF's security settings, so it did not print it.",
+    "signedPrintError": "This PDF is digitally signed or certified. Printing it here would need a rebuilt copy, which Shiori does not make of signed files; print it from your system's PDF viewer instead."
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "These settings live only on this device.",
+    "close": "Close",
+    "sections": {
+      "appearance": "Appearance",
+      "language": "Language",
+      "privacy": "Privacy",
+      "performance": "Performance",
+      "about": "About"
+    },
+    "colorMode": "Color mode",
+    "colorModeOptions": {
+      "Auto": "Auto",
+      "Light": "Light",
+      "Dark": "Dark"
+    },
+    "theme": "Theme",
+    "themeOptions": {
+      "Default": "Default",
+      "Everforest": "Everforest"
+    },
+    "pdfPaperTone": "PDF paper tone",
+    "pdfPaperToneHint": "Changes only how PDF pages look on screen. The original PDF and exports keep their colors.",
+    "pdfPaperToneOptions": {
+      "Original": "Original",
+      "Everforest": "Everforest",
+      "Custom": "Custom"
+    },
+    "pdfPaperCustom": "Custom PDF paper color",
+    "pdfPaperCustomReset": "Reset to Everforest paper",
+    "pdfPaperCustomHex": "Custom HEX color",
+    "pdfPaperCustomApply": "Apply",
+    "pdfPaperCustomInvalid": "Enter an opaque color as #RGB or #RRGGBB.",
+    "pdfPaperCustomEffective": "Effective {{color}}",
+    "pdfPaperCustomAdjusted": "Lightened automatically for readability",
+    "accentColor": "Accent color",
+    "accentColorHint": "Used exactly as chosen for focus and primary actions; text colors remain readable automatically.",
+    "accentThemeDefault": "Theme default",
+    "accentCustomize": "Customize accent color",
+    "accentReset": "Reset to the theme color",
+    "accentCustom": "Custom HEX color",
+    "accentInvalid": "Enter an opaque color as #RGB or #RRGGBB.",
+    "terminalColorMode": "Terminal color mode",
+    "terminalColorModeAuto": "Follow app",
+    "terminalColorModeHint": "Auto follows the app color mode; changing it keeps the current shell running.",
+    "terminalTheme": "Terminal theme",
+    "terminalThemeAuto": "Follow app",
+    "terminalThemeHint": "Auto follows the app theme; changing it keeps the current shell running.",
+    "serifAccents": "Serif accents",
+    "serifAccentsHint": "Italic display in titles and dialogs.",
+    "pageMargin": "Page margin",
+    "pageMarginHint": "Padding around the open document.",
+    "annotationAnimations": "Animate annotations",
+    "annotationAnimationsHint": "Replay comments when a PDF opens and draw new app or CLI annotations stroke by stroke. Turn off to show their final state immediately.",
+    "calloutFollowUp": "Show comment follow-up",
+    "calloutFollowUpHint": "Show the follow-up field only when Claude Code or Codex is installed on this computer.",
+    "marginOptions": {
+      "Tight": "Tight",
+      "Comfortable": "Comfortable",
+      "Roomy": "Roomy"
+    },
+    "language": "Language",
+    "languageHint": "Interface text.",
+    "languageOptions": {
+      "en": "English",
+      "zh": "中文",
+      "ja": "日本語"
+    },
+    "remoteImagePolicy": "Remote images",
+    "remoteImagePolicyHint": "Remote images can expose your IP address and which document you opened. Shiori asks by default.",
+    "remoteImagePolicyOptions": {
+      "ask": "Ask",
+      "always": "Always",
+      "never": "Never"
+    },
+    "browserPersistSession": "Keep browser logins",
+    "browserPersistSessionHint": "Save cookies and site storage for the embedded Browser panel. Turn off for a temporary session; changing this closes the current browser page.",
+    "preRender": "Pre-render thumbnails",
+    "preRenderHint": "Uses more memory; automatically lazy-renders above 100 pages.",
+    "resourceMetrics": "Resource usage",
+    "resourceMetricsInterval": "Every 3s",
+    "resourceMetricsWindow": "Last 10 min",
+    "resourceMetricsHint": "Low-frequency sampling runs every 3s, only while Preferences is open. Colors show app-level pressure for the Shiori process; this WebView does not expose exact GPU load, so Shiori shows the GPU's vendor and renderer instead.",
+    "resourceMetricsError": "Native process metrics are unavailable right now.",
+    "metricCpu": "CPU",
+    "metricMemory": "Memory",
+    "metricGpu": "GPU",
+    "metricJsHeap": "JS heap",
+    "metricCurrentProcess": "Current process",
+    "metricPressure": {
+      "normal": "Pressure normal",
+      "elevated": "Pressure elevated",
+      "critical": "Pressure spike"
+    },
+    "metricLoading": "Sampling",
+    "metricUnavailable": "Unavailable",
+    "gpuRendererUnknown": "Renderer unavailable",
+    "metricMemoryProcess": "App process",
+    "metricMemoryHeap": "JS heap",
+    "resourceMetricsProcessNote": "Native CPU/memory cover the app host process; the web-content renderer is measured separately.",
+    "resourceMetricsUnsupported": "Live resource metrics aren't available on this platform yet.",
+    "about": "Local-first. Nothing leaves your machine.",
+    "viewDisclaimer": "Show the beta notice again",
+    "copyVersion": "Copy version",
+    "versionCopied": "Version copied to clipboard.",
+    "versionCopyFailed": "Couldn't copy the version.",
+    "aboutLinks": {
+      "website": "Website",
+      "releases": "GitHub Releases"
+    },
+    "directApkUpdates": "This direct APK build can download updates in Shiori. Android will still ask you to approve the APK before installing.",
+    "checkForUpdates": "Check for updates",
+    "checkingForUpdates": "Checking…",
+    "upToDate": "You're on the latest version."
+  },
+  "betaDisclaimer": {
+    "title": "A quick note before you start",
+    "body1": "Shiori is still in beta, so please keep a backup of anything important before editing it here — especially PDFs that have already been edited in other apps. Those can carry quirks that make saves go sideways.",
+    "body2": "Everything stays on your device. If you hit a bug, I'd love to hear about it — but during the beta I can't take responsibility for edits that don't come through cleanly.",
+    "footerHint": "You can reopen this note any time from Settings → About.",
+    "acknowledge": "Got it"
+  },
+  "goto": {
+    "title": "Go to page",
+    "subtitle_one": "{{count}} page",
+    "subtitle_other": "{{count}} pages",
+    "input": "Page number",
+    "hint": "Choose a page from this document.",
+    "invalid": "Enter a page from 1 to {{count}}.",
+    "cancel": "Cancel",
+    "action": "Go"
+  },
+  "find": {
+    "placeholder": "Find in document",
+    "loading": "Indexing {{loaded}} / {{total}} pages",
+    "empty": "Type to search this PDF",
+    "error": "Couldn't index this document. Close and reopen the file to search it.",
+    "noMatches": "No matches",
+    "count": "{{current}} / {{total}} matches",
+    "page": "Page {{page}}",
+    "pageShort": "p. {{page}}",
+    "previous": "Previous match",
+    "next": "Next match",
+    "close": "Close find"
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "subtitle": "A quick reference",
+    "groups": {
+      "tools": "Tools",
+      "edit": "Edit",
+      "navigation": "Navigation",
+      "zoom": "Zoom"
+    },
+    "rows": {
+      "select": "Select",
+      "markup": "Markup",
+      "highlight": "Highlight",
+      "underline": "Underline",
+      "strikethrough": "Strikethrough",
+      "ink": "Ink / pen",
+      "signature": "Signature",
+      "stamp": "Stamp",
+      "rect": "Rectangle",
+      "text": "Text",
+      "undo": "Undo",
+      "redo": "Redo",
+      "deleteSel": "Delete selection",
+      "copy": "Copy annotation",
+      "paste": "Paste annotation",
+      "duplicate": "Duplicate",
+      "selectAll": "Select all on page",
+      "nudge": "Move selection",
+      "rotate": "Rotate selection (drag handle; ⇧ = snap to 15°)",
+      "print": "Print",
+      "find": "Find in document",
+      "nextPrev": "Next / previous page",
+      "goto": "Go to page…",
+      "pan": "Hold to pan",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "fit": "Fit width",
+      "actual": "Actual size",
+      "readerMode": "Toggle reader mode",
+      "callout": "Comment"
+    }
+  },
+  "landing": {
+    "heroLine1": "Read, annotate, and deliver",
+    "heroAccent": "everything you read — quietly.",
+    "dropTitleIdle": "Drop a document anywhere",
+    "dropTitleActive": "Drop to open",
+    "dropHint": "Or open one — also Word, Markdown & HTML · beta limit {{maxSize}} or {{maxPages}} pages · opens in place",
+    "openFile": "Open file",
+    "continueLast": "Continue last session",
+    "valueProps": {
+      "offline": "Runs entirely offline",
+      "noSignin": "No sign-in required",
+      "keyboard": "Keyboard-first",
+      "oss": "Nothing leaves your machine"
+    },
+    "footer": {
+      "version": "Shiori · v {{version}}",
+      "feedback": "Feedback",
+      "feedbackTitle": "Open feedback and roadmap",
+      "shortcuts": "⌘ ? for shortcuts"
+    },
+    "recentHeader": "Recent documents",
+    "recentEmpty": "Nothing here yet. Open a document and it'll show up.",
+    "recentUnsupported": "This browser cannot reopen recent documents automatically. Use Open file to pick the same file again — your annotations are saved on this device and come right back.",
+    "forgetRecent": "Remove from recent documents",
+    "recentNeedsAccess": "Needs access",
+    "recentNeedsAccessHint": "Pick the same file again to reopen it — annotations are saved on this device and come right back.",
+    "recentPages_one": "{{count}} page",
+    "recentPages_other": "{{count}} pages",
+    "themeToggleToLight": "Switch to light mode",
+    "themeToggleToDark": "Switch to dark mode"
+  },
+  "empty": {
+    "title": "No pages left.",
+    "message": "Open another PDF to continue.",
+    "import": "Open PDF",
+    "addPage": "Add blank page"
+  },
+  "error": {
+    "title": "This file won't open.",
+    "message": "This file could not be opened.",
+    "tooLarge": {
+      "title": "This PDF is too large for the beta.",
+      "message": "Over the {{maxSize}} beta file-size limit. The current document was left untouched."
+    },
+    "tooManyPages": {
+      "title": "This PDF has too many pages for the beta.",
+      "message": "Over the {{maxPages}} page beta limit. The current document was left untouched."
+    },
+    "pageTooLarge": {
+      "title": "This PDF page is too large for the beta.",
+      "message": "One page exceeds Shiori's render budget. The current document was left untouched."
+    },
+    "renderTooLarge": {
+      "title": "This PDF page is too large to render safely.",
+      "message": "This page would exceed Shiori's canvas memory budget at the current zoom. The current document was left untouched."
+    },
+    "password": {
+      "title": "This PDF is password-protected.",
+      "message": "A password is required before Shiori can read it. The current document was left untouched."
+    },
+    "damaged": {
+      "title": "This PDF appears to be damaged.",
+      "message": "It could not be parsed into a readable page tree. The current document was left untouched."
+    },
+    "engineUnavailable": {
+      "title": "Shiori's PDF engine did not start.",
+      "message": "No PDF can be opened until it does. Restart Shiori; if this keeps happening, reinstall it or use an up-to-date browser. The current document was left untouched."
+    },
+    "unknown": {
+      "title": "This file won't open.",
+      "message": "An unexpected PDF read error occurred. The current document was left untouched."
+    },
+    "unsupportedDocument": {
+      "title": "Unsupported document type.",
+      "message": "Open a PDF, Word, Markdown, or HTML file."
+    },
+    "retry": "Try another file",
+    "dismiss": "Dismiss",
+    "codePrefix": "ERR_PDF_PARSE"
+  },
+  "password": {
+    "title": "Password required",
+    "hint": "This PDF is protected. Enter the password to open it.",
+    "input": "PDF password",
+    "placeholder": "Password",
+    "wrong": "Incorrect password. Please try again.",
+    "unlock": "Unlock",
+    "cancel": "Cancel"
+  },
+  "encryptedPdfWarning": {
+    "title": "This PDF restricts editing",
+    "body": "The password you opened it with allows reading, but not {{edits}}. Exports keep the original password; to export these edits, open the file with its owner password.",
+    "continue": "Continue reading"
+  },
+  "expired": {
+    "title": "This Shiori build has expired.",
+    "body": "Built {{built}}, expired {{expired}}. This closed beta build has reached its test window. Grab the latest build to keep testing — your drafts stay on your machine and carry over.",
+    "copy": "Copy link",
+    "copied": "Copied",
+    "footnote": "Paste the link into any browser to download the newest build."
+  },
+  "overlays": {
+    "textPlaceholder": "Text…",
+    "calloutPlaceholder": "Write a short comment…",
+    "contentTextOverflow": "Wider than the original text — export may wrap or overflow",
+    "contentTextMissingGlyphs_one": "{{count}} character may be missing from the source font — export will use a bundled font",
+    "contentTextMissingGlyphs_other": "{{count}} characters may be missing from the source font — export will use a bundled font",
+    "notePlaceholder": "Double-click or tap to edit…",
+    "noteAuthor": "Note",
+    "noteCollapse": "Collapse note",
+    "noteExpand": "Expand note",
+    "calloutCollapse": "Collapse comment",
+    "calloutExpand": "Expand comment",
+    "threadYou": "You",
+    "threadAgent": "Agent",
+    "threadReplyPlaceholder": "Follow up…",
+    "threadCollapse": "Collapse conversation",
+    "threadExpand": "Expand conversation",
+    "threadCount_one": "{{count}} turn",
+    "threadCount_other": "{{count}} turns",
+    "threadDeleteTurn": "Delete this turn",
+    "threadNoTerminalToast": "Your follow-up is saved on the comment",
+    "threadNoTerminalDetail": "Start an agent session in the terminal rail and it can pick up your question."
+  },
+  "selectionPopup": {
+    "label": "Markup selected text",
+    "highlight": "Highlight",
+    "underline": "Underline",
+    "strikethrough": "Strikethrough",
+    "callout": "Comment",
+    "crossPageHint": "Cross-page markup isn't supported yet"
+  },
+  "color": {
+    "recent": "Recent",
+    "palette": "Palette",
+    "custom": "Custom",
+    "more": "More colors",
+    "swatch": "Color {{hex}}"
+  },
+  "tooltips": {
+    "undo": "Undo (⌘Z)",
+    "redo": "Redo (⇧⌘Z)",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "actualSize": "Actual size (100%)",
+    "zoomLevel": "Zoom — click to type a %",
+    "fitWidth": "Fit width",
+    "find": "Find (⌘F)",
+    "delete": "Delete (⌫)",
+    "lock": "Lock annotation",
+    "unlock": "Unlock annotation",
+    "bold": "Bold",
+    "italic": "Italic",
+    "copyTextEditDebug": "Copy text edit debug log",
+    "stamp": "Stamp (S)",
+    "rotate": "Rotate"
+  },
+  "update": {
+    "title": "Update available",
+    "subtitle": "Shiori {{from}} → {{to}}",
+    "installNow": "Update now",
+    "later": "Later",
+    "installing": "Installing…",
+    "openingDownload": "Opening download…",
+    "downloadingApk": "Downloading APK…",
+    "downloadApk": "Download APK",
+    "downloadAndInstallApk": "Download and install",
+    "starting": "Preparing…",
+    "noNotes": "No release notes for this version.",
+    "error": "Update failed: {{message}}",
+    "errors": {
+      "android-install-permission-required": "Allow Shiori to install unknown apps in Android Settings, then try again.",
+      "android-update-sha256-mismatch": "The downloaded APK did not match the expected checksum. Try the update again.",
+      "android-update-sha256-missing": "The update does not include a valid SHA-256 checksum, so Shiori did not download or install it.",
+      "android-update-size-mismatch": "The downloaded APK size did not match the release metadata. Try the update again.",
+      "android-update-package-mismatch": "The downloaded APK is not a Shiori update. Download the update from the Shiori website instead.",
+      "android-update-apk-invalid": "The downloaded APK could not be read. Try the update again.",
+      "android-update-version-not-newer": "The downloaded APK is not newer than this app, so nothing was installed. You are already up to date.",
+      "android-update-version-mismatch": "The downloaded APK version did not match the release metadata. Try the update again.",
+      "android-update-url-not-allowed": "The update URL is not trusted. Download the update from the Shiori website instead.",
+      "android-direct-updater-disabled": "This build does not support direct APK updates. Update Shiori through the store you installed it from.",
+      "android-install-launch-failed": "Android could not open the APK installer.",
+      "android-update-failed": "The update could not be installed. Please try again.",
+      "android-update-request-failed": "Shiori could not start the update. Please try again.",
+      "android-update-request-invalid": "The update request was rejected as invalid.",
+      "android-update-id-missing": "The update is missing its identifier and was not installed.",
+      "android-update-url-missing": "The update is missing its download address and was not installed.",
+      "android-update-download-failed": "The update download failed (HTTP {{code}}). Check your connection and try again."
+    }
+  },
+  "folderTree": {
+    "loading": "Reading…",
+    "empty": "Nothing Shiori can open here.",
+    "unreadable": "Couldn't read this folder.",
+    "retry": "Try again",
+    "truncated": "Too many files to list them all."
+  },
+  "a11y": {
+    "annotation": {
+      "replies_one": "{{count}} reply",
+      "replies_other": "{{count}} replies",
+      "locked": "locked",
+      "empty": "empty",
+      "marks_one": "{{count}} mark",
+      "marks_other": "{{count}} marks"
+    },
+    "landmarks": {
+      "thumbnails": "Pages",
+      "rail": "Workspace"
+    }
+  },
+  "docx": {
+    "viewerLabel": "Word document",
+    "loadFailed": "This Word document could not be displayed.",
+    "retry": "Reload and try again"
+  }
+}

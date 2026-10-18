@@ -1,0 +1,298 @@
+/* ───────── product window mock ─────────
+   The component (ProductWindow) renders this same chrome whether the
+   page theme is light or dark, OR it can be forced dark for the Preview
+   section regardless of page theme. The CSS uses scoped CSS variables
+   so a `.win-dark` override is local to the mock — it doesn't bleed. */
+.win {
+  background: var(--bg-2);
+  border-radius: 14px;
+  border: 1px solid var(--rule);
+  /* Tinted shadows — pick up the cool slate-blue of the page palette
+     instead of generic flat black. */
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .6) inset,
+    0 1px 2px rgba(20, 30, 60, .04),
+    0 30px 60px -28px rgba(20, 36, 70, .28),
+    0 14px 28px -18px rgba(20, 36, 70, .18);
+  overflow: hidden;
+  font-size: 12px;
+  transform: translateZ(0);
+  --win-bg-2: var(--bg-2);
+  --win-bg-panel: var(--bg-panel);
+  --win-ink: var(--ink);
+  --win-ink-2: var(--ink-2);
+  --win-ink-3: var(--ink-3);
+  --win-ink-4: var(--ink-4);
+  --win-rule: var(--rule);
+}
+[data-theme="dark"] .win:not(.win-dark) {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .04) inset,
+    0 30px 60px -25px rgba(0, 0, 0, .6),
+    0 12px 24px -16px rgba(0, 0, 0, .5);
+}
+.win-dark {
+  --win-bg-2: #111418;
+  --win-bg-panel: #191d25;
+  --win-ink: #eaeff6;
+  --win-ink-2: #b5bcc8;
+  --win-ink-3: #7a8292;
+  --win-ink-4: #5a6172;
+  --win-rule: #2b313b;
+  background: var(--win-bg-2);
+  color: var(--win-ink);
+  box-shadow:
+    0 30px 60px -25px rgba(0, 0, 0, .6),
+    0 12px 24px -16px rgba(0, 0, 0, .5);
+}
+
+.win-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--win-rule);
+  background: var(--win-bg-panel);
+  color: var(--win-ink-3);
+}
+.lights { display: inline-flex; gap: 6px; }
+.lights i {
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.lights i:nth-child(1) { background: #ff5f56; }
+.lights i:nth-child(2) { background: #ffbd2e; }
+.lights i:nth-child(3) { background: #27c93f; }
+.win-name {
+  font-family: var(--klee);
+  font-size: 13px;
+  color: var(--win-ink);
+}
+.win-icons {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--win-ink-3);
+}
+.win-title {
+  flex: 1;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--win-ink-3);
+  letter-spacing: .04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.win-title b { color: var(--win-ink); font-weight: 600; }
+.win-title .meta { margin-left: 10px; color: var(--win-ink-4); }
+/* .win-find ⌘F pill replaced by <Kbd keys="⌘F" /> inside .win-bar. */
+.win-export {
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border: 1px solid var(--win-rule);
+  border-radius: 6px;
+  background: var(--win-bg-2);
+  color: var(--win-ink-2);
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.win-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--win-rule);
+  background: var(--win-bg-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.win-toolbar::-webkit-scrollbar { display: none; }
+.tool {
+  font-size: 11.5px;
+  padding: 5px 10px;
+  border: 1px solid var(--win-rule);
+  border-radius: 6px;
+  background: var(--win-bg-2);
+  color: var(--win-ink-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.tool.active {
+  background: var(--win-ink);
+  color: var(--win-bg-2);
+  border-color: var(--win-ink);
+}
+.tool.active.accent {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+/* .tool single-letter chip moved to .win-toolbar .kbd-key. */
+.tool .swatch {
+  width: 10px; height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.tool-divider {
+  width: 1px; height: 16px;
+  background: var(--win-rule);
+  margin: 0 4px;
+}
+.tool-ic { padding: 5px 8px; }
+.zoom-meta {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--win-ink-3);
+}
+
+.win-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--win-rule);
+  background: var(--win-bg-panel);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--win-ink-3);
+  letter-spacing: .04em;
+}
+.win-status b {
+  color: var(--win-ink-2);
+  font-family: var(--sans);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.win-status .sep { color: var(--win-ink-4); }
+
+.win-body {
+  display: grid;
+  grid-template-columns: 124px 1fr;
+  min-height: 600px;
+}
+.pages-col {
+  border-right: 1px solid var(--win-rule);
+  background: var(--win-bg-panel);
+  padding: 12px 10px;
+}
+.pages-col .ph {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--win-ink-3);
+  letter-spacing: .08em;
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+.pages-col .ph b { color: var(--accent); font-weight: 600; }
+.thumb {
+  background: var(--paper);
+  border: 1px solid var(--win-rule);
+  border-radius: 4px;
+  aspect-ratio: 0.77;
+  margin-bottom: 8px;
+  position: relative;
+  overflow: hidden;
+}
+.thumb.active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+.thumb::before {
+  content: "";
+  position: absolute;
+  inset: 12% 16%;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--win-rule) 0 1px,
+    transparent 1px 4px
+  );
+  opacity: .65;
+}
+.thumb .num {
+  position: absolute;
+  bottom: 4px; left: 6px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--win-ink-3);
+}
+
+.doc {
+  background: #fbfbf9;
+  padding: 20px 26px 28px;
+  position: relative;
+  font-family: "Times New Roman", Times, serif;
+  color: #1a1a1a;
+  font-size: 11.2px;
+  line-height: 1.5;
+}
+.doc::before {
+  content: "PAGE 01";
+  position: absolute;
+  top: 8px; left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 9px;
+  color: #999;
+  letter-spacing: .12em;
+}
+.doc-title {
+  margin: 22px auto 6px;
+  border-top: 2px solid #111;
+  border-bottom: 1px solid #111;
+  padding: 8px 0;
+  font-family: "Times New Roman", Times, serif;
+  text-align: center;
+  font-size: 14.5px;
+  font-weight: 700;
+  max-width: 92%;
+}
+.doc-title mark { background: #f4d674; padding: 0 2px; color: #1a1a1a; }
+.doc-authors {
+  text-align: center;
+  font-size: 10.5px;
+  color: #222;
+  margin-top: 8px;
+}
+.doc-authors b { font-weight: 700; }
+.doc-affil {
+  text-align: center;
+  font-size: 9.5px;
+  color: #444;
+  margin-top: 4px;
+}
+.doc-section {
+  text-align: center;
+  font-weight: 700;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.doc-abs {
+  margin-top: 8px;
+  text-align: justify;
+  padding: 0 18px;
+}
+.doc-abs mark { background: #f4d674; padding: 0 1px; }
+.doc-side {
+  position: absolute;
+  left: 6px; top: 60%;
+  transform: translateY(-50%) rotate(-90deg);
+  transform-origin: left center;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: #888;
+  white-space: nowrap;
+}
+

@@ -1,0 +1,9 @@
+"$schema" = "schemas/schema.json"
+
+# This plugin is driven entirely from Rust (the app's `web_panel_*` commands
+# forward to it); it exposes no JavaScript commands, so the default permission
+# set is intentionally empty. The native WKWebView / Android WebView the plugin
+# manages is NOT a Tauri webview and is outside the capability ACL entirely.
+[default]
+description = "Shiori embedded browser plugin — Rust-driven, no JS command surface."
+permissions = []

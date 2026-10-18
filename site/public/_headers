@@ -1,0 +1,15 @@
+# Cloudflare Pages response headers for static assets.
+#
+# /cli.ps1 is the Windows installer, fetched as
+# `irm https://shiori.nagi.fun/cli.ps1 | iex`. PowerShell's Invoke-RestMethod
+# decides between returning a string and returning a byte[] from the response
+# content type, and `.ps1` is not in the mime table any static host ships — it
+# falls back to application/octet-stream, which iex cannot run. Declaring
+# text/plain here is what makes the one-liner work.
+#
+# The POSIX installer at /cli does not need a rule: it is served by
+# site/functions/cli.ts, which sets its own content type.
+/cli.ps1
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=300
+  X-Content-Type-Options: nosniff

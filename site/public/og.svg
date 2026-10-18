@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Shiori — local-first document reader and PDF editor">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBF8F1"/>
+      <stop offset="1" stop-color="#F4EEE1"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#paper)"/>
+  <!-- editorial frame -->
+  <rect x="40" y="40" width="1120" height="550" fill="none" stroke="#E2DAC9" stroke-width="2"/>
+  <!-- accent rule -->
+  <rect x="80" y="120" width="64" height="6" fill="#3388bb"/>
+
+  <!-- eyebrow -->
+  <text x="80" y="108" font-family="'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" font-size="22" letter-spacing="6" fill="#8A8170">SHIORI · 栞</text>
+
+  <!-- headline -->
+  <text x="78" y="250" font-family="Georgia, 'Times New Roman', 'Noto Serif', serif" font-size="66" font-weight="600" fill="#1A1815" letter-spacing="-1.5">Read, annotate, and deliver</text>
+  <text x="78" y="332" font-family="Georgia, 'Times New Roman', 'Noto Serif', serif" font-size="66" font-weight="600" fill="#3388bb" letter-spacing="-1.5">everything you read — quietly.</text>
+
+  <!-- subhead -->
+  <text x="80" y="416" font-family="'Inter', 'Helvetica Neue', Arial, sans-serif" font-size="29" fill="#5C5546">A local-first document reader and PDF editor.</text>
+  <text x="80" y="456" font-family="'Inter', 'Helvetica Neue', Arial, sans-serif" font-size="29" fill="#5C5546">Every page renders and every stroke stays on your machine.</text>
+
+  <!-- footer -->
+  <text x="80" y="556" font-family="'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace" font-size="24" letter-spacing="1" fill="#1A1815">shiori.nagi.fun</text>
+  <circle cx="1112" cy="548" r="9" fill="#3388bb"/>
+</svg>

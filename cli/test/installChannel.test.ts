@@ -1,0 +1,204 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { detectCliInstallTarget } from "../distribution";
+import { ensureCliBinary } from "../npm/install.mjs";
+
+const installSh = join(import.meta.dir, "..", "installer", "install.sh");
+const installPs1 = join(import.meta.dir, "..", "installer", "install.ps1");
+const powershell = Bun.which("pwsh") ?? Bun.which("powershell");
+
+async function withTempDir<T>(run: (dir: string) => Promise<T>): Promise<T> {
+  const dir = mkdtempSync(join(tmpdir(), "shiori-cli-channel-"));
+  try {
+    return await run(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+async function serveCliArchive(archive: Uint8Array, target: string) {
+  const sha256 = createHash("sha256").update(archive).digest("hex");
+  const server = Bun.serve({
+    port: 0,
+    fetch(request) {
+      const url = new URL(request.url);
+      if (url.pathname === "/archive.tar.gz") {
+        return new Response(archive, {
+          headers: { "Content-Type": "application/gzip" },
+        });
+      }
+      if (url.pathname === "/api/cli") {
+        if (url.searchParams.get("format") === "env") {
+          return new Response(
+            [
+              "SHIORI_CLI_AVAILABLE=1",
+              "SHIORI_CLI_VERSION=0.1.25",
+              `SHIORI_CLI_TARGET=${target}`,
+              `SHIORI_CLI_URL=http://127.0.0.1:${server.port}/archive.tar.gz`,
+              `SHIORI_CLI_SHA256=${sha256}`,
+              "SHIORI_CLI_SIZE=1",
+              "",
+            ].join("\n"),
+          );
+        }
+        return Response.json({
+          schema: "shiori.cli-release/v1",
+          available: true,
+          version: "0.1.25",
+          targets: {
+            [target]: {
+              url: `http://127.0.0.1:${server.port}/archive.tar.gz`,
+              sha256,
+              size: archive.byteLength,
+            },
+          },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    },
+  });
+  return { server, sha256 };
+}
+
+function makeArchive(dir: string, executable: string): Uint8Array {
+  const bin = join(dir, executable);
+  writeFileSync(bin, "#!/bin/sh\necho shiori-ok\n");
+  chmodSync(bin, 0o755);
+  const archive = join(dir, "shiori-cli.tar.gz");
+  const packed = spawnSync("tar", ["-czf", archive, executable], {
+    cwd: dir,
+    encoding: "utf8",
+  });
+  expect(packed.status).toBe(0);
+  return new Uint8Array(readFileSync(archive));
+}
+
+describe("CLI install channel", () => {
+  const target = detectCliInstallTarget(process.platform, process.arch);
+  const servers: Array<{ stop: () => void }> = [];
+
+  afterEach(() => {
+    for (const server of servers.splice(0)) server.stop();
+  });
+
+  test("curl installer extracts the archive and links shiori", async () => {
+    if (!target || process.platform === "win32") return;
+    await withTempDir(async (dir) => {
+      const archive = makeArchive(dir, "shiori");
+      const { server } = await serveCliArchive(archive, target);
+      servers.push(server);
+      const home = join(dir, "home");
+      const binDir = join(dir, "bin");
+      const proc = Bun.spawn(["sh", installSh], {
+        stdout: "pipe",
+        stderr: "pipe",
+        env: {
+          ...process.env,
+          HOME: home,
+          SHIORI_CLI_HOME: join(home, ".shiori"),
+          SHIORI_CLI_BIN_DIR: binDir,
+          SHIORI_CLI_API: `http://127.0.0.1:${server.port}/api/cli`,
+          SHIORI_CLI_ALLOW_HTTP: "1",
+          SHIORI_INSTALLER_NO_SLEEP: "1",
+          TERM: "dumb",
+        },
+      });
+      const [stdout, stderr, status] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      expect(stderr).toBe("");
+      expect(status).toBe(0);
+      expect(stdout).toContain("Installing Shiori CLI");
+      const linked = spawnSync(join(binDir, "shiori"), [], { encoding: "utf8" });
+      expect(linked.status).toBe(0);
+      expect(linked.stdout).toContain("shiori-ok");
+    });
+  });
+
+  // The Windows half of the channel. It runs only where PowerShell and the
+  // registry exist, so on a mac this describe block is one test shorter —
+  // cli-verify.yml's windows-2025 and windows-11-arm rows are where it runs.
+  // Bun.spawn, never spawnSync. A synchronous spawn blocks the event loop
+  // that the Bun.serve above needs to answer the installer's request, so the
+  // two deadlock in the same process — on Windows that hung the whole test
+  // step until the job's 30-minute timeout cancelled the release.
+  test.skipIf(!powershell || process.platform !== "win32")(
+    "PowerShell installer extracts the archive and links shiori.exe",
+    async () => {
+      if (!target) return;
+      await withTempDir(async (dir) => {
+        const archive = makeArchive(dir, "shiori.exe");
+        const { server } = await serveCliArchive(archive, target);
+        servers.push(server);
+        const home = join(dir, "home");
+        const proc = Bun.spawn(
+          [powershell!, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installPs1],
+          {
+            stdout: "pipe",
+            stderr: "pipe",
+            env: {
+              ...process.env,
+              SHIORI_CLI_HOME: home,
+              SHIORI_CLI_API: `http://127.0.0.1:${server.port}/api/cli`,
+              SHIORI_CLI_ALLOW_HTTP: "1",
+              // Never rewrite the runner's user PATH from a test.
+              SHIORI_CLI_SKIP_PATH: "1",
+            },
+          },
+        );
+        const [stderr, status] = await Promise.all([
+          new Response(proc.stderr).text(),
+          proc.exited,
+        ]);
+        expect(stderr).toBe("");
+        expect(status).toBe(0);
+        const linked = join(home, "bin", "shiori.exe");
+        const source = join(home, "cli", "0.1.25", "shiori.exe");
+        expect(readFileSync(linked)).toEqual(readFileSync(source));
+      });
+    },
+    60_000,
+  );
+
+  test("npm runner caches the same archive the curl installer gets", async () => {
+    if (!target) return;
+    await withTempDir(async (dir) => {
+      const archive = makeArchive(
+        dir,
+        target.startsWith("win32") ? "shiori.exe" : "shiori",
+      );
+      const { server } = await serveCliArchive(archive, target);
+      servers.push(server);
+      const binary = await ensureCliBinary({
+        api: `http://127.0.0.1:${server.port}/api/cli`,
+        env: { SHIORI_CLI_HOME: join(dir, ".shiori"), SHIORI_CLI_ALLOW_HTTP: "1" },
+        target,
+      });
+      // The stand-in "binary" is a shell script. Windows cannot execute one
+      // named .exe — it is not a PE image — so there the assertion is that
+      // the right bytes landed at the cached path, which is what this test
+      // is actually about. Running it is a bonus the POSIX runners get.
+      expect(existsSync(binary)).toBe(true);
+      if (process.platform === "win32") {
+        expect(readFileSync(binary, "utf8")).toContain("shiori-ok");
+        return;
+      }
+      const result = spawnSync(binary, [], { encoding: "utf8" });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("shiori-ok");
+    });
+  });
+});

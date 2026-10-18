@@ -1,0 +1,261 @@
+name: cli-release
+
+# Tag-time publisher for the CLI.
+#
+# cli-verify.yml already builds every supported target on a matching runner,
+# but it only keeps artifacts from manual runs, they expire in 3 days, and
+# they never reach a GitHub release. This is the same matrix without the path
+# filters, plus the pack and upload-to-release steps. The archives go to this
+# repository's `cli-v*` release, uploaded with the publish job's GITHUB_TOKEN.
+#
+# The CLI has its OWN tag namespace, cli-v*, separate from the desktop app's
+# v*. It versions independently (cli/package.json says 0.1.25 while the app
+# says 26.9.x), so sharing the app's tag meant every app bump re-uploaded an
+# identically-named archive onto a second release — two releases carrying
+# shiori-cli-0.1.25-*.tar.gz, and /api/cli having to guess which to serve.
+#
+# The release is built as a draft and published by the last step, rather than
+# created published up front. GitHub does not list drafts to callers without
+# push access and the site's token is read-only, so a draft reads as
+# available:false — which is exactly what we want while the five archives are
+# still uploading. Publishing last makes the whole set appear at once instead
+# of letting a Linux user install from a release a Windows user cannot.
+#
+# There is no manual publish step: pushing a cli-v tag IS the decision to
+# distribute.
+
+on:
+  push:
+    tags:
+      - "cli-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to attach CLI archives to (e.g. cli-v0.1.25)."
+        required: true
+        type: string
+      publish_to_release_repo:
+        description: "Upload packed CLI archives to this repo's release for the tag."
+        required: false
+        default: true
+        type: boolean
+
+permissions: {}
+
+jobs:
+  pack:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    # The macOS signing and notarization secrets live in this environment.
+    # Every leg declares it (a job-level setting), but only darwin-arm64 reads
+    # them.
+    environment: release
+    permissions:
+      contents: read
+    # Mapped to job env because a step `if:` cannot read `secrets` directly.
+    # A fork, or this repo before the certificate is configured, still builds —
+    # it just gets the ad-hoc signature instead.
+    env:
+      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-15
+          - target: linux-arm64-gnu
+            runner: ubuntu-24.04-arm
+          - target: linux-x64-gnu
+            runner: ubuntu-24.04
+          - target: win32-arm64
+            runner: windows-11-arm
+          - target: win32-x64
+            runner: windows-2025
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.12
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 26.5.0
+          check-latest: false
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Test CLI contracts
+        run: bun test cli/test
+
+      # Ad-hoc is the floor arm64 macOS needs to execute at all; it carries no
+      # identity, so a browser-downloaded archive (which gets quarantined)
+      # still trips "Apple cannot check it for malicious software". This puts
+      # the real Developer ID on it when the certificate is available.
+      - name: Import the Developer ID certificate
+        if: matrix.target == 'darwin-arm64' && env.MACOS_CERT_P12 != ''
+        env:
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -eu
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          printf '%s' "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k build.keychain \
+            -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+          # Without this, codesign prompts for keychain access and hangs the job.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" build.keychain >/dev/null
+          security list-keychains -d user -s build.keychain
+
+      # The shiori-core addon (crates/shiori-core-node) is built on each
+      # target's own runner by cli/build.ts, which also fetches the pinned
+      # PDFium (scripts/pdfium/fetch.ts) beside it.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+
+      - name: Cache Rust build (deps + registry)
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "crates/shiori-core-node -> target"
+          shared-key: "cli-core-${{ matrix.target }}"
+
+      - name: Build native CLI package
+        env:
+          SHIORI_CLI_SIGN_IDENTITY: ${{ matrix.target == 'darwin-arm64' && secrets.MACOS_SIGN_IDENTITY || '' }}
+        run: bun run cli:build
+
+      - name: Verify the signature
+        if: matrix.target == 'darwin-arm64' && env.MACOS_CERT_P12 != ''
+        run: |
+          set -eu
+          codesign --verify --strict --verbose=2 cli/dist/darwin-arm64/shiori
+          for lib in cli/dist/darwin-arm64/native/*; do
+            codesign --verify --strict --verbose=2 "$lib"
+            codesign -dvv "$lib" 2>&1 | grep -q "Authority=Developer ID Application"
+          done
+          # Fail the release rather than ship something that says "adhoc".
+          codesign -dvv cli/dist/darwin-arm64/shiori 2>&1 | tee /dev/stderr \
+            | grep -q "Authority=Developer ID Application"
+
+      - name: Smoke-test packaged executable
+        run: bun run cli:smoke
+
+      # notarytool takes .zip, .pkg or .dmg — never .tar.gz — so the binary is
+      # zipped just for submission. The ticket cannot be stapled to a bare
+      # Mach-O (stapling targets .app/.dmg/.pkg), so Gatekeeper checks it
+      # online; that is enough for the browser-download path, and the curl and
+      # PowerShell installers never set quarantine in the first place.
+      - name: Notarize the macOS executable
+        if: matrix.target == 'darwin-arm64' && env.MACOS_CERT_P12 != ''
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -eu
+          # The executable and the native/ libraries it loads are notarized
+          # together; Gatekeeper checks each Mach-O it maps.
+          mkdir -p "$RUNNER_TEMP/notarize"
+          cp cli/dist/darwin-arm64/shiori "$RUNNER_TEMP/notarize/"
+          cp -R cli/dist/darwin-arm64/native "$RUNNER_TEMP/notarize/"
+          ditto -c -k --keepParent "$RUNNER_TEMP/notarize" "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+      - name: Pack download-channel archive
+        run: bun run cli:pack
+
+      # Only a hand-off to the publish job below. Actions storage is metered
+      # in GB-hours per billing month, so each extra day costs quota.
+      - name: Upload packed archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: shiori-cli-archive-${{ matrix.target }}
+          path: cli/dist/archives/shiori-cli-*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: upload to the release
+    needs: pack
+    if: github.event_name == 'push' || inputs.publish_to_release_repo == true
+    runs-on: ubuntu-latest
+    permissions:
+      # write: creates the cli-v* release, uploads the archives, publishes it.
+      contents: write
+    steps:
+      - name: Resolve tag
+        id: tag
+        env:
+          MANUAL_TAG: ${{ inputs.tag }}
+          PUSHED_REF: ${{ github.ref }}
+        run: |
+          set -eu
+          if [ -n "${MANUAL_TAG:-}" ]; then
+            TAG_NAME="$MANUAL_TAG"
+          else
+            TAG_NAME="${PUSHED_REF#refs/tags/}"
+          fi
+          if ! [[ "$TAG_NAME" =~ ^cli-v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Rejected tag: $TAG_NAME"
+            exit 1
+          fi
+          echo "name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Download packed archives
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: shiori-cli-archive-*
+          path: archives
+          merge-multiple: true
+
+      - name: Upload archives to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -eu
+          shopt -s nullglob
+          files=(archives/shiori-cli-*.tar.gz)
+          if [ "${#files[@]}" -ne 5 ]; then
+            echo "Expected 5 CLI archives, found ${#files[@]}"
+            ls -la archives || true
+            exit 1
+          fi
+
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --draft \
+              --prerelease \
+              --title "Shiori CLI $TAG" \
+              --notes "Shiori CLI archives. Published by cli-release.yml."
+          fi
+
+          for f in "${files[@]}"; do
+            echo "Uploading $f to $TAG"
+            gh release upload "$TAG" "$f" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          done
+
+          # Only now does /api/cli start resolving this version — every
+          # target at once, or none.
+          gh release edit "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false
+          echo "Published $TAG with ${#files[@]} CLI archives"

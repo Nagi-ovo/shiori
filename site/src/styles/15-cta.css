@@ -1,0 +1,253 @@
+/* ───────── cta ───────── */
+.section-cta { padding: 80px 0 0; }
+.cta {
+  border: 1px solid var(--rule);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, var(--bg-2), color-mix(in oklab, var(--bg-2) 92%, var(--accent)));
+  padding: 60px 52px;
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 48px;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--bg-2) 60%, white) inset,
+    0 28px 60px -36px rgba(20, 36, 70, .22);
+}
+.cta::after {
+  content: "";
+  position: absolute;
+  right: -160px; top: -160px;
+  width: 460px; height: 460px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-soft), transparent 70%);
+  pointer-events: none;
+}
+.cta::before {
+  content: "栞";
+  position: absolute;
+  /* Centered behind the COPY column (left ~55% of the cta, given the
+     1.25fr 1fr grid). Putting it at left:50% / top:50% looked
+     correct on wide viewports but pushed the kanji into the right-
+     hand download card on narrower screens. left:28% lands it at
+     the middle of the copy column, vertically centered for a
+     balanced watermark. */
+  top: 50%; left: 28%;
+  transform: translate(-50%, -50%);
+  font-family: var(--kanji);
+  font-size: 320px;
+  line-height: 1;
+  color: var(--accent);
+  opacity: .04;
+  pointer-events: none;
+  user-select: none;
+}
+.cta h2 {
+  font-family: var(--serif);
+  font-style: normal;
+  font-weight: 400;
+  font-size: clamp(34px, 3.6vw, 48px);
+  line-height: 1.1;
+  letter-spacing: -.02em;
+  margin: 0;
+  color: var(--ink);
+}
+html[lang^="zh"] .cta h2,
+html[lang^="ja"] .cta h2 {
+  font-style: normal;
+  font-size: clamp(28px, 3vw, 38px);
+  line-height: 1.3;
+  word-break: keep-all;
+  line-break: strict;
+  overflow-wrap: break-word;
+}
+.cta h2 em {
+  font-style: normal;
+  color: var(--accent);
+}
+.cta h2 .jp {
+  display: block;
+  font-family: var(--serif-jp);
+  font-style: normal;
+  font-size: 18px;
+  color: var(--ink-3);
+  margin-top: 12px;
+  line-height: 1.5;
+}
+.cta p {
+  font-family: var(--prose);
+  color: var(--ink-3);
+  margin-top: 16px;
+  max-width: 44ch;
+  font-size: 15.5px;
+  line-height: 1.62;
+}
+.cta-checks { margin-top: 24px; }
+
+.dl-card {
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, var(--bg-2), var(--bg-panel));
+  padding: 24px;
+  position: relative;
+  z-index: 1;
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--bg-2) 60%, white) inset,
+    0 18px 40px -28px rgba(20, 36, 70, .25);
+}
+/* Strict 3-column grid so platform name / meta / CTA line up across all
+   rows. */
+.dl-row {
+  display: grid;
+  /* Platform column reserves enough room for the icon + longest labels
+     ("iOS / iPadOS · App Store", "Android · Google Play") + the badge.
+     Used to be 190px and the badge would overflow into the meta column,
+     visually eating the leading digit of the file size. */
+  grid-template-columns: minmax(282px, 1fr) minmax(110px, auto) 124px;
+  align-items: center;
+  gap: 16px;
+  padding: 11px 0;
+  border-bottom: 1px dashed var(--rule);
+}
+/* :last-of-type, not :last-child — .dl-total is appended after the rows
+   and would otherwise hand the final row its dashed border back. */
+.dl-row:last-of-type {
+  border-bottom: none;
+}
+/* Lifetime installer downloads. Deliberately quiet: it is a fact about
+   the project, not a badge. Tabular figures so the number does not
+   twitch as it grows. */
+.dl-total {
+  margin: 4px 0 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--rule);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  letter-spacing: .06em;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.dl-row .platform {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13.5px;
+  color: var(--ink);
+  font-weight: 500;
+  white-space: nowrap;
+  min-width: 0;
+}
+.dl-row .platform .icn {
+  width: 24px; height: 24px;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--ink-2);
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--bg-2) 60%, white) inset;
+}
+.dl-row .platform .icn svg { display: block; }
+.dl-row .meta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  letter-spacing: .06em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  /* APPIMAGE is wider than DMG / MSI / DEB; without nowrap the column
+     wraps "93.4 MB · APPIMAGE" onto two lines while shorter siblings
+     stay single-line. Forcing nowrap pushes the column to fit the
+     longest meta string instead. */
+  white-space: nowrap;
+}
+.dl-row .btn-mini {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .1em;
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--rule);
+  background: var(--bg-2);
+  color: var(--ink-2);
+  white-space: nowrap;
+  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease;
+}
+.dl-row .btn-mini:active { transform: scale(.97); }
+@media (hover: hover) {
+  .dl-row .btn-mini:hover {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
+  }
+}
+.dl-row .btn-mini.disabled,
+.dl-row .btn-mini.disabled:hover {
+  cursor: default;
+  background: var(--bg-2);
+  color: var(--ink-3);
+  border-color: var(--rule);
+  opacity: 0.72;
+  transform: none;
+}
+.dl-row .btn-mini.primary {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+@media (hover: hover) {
+  .dl-row .btn-mini.primary:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+}
+/* Recommended-build badge — sits inline with the platform name on the
+   row that matches the user's detected OS / arch. The row also picks up
+   a subtle accent-tinted background so the eye lands there first. */
+.dl-row-rec {
+  background: var(--accent-ghost);
+  border-radius: 8px;
+  margin: 0 -8px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.dl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent-soft) 70%, transparent);
+  border: 1px solid var(--accent-line);
+  padding: 2px 6px 2px 5px;
+  border-radius: 999px;
+  margin-left: 8px;
+  white-space: nowrap;
+  line-height: 1;
+}
+.dl-badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 24%, transparent);
+}
+

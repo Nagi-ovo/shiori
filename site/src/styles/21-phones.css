@@ -1,0 +1,168 @@
+/* ───────── phones ─────────
+   Below 600px the layout has to fit on a 360-414px viewport. The
+   biggest offenders to tame:
+   - Download card's 3-col grid (platform / meta / button) won't fit
+     in <240px of inner space; stack vertically.
+   - The ProductWindow editor mock has fixed paddings + 36px doc title
+     that overflow the narrow .win body.
+   - Section vertical rhythm tuned for tablets feels overly airy on a
+     phone — tighten the dial. */
+@media (max-width: 600px) {
+  .wrap { padding: 0 18px; }
+  body { font-size: 15px; }
+
+  .nav-row { gap: 12px; }
+  .brand-word { font-size: 17px; }
+  .brand-kana { display: none; }
+
+  .section { padding: 56px 0; }
+  .section-h { gap: 14px; margin-bottom: 28px; }
+  .section-h h2 { font-size: clamp(28px, 8vw, 40px); line-height: 1.1; }
+  html[lang^="zh"] .section-h h2,
+  html[lang^="ja"] .section-h h2 { font-size: clamp(24px, 7vw, 34px); }
+
+  .hero { padding: 40px 0 24px; }
+  .h1 { font-size: clamp(34px, 10vw, 52px); }
+  html[lang^="zh"] .h1, html[lang^="ja"] .h1 { font-size: clamp(28px, 8vw, 42px); }
+  .h1-jp { font-size: 15px; margin-top: 12px; }
+  .lede { font-size: 15px; margin-top: 22px; }
+  .hero-actions { gap: 10px; margin-top: 26px; }
+  .btn { padding: 11px 16px; font-size: 13.5px; }
+  .checks { gap: 14px; font-size: 12.5px; margin-top: 16px; }
+  .eyebrow { font-size: 10.5px; padding: 5px 10px; }
+
+  /* Editor-mock chrome: trim every fixed dimension so the card fits
+     comfortably inside an 18px-padded wrap on a 360px screen. The rule
+     is: anything decorative that would force horizontal overflow gets
+     hidden, not scrolled — overflow-x: auto on a touch device with no
+     visible scrollbar reads as "clipped" to the user. */
+  .win-bar { padding: 8px 10px; gap: 8px; }
+  .win-name, .win-icons, .win-export { display: none; }
+  .win-title { font-size: 10px; }
+  .win-title .meta { display: none; }
+  .win-toolbar { padding: 6px 8px; gap: 4px; overflow-x: visible; flex-wrap: wrap; }
+  .tool { font-size: 10.5px; padding: 4px 7px; gap: 5px; }
+  /* Drop the per-tool Kbd chip + the secondary chrome at the right end
+     (divider, undo/redo, zoom %). All decorative — the 7 tool chips
+     alone are enough to read the toolbar, and they now fit on 2 rows
+     instead of overflowing one. */
+  .win-toolbar .kbd,
+  .win-toolbar .tool-divider,
+  .win-toolbar .tool-ic,
+  .win-toolbar .zoom-meta { display: none; }
+  .win-status { padding: 5px 10px; gap: 6px; font-size: 9.5px; flex-wrap: wrap; }
+  .win-body { grid-template-columns: 64px 1fr; min-height: 320px; }
+  .pages-col { padding: 8px 6px; }
+  .doc-welcome { padding: 10px 10px 16px; }
+  .doc-arxiv-head { font-size: 8px; margin-bottom: 10px; letter-spacing: .04em; }
+  .doc-shiori-title { font-size: 18px; line-height: 1.1; margin: 4px 0 4px; }
+  .doc-shiori-sub { font-size: 9.5px; }
+  .doc-shiori-author { font-size: 9px; margin-top: 3px; }
+  .doc-shiori-affil { font-size: 8px; margin-top: 3px; }
+  .doc-section-head { font-size: 11px; margin-top: 12px; }
+  /* The two long nowrap spans (.doc-mark-anim / .doc-anno-ink-host) sit
+     inside this paragraph and can't break — shrink the body text enough
+     that "minim veniam, quis nostrud exercitation ullamco laboris" fits
+     on one line of the ~190px doc area. Side margins also drop to give
+     the longest line maximum width. */
+  .doc-abstract { font-size: 8.5px; margin: 8px 4px 0; line-height: 1.5; }
+
+  /* Manifesto: tighten serif lede on phones; the giant 栞 watermark is
+     already hidden at 980px so nothing to do there. */
+  .manifesto p { font-size: clamp(18px, 5.4vw, 22px); margin-bottom: 18px; }
+  html[lang^="zh"] .manifesto p,
+  html[lang^="ja"] .manifesto p {
+    font-size: clamp(17px, 5vw, 20px);
+    line-height: 1.65;
+  }
+  .manifesto-quote { font-size: 15px; padding-left: 14px; margin-top: 24px; }
+
+  /* Features cards. */
+  .feat { padding: 26px 22px 28px; min-height: 0; }
+  .feat:nth-child(1) h3,
+  .feat h3 { font-size: 22px; line-height: 1.25; margin: 12px 0 10px; }
+  html[lang^="zh"] .feat:nth-child(1) h3,
+  html[lang^="ja"] .feat:nth-child(1) h3,
+  html[lang^="zh"] .feat h3,
+  html[lang^="ja"] .feat h3 { font-size: 19px; }
+  .feat p { font-size: 13.5px; margin-bottom: 14px; }
+  .art-tools { grid-template-columns: 1fr; }
+  .art-export .opt { padding: 10px 12px; gap: 10px; }
+
+  /* Specs grid: keep 2 cols, lighten the per-cell padding so the big
+     italic figure has room to breathe on a 360px screen. */
+  .spec { padding: 20px 14px; }
+  .spec .v { font-size: 28px; margin-top: 10px; }
+
+  /* Download CTA — stack the dl-row vertically. The desktop row is
+     `[platform | meta | button]` (~424px min); on a phone we want
+     `[platform]` / `[meta]` / `[button (full-width)]`. */
+  .section-cta { padding: 40px 0 0; }
+  .cta {
+    padding: 28px 18px;
+    gap: 24px;
+    border-radius: 14px;
+  }
+  .cta::before {
+    /* On mobile the cta collapses to a single column (text on top,
+       download card below). Pin the watermark behind the title row
+       at the very top of the section, horizontally centered. */
+    font-size: 200px;
+    top: 14%;
+    left: 50%;
+  }
+  .cta::after { width: 280px; height: 280px; right: -120px; top: -120px; }
+  .cta h2 .jp { font-size: 15px; margin-top: 10px; }
+  .cta p { font-size: 14px; margin-top: 14px; }
+  .cta-checks { font-size: 12.5px; gap: 12px; margin-top: 18px; }
+
+  .dl-card { padding: 14px 16px; border-radius: 12px; }
+  .dl-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 14px 0;
+  }
+  .dl-row .platform { font-size: 13px; flex-wrap: wrap; gap: 8px; }
+  .dl-row .meta { text-align: left; font-size: 10px; }
+  .dl-row .btn-mini {
+    justify-self: stretch;
+    padding: 10px 14px;
+    font-size: 11px;
+  }
+  .dl-row-rec { margin: 0 -6px; padding-left: 6px; padding-right: 6px; }
+  .dl-badge { font-size: 9px; margin-left: 6px; padding: 2px 6px; }
+
+  /* Privacy: dt/dd already stack at 980px; just tighten the rhythm. */
+  .section-privacy { padding: 48px 0 56px; }
+  .privacy { gap: 20px; }
+  .privacy-lede { font-size: 16px; margin-bottom: 22px; }
+  .privacy-row { padding: 16px 0; }
+  .privacy-row dd { font-size: 14px; }
+
+  /* Footer. */
+  .footer { padding: 48px 0 56px; margin-top: 40px; }
+  .footer-grid { gap: 32px; }
+  .colophon { font-size: 16px; }
+  .foot-col h4 { margin-bottom: 12px; }
+  .foot-col a { font-size: 14px; padding: 5px 0; }
+  .footer-base {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 40px;
+    padding-top: 18px;
+    font-size: 10px;
+  }
+
+  /* Floating chrome (theme + lang switchers): smaller footprint so it
+     doesn't loom over the CTA card on a phone. */
+  .chrome {
+    right: 12px;
+    bottom: 12px;
+    padding: 4px;
+    gap: 6px;
+    border-radius: 12px;
+  }
+  .chrome-btn { width: 30px; height: 30px; border-radius: 7px; }
+}
+

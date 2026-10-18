@@ -1,0 +1,129 @@
+name: cli-verify
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_archives:
+        description: 'Upload each target''s packed archive (~70 MB each) as a workflow artifact.'
+        required: false
+        default: false
+        type: boolean
+  pull_request:
+    paths:
+      - "cli/**"
+      - "src/assets/fonts/**"
+      - "src/documents/**"
+      - "src/editor/**"
+      - "src/pdf/**"
+      - "crates/**"
+      - "scripts/pdfium/**"
+      - "site/public/welcome.pdf"
+      - "package.json"
+      - "bun.lock"
+      - "tsconfig.cli.json"
+      - ".github/workflows/cli-verify.yml"
+      - ".github/workflows/cli-release.yml"
+      - "site/public/_routes.json"
+  push:
+    branches:
+      - main
+    paths:
+      - "cli/**"
+      - "src/assets/fonts/**"
+      - "src/documents/**"
+      - "src/editor/**"
+      - "src/pdf/**"
+      - "crates/**"
+      - "scripts/pdfium/**"
+      - "site/public/welcome.pdf"
+      - "package.json"
+      - "bun.lock"
+      - "tsconfig.cli.json"
+      - ".github/workflows/cli-verify.yml"
+      - ".github/workflows/cli-release.yml"
+      - "site/public/_routes.json"
+
+permissions: {}
+
+jobs:
+  verify:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # No darwin-x64 row: `node --build-sea` corrupts Mach-O chained
+          # fixups on x86_64, so that binary segfaults before it runs. Node.js
+          # skipped its own SEA tests on x64 macOS (nodejs/node#60250) instead
+          # of fixing it. The target was dropped from SUPPORTED_CLI_TARGETS.
+          - target: darwin-arm64
+            runner: macos-15
+          - target: linux-arm64-gnu
+            runner: ubuntu-24.04-arm
+          - target: linux-x64-gnu
+            runner: ubuntu-24.04
+          - target: win32-arm64
+            runner: windows-11-arm
+          - target: win32-x64
+            runner: windows-2025
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.12
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 26.5.0
+          check-latest: false
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Test CLI contracts
+        run: bun test cli/test
+
+      # The shiori-core addon (crates/shiori-core-node) is built on each
+      # target's own runner by cli/build.ts, which also fetches the pinned
+      # PDFium (scripts/pdfium/fetch.ts) beside it.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+
+      - name: Cache Rust build (deps + registry)
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "crates/shiori-core-node -> target"
+          shared-key: "cli-core-${{ matrix.target }}"
+
+      - name: Build native CLI package
+        run: bun run cli:build
+
+      - name: Smoke-test packaged executable
+        run: bun run cli:smoke
+
+      - name: Pack download-channel archive
+        run: bun run cli:pack
+
+      # PR/push already smoke-tested the binary on the runner. Each target
+      # is ~70 MB, and uploading both the unpacked tree and the tar.gz on
+      # every CLI-related commit filled Actions storage; even manual runs
+      # uploading five archives kept the account over its storage allowance (September
+      # 2026: artifact uploads refused for hours). Upload only when asked.
+      - name: Upload packed archive
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_archives
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: shiori-cli-archive-${{ matrix.target }}
+          path: cli/dist/archives/shiori-cli-*.tar.gz
+          if-no-files-found: error
+          retention-days: 3

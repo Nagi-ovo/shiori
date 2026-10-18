@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "mobile",
+  "description": "Mobile capabilities for the trusted Shiori main webview. `mobile-app-commands` is backed by the build.rs application manifest and scoped by webview label (NOT window), so only `main` gets the minimal mobile command set. Store builds deliberately omit desktop-native path, terminal, updater, and process-plugin permissions. The Browser panel's native WKWebView / Android WebView is not a Tauri webview and remains outside this ACL.",
+  "webviews": ["main"],
+  "platforms": ["android", "iOS"],
+  "permissions": [
+    "core:default",
+    "mobile-app-commands",
+    "dialog:default",
+    "fs:read-files",
+    "opener:allow-open-url",
+    "opener:allow-open-path",
+    "opener:allow-default-urls"
+  ]
+}

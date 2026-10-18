@@ -1,0 +1,153 @@
+/* ── Changelog list ──
+   Each release is two columns: a left rail (version + date, monospace
+   date / italic serif version) and a right rail (group-kind labels and
+   bulleted leads). Border-top per release makes the spine look like a
+   bound volume. */
+.cl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cl-release {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 40px;
+  padding: 44px 0;
+  border-top: 1px solid var(--rule);
+  /* `#/changelog/<version>` scrolls the release to the top; clear the
+     60px sticky nav (same offset as the sticky rail below). */
+  scroll-margin-top: 76px;
+}
+.cl-release:last-child { border-bottom: 1px solid var(--rule); }
+.cl-rail {
+  position: sticky;
+  top: 76px;
+  align-self: start;
+}
+.cl-ver {
+  font-family: var(--serif);
+  font-style: normal;
+  font-size: clamp(34px, 3.2vw, 44px);
+  line-height: 1;
+  color: var(--ink);
+  letter-spacing: -.02em;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+/* The version is a link to its own deep link (#/changelog/<version>).
+   It reads as the plain heading it was; only hover hints that it links. */
+@media (hover: hover) {
+  a.cl-ver:hover { color: var(--accent); }
+}
+html[lang^="zh"] .cl-ver,
+html[lang^="ja"] .cl-ver { font-style: normal; }
+.cl-ver-tag {
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  align-self: start;
+  margin-top: 6px;
+}
+.cl-date {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: .1em;
+  color: var(--ink-3);
+  margin-top: 10px;
+}
+.cl-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 64ch;
+}
+.cl-group {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 24px;
+  align-items: baseline;
+}
+.cl-kind {
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: .14em;
+  padding-top: 4px;
+}
+.cl-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cl-item {
+  font-size: 15px;
+  line-height: 1.62;
+  color: var(--ink-2);
+  position: relative;
+  padding-left: 14px;
+}
+.cl-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.75em;
+  width: 6px;
+  height: 1px;
+  background: var(--accent);
+}
+.cl-lead {
+  color: var(--ink);
+  font-weight: 600;
+  margin-right: 4px;
+}
+/* A before/after measurement under a bullet: hairline rows, tabular
+   figures, sideways scroll on a phone instead of a squeezed column. */
+.cl-table-wrap {
+  overflow-x: auto;
+  margin-top: 10px;
+}
+.cl-table {
+  border-collapse: collapse;
+  min-width: 100%;
+  font-size: 13.5px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+.cl-table th {
+  font: 600 11px/1.4 var(--sans);
+  letter-spacing: .04em;
+  color: var(--ink-3);
+  padding: 0 0 6px;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+.cl-table td {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule-2);
+  color: var(--ink);
+  white-space: nowrap;
+}
+.cl-table td:first-child {
+  color: var(--ink-2);
+  white-space: normal;
+}
+.cl-table th + th,
+.cl-table td + td {
+  padding-left: 16px;
+}
+html[lang^="zh"] .cl-item,
+html[lang^="ja"] .cl-item {
+  font-size: 14.5px;
+  line-height: 1.75;
+  word-break: keep-all;
+  line-break: strict;
+  overflow-wrap: break-word;
+}
+

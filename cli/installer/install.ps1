@@ -1,0 +1,270 @@
+# Authenticated-channel PowerShell installer for the Shiori CLI.
+#
+# Windows counterpart to install.sh. Same release descriptor, same digest
+# check, same fail-closed behaviour:
+#
+#   irm https://shiori.nagi.fun/cli.ps1 | iex
+#
+# Constraints this file must keep:
+#   * Windows PowerShell 5.1 compatible. It is what ships in the box, and a
+#     clean machine has nothing else.
+#   * ASCII only. The script is fetched over HTTP and handed to iex as a
+#     string; staying ASCII keeps it correct whatever the caller's encoding.
+#   * No top-level `param()` and no top-level preference assignments. `iex`
+#     runs this in the CALLER's scope, so anything set at top level leaks
+#     into their session. Every preference is set inside a function, where
+#     PowerShell scopes the assignment to that function.
+
+function Get-ShioriCliTarget {
+    # A 32-bit PowerShell host on 64-bit Windows reports x86 in
+    # PROCESSOR_ARCHITECTURE and the real architecture in the W6432 copy.
+    $architecture = $env:PROCESSOR_ARCHITEW6432
+    if (-not $architecture) { $architecture = $env:PROCESSOR_ARCHITECTURE }
+    if (-not $architecture) { throw 'Could not detect the processor architecture.' }
+
+    switch ($architecture.ToLowerInvariant()) {
+        'amd64' { return 'win32-x64' }
+        'x86_64' { return 'win32-x64' }
+        'arm64' { return 'win32-arm64' }
+        default {
+            throw "This installer does not support Windows $architecture. x64 and ARM64 only."
+        }
+    }
+}
+
+function Test-ShioriCliUrl {
+    param([string]$Url)
+
+    if ([string]::IsNullOrEmpty($Url)) { return $false }
+    if ($Url.StartsWith('https://', [System.StringComparison]::Ordinal)) { return $true }
+    if ($env:SHIORI_CLI_ALLOW_HTTP -eq '1') {
+        return $Url -match '^http://(127\.0\.0\.1|localhost|\[::1\])[:/]'
+    }
+    return $false
+}
+
+# Parses the `format=env` release descriptor. Deliberately a parser and not
+# an eval: every field is matched against its own shape and an unknown key
+# is fatal, so a compromised or truncated response cannot introduce a
+# variable the rest of this script then trusts.
+function ConvertFrom-ShioriCliEnv {
+    param([string]$Text)
+
+    $descriptor = @{
+        Available = '0'
+        Version   = ''
+        Target    = ''
+        Url       = ''
+        Sha256    = ''
+    }
+
+    foreach ($line in ($Text -split "`r?`n")) {
+        if ($line -eq '') { continue }
+        $separator = $line.IndexOf('=')
+        if ($separator -lt 1) { throw 'Malformed release descriptor.' }
+        $key = $line.Substring(0, $separator)
+        $value = $line.Substring($separator + 1)
+
+        switch -CaseSensitive ($key) {
+            'SHIORI_CLI_AVAILABLE' {
+                if ($value -cnotmatch '^[01]$') { throw 'Malformed release descriptor.' }
+                $descriptor.Available = $value
+            }
+            'SHIORI_CLI_VERSION' {
+                if ($value -cnotmatch '^\d+\.\d+\.\d+$') { throw 'Malformed release version.' }
+                $descriptor.Version = $value
+            }
+            'SHIORI_CLI_TARGET' {
+                if ($value -cnotmatch '^(darwin-arm64|linux-arm64-gnu|linux-x64-gnu|win32-arm64|win32-x64)$') {
+                    throw 'Malformed release target.'
+                }
+                $descriptor.Target = $value
+            }
+            'SHIORI_CLI_URL' {
+                if (-not (Test-ShioriCliUrl $value)) { throw 'Refusing a non-HTTPS download URL.' }
+                $descriptor.Url = $value
+            }
+            'SHIORI_CLI_SHA256' {
+                if ($value -notmatch '^[0-9a-fA-F]{64}$') { throw 'Malformed archive digest.' }
+                $descriptor.Sha256 = $value.ToLowerInvariant()
+            }
+            'SHIORI_CLI_SIZE' { }
+            default { throw 'Unexpected field in release descriptor.' }
+        }
+    }
+
+    return $descriptor
+}
+
+# Reads the user PATH straight out of the registry WITHOUT expanding
+# environment references. [Environment]::GetEnvironmentVariable expands them,
+# so a read-modify-write through that API silently rewrites a user's
+# `%USERPROFILE%\bin` entry into a literal path and breaks it for every other
+# account and every roamed profile. Corrupting PATH is not an acceptable
+# side effect of installing a CLI.
+function Get-ShioriUserPath {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $false)
+    if ($null -eq $key) { return [pscustomobject]@{ Value = ''; Kind = 'String' } }
+    try {
+        $value = $key.GetValue(
+            'Path',
+            '',
+            [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        $kind = 'String'
+        if ($null -ne $key.GetValue('Path')) { $kind = [string]$key.GetValueKind('Path') }
+        return [pscustomobject]@{ Value = [string]$value; Kind = $kind }
+    } finally {
+        $key.Close()
+    }
+}
+
+function Add-ShioriCliToPath {
+    param([string]$Directory)
+
+    $existing = Get-ShioriUserPath
+    $wanted = $Directory.TrimEnd('\')
+    foreach ($entry in ($existing.Value -split ';')) {
+        if ($entry -ne '' -and $entry.TrimEnd('\') -eq $wanted) { return $false }
+    }
+
+    $updated = if ($existing.Value -eq '') { $Directory } else { "$($existing.Value.TrimEnd(';'));$Directory" }
+    # Keep ExpandString when the existing value used it, so %VAR% entries the
+    # user already had keep expanding.
+    $kind = if ($existing.Kind -eq 'ExpandString' -or $updated -match '%') {
+        [Microsoft.Win32.RegistryValueKind]::ExpandString
+    } else {
+        [Microsoft.Win32.RegistryValueKind]::String
+    }
+
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+    if ($null -eq $key) { throw 'Could not open the user environment registry key.' }
+    try {
+        $key.SetValue('Path', $updated, $kind)
+    } finally {
+        $key.Close()
+    }
+
+    $env:Path = "$env:Path;$Directory"
+    return $true
+}
+
+function Install-ShioriCli {
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+
+    # Windows PowerShell 5.1 still negotiates TLS 1.0 by default on older
+    # builds; Cloudflare and GitHub both refuse it.
+    try {
+        [Net.ServicePointManager]::SecurityProtocol =
+            [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    } catch {
+        # PowerShell 7 manages this itself and the property may be absent.
+    }
+
+    $target = Get-ShioriCliTarget
+    $api = if ($env:SHIORI_CLI_API) { $env:SHIORI_CLI_API } else { 'https://shiori.nagi.fun/api/cli' }
+    $root = if ($env:SHIORI_CLI_HOME) { $env:SHIORI_CLI_HOME } else { Join-Path $env:USERPROFILE '.shiori' }
+
+    Write-Host 'Resolving release'
+    $descriptorText = (Invoke-WebRequest `
+        -Uri "${api}?target=${target}&format=env" `
+        -UseBasicParsing).Content
+    $descriptor = ConvertFrom-ShioriCliEnv $descriptorText
+
+    if ($descriptor.Available -ne '1') {
+        Write-Host 'Shiori CLI is not on the download channel yet.'
+        throw 'The installer is ready; no archive has been published.'
+    }
+    if ($descriptor.Target -ne $target) { throw 'Release target mismatch.' }
+
+    $destination = Join-Path (Join-Path $root 'cli') $descriptor.Version
+    $archive = Join-Path ([System.IO.Path]::GetTempPath()) "shiori-cli-$($descriptor.Version)-$target.tar.gz"
+
+    try {
+        Write-Host "Downloading Shiori CLI for $target"
+        Invoke-WebRequest -Uri $descriptor.Url -OutFile $archive -UseBasicParsing
+
+        Write-Host 'Verifying archive digest'
+        $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $descriptor.Sha256) { throw 'Archive digest mismatch.' }
+
+        Write-Host 'Extracting self-contained package'
+        New-Item -ItemType Directory -Force -Path $destination | Out-Null
+        $tar = Get-Command tar.exe -ErrorAction SilentlyContinue
+        if (-not $tar) {
+            throw 'Need tar.exe (Windows 10 1803 or newer) to extract Shiori CLI.'
+        }
+        & $tar.Source -xzf $archive -C $destination
+        if ($LASTEXITCODE -ne 0) { throw 'Could not extract Shiori CLI.' }
+    } finally {
+        Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue
+    }
+
+    $executable = Join-Path $destination 'shiori.exe'
+    if (-not (Test-Path -LiteralPath $executable)) {
+        throw 'Archive did not contain shiori.exe.'
+    }
+
+    Write-Host 'Linking shiori into PATH'
+    $binDir = Join-Path $root 'bin'
+    New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+    $linked = Join-Path $binDir 'shiori.exe'
+    Remove-Item -LiteralPath $linked -Force -ErrorAction SilentlyContinue
+    # A real executable on PATH, not a .cmd shim: an agent spawning `shiori`
+    # without a shell resolves .exe through CreateProcess but never .cmd.
+    try {
+        New-Item -ItemType HardLink -Path $linked -Target $executable -ErrorAction Stop | Out-Null
+    } catch {
+        Copy-Item -LiteralPath $executable -Destination $linked -Force
+    }
+    # SHIORI_CLI_SKIP_PATH exists so the installer can be exercised end to end
+    # without mutating the machine's user PATH, and so someone who manages
+    # PATH themselves can opt out.
+    $added = $false
+    if ($env:SHIORI_CLI_SKIP_PATH -ne '1') {
+        $added = Add-ShioriCliToPath $binDir
+    }
+
+    Write-Host ''
+    Write-Host 'Run it with: shiori --help'
+    if ($added) {
+        Write-Host 'Added it to your PATH. Open a new terminal for that to take effect.'
+    }
+}
+
+function Show-ShioriCliUsage {
+    Write-Host 'Usage: install.ps1 [print-target|parse-env]'
+}
+
+# The inspection modes are opt-in by exact name, and anything else installs.
+# The guard has to lean this way round: `iex` runs this in the caller's scope,
+# so $args is whatever that scope had. Dispatching on "an argument is present"
+# would let `irm | iex` inside someone's own script silently print a target
+# instead of installing, and a silent no-op is the worst outcome here.
+#
+# Leading dashes are stripped rather than required: this script has no
+# `param()` block (see the header), and PowerShell binds a `-foo` token on the
+# command line as a parameter name before it ever reaches $args.
+$shioriCliMode = ''
+if ($args.Count -gt 0) {
+    $shioriCliCandidate = ([string]$args[0]).TrimStart('-')
+    if (@('print-target', 'parse-env', 'help', 'h') -contains $shioriCliCandidate) {
+        $shioriCliMode = $shioriCliCandidate
+    }
+}
+
+switch ($shioriCliMode) {
+    'print-target' {
+        Get-ShioriCliTarget
+    }
+    'parse-env' {
+        $parsed = ConvertFrom-ShioriCliEnv ([Console]::In.ReadToEnd())
+        '{0} {1} {2} {3}' -f $parsed.Available, $parsed.Version, $parsed.Target, $parsed.Sha256
+    }
+    { $_ -eq 'help' -or $_ -eq 'h' } {
+        Show-ShioriCliUsage
+    }
+    default {
+        Install-ShioriCli
+    }
+}

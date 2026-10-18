@@ -1,0 +1,1093 @@
+{
+  "app": {
+    "brand": "Shiori",
+    "subtitle": "栞"
+  },
+  "changelog": {
+    "title": "更新日志",
+    "close": "关闭"
+  },
+  "sponsor": {
+    "entry": "支持 Shiori",
+    "title": "支持 Shiori",
+    "thanks": "Shiori 免费且始终本地优先。如果它在你的阅读里帮上了忙，一点心意就是对它最好的支持——谢谢。",
+    "wechat": "微信支付",
+    "alipay": "支付宝",
+    "more": "其他方式"
+  },
+  "deferred": {
+    "loading": "加载中…",
+    "loadingBody": "这个面板仍在加载。",
+    "failedTitle": "无法加载这个面板",
+    "failedBody": "请检查网络连接后重试。",
+    "retry": "重试"
+  },
+  "common": {
+    "close": "关闭",
+    "increase": "增加",
+    "decrease": "减少"
+  },
+  "windowCaption": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "向下还原"
+  },
+  "nav": {
+    "thumbnails": "缩略图",
+    "outline": "大纲",
+    "find": "查找",
+    "shortcuts": "快捷键",
+    "settings": "设置",
+    "importPdf": "导入另一个 PDF",
+    "print": "打印 · ⌘P",
+    "export": "导出",
+    "exportPdf": "导出 PDF",
+    "untitled": "未命名.pdf",
+    "home": "返回首页 · 标签保留",
+    "terminal": "终端",
+    "readerMode": "纯净阅读 · 收起所有工具栏",
+    "readerModeExit": "退出纯净阅读",
+    "annotateEnter": "标注",
+    "annotateExit": "结束标注",
+    "pdfChromeCollapse": "收起工具栏",
+    "pdfChromeExpand": "展开工具栏",
+    "browser": "浏览器",
+    "switcherLabel": "快速切换文件",
+    "switcherHint": "← → 选择 · 松开 Ctrl 落定 · Esc 取消",
+    "skipToContent": "跳到文档内容",
+    "mainLandmark": "文档"
+  },
+  "navigator": {
+    "label": "导航",
+    "outline": "大纲",
+    "documents": "文档",
+    "pages": "页面",
+    "collapse": "隐藏导航",
+    "show": "显示导航",
+    "marks": "标注",
+    "marksEmpty": "这份文档还没有标注。",
+    "showMarks": "查看这份文档的标注",
+    "markEditedText": "改字",
+    "markThread_one": "{{count}} 轮对话",
+    "markThread_other": "{{count}} 轮对话",
+    "markClipped": "（已截断）",
+    "toggle": "开合侧栏",
+    "resize": "拖动调整宽度 · 双击复位"
+  },
+  "documentTree": {
+    "label": "文档",
+    "show": "显示文档树",
+    "collapse": "隐藏文档树",
+    "empty": "还没有打开任何文档。",
+    "unavailable": "找不到文件",
+    "expandMarks": "展开标注",
+    "collapseMarks": "收起标注",
+    "page": "第 {{page}} 页",
+    "sectionUnfiled": "未归档",
+    "pin": "加入工作区",
+    "unpin": "移出工作区",
+    "addFolder": "添加文件夹…",
+    "addDocument": "添加文档…",
+    "addTarget": "添加文档或文件夹…",
+    "unmountFolder": "关闭这个文件夹",
+    "mountUnsupported": "打开文件夹需要桌面版。"
+  },
+  "tabs": {
+    "label": "已打开文档",
+    "new": "打开文档",
+    "close": "关闭标签页",
+    "closeNamed": "关闭“{{title}}”",
+    "closeOverflow_one": "关闭这个隐藏标签页",
+    "closeOverflow_other": "关闭这 {{count}} 个隐藏标签页",
+    "overflowMenuLabel": "隐藏的标签页",
+    "previewLabel": "“{{title}}”的预览",
+    "previewPage": "第 {{page}} 页 · {{zoom}}",
+    "previewPosition": "上次位置 · {{zoom}}",
+    "previewPositionUnknown": "上次位置",
+    "previewLoading": "正在载入预览…",
+    "previewUnavailable": "暂时没有预览",
+    "restoreFailed": "无法恢复标签页",
+    "restoreRetry": "重试",
+    "restoreAuthorize": "重新授权",
+    "restorePickAgain": "重新选择文件",
+    "restoreErrors": {
+      "pathUnavailable": "原文件已被移动或删除",
+      "unsupported": "不支持此文件类型",
+      "cacheMissing": "本地缓存副本已被清理",
+      "ephemeral": "此标签页在当前浏览器无法自动重新打开",
+      "handleMissing": "浏览器忘记了之前保存的文件授权",
+      "permissionDenied": "浏览器需要重新授权访问这个文件",
+      "fileUnavailable": "浏览器无法读取之前授权的文件"
+    },
+    "overflowTitle_one": "还有 {{count}} 个标签页",
+    "overflowTitle_other": "还有 {{count}} 个标签页"
+  },
+  "documents": {
+    "loading": "正在载入文档…",
+    "renderFailed": "无法渲染此文档：{{message}}",
+    "openPolicy": {
+      "tooLarge": {
+        "title": "这个文档太大了。",
+        "message": "{{name}} 超过 {{maxSize}} 上限，Shiori 没有读取它。"
+      },
+      "invalidDocx": {
+        "title": "这不是可读取的 Word 文档。",
+        "message": "{{name}} 缺少必要的 DOCX 数据，或使用了暂不支持的 ZIP 格式。"
+      },
+      "docxTooComplex": {
+        "title": "这个 Word 文档过于复杂，无法安全打开。",
+        "message": "{{name}} 会超出 Shiori 的 DOCX 解压预算，文件保持原样。"
+      }
+    },
+    "runHtml": "运行",
+    "runHtmlHint": "在隔离沙箱中运行此文件的脚本——离线，且无法访问你的文件或数据。",
+    "stopHtml": "停止",
+    "refreshHtml": "刷新预览",
+    "markdownMode": "Markdown 模式",
+    "previewMarkdown": "预览 Markdown",
+    "editMarkdown": "编辑 Markdown",
+    "markdownEditorLabel": "Markdown 编辑器",
+    "editMarkdownMetadata": "编辑文档元数据",
+    "textSaveFailed": "最新文字修改保存失败。标签页已保留，请稍后重试。",
+    "closeSaveFailed": "最新修改没能保存完成，因此窗口仍保持打开。请先释放一些设备存储空间，再关闭窗口。",
+    "workspaceSaveFailed": "Shiori 无法保存工作区布局。",
+    "workspaceSaveFailedDetail": "重启后，打开的标签页或文件夹可能无法恢复。请释放一些设备存储空间，再做一次改动以重试。",
+    "runtimeStorageFailed": "Shiori 无法为另一个 PDF 释放内存。",
+    "runtimeStorageFailedDetail": "当前 PDF 仍安全地保持打开。请释放一些设备存储空间或关闭标签页，然后重试。",
+    "workspaceSourceQuotaFailed": "本地文档存储空间已满。",
+    "workspaceSourceSaveFailed": "Shiori 无法保存本地工作副本。",
+    "workspaceSourceSaveFailedDetail": "改动仍保持打开，Shiori 会继续重试。关闭标签页前请先释放一些设备存储空间。",
+    "workingCopyMissing": "本地工作副本已丢失。为避免把旧文件误当作最新版本，Shiori 没有自动打开原文件；如果要从原文件继续，请再次打开它。",
+    "saveToFile": "保存",
+    "saveToFileHint": "把这些改动写回原文件（⌘S）",
+    "saved": "已保存到 {{name}}",
+    "savedNoChanges": "没有未保存的改动",
+    "saveOriginMissing": "原文件已不在了，Shiori 没有写入任何内容。",
+    "savePermissionDenied": "浏览器拒绝了写入该文件的权限。",
+    "saveFailed": "写回原文件失败：{{message}}",
+    "unsavedEdits": "有未保存的改动",
+    "appearance": {
+      "open": "阅读外观",
+      "title": "Markdown 阅读外观",
+      "documentOverride": "已单独设置当前文档",
+      "followingGlobal": "正在使用全局默认",
+      "tabs": {
+        "body": "正文",
+        "code": "代码",
+        "layout": "排版",
+        "color": "颜色"
+      },
+      "searchFonts": "搜索字体",
+      "useGlobal": "使用全局 · {{family}}",
+      "globalBadge": "全局",
+      "automatic": "自动匹配",
+      "fallbackBadge": "自动",
+      "recentFonts": "最近使用",
+      "builtinFonts": "Shiori 内置",
+      "systemFonts": "这台电脑",
+      "loadingSystemFonts": "正在读取系统字体",
+      "systemFontPrivacy": "浏览器会先询问是否允许读取已安装字体的名称；Shiori 不读取字体文件和路径。",
+      "requestSystemFonts": "显示已安装字体",
+      "fontKinds": {
+        "sans": "无衬线",
+        "serif": "衬线",
+        "mono": "等宽"
+      },
+      "refineSearch_one": "共 {{count}} 个匹配项，请继续输入以缩小范围。",
+      "refineSearch_other": "共 {{count}} 个匹配项，请继续输入以缩小范围。",
+      "noFontResults": "没有匹配的字体。",
+      "noSystemFonts": "没有读取到系统字体。",
+      "systemFontState": {
+        "unsupported": "当前设备或浏览器不能列出系统字体，你仍可在下方输入已安装的字体名。",
+        "denied": "尚未允许读取字体列表。可以重试，或直接在下方输入字体名。",
+        "error": "系统字体加载失败。可以重试，或直接在下方输入字体名。"
+      },
+      "retrySystemFonts": "重新读取字体",
+      "manualFont": "输入已安装的字体",
+      "manualFontPlaceholder": "例如：霞鹜文楷",
+      "manualFontHint": "适用于浏览器无法列出字体，或某款字体没有出现在列表中。",
+      "manualFontInvalid": "请输入有效的字体家族名称。",
+      "addFont": "使用",
+      "fontMissing": "当前系统字体列表里没有“{{family}}”。若字体确实不可用，Shiori 会自动回退，不会变成空白。",
+      "fontSize": "字号",
+      "lineHeight": "行距",
+      "contentWidth": "正文宽度",
+      "widths": {
+        "narrow": "窄",
+        "standard": "标准",
+        "wide": "宽"
+      },
+      "globalLayoutSummary": "全局：{{size}}px · {{lineHeight}} 倍行距 · {{width}}px 宽",
+      "useGlobalLayout": "使用全局排版",
+      "headingColor": "标题颜色",
+      "useGlobalColor": "使用全局 · {{color}}",
+      "automaticHeadingColor": "自动匹配当前主题",
+      "customColor": "自定义 HEX 颜色",
+      "applyColor": "应用",
+      "invalidColor": "请输入 #RGB 或 #RRGGBB 格式的不透明颜色。",
+      "effectiveColor": "实际显示 {{color}}",
+      "contrastAdjusted": "已自动调整以保证可读",
+      "resetDocument": "全部跟随全局",
+      "setGlobal": "将当前设为全局"
+    },
+    "runningStatus": "运行中 · 离线沙箱",
+    "remoteImagesBlocked": "默认不加载远程图片，因为它们可能暴露你的 IP 地址和打开了哪份文档。",
+    "loadRemoteImages": "加载远程图片",
+    "dismissRemoteImages": "继续阻止",
+    "runDepsBlocked_other": "此文档引用了 {{count}} 个远程依赖，运行模式默认离线，已拦截。",
+    "runDepsAllowed_other": "已允许 {{count}} 个远程依赖在本次运行中加载。",
+    "runDepsAllowSelected": "允许所选并重新运行",
+    "runDepsShow": "查看详情",
+    "runDepsHide": "收起",
+    "runDepsKindScript": "脚本",
+    "runDepsKindStylesheet": "样式表",
+    "runDepsKindImage": "图片",
+    "runDepsKindMedia": "媒体",
+    "runDepsKindFrame": "内嵌页面",
+    "runDepsKindFont": "字体",
+    "runDepsKindConnect": "网络请求",
+    "runDepsKindOther": "其他"
+  },
+  "meta": {
+    "ppAbbr": "页",
+    "local": "本地",
+    "localOnly": "● 仅本地",
+    "editsNotSaved": "编辑未保存",
+    "pageShort": "第",
+    "pageLabel": "第 {{page}} 页",
+    "pageOfTotal": "第 {{page}} / {{total}} 页",
+    "copyFileName": "复制文件名",
+    "fileNameCopied": "已复制文件名",
+    "fileNameCopyFailed": "复制文件名失败"
+  },
+  "toast": {
+    "savedTo": "已保存到 {{path}}",
+    "savedAs": "已保存为 {{path}}",
+    "savedAsHint": "请检查浏览器的下载文件夹。",
+    "sharedAs": "已准备分享 {{path}}",
+    "openSavedFile": "打开",
+    "openSavedFileFailed": "无法打开导出的 PDF。",
+    "revealSavedFile": "显示位置",
+    "revealSavedFileFailed": "无法在文件夹中显示导出的 PDF。",
+    "imagePageAdded": "已将图片粘贴为新页面。",
+    "pdfPagesInserted_one": "已从 {{name}} 插入 1 页。",
+    "pdfPagesInserted_other": "已从 {{name}} 插入 {{count}} 页。",
+    "pdfPagesInsertedDetail": "来源 PDF 保持不变；仅导入页面、页内批注及内部链接所需的目标，不会导入附件等其他文档级内容。",
+    "linkOpenFailed": "无法打开该链接。",
+    "printFailed": "打印准备失败，请稍后重试或改用导出。",
+    "paragraphEditMathRefused": "该段落包含公式，暂不支持整段编辑——请划选要修改的文字。",
+    "paragraphEditComplexRefused": "该段落版式复杂，暂不支持整段编辑——请划选要修改的文字。",
+    "recentMissing": "无法重新打开该文件 — 可能已被移动或删除。",
+    "recentWebAccessLost": "浏览器需要重新获得文件权限。",
+    "recentWebUnsupported": "当前浏览器无法自动重开最近文件。请用打开文件重新选择 PDF。",
+    "recentWebAccess": {
+      "handleMissing": "浏览器忘记了这份文件的授权。",
+      "permissionDenied": "文件访问权限被拒绝。",
+      "fileUnavailable": "无法读取已保存授权的文件。"
+    },
+    "recentWebAccessAction": "重新选择",
+    "openPermissionDenied": "当前应用文件权限范围内无法读取该文件。",
+    "removedAnnotations_other": "已删除 {{count}} 个标注",
+    "copiedAnnotations_other": "已复制 {{count}} 个标注",
+    "duplicatedAnnotations_other": "已复制 {{count}} 个副本",
+    "pastedAnnotations_other": "已粘贴 {{count}} 个标注到第 {{page}} 页",
+    "deletedPage": "已删除第 {{page}} 页",
+    "undo": "撤销",
+    "liveAnnotations_one": "Shiori CLI 添加了 {{count}} 条标注",
+    "liveAnnotations_other": "Shiori CLI 添加了 {{count}} 条标注",
+    "placedAnnotation": "已放置标注"
+  },
+  "drafts": {
+    "saving": "保存中…",
+    "unsaved": "未保存",
+    "saveFailed": "草稿保存失败",
+    "saveFailedToast": "草稿保存失败。最近的编辑可能无法恢复。",
+    "saveQuotaFailedToast": "草稿存储空间已满。",
+    "saveQuotaFailedDetail": "请打开设置 → 存储，清理较旧的草稿后重试。",
+    "saveTransientFailedToast": "草稿保存失败。",
+    "saveTransientFailedDetail": "请稍后再试。",
+    "saved": "已保存",
+    "storageTooltip": "本地草稿占用 / 上限",
+    "restoreTitle": "继续编辑会覆盖未加载的草稿",
+    "restoreBody": "这份文件还有一份 {{rel}} 的草稿没有加载。先决定它的去留，再继续编辑。",
+    "restoredNotice": "已恢复 {{rel}} 的编辑",
+    "openOriginal": "用原始文件打开",
+    "setAside": "草稿未加载",
+    "restoreSetAside": "恢复草稿",
+    "restore": "恢复",
+    "discard": "放弃",
+    "discardConfirmTitle": "删除这份草稿？",
+    "discardConfirmBody": "这会永久删除此文件的已保存草稿。原始 PDF 不会被修改。",
+    "discardCancel": "保留草稿",
+    "discardConfirm": "删除草稿"
+  },
+  "exportStatus": {
+    "clean": "无需导出",
+    "cleanTitle": "当前 PDF 没有需要导出的修改。",
+    "needsExport": "修改未导出",
+    "needsExportTitle": "最新修改已保存在本机草稿，但还没有导出成 PDF。",
+    "exported": "已导出",
+    "exportedTitle": "当前修改已导出到 {{path}}。",
+    "unknownPath": "所选文件"
+  },
+  "diagnostics": {
+    "copy": "复制诊断信息",
+    "copied": "已复制",
+    "copyFailed": "复制失败",
+    "code": "诊断码：{{code}}",
+    "dialogLabel": "Shiori 渲染诊断"
+  },
+  "canvasWarning": {
+    "title": "Canvas 功能可能受限",
+    "body": "Shiori 网页端使用 Canvas 在本机渲染 PDF。检测到浏览器可能限制或扰动了 Canvas 读写，这通常来自 CanvasBlocker 或类似隐私扩展。为了正常使用，请在扩展里允许当前站点。",
+    "siteLabel": "请加入白名单的当前站点",
+    "copySite": "复制站点",
+    "copied": "已复制",
+    "copyFailed": "复制失败",
+    "effectsTitle": "可能受影响",
+    "effectRender": "PDF 页面可能空白或渲染失败。",
+    "effectThumbs": "最近文档缩略图可能无法生成。",
+    "effectExport": "小文件导出可能无法计算大小，或退回标准导出。",
+    "footer": "不需要关闭整个隐私扩展；只要允许当前站点访问 Canvas 即可。桌面版不受浏览器扩展影响。",
+    "retry": "重新检测",
+    "checking": "检测中…",
+    "continue": "继续使用",
+    "okToast": "Canvas 检测已通过。"
+  },
+  "storage": {
+    "section": "存储",
+    "used": "已用 {{used}} / {{cap}}",
+    "draftCount_one": "{{count}} 份草稿",
+    "draftCount_other": "{{count}} 份草稿",
+    "empty": "暂无草稿。",
+    "evictionNotice_one": "为腾出空间，已清理 {{count}} 份较旧的草稿：{{names}}。",
+    "evictionNotice_other": "为腾出空间，已清理 {{count}} 份较旧的草稿：{{names}}。",
+    "evictionDismiss": "知道了",
+    "lastEdited": "{{rel}}编辑",
+    "uses": "占用 {{size}}",
+    "delete": "删除",
+    "clearAll": "清空所有草稿",
+    "openManager": "管理本地缓存和草稿",
+    "usedOfQuota": "已用 {{used}} / {{quota}}",
+    "capNote": "这是应用限额，不是设备的存储配额。",
+    "persistent": "已防止自动清理",
+    "bestEffort": "在存储空间紧张或长期不活动时可能被清除",
+    "clearAllCancel": "保留草稿",
+    "clearAllConfirm_one": "确认删除全部 {{count}} 份草稿",
+    "clearAllConfirm_other": "确认删除全部 {{count}} 份草稿"
+  },
+  "history": {
+    "undo": "已撤销上次编辑",
+    "redo": "已重做编辑"
+  },
+  "signatures": {
+    "title": "签名",
+    "subtitle": "本地保存",
+    "name": "名称",
+    "defaultName": "签名 {{count}}",
+    "import": "导入 PNG/JPEG",
+    "clear": "清空",
+    "save": "保存签名",
+    "saved": "已保存",
+    "empty": "暂无签名。",
+    "choose": "选择签名",
+    "use": "使用",
+    "kinds": {
+      "ink": "手写",
+      "image": "图片"
+    },
+    "errors": {
+      "unsupported": "仅支持 PNG 或 JPEG 图片。",
+      "tooLarge": "图片不能超过 5 MB。",
+      "storage": "Shiori 无法更新已保存的签名。请释放一些设备存储空间后重试。"
+    }
+  },
+  "tools": {
+    "select": "选择",
+    "markup": "标记",
+    "draw": "绘制",
+    "highlight": "高亮",
+    "underline": "下划线",
+    "strikethrough": "删除线",
+    "ink": "画笔",
+    "signature": "签名",
+    "stamp": "印章",
+    "sign": "签章",
+    "rect": "矩形",
+    "note": "便签",
+    "callout": "批注",
+    "text": "文字",
+    "selectLong": "选择",
+    "markupLong": "标记",
+    "highlightLong": "高亮",
+    "underlineLong": "下划线",
+    "strikethroughLong": "删除线",
+    "inkLong": "画笔",
+    "signatureLong": "签名",
+    "stampLong": "勾叉印章",
+    "rectLong": "矩形",
+    "noteLong": "便签",
+    "calloutLong": "批注",
+    "textLong": "文字"
+  },
+  "inspector": {
+    "selectionPrefix": "已选 · {{type}}",
+    "labels": {
+      "highlight": "高亮",
+      "markup": "标记",
+      "underline": "下划线",
+      "strikethrough": "删除线",
+      "ink": "画笔",
+      "signature": "签名",
+      "stamp": "勾叉印章",
+      "rectangle": "矩形",
+      "note": "便签",
+      "callout": "批注",
+      "text": "文字",
+      "select": "选择"
+    },
+    "fields": {
+      "opacity": "不透明度",
+      "markupMode": "标记样式",
+      "drawMode": "绘制模式",
+      "signMode": "签章模式",
+      "weight": "粗细",
+      "size": "字号",
+      "color": "颜色",
+      "fill": "填充",
+      "fillNone": "填充 · 无",
+      "content": "文字内容",
+      "font": "字体",
+      "lineWeight": "线宽 {{value}}",
+      "width": "宽",
+      "height": "高",
+      "angle": "角度"
+    },
+    "hints": {
+      "highlight": "拖拽标记区域",
+      "underline": "拖过文字添加下划线",
+      "strikethrough": "拖过文字添加删除线",
+      "ink": "自由绘制 · 按住 Shift 画直线",
+      "signature": "点击或拖拽放置签名",
+      "signatureEmpty": "先选择一个签名",
+      "stamp": "选择勾或叉 · 点击放置",
+      "rect": "拖拽绘制 · 松开提交",
+      "note": "点击放置 · 双击编辑",
+      "callout": "选择文字或拖出区域，再写下批注",
+      "select": "点击注释编辑 · Shift 点击多选 · 拖动移动 · ⌘ 拖动复制"
+    },
+    "align": {
+      "label": "对齐",
+      "left": "左对齐",
+      "center": "居中对齐",
+      "right": "右对齐"
+    }
+  },
+  "types": {
+    "highlight": "高亮",
+    "underline": "下划线",
+    "strikethrough": "删除线",
+    "ink": "画笔",
+    "signature": "签名",
+    "image": "图片",
+    "stamp": "印章",
+    "rect": "矩形",
+    "note": "便签",
+    "callout": "批注",
+    "contentText": "已编辑原文",
+    "text": "文字"
+  },
+  "thumbs": {
+    "header": "页面",
+    "total": "共 {{count}} 页",
+    "rotate": "旋转",
+    "duplicate": "复制",
+    "delete": "删除",
+    "pageActions": "页面操作",
+    "insertPage": "插入页面",
+    "addPages": "添加页面",
+    "insertBlankPage": "插入空白页",
+    "insertPdfPages": "从 PDF 插入页面…",
+    "insertingPdf": "正在插入 PDF 页面…",
+    "dragHint": "拖动以重新排序"
+  },
+  "insertPdf": {
+    "encryptedIncoming": {
+      "title": "所选 PDF 受密码保护。",
+      "message": "无法插入受密码保护的 PDF 中的页面。请选择未加密的 PDF。"
+    },
+    "baseEncryption": {
+      "title": "无法安全保留当前 PDF 的加密。",
+      "message": "无法验证或保留其原有加密。未插入任何页面。"
+    },
+    "pagesPermission": {
+      "title": "当前密码不允许插入页面。",
+      "message": "请使用当前 PDF 的所有者密码打开文件后再插入页面。"
+    },
+    "targetMissing": {
+      "title": "该页面已不存在。",
+      "message": "请重新选择插入位置；当前文档未被改动。"
+    },
+    "targetChanged": {
+      "title": "插入目标已不再处于当前状态。",
+      "message": "未插入任何内容；请返回目标文档后重试。"
+    },
+    "interactive": {
+      "title": "此 PDF 包含暂不支持的交互内容。",
+      "message": "表单、签名、脚本或媒体操作无法被安全地简化为页面。"
+    },
+    "navigation": {
+      "title": "无法安全保留此 PDF 的页内链接。",
+      "message": "未插入任何内容；当前文档未被改动。"
+    },
+    "empty": {
+      "title": "此 PDF 没有页面。",
+      "message": "请选择至少包含一页的 PDF。"
+    },
+    "invalidPosition": {
+      "title": "插入位置已发生变化。",
+      "message": "请重新选择页面；当前文档未被改动。"
+    },
+    "documentFiles": {
+      "title": "无法安全分离此 PDF 的嵌入文件。",
+      "message": "未插入任何内容；当前文档未被改动。"
+    },
+    "baseDocumentFiles": {
+      "title": "无法保留当前 PDF 的附件。",
+      "message": "未插入任何内容；当前文档未被改动。"
+    },
+    "baseSigned": {
+      "title": "无法向这份已签名的 PDF 插入页面。",
+      "message": "重写文件会使数字签名失效，因此当前文档未被改动。"
+    }
+  },
+  "rail": {
+    "outline": "大纲",
+    "comments": "便签",
+    "terminal": "终端",
+    "browser": "浏览器",
+    "close": "关闭",
+    "outlineLoading": "正在读取大纲…",
+    "outlineEmpty": "此文档未包含目录。",
+    "commentsEmpty": "暂无便签。添加一个便签即可开始讨论。",
+    "pagePrefix": "第",
+    "undated": "无日期",
+    "resize": "拖拽调整侧栏宽度",
+    "outlineExpand": "展开此节",
+    "outlineCollapse": "收起此节",
+    "outlineTargetMissing": "目标页面已不在当前文档中"
+  },
+  "terminal": {
+    "title": "终端",
+    "connecting": "正在启动 shell…",
+    "sessionEnded": "Shell 会话已结束。",
+    "resize": "拖拽调整终端宽度",
+    "openFailed": "无法打开终端",
+    "external": {
+      "choose": "选择外部终端",
+      "menuLabel": "在外部终端中打开文档所在文件夹",
+      "openIn": "在 {{name}} 中打开",
+      "opening": "正在打开 {{name}}…",
+      "loading": "正在查找已安装的终端…",
+      "noneAvailable": "未检测到支持的外部终端。",
+      "discoveryFailed": "无法检测已安装的终端",
+      "discoveryFailedDetail": "请重试；若刚安装终端，可重启 Shiori 后再试。",
+      "retry": "重试",
+      "openFailed": "无法在 {{name}} 中打开",
+      "openFailedDetail": "请确认该应用仍已安装，然后重试。"
+    },
+    "errors": {
+      "unsupported": "只有桌面版可以使用内嵌终端。",
+      "unavailable": "无法启动系统 shell。请确认系统已安装 shell，然后重试。",
+      "cwdUnavailable": "无法确定工作目录。请先打开一份存放在本机的文档，然后重试。",
+      "cwdNotDirectory": "当前工作目录不可用。请另选一个文件夹，然后重试。",
+      "sessionMissing": "这个终端会话已经不存在。新建一个终端即可继续。",
+      "expired": "这个 beta 构建已经过期。"
+    },
+    "sessions": "终端会话",
+    "newSession": "新建终端",
+    "closeSession": "关闭终端"
+  },
+  "browser": {
+    "title": "浏览器",
+    "addressPlaceholder": "搜索或输入网址",
+    "back": "后退",
+    "forward": "前进",
+    "reload": "刷新",
+    "copyLink": "复制链接",
+    "copied": "已复制链接",
+    "openExternal": "在系统浏览器中打开",
+    "resize": "拖拽调整浏览器宽度",
+    "empty": "在终端运行 `open https://…`,或在上方输入网址。",
+    "unavailable": "只有桌面版可以使用浏览器面板。",
+    "loadFailed": "无法加载此页面。检查地址后重新加载。"
+  },
+  "export": {
+    "title": "导出 PDF",
+    "sections": {
+      "pages": "页面范围",
+      "annotations": "注释",
+      "quality": "文件大小"
+    },
+    "range": {
+      "all": "全部页面",
+      "allHint_one": "共 {{count}} 页",
+      "allHint_other": "共 {{count}} 页",
+      "current": "仅当前页",
+      "currentHint": "第 {{page}} 页",
+      "custom": "自定义范围",
+      "customPlaceholder": "例如 1–4, 7",
+      "attachmentsOmitted": "仅导出部分页面时，原 PDF 中的文档附件不会包含在导出文件里。"
+    },
+    "annot": {
+      "editable": "可编辑注释",
+      "editableHint": "高亮、便签、形状、画笔、文字都作为真正的 PDF 注释保留。可在 Acrobat、Foxit、PDF Expert 等外部 PDF 编辑器中重新打开编辑。",
+      "flatten": "展平到页面",
+      "flattenHint": "将注释烧入页面内容，不可再删除或编辑 — 适合签署、盖章等场景。",
+      "none": "仅原文档",
+      "noneHint": "只导出选中的页面，不包含任何注释。"
+    },
+    "quality": {
+      "original": "原始",
+      "originalHint": "{{size}} · 最大兼容",
+      "standard": "标准",
+      "standardHint": "{{size}} · 保留矢量内容和可编辑注释",
+      "compact": "小文件",
+      "compactHint": "{{size}} · 保存更小的一份",
+      "sizeOnSelect": "选择后计算大小",
+      "sizeCalculating": "正在计算大小…",
+      "sizeUnavailable": "无法计算大小",
+      "notice": "小文件模式可能把页面展平成图片。导出后文字可能无法选择、搜索或复制，链接/目录可能失效，注释也不能再编辑。需要保留这些能力请选标准。"
+    },
+    "footer": "保存在本地。数据不离开你的机器。",
+    "cancel": "取消",
+    "busy": "导出中…",
+    "action": "导出 PDF",
+    "emptyError": "没有可导出的页面 — 范围为空。",
+    "fontError": "导出字体加载失败，无法安全导出中文文字注释。",
+    "integrityError": "导出的 PDF 未通过完整性校验，已取消保存。请重试。",
+    "signedSourceError": "这个 PDF 已经过数字签名或认证。重建文件会使签名失效，因此 Shiori 已取消导出。",
+    "encryptedSourceError": "Shiori 无法读取这个 PDF 的加密信息，因此无法把修改写入文件。你的标注仍然保留在这里。",
+    "lostCharsWarning_other": "有 {{count}} 个字符无法编码，已替换为「?」。",
+    "lostCharsConfirmTitle": "部分字符会被替换",
+    "lostCharsConfirmBody_other": "{{count}} 个字符无法编码，导出的 PDF 会用「?」替换。",
+    "lostCharsConfirmCancel": "返回检查",
+    "lostCharsConfirmAction": "替换后导出",
+    "lostCharsPrintConfirm_other": "{{count}} 个字符无法编码，打印内容会用「?」替换。要继续打印吗？",
+    "cjkAnnotationsHint": "annotations 模式下中文字符会以矢量轮廓绘制，外部 PDF 编辑器打开时文字样式无法再编辑（但文本内容仍可恢复）。需要完整可编辑的文字样式请选 flatten。",
+    "closedUnexported": "关闭时还有未导出的修改 — 已存为草稿；重新打开此文件即可继续，或导出生成可分享的 PDF。",
+    "permissionError": "这个 PDF 的权限不允许{{edits}}。用所有者密码打开后即可导出这些修改。",
+    "permissionEdits": {
+      "annotations": "修改批注",
+      "content": "修改页面内容",
+      "pages": "调整页面"
+    },
+    "encryptionUnsupportedError": "Shiori 无法原样重现这个 PDF 的加密方式。为了不导出没有密码保护的文件，已取消导出。你的标注仍然保留在这里。",
+    "encryptionVerifyError": "导出的 PDF 无法用原密码重新打开，已取消保存。请重试。",
+    "printPermissionError": "这个 PDF 的权限不允许打印。用所有者密码打开后即可打印。",
+    "printSecurityUnknownError": "Shiori 无法读取这个 PDF 的安全设置，因此没有打印。",
+    "signedPrintError": "这个 PDF 已经过数字签名或认证。在这里打印需要重建一份副本，而 Shiori 不会重建已签名的文件；请改用系统的 PDF 阅读器打印。"
+  },
+  "settings": {
+    "title": "设置",
+    "subtitle": "这些设置仅存在于本机。",
+    "close": "关闭",
+    "sections": {
+      "appearance": "外观",
+      "language": "语言",
+      "privacy": "隐私",
+      "performance": "性能",
+      "about": "关于"
+    },
+    "colorMode": "明暗模式",
+    "colorModeOptions": {
+      "Auto": "跟随系统",
+      "Light": "浅色",
+      "Dark": "深色"
+    },
+    "theme": "主题",
+    "themeOptions": {
+      "Default": "默认",
+      "Everforest": "常青"
+    },
+    "pdfPaperTone": "PDF 纸张色",
+    "pdfPaperToneHint": "仅改变 PDF 页面在屏幕上的显示颜色；原文件和导出结果保持不变。",
+    "pdfPaperToneOptions": {
+      "Original": "原始",
+      "Everforest": "常青",
+      "Custom": "自定义"
+    },
+    "pdfPaperCustom": "自定义 PDF 纸张色",
+    "pdfPaperCustomReset": "恢复常青纸色",
+    "pdfPaperCustomHex": "自定义 HEX 颜色",
+    "pdfPaperCustomApply": "应用",
+    "pdfPaperCustomInvalid": "请输入 #RGB 或 #RRGGBB 格式的不透明颜色。",
+    "pdfPaperCustomEffective": "实际显示 {{color}}",
+    "pdfPaperCustomAdjusted": "颜色过暗，已自动提亮",
+    "accentColor": "强调色",
+    "accentColorHint": "所选颜色会原样用于焦点和主要操作；文字颜色仍会自动保持可读。",
+    "accentThemeDefault": "主题默认",
+    "accentCustomize": "自定义强调色",
+    "accentReset": "恢复主题默认色",
+    "accentCustom": "自定义 HEX 颜色",
+    "accentInvalid": "请输入 #RGB 或 #RRGGBB 格式的不透明颜色。",
+    "terminalColorMode": "终端明暗模式",
+    "terminalColorModeAuto": "跟随应用",
+    "terminalColorModeHint": "自动时跟随应用明暗模式；切换不会重启当前终端。",
+    "terminalTheme": "终端主题",
+    "terminalThemeAuto": "跟随应用",
+    "terminalThemeHint": "自动时跟随应用主题；切换不会重启当前终端。",
+    "serifAccents": "衬线强调",
+    "serifAccentsHint": "在标题和对话框中使用斜体衬线。",
+    "pageMargin": "页面边距",
+    "pageMarginHint": "打开文档周围的留白。",
+    "annotationAnimations": "播放批注动画",
+    "annotationAnimationsHint": "打开 PDF 时回放批注，新建或 CLI 批注按书写轨迹绘制；关闭后直接显示最终状态。",
+    "calloutFollowUp": "显示批注追问",
+    "calloutFollowUpHint": "仅在本机安装了 Claude Code 或 Codex 时显示追问输入框。",
+    "marginOptions": {
+      "Tight": "紧凑",
+      "Comfortable": "舒适",
+      "Roomy": "宽松"
+    },
+    "language": "界面语言",
+    "languageHint": "切换界面文字。",
+    "languageOptions": {
+      "en": "English",
+      "zh": "中文",
+      "ja": "日本語"
+    },
+    "remoteImagePolicy": "远程图片",
+    "remoteImagePolicyHint": "远程图片可能暴露 IP/打开文档信息，默认询问。",
+    "remoteImagePolicyOptions": {
+      "ask": "询问",
+      "always": "始终",
+      "never": "永不"
+    },
+    "browserPersistSession": "保留浏览器登录状态",
+    "browserPersistSessionHint": "保存内置浏览器的 Cookie 和站点存储。关闭后会使用临时会话；切换时会关闭当前浏览器页面。",
+    "preRender": "预渲染缩略图",
+    "preRenderHint": "占用更多内存；超过 100 页会自动改为懒渲染。",
+    "resourceMetrics": "资源使用",
+    "resourceMetricsInterval": "每 3 秒",
+    "resourceMetricsWindow": "最近 10 分钟",
+    "resourceMetricsHint": "每 3 秒低频采样，仅在偏好设置打开时刷新。颜色表示 Shiori 当前进程的应用级压力；WebView 不暴露精确 GPU 占用率，这里显示 GPU 的厂商和渲染器。",
+    "resourceMetricsError": "当前无法读取原生进程指标。",
+    "metricCpu": "CPU",
+    "metricMemory": "内存",
+    "metricGpu": "GPU",
+    "metricJsHeap": "JS 堆",
+    "metricCurrentProcess": "当前进程",
+    "metricPressure": {
+      "normal": "压力正常",
+      "elevated": "压力偏高",
+      "critical": "压力高峰"
+    },
+    "metricLoading": "采样中",
+    "metricUnavailable": "不可用",
+    "gpuRendererUnknown": "渲染器不可用",
+    "metricMemoryProcess": "应用进程",
+    "metricMemoryHeap": "JS 堆",
+    "resourceMetricsProcessNote": "原生 CPU／内存统计的是应用宿主进程；网页内容渲染进程单独计量。",
+    "resourceMetricsUnsupported": "此平台暂不支持实时资源指标。",
+    "about": "本地优先。数据不离开你的机器。",
+    "viewDisclaimer": "再看一遍内测须知",
+    "copyVersion": "复制版本号",
+    "versionCopied": "版本号已复制。",
+    "versionCopyFailed": "无法复制版本号。",
+    "aboutLinks": {
+      "website": "官网",
+      "releases": "GitHub Releases"
+    },
+    "directApkUpdates": "这是直接安装 APK 版本，可以在 Shiori 内下载更新。安装新版 APK 前，Android 仍会要求你确认。",
+    "checkForUpdates": "检查更新",
+    "checkingForUpdates": "检查中…",
+    "upToDate": "已是最新版本。"
+  },
+  "betaDisclaimer": {
+    "title": "使用前的一个小提醒",
+    "body1": "Shiori 仍在内测，编辑重要文件前请先备份一份原件 —— 尤其是已经被其他编辑器改过的 PDF。这类文件内部有时带着一些小毛病，保存时可能出意外。",
+    "body2": "所有内容都只留在你的设备上。内测阶段难免会遇到 Bug，欢迎反馈；但如果编辑结果不理想，这个阶段我还没法为此负责。",
+    "footerHint": "以后可以随时在 设置 → 关于 中重新查看。",
+    "acknowledge": "好的"
+  },
+  "goto": {
+    "title": "跳转到页面",
+    "subtitle_one": "共 {{count}} 页",
+    "subtitle_other": "共 {{count}} 页",
+    "input": "页码",
+    "hint": "选择本文档中的页面。",
+    "invalid": "请输入 1 到 {{count}} 之间的页码。",
+    "cancel": "取消",
+    "action": "跳转"
+  },
+  "find": {
+    "placeholder": "在文档中查找",
+    "loading": "正在索引 {{loaded}} / {{total}} 页",
+    "empty": "输入内容搜索此 PDF",
+    "error": "无法为这份文档建立搜索索引。关闭并重新打开文件后再搜索。",
+    "noMatches": "无匹配结果",
+    "count": "第 {{current}} / {{total}} 个匹配",
+    "page": "第 {{page}} 页",
+    "pageShort": "第 {{page}} 页",
+    "previous": "上一个匹配",
+    "next": "下一个匹配",
+    "close": "关闭查找"
+  },
+  "shortcuts": {
+    "title": "键盘快捷键",
+    "subtitle": "快速参考",
+    "groups": {
+      "tools": "工具",
+      "edit": "编辑",
+      "navigation": "导航",
+      "zoom": "缩放"
+    },
+    "rows": {
+      "select": "选择",
+      "markup": "标记",
+      "highlight": "高亮",
+      "underline": "下划线",
+      "strikethrough": "删除线",
+      "ink": "画笔",
+      "signature": "签名",
+      "stamp": "勾叉印章",
+      "rect": "矩形",
+      "text": "文字",
+      "undo": "撤销",
+      "redo": "重做",
+      "deleteSel": "删除所选",
+      "copy": "复制注释",
+      "paste": "粘贴注释",
+      "duplicate": "复制",
+      "selectAll": "选中当前页所有",
+      "nudge": "移动所选",
+      "rotate": "旋转所选（拖动手柄；⇧ = 吸附 15°）",
+      "print": "打印",
+      "find": "在文档中查找",
+      "nextPrev": "下一页 / 上一页",
+      "goto": "跳转到页…",
+      "pan": "按住拖动平移",
+      "zoomIn": "放大",
+      "zoomOut": "缩小",
+      "fit": "适应宽度",
+      "actual": "原始大小",
+      "readerMode": "切换纯净阅读模式",
+      "callout": "批注引线"
+    }
+  },
+  "landing": {
+    "heroLine1": "更安静地读、批注、",
+    "heroAccent": "交付你读到的一切。",
+    "dropTitleIdle": "把文档拖到这里",
+    "dropTitleActive": "松开以打开",
+    "dropHint": "或点击打开 — 也支持 Word / Markdown / HTML · beta 限制 {{maxSize}} 或 {{maxPages}} 页 · 原地打开",
+    "openFile": "打开文件",
+    "continueLast": "继续上次会话",
+    "valueProps": {
+      "offline": "完全离线运行",
+      "noSignin": "无需登录",
+      "keyboard": "键盘优先",
+      "oss": "数据不离开你的机器"
+    },
+    "footer": {
+      "version": "Shiori · v {{version}}",
+      "feedback": "反馈",
+      "feedbackTitle": "打开反馈和路线图",
+      "shortcuts": "⌘ ? 查看快捷键"
+    },
+    "recentHeader": "最近的文档",
+    "recentEmpty": "还没有打开过文档。打开一个，这里会出现它。",
+    "recentUnsupported": "当前浏览器无法自动重开最近文档。用打开文件重新选择同一个文件即可 — 批注保存在本机，会原样找回。",
+    "forgetRecent": "从最近文档中移除",
+    "recentNeedsAccess": "需要重新授权",
+    "recentNeedsAccessHint": "重新选择同一个文件即可打开 — 批注保存在本机，会原样找回。",
+    "recentPages_other": "{{count}} 页",
+    "themeToggleToLight": "切换到浅色模式",
+    "themeToggleToDark": "切换到深色模式"
+  },
+  "empty": {
+    "title": "没有剩余页面。",
+    "message": "打开另一个 PDF 继续。",
+    "import": "打开 PDF",
+    "addPage": "添加空白页"
+  },
+  "error": {
+    "title": "此文件无法打开。",
+    "message": "无法打开。",
+    "tooLarge": {
+      "title": "此 PDF 超出 beta 大小限制。",
+      "message": "超过 {{maxSize}} 的 beta 文件大小限制。当前文档未被改动。"
+    },
+    "tooManyPages": {
+      "title": "此 PDF 超出 beta 页数限制。",
+      "message": "超过 {{maxPages}} 页的 beta 限制。当前文档未被改动。"
+    },
+    "pageTooLarge": {
+      "title": "此 PDF 页面尺寸超出 beta 限制。",
+      "message": "包含超出 Shiori 渲染预算的页面。当前文档未被改动。"
+    },
+    "renderTooLarge": {
+      "title": "此 PDF 页面过大，无法安全渲染。",
+      "message": "在当前缩放下会超过 Shiori 的画布内存预算。当前文档未被改动。"
+    },
+    "password": {
+      "title": "此 PDF 受密码保护。",
+      "message": "需要先输入密码才能读取。当前文档未被改动。"
+    },
+    "damaged": {
+      "title": "此 PDF 可能已损坏。",
+      "message": "无法解析出可读页面树。当前文档未被改动。"
+    },
+    "engineUnavailable": {
+      "title": "Shiori 的 PDF 引擎没有启动。",
+      "message": "引擎启动前无法打开任何 PDF。请重启 Shiori；若反复出现，请重新安装或换用较新的浏览器。当前文档未被改动。"
+    },
+    "unknown": {
+      "title": "此文件无法打开。",
+      "message": "遇到了意外的 PDF 读取错误。当前文档未被改动。"
+    },
+    "unsupportedDocument": {
+      "title": "不支持的文档类型。",
+      "message": "请打开 PDF、Word、Markdown 或 HTML 文件。"
+    },
+    "retry": "尝试其他文件",
+    "dismiss": "关闭",
+    "codePrefix": "ERR_PDF_PARSE"
+  },
+  "password": {
+    "title": "需要密码",
+    "hint": "此 PDF 受密码保护，请输入密码以打开。",
+    "input": "PDF 密码",
+    "placeholder": "密码",
+    "wrong": "密码不正确，请重试。",
+    "unlock": "解锁",
+    "cancel": "取消"
+  },
+  "encryptedPdfWarning": {
+    "title": "这个 PDF 限制了编辑",
+    "body": "当前打开所用的密码允许阅读，但不允许{{edits}}。导出的文件会保留原密码；如需导出这些修改，请用所有者密码打开文件。",
+    "continue": "继续阅读"
+  },
+  "expired": {
+    "title": "这个 Shiori 构建已过期。",
+    "body": "构建于 {{built}}，过期于 {{expired}}。这个闭测构建已经超过测试窗口。下载最新构建继续测试 — 草稿都在本地保留，会自动接上。",
+    "copy": "复制链接",
+    "copied": "已复制",
+    "footnote": "在任意浏览器里粘贴这个链接下载最新版本。"
+  },
+  "overlays": {
+    "textPlaceholder": "文字…",
+    "calloutPlaceholder": "写一句简短批注…",
+    "contentTextOverflow": "超出原文宽度，导出时可能换行或溢出",
+    "contentTextMissingGlyphs_other": "{{count}} 个字符可能不在原字体中，导出将用内置字体",
+    "notePlaceholder": "双击或点按编辑…",
+    "noteAuthor": "便签",
+    "noteCollapse": "收起便签",
+    "noteExpand": "展开便签",
+    "calloutCollapse": "收起批注",
+    "calloutExpand": "展开批注",
+    "threadYou": "你",
+    "threadAgent": "Agent",
+    "threadReplyPlaceholder": "追问…",
+    "threadCollapse": "收起对话",
+    "threadExpand": "展开对话",
+    "threadCount_one": "{{count}} 轮对话",
+    "threadCount_other": "{{count}} 轮对话",
+    "threadDeleteTurn": "删除这一条",
+    "threadNoTerminalToast": "追问已留在批注里",
+    "threadNoTerminalDetail": "打开右栏终端里的 agent 会话后，它才能接到你的追问。"
+  },
+  "selectionPopup": {
+    "label": "标记所选文字",
+    "highlight": "高亮",
+    "underline": "下划线",
+    "strikethrough": "删除线",
+    "callout": "批注",
+    "crossPageHint": "暂不支持跨页标注"
+  },
+  "color": {
+    "recent": "最近使用",
+    "palette": "调色板",
+    "custom": "自定义",
+    "more": "更多颜色",
+    "swatch": "颜色 {{hex}}"
+  },
+  "tooltips": {
+    "undo": "撤销 (⌘Z)",
+    "redo": "重做 (⇧⌘Z)",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "actualSize": "实际大小 (100%)",
+    "zoomLevel": "缩放 — 点击输入百分比",
+    "fitWidth": "适应宽度",
+    "find": "查找 (⌘F)",
+    "delete": "删除 (⌫)",
+    "lock": "锁定注释",
+    "unlock": "解锁注释",
+    "bold": "加粗",
+    "italic": "斜体",
+    "copyTextEditDebug": "复制文字编辑诊断日志",
+    "stamp": "勾叉印章 (S)",
+    "rotate": "旋转"
+  },
+  "update": {
+    "title": "有新版本",
+    "subtitle": "Shiori {{from}} → {{to}}",
+    "installNow": "立即更新",
+    "later": "稍后",
+    "installing": "安装中…",
+    "openingDownload": "正在打开下载…",
+    "downloadingApk": "正在下载 APK…",
+    "downloadApk": "下载 APK",
+    "downloadAndInstallApk": "下载并安装",
+    "starting": "准备中…",
+    "noNotes": "此版本暂无更新说明。",
+    "error": "更新失败：{{message}}",
+    "errors": {
+      "android-install-permission-required": "请在 Android 设置中允许 Shiori 安装未知应用，然后再试一次。",
+      "android-update-sha256-mismatch": "下载的 APK 与预期校验值不一致。请重新下载更新。",
+      "android-update-sha256-missing": "更新信息中没有有效的 SHA-256 校验值，因此 Shiori 未下载或安装这个更新。",
+      "android-update-size-mismatch": "下载的 APK 大小与发布信息不一致。请重新下载更新。",
+      "android-update-package-mismatch": "下载的 APK 不是 Shiori 更新包。请改从 Shiori 官网下载更新。",
+      "android-update-apk-invalid": "无法读取下载的 APK。请重新下载更新。",
+      "android-update-version-not-newer": "下载的 APK 不比当前版本新，未执行安装。你已经是最新版本。",
+      "android-update-version-mismatch": "下载的 APK 版本与发布信息不一致。请重新下载更新。",
+      "android-update-url-not-allowed": "这个更新链接不可信。请改从 Shiori 官网下载更新。",
+      "android-direct-updater-disabled": "当前构建不支持 APK 直装更新。请通过安装来源的应用商店更新 Shiori。",
+      "android-install-launch-failed": "Android 无法打开 APK 安装器。",
+      "android-update-failed": "更新安装失败，请重试。",
+      "android-update-request-failed": "无法启动更新，请重试。",
+      "android-update-request-invalid": "更新请求无效，已被拒绝。",
+      "android-update-id-missing": "更新缺少标识信息，已取消安装。",
+      "android-update-url-missing": "更新缺少下载地址，已取消安装。",
+      "android-update-download-failed": "更新下载失败（HTTP {{code}}）。请检查网络后重试。"
+    }
+  },
+  "folderTree": {
+    "loading": "读取中…",
+    "empty": "这里没有 Shiori 能打开的文件。",
+    "unreadable": "读不了这个文件夹。",
+    "retry": "重试",
+    "truncated": "文件太多，没有全部列出。"
+  },
+  "a11y": {
+    "annotation": {
+      "replies_one": "{{count}} 条回复",
+      "replies_other": "{{count}} 条回复",
+      "locked": "已锁定",
+      "empty": "空白",
+      "marks_one": "{{count}} 处",
+      "marks_other": "{{count}} 处"
+    },
+    "landmarks": {
+      "thumbnails": "页面",
+      "rail": "工作区"
+    }
+  },
+  "docx": {
+    "viewerLabel": "Word 文档",
+    "loadFailed": "无法显示这个 Word 文档。",
+    "retry": "重新加载并重试"
+  }
+}

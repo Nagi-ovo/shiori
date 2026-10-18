@@ -1,0 +1,114 @@
+/* ───────── legal / support documents ─────────
+   Formal compliance pages (Privacy Policy, Support) shown on their own
+   URLs. Two-column layout matching the rest of the site's doc pages:
+   a left rail (title + date, sticky on desktop) and a single readable
+   prose column — the layout an app store reviewer expects, deliberately
+   plainer than the marketing sections. */
+.legal { padding-top: 8px; }
+.legal-grid {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: clamp(40px, 6vw, 96px);
+  align-items: start;
+}
+.legal-rail {
+  position: sticky;
+  top: 88px;
+}
+.legal-rail .label { color: var(--ink-3); }
+.legal-title {
+  font-family: var(--serif);
+  font-size: clamp(34px, 3.2vw, 52px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-weight: 400;
+  margin: 16px 0 0;
+}
+.legal-updated {
+  margin-top: 18px;
+  font-size: 11.5px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.legal-body { max-width: 70ch; }
+.legal-intro {
+  font-family: var(--serif);
+  font-style: normal;
+  font-size: clamp(18px, 1.4vw, 22px);
+  line-height: 1.55;
+  color: var(--ink);
+  margin: 0 0 40px;
+  text-wrap: pretty;
+}
+html[lang^="zh"] .legal-intro,
+html[lang^="ja"] .legal-intro {
+  font-style: normal;
+  font-size: clamp(16px, 1.2vw, 19px);
+  line-height: 1.8;
+}
+.legal-sec { margin: 0 0 36px; }
+.legal-sec h2 {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin: 0 0 14px;
+  font-weight: 600;
+}
+.legal-sec p {
+  font-family: var(--prose);
+  margin: 0 0 14px;
+  font-size: 16px;
+  line-height: 1.72;
+  color: var(--ink-2);
+}
+html[lang^="zh"] .legal-sec p,
+html[lang^="ja"] .legal-sec p {
+  line-height: 1.85;
+}
+.legal-list {
+  margin: 0 0 14px;
+  padding-left: 1.25em;
+  list-style: none;
+}
+.legal-list li {
+  font-family: var(--prose);
+  position: relative;
+  margin: 0 0 10px;
+  font-size: 16px;
+  line-height: 1.72;
+  color: var(--ink-2);
+}
+html[lang^="zh"] .legal-list li,
+html[lang^="ja"] .legal-list li { line-height: 1.85; }
+.legal-list li::before {
+  content: "—";
+  position: absolute;
+  left: -1.25em;
+  color: var(--ink-3);
+}
+.legal-body a {
+  color: var(--accent-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  word-break: break-word;
+}
+[data-theme="dark"] .legal-body a {
+  color: var(--accent);
+}
+@media (max-width: 900px) {
+  .legal-grid { grid-template-columns: 1fr; gap: 32px; }
+  .legal-rail {
+    position: static;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .legal-title { font-size: clamp(32px, 8vw, 44px); }
+}
+@media (max-width: 720px) {
+  .legal-sec p, .legal-list li, .legal-intro { font-size: 14.5px; }
+}
+
