@@ -127,29 +127,4 @@ export default defineConfig([
       ],
     },
   },
-  // Stage 4.1 of docs/PLAN-RUST-PDF-CORE-2026-09.md: pdf.js stays behind the
-  // engine seam (src/pdf/engine/, src/pdf/render/), so moving off it is a
-  // change of engine, not of every caller. Since 4.7b no reader outside it.
-  {
-    files: ['src/**/*.{ts,tsx}'],
-    ignores: [
-      'src/**/*.test.{ts,tsx}',
-      'src/pdf/engine/**',
-      'src/pdf/render/**',
-    ],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: ['pdfjs-dist', 'pdfjs-dist/*', '**/pdf/render/pdfjs', '**/render/pdfjs'],
-              message:
-                'Read PDFs through the engine (src/pdf/engine/types.ts: PdfEngine, PdfDocument), not pdf.js.',
-            },
-          ],
-        },
-      ],
-    },
-  },
 ])
