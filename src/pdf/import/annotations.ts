@@ -160,8 +160,9 @@ export async function importFileAnnotations(
       typeof id === "string" ? pageAnchors?.get(id) : undefined;
     const calloutIndex = indexRawCallouts(pageCallouts);
     const suppress = (annot: PdfjsAnnotation) => {
-      // The file's /Rect, which PDFium hides by: pdf.js swaps in the bounds of
-      // the appearance it draws for a markup that has none.
+      // The file's /Rect, which PDFium hides by: the listing, as pdf.js did,
+      // swaps in the bounds of the appearance it draws for a markup that has
+      // none.
       const rect = (typeof annot.id === "string" ? pageRects?.get(annot.id) : undefined) ?? (annot.rect as unknown);
       if (
         typeof annot.subtype === "string" &&
@@ -195,27 +196,28 @@ export async function importFileAnnotations(
         now,
       );
       if (!overlay) {
-        // Not an overlay, but still not pdf.js's to paint: PdfLinkLayer draws
+        // Not an overlay, but still not the raster's to paint: PdfLinkLayer draws
         // links as real anchors and note popups are replaced by Shiori's UI.
         if (typeof annot.subtype === "string" && SHIORI_DRAWN_SUBTYPES.has(annot.subtype)) {
           suppress(annot);
         }
         continue;
       }
-      // pdf.js drops /IC, so the fill comes from the raw pass and is applied
-      // here where both the overlay and that pass's data are in scope.
+      // The listing drops /IC (as pdf.js did), so the fill comes from the raw
+      // pass and is applied here where both the overlay and that pass's data
+      // are in scope.
       if (overlay.type === "rect" && pageInteriorColors) {
         const annotId = typeof annot.id === "string" ? annot.id : null;
         const fill = annotId ? pageInteriorColors.get(annotId) : undefined;
         if (fill) overlay.fill = fill;
       }
       {
-        // Same story for anchor provenance: pdf.js never exposes the Shio
-        // developer dictionary, so it is joined from the raw pass here.
+        // Same story for anchor provenance: the listing never exposes the
+        // Shio developer dictionary, so it is joined from the raw pass here.
         const anchor = anchorFor(annot.id);
         if (anchor) overlay.anchor = anchor;
       }
-      // A Shiori-exported thread reply arrives from pdf.js as a plain note.
+      // A Shiori-exported thread reply arrives in the listing as a plain note.
       // Park it for folding into its parent callout once the page's other
       // annotations (the parent included) exist; the canvas copy is
       // suppressed either way.

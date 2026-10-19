@@ -345,7 +345,7 @@ async function rebuildPdf(
       ? []
       : model.overlays.filter((overlay) => exportedPageIds.has(overlay.pageId));
   // Clone the bytes to avoid detaching the caller's buffer. ignoreEncryption
-  // lets pdf-lib parse PDFs that pdfjs already decrypted at open time.
+  // lets pdf-lib parse PDFs the engine already decrypted at open time.
   const source = await PDFDocument.load(new Uint8Array(originalBytes), {
     ignoreEncryption: true,
   });
@@ -1496,7 +1496,7 @@ function contentTextBaselineY(
   lineIndex: number,
   lineHeight: number,
 ): number {
-  // Preferred: the source line's own baseline, captured from pdf.js at edit
+  // Preferred: the source line's own baseline, captured from the text at edit
   // time. drawText/drawPathText y IS the baseline, so the replacement font's
   // ascent no longer influences placement. Lines beyond the covered source
   // lines (edited text wrapped longer) continue downward at the measured

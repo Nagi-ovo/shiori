@@ -18,7 +18,7 @@ export type PhysicalAppendInsertionPlan = {
   /** Existing logical pages with the appended physical pages spliced into the UI. */
   pages: PageModel[];
   insertedPages: PageModel[];
-  /** Base pdf.js pages whose native annotations must stay suppressed for Undo. */
+  /** Base pages whose native annotations must stay suppressed for Undo. */
   baseSourceIndices: number[];
 };
 

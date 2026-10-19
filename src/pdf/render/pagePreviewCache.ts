@@ -11,7 +11,7 @@ import type { PdfDocument } from "../engine/types";
  * blank-to-content as a flash.
  *
  * The preview is DERIVED from the sharp bitmap the page just produced — one
- * drawImage into a small canvas — so it costs no extra pdf.js work. It is
+ * drawImage into a small canvas — so it costs the engine no extra work. It is
  * stored as an encoded data URL rather than a live canvas: ~10-20KB of string
  * versus ~0.3MB of pixels, and an <img> can stretch it without us holding a
  * second canvas per page alive.
@@ -76,7 +76,7 @@ export function storePagePreview(
     small.height = height;
     const ctx = small.getContext("2d");
     if (!ctx) return;
-    // The sharp bitmap has no alpha of its own — pdf.js paints the sheet — so
+    // The sharp bitmap has no alpha of its own — the engine paints the sheet — so
     // JPEG is safe here and a third the size of PNG at this scale.
     ctx.drawImage(source, 0, 0, width, height);
     url = small.toDataURL("image/jpeg", 0.6);

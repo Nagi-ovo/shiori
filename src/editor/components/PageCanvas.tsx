@@ -64,7 +64,7 @@ const RASTER_SETTLE_MS = 160;
 // What the currently displayed bitmap depicts. The bitmap stays on screen,
 // stretched to the live scale, until a replacement for the same page is
 // ready — swapping only then is what removes the theme-colored blank that
-// used to show while pdfjs re-rendered into the visible canvas.
+// used to show while the engine re-rendered into the visible canvas.
 type RenderedSurface = {
   doc: PDFDocumentProxy;
   sourceIndex: number;

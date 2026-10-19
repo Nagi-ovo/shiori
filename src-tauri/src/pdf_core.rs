@@ -9,8 +9,7 @@
 //! the reader scrolled past is cancelled by its ticket before it is drawn.
 //!
 //! PDFium is bound on the first open, not at startup: an app whose PDFium is
-//! missing still starts, every open fails, and the front end keeps drawing
-//! with pdf.js.
+//! missing still starts, and every open fails with the reason.
 
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};

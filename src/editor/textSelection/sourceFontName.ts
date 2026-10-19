@@ -1,6 +1,6 @@
 // Stable identification of the source font under a contentText edit, so
 // the on-screen edit box can render with the document's OWN embedded font
-// (pdf.js registers each embedded font as a FontFace) instead of a
+// (the engine registers embedded fonts as FontFaces) instead of a
 // lookalike CSS stack — the face swap was what read as "text shifts when I
 // edit" even when the geometry was pixel-exact.
 

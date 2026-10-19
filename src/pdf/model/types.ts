@@ -260,7 +260,7 @@ export type ContentTextOverlay = OverlayCommon & {
   rect: PdfRect;
   coverRects: PdfRect[];
   // Baseline y of each covered source line (same page space as rect/coverRects,
-  // top line first). Captured from pdf.js item.transform at edit time — the
+  // top line first). Captured from the text item's transform at edit time — the
   // single source of truth for vertical placement; render and export derive
   // from it instead of re-deriving from rect edges. Missing = overlay predates
   // baseline capture (or came from the DOM-fallback selection path): consumers
@@ -283,7 +283,7 @@ export type ContentTextOverlay = OverlayCommon & {
   renderedFont?: string;
   // Normalized /BaseFont name (subset tag stripped) of the dominant font
   // under the edit — e.g. "EBGaramond-Regular". Stable across sessions;
-  // the renderer maps it to the pdf.js FontFace loaded in the CURRENT
+  // the renderer maps it to the embedded-font FontFace loaded in the CURRENT
   // session (store.pdfFontFaces) so the edit box shows the document's own
   // font. Missing = predates capture or the font never resolved to a
   // stable name; renderedFont/fontFamily then style the box as before.

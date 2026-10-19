@@ -60,7 +60,7 @@ const {
   restorePdfZoomPreviewLayer,
 } = await import("./Canvas");
 
-// Blank pages render without pdf.js, so the column's own behaviour — which
+// Blank pages render without the engine, so the column's own behaviour — which
 // nodes exist, where the scroller lands — is observable in happy-dom.
 function blankPages(count: number): PageModel[] {
   return Array.from({ length: count }, (_, index) => ({

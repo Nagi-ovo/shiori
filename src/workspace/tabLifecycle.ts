@@ -104,7 +104,7 @@ export type CloseTabPorts = {
   flushActiveDraft: () => Promise<void>;
   activeNeedsExport: () => boolean;
   inactiveNeedsExport: (tab: Tab) => boolean;
-  /** The pdf.js document on screen, captured before the tab list changes. */
+  /** The engine's document on screen, captured before the tab list changes. */
   captureActiveDocument: (tabId: string) => unknown;
   releaseCaches: (tab: Tab, remaining: Tab[]) => void;
   releaseRuntime: (tab: Tab, activeDocument: unknown) => Promise<void>;

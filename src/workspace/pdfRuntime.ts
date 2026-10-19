@@ -52,9 +52,9 @@ export type PdfRuntimePorts = {
  * PDF_RESIDENT_LIMIT tabs stay resident. Every document is released exactly
  * once through the engine, and never before its tab's state is safe: a
  * suspension releases only after the row is verified, and a failed write keeps
- * the document. With pdf.js a missed release costs memory the GC may recover;
- * with an engine that owns native memory it is a leak, and a second release
- * of the same handle is an error.
+ * the document. The engine owns native (or wasm) memory, so a missed release
+ * is a leak the GC cannot recover, and a second release of the same handle
+ * is an error.
  */
 export function createPdfRuntime(ports: PdfRuntimePorts) {
   const { store, engine, sessions, previews } = ports;

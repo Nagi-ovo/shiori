@@ -956,7 +956,7 @@ function displayRectsFromSelectedRunTexts(entries: SelectedTextRun[]): DisplayRe
 // generously. An edge that cuts between two glyphs of the same word (the
 // neighbouring character is not whitespace) must stay tight: the cover pad
 // would otherwise paint over the neighbour's ink. Run-boundary edges are
-// treated as safe — pdf.js can split runs mid-word, but the neighbouring
+// treated as safe — text runs can split mid-word, but the neighbouring
 // glyph's cell then belongs to another run we cannot see from here, and
 // run edges were already padded before this distinction existed.
 function selectedRunRectsWithEdges(entries: SelectedTextRun[]): {
@@ -1534,7 +1534,7 @@ function contentTextFirstLineIndentPt(
 }
 
 // Per-line source baselines (page space, top line first) from the selected
-// pdf.js runs. Returns null when any line only has DOM-derived runs (no exact
+// text runs. Returns null when any line only has DOM-derived runs (no exact
 // baseline): the overlay then omits sourceBaselinesPt and every consumer uses
 // the legacy rect-edge math — an estimated baseline would silently reintroduce
 // the misalignment this field exists to fix.

@@ -26,8 +26,8 @@ const ready: Promise<WasmCore> = loadWasmCore({
     { file: "NotoSansJP-Regular.otf", url: new URL("../../../assets/fonts/NotoSansJP-Regular.otf", import.meta.url).href },
   ],
 });
-// A failed load answers every request with its reason, and the engine draws
-// with pdf.js instead.
+// A failed load answers every request with its reason, so every open fails
+// and says why.
 ready.catch(() => undefined);
 
 const docs = new Map<number, Doc>();

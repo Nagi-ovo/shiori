@@ -48,9 +48,9 @@ export function mapTextContentGlyphs(
       return matchGlyphText(item.str, candidates) ??
         (item.dir === "rtl" ? matchGlyphText(item.str, [...candidates].reverse()) : null);
     };
-    // PDF.js can coalesce text across equivalent font resource IDs (links
-    // in an otherwise plain line are a common example). Its item's fontName
-    // then only identifies the first resource. Text + position still must
+    // A text item can span equivalent font resource IDs (pdf.js coalesced
+    // links in an otherwise plain line this way). Its fontName then only
+    // identifies the first resource. Text + position still must
     // match completely before accepting the cross-resource candidate.
     const matched = match(byFont.get(item.fontName) ?? []) ?? match(glyphs);
     return matched?.map(glyph => ({ ...glyph, nativeCaret: item.dir === "rtl" })) ?? null;

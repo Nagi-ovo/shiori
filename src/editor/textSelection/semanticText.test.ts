@@ -265,7 +265,7 @@ describe("semantic text extraction", () => {
   });
 
   test("does not space out adjacent CJK characters (so 中文 stays searchable)", () => {
-    // pdfjs frequently emits CJK as per-glyph items → one unit per character.
+    // Text content often carries CJK as per-glyph items → one unit per character.
     // The old unconditional separator made the index "中 文 文 档", so an
     // indexOf("中文") search could never match.
     const cjk = (text: string, divIndex: number) => ({

@@ -1540,7 +1540,7 @@ describe("PDF export", () => {
       dict.set(PDFName.of("Type"), PDFName.of("Annot"));
       dict.set(PDFName.of("Subtype"), PDFName.of(subtype));
       dict.set(PDFName.of("Rect"), source.context.obj([0, 0, 10, 10]));
-      // Without /QuadPoints pdf.js never hands the highlight to the editor,
+      // Without /QuadPoints the importer is never handed the highlight,
       // so it is not the model's to replace and export keeps it — see
       // isReplaceableAnnotation. Give it one so this is a markup annotation
       // the overlay model really owns.
@@ -3094,7 +3094,7 @@ describe("only annotations the editor could own are replaced", () => {
     return out;
   }
 
-  test("a highlight pdf.js never surfaced is kept, not silently deleted", async () => {
+  test("a highlight the importer never surfaced is kept, not silently deleted", async () => {
     const doc = await PDFDocument.create();
     const page = doc.addPage([612, 792]);
     const annots = PDFArray.withContext(doc.context);
@@ -3337,7 +3337,7 @@ describe("review provenance survives a round trip", () => {
 
 describe("encrypted source", () => {
   // What can go wrong exporting an encrypted PDF (the real handler, PDFium
-  // and pdf.js reading the result: crates/shiori-core-node/test/
+  // and qpdf reading the result: crates/shiori-core-node/test/
   // encryptedExport.test.ts):
   // - without the source's handler, writing ciphertext pdf-lib cannot read
   //   into a "valid" file that renders blank;

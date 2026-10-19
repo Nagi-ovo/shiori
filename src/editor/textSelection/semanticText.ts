@@ -5,8 +5,8 @@ import type {
 } from "../../pdf/engine/text";
 
 type RuntimeTextItem = TextItem & {
-  /** Compatibility hook only. pdf.js 5 does not guarantee general PDF
-   * /ActualText exposure through its public text-content API. */
+  /** Replacement text (/ActualText) where the text content carries it. The
+   * PDFium adapter emits none yet (src/pdf/engine/pdfiumText.ts). */
   actualText?: unknown;
 };
 

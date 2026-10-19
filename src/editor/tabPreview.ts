@@ -151,7 +151,7 @@ function encodeVisibleViewport(
 
 /**
  * Capture only pixels already painted for the active page. This never calls
- * pdf.js, so switching tabs cannot wake or reraster a document for its card.
+ * the engine, so switching tabs cannot wake or reraster a document for its card.
  */
 export function capturePdfTabPreview(
   store: PdfEditorStoreApi,

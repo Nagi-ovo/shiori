@@ -1003,7 +1003,7 @@ function ThemeToggle({ touchSized }: { touchSized: boolean }) {
 // Recent-document thumbnail. 60×78 mini page with a title bar, a
 // few content lines, one highlight band. Just enough signal to read
 // as a preview; not a real PDF render. Once real thumbnail capture
-// lands (pdf.js offscreen canvas → IndexedDB), this becomes the
+// lands (offscreen render → IndexedDB), this becomes the
 // fallback for documents without a captured thumbnail.
 function RecentThumb() {
   return (

@@ -142,7 +142,7 @@ describe("text selection highlight rect helpers", () => {
 
   test("preserves the native selection rect's horizontal bounds for CJK runs", () => {
     // Runtime testing on title-sized CJK exposed both left
-    // and right overflow — pdf.js text-run metrics, the DOM text
+    // and right overflow — text-run metrics, the DOM text
     // layer, and glyph ink boundaries don't line up tight enough to
     // drive a numeric padding heuristic. The contract for any
     // CJK-containing line is now: keep the native selection rect's
@@ -157,7 +157,7 @@ describe("text selection highlight rect helpers", () => {
     );
     expect(aligned).toEqual([{ x: 100, y: 96, w: 60, h: 20 }]);
 
-    // pdf.js sometimes splits a CJK line into single-char runs.
+    // Text content sometimes splits a CJK line into single-char runs.
     const singleChar = snapDisplayRectsToTextRuns(
       [{ x: 100, y: 100, w: 60, h: 16 }],
       [{ x: 100, y: 96, w: 60, h: 20, text: "你" }],
@@ -196,7 +196,7 @@ describe("text selection highlight rect helpers", () => {
     expect(titleMixed).toEqual([{ x: 50, y: 96, w: 240, h: 50 }]);
   });
 
-  test("builds display text run bounds from pdfjs text content", () => {
+  test("builds display text run bounds from page text content", () => {
     const page: PageModel = {
       id: "p",
       sourceIndex: 0,
@@ -241,7 +241,7 @@ describe("text selection highlight rect helpers", () => {
     ]);
   });
 
-  test("normalizes pdfjs text item positions from non-zero page origins", () => {
+  test("normalizes text item positions from non-zero page origins", () => {
     const page: PageModel = {
       id: "p",
       sourceIndex: 0,
@@ -329,7 +329,7 @@ describe("text selection highlight rect helpers", () => {
     expect(runs[0]?.fontFamily).toBe("sans-serif");
   });
 
-  test("uses pdfjs font ascent and descent when glyph measurement is unavailable", () => {
+  test("uses the font's ascent and descent when glyph measurement is unavailable", () => {
     const page: PageModel = {
       id: "p",
       sourceIndex: 0,
@@ -390,7 +390,7 @@ describe("text selection highlight rect helpers", () => {
       text: "evaluation confirms",
     };
 
-    // Justified arXiv body text can stretch the pdf.js DOM text span wider
+    // Justified arXiv body text can stretch the DOM text-layer span wider
     // than the actual PDF glyph run. Prefix Range rects must be interpreted
     // as ratios inside that stretched span, then mapped back to the real run.
     const domStartX = 100;

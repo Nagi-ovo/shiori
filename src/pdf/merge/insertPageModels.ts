@@ -19,7 +19,7 @@ export type ReconciledPdfInsertion = {
  * Reattach stable editor page IDs to a newly serialized PDF after a contiguous
  * insertion. The PDF's source indices have changed; page IDs and overlay
  * ownership must not. Kept pure so reorder/duplicate/blank-page edge cases can
- * be verified without loading pdf.js.
+ * be verified without opening a PDF.
  */
 export function reconcilePdfPageInsertion({
   previousPages,

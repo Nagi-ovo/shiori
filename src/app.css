@@ -438,8 +438,8 @@ button {
   inset: 0;
   overflow: clip;
   opacity: 1;
-  /* Keep pdf.js selection geometry out of Shiori's self-hosted UI
-     font stack. The textLayer is invisible and pdf.js assigns per-span
+  /* Keep text-layer selection geometry out of Shiori's self-hosted UI
+     font stack. The textLayer is invisible and assigns per-span
      fallback fonts itself; inheriting Inter Tight from body changes
      WebKit selection metrics at line ends. */
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",

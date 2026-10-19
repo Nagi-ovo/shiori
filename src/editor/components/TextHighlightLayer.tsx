@@ -267,11 +267,11 @@ function TextHighlightLayerImpl({
     ...(selectionTint ? { "--shiori-selection-tint": selectionTint } : {}),
   };
 
-  // The page build below — pdf.js text content, the operator list for glyph
-  // outlines, font registration, the semantic copy model — depends on the
+  // The page build below — the page's text content, glyph outlines, font
+  // registration, the semantic copy model — depends on the
   // page, not on the scale. It used to be keyed on layerScale too, so every
   // zoom commit re-ran all of it for every mounted page: several hundred ms
-  // of pdf.js work per pinch release, during which text could not be
+  // of engine work per pinch release, during which text could not be
   // selected and links were dead. A scale change now re-lays the existing
   // spans in place (TextLayer.update) and re-derives the display-space
   // geometry from the cached content.

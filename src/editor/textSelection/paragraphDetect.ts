@@ -1,4 +1,4 @@
-// Paragraph/block detection over pdf.js text runs — the foundation of
+// Paragraph/block detection over text runs — the foundation of
 // paragraph-level original-text editing (docs/PLAN-PARAGRAPH-CONTENT-TEXT-
 // 2026-07.md). Pure geometry: runs → lines → blocks, using the signals and
 // thresholds from docs/RESEARCH-PARAGRAPH-EDIT-2026-07.md (adapted from
@@ -294,7 +294,7 @@ export function lineDisplayRect(line: DetectedLine): DisplayRect {
   };
 }
 
-// Join a detected line's runs into text. pdf.js items are split arbitrarily
+// Join a detected line's runs into text. Text items are split arbitrarily
 // (often mid-word) and word spaces are sometimes geometry rather than space
 // glyphs — insert one when the gap between adjacent runs reads as a word
 // break (> ~0.2em, the typical word space being ~0.25em) and neither side

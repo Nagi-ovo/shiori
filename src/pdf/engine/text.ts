@@ -2,9 +2,9 @@ import type { PdfPoint } from "../model/types";
 
 /**
  * A page's text as the reading layer consumes it (text layer, selection,
- * semantic copy, anchors, find). The shape is pdf.js's TextContent, so pdf.js
- * hands it over as is; PDFium builds the same shape from its glyphs
- * (docs/PLAN-RUST-PDF-CORE-2026-09.md, stage 4.3).
+ * semantic copy, anchors, find). The shape is pdf.js's TextContent, which
+ * the reading layer was written against; PDFium's glyphs are built into it
+ * (./pdfiumText.ts, docs/PLAN-RUST-PDF-CORE-2026-09.md, stage 4.3).
  */
 export type PdfTextItem = {
   str: string;

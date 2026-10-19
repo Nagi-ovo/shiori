@@ -69,7 +69,7 @@ export type OpenedPdf = {
   // App-local cached copy used on mobile and other runtimes where the
   // platform cannot promise a stable reopenable filesystem path.
   cacheId?: string;
-  // Password used by pdf.js to reopen an encrypted PDF during this process.
+  // Password used by the engine to reopen an encrypted PDF during this process.
   password?: string;
   // pdf-lib cannot decrypt/rebuild encrypted sources. The editor surfaces this
   // before the reader invests work instead of waiting for export to fail.
@@ -262,9 +262,9 @@ type State = {
   /** Idempotency receipts outlive overlays: Undo must never make a lost-response
    * retry look like a new logical operation. Scoped to the open PDF/draft. */
   completedLiveOperationIds: ReadonlySet<string>;
-  // Normalized /BaseFont name → pdf.js FontFace family loaded THIS session
-  // ("EBGaramond-Regular" → "g_d3_f1"). Session-scoped and never persisted:
-  // the g_* names are slot names that mean something else next launch.
+  // Normalized /BaseFont name → the FontFace family the engine loaded for it
+  // THIS session ("EBGaramond-Regular" → "shiori-pdf-…"). Session-scoped and
+  // never persisted: a family only names a face while that face is loaded.
   // Lets contentText edit boxes render in the document's own embedded font.
   pdfFontFaces: Record<string, string>;
   // Characters seen rendered in each font across visited pages — a cheap

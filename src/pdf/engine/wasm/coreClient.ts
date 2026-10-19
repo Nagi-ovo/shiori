@@ -7,7 +7,7 @@ const PRIORITY = { visible: 0, backdrop: 1, thumbnail: 2 } as const;
  * The core worker (./coreWorker.ts) as the PDFium engine reaches it: the
  * same bridge the desktop render thread offers over Tauri IPC. The worker
  * starts on the first open. If it dies, every pending and later request
- * fails, and the engine draws and reads with pdf.js.
+ * fails with the reason.
  */
 export function createWasmCoreBridge(
   startWorker: () => Worker = () =>

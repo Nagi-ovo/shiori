@@ -14,7 +14,7 @@ import {
 } from "../../editor/textSelection/semanticText";
 
 // Geometry for quote-anchored annotations, computed directly in PDF user
-// space (page-local, origin bottom-left) from the pdf.js text matrix. This
+// space (page-local, origin bottom-left) from each text item's matrix. This
 // deliberately does NOT reuse the display-space run builder in
 // editor/textSelection/highlightRects.ts: that path bails on rotated pages
 // and prefers canvas glyph measurement when a DOM exists. Anchor resolution
@@ -38,7 +38,7 @@ export type PdfTextRun = {
 
 export type PdfTextRunMap = {
   runs: Array<PdfTextRun | null>;
-  /** Whether the aligned pdf.js item contains visible source text. This lets
+  /** Whether the aligned text item contains visible source text. This lets
    * runtime-provided replacement spans distinguish harmless whitespace from
    * missing geometry. */
   visibleRuns: boolean[];
@@ -181,7 +181,7 @@ export class AnchorGeometryLimitError extends Error {
 /**
  * Map a char range of the semantic search text (the exact text findMatches
  * runs over) to page-local PDF rects. Sub-item coverage is clipped
- * proportionally along the run — pdf.js exposes no per-glyph advances, and
+ * proportionally along the run — a text item carries no per-glyph advances, and
  * proportional clipping is the same fallback the in-app highlighter uses.
  */
 export function charRangeToPageRects(
@@ -301,7 +301,7 @@ export function charRangeToPageRects(
 }
 
 /** Merge same-line neighbors so a sentence yields one quad per line instead
- * of one per pdf.js item. Higher lines (larger y) come first. */
+ * of one per text item. Higher lines (larger y) come first. */
 function mergeLineRects(
   entries: Array<{ rect: PdfRect; baselineYPt: number }>,
 ): PdfRect[] {
@@ -388,7 +388,7 @@ const CJK_RUN_RE =
 const NARROW_CURLY_QUOTE_RE = /[\u2018\u2019\u201c\u201d]/u;
 
 /**
- * pdf.js exposes one width for a TextItem, not per-glyph advances. Uniform
+ * A TextItem carries one width, not per-glyph advances. Uniform
  * UTF-16 slicing visibly shifts a CJK quote when its combined item contains a
  * narrow curly quote. Keep the old uniform behavior for every other glyph;
  * only subtract the known narrow-quote delta from a precomputed sparse index.

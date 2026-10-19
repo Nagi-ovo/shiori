@@ -46,9 +46,9 @@ async function main(): Promise<void> {
     throw new Error("Packaged CLI license inventory failed its audit digest");
   }
 
-  // Run every command from a copy outside the repository. Otherwise pdf.js'
-  // dynamic createRequire can walk up to the checkout's node_modules and make
-  // an incomplete distribution look healthy. Unix commands go through a
+  // Run every command from a copy outside the repository. Otherwise a
+  // dynamic require can walk up to the checkout's node_modules and make an
+  // incomplete distribution look healthy. Unix commands go through a
   // symlink as well, matching the normal ~/.local/bin installation.
   const isolatedRoot = await mkdtemp(
     join(platform() === "darwin" ? "/tmp" : tmpdir(), "shiori-cli-isolated-"),

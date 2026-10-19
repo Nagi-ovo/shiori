@@ -12,7 +12,7 @@ export type RectLike = Pick<DOMRect, "left" | "top" | "right" | "bottom">;
 export type DisplayRect = { x: number; y: number; w: number; h: number };
 export type TextRunDisplayBounds = DisplayRect & {
   text: string;
-  // Display-space y of the glyph baseline (pdf.js item.transform[5] through
+  // Display-space y of the glyph baseline (the text item's transform[5] through
   // the same page transform as x/y). The run's box is derived from estimated
   // ascent/descent, but the baseline itself is exact — downstream vertical
   // placement (contentText edit/render/export) must derive from it, not from
@@ -63,7 +63,7 @@ type TextStyleLike = Pick<
 >;
 type VerticalTextMetrics = { ascentPx: number; descentPx: number };
 
-// Browser `Range.getClientRects()` on the pdf.js text layer returns rects
+// Browser `Range.getClientRects()` on the text layer returns rects
 // sized to the inline line-box, which slightly overshoots the actual glyph
 // extent — a few percent of leading above the cap line and a sliver of
 // padding under the descender. macOS Preview, by contrast, writes
@@ -72,7 +72,7 @@ type VerticalTextMetrics = { ascentPx: number; descentPx: number };
 // highlights, and stacking the two on the same line shows the offset.
 // When text-run geometry is unavailable, trim a small symmetric ratio from
 // each merged band so Shiori-side rects collapse closer to Preview's visual
-// bounds. Normal text markup is later snapped to glyph-aware pdf.js TextItem
+// bounds. Normal text markup is later snapped to glyph-aware TextItem
 // geometry, which is the preferred path because it is based on PDF user-space
 // metrics instead of browser selection line boxes.
 const SHIORI_HIGHLIGHT_BAND_VERTICAL_TRIM_RATIO = 0.08;
@@ -171,7 +171,7 @@ export function snapDisplayRectsToTextRuns(
     // Earlier versions tried per-side grid clamps and run-end caps,
     // but runtime testing on title-sized CJK showed the
     // 4.4–9px pad still visibly bleeds — the underlying problem is
-    // that pdf.js text-run metrics, the DOM text layer, and the
+    // that text-run metrics, the DOM text layer, and the
     // glyph ink boundary aren't tight enough to drive a numeric
     // padding heuristic. Take the native selection rect's
     // horizontal bounds as-is; only y/h come from the text run
@@ -211,7 +211,7 @@ export function snapDisplayRectsToTextRuns(
   });
 }
 
-// pdf.js renders headers, footers, and body text into the same flat
+// The text layer renders headers, footers, and body text into the same flat
 // text-layer container, so a native DOM selection from body text up
 // into a header sweeps both into a single Range whose getClientRects
 // covers both regions. Reject clusters separated from the gesture's
@@ -376,7 +376,7 @@ function firstFinitePositive(...values: unknown[]): number | null {
   return null;
 }
 
-// Title-sized CJK text in the pdf.js text layer returns Range/client
+// Title-sized CJK text in the text layer returns Range/client
 // rects whose horizontal bounds are based on the typesetting advance
 // box, not the glyph ink — a drag on "AB 栞示例" then claims a rect
 // noticeably wider than the user's actual finger/pointer motion.

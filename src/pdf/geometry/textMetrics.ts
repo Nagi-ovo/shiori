@@ -9,7 +9,7 @@ const MIN_PLAUSIBLE_ASCENT_SHARE = 0.55;
 const MAX_PLAUSIBLE_ASCENT_SHARE = 0.95;
 
 /**
- * Convert pdf.js font ascent/descent metadata into a deterministic glyph band.
+ * Convert a text style's font ascent/descent into a deterministic glyph band.
  *
  * Some embedded fonts publish a font-wide bbox taller than one em (for
  * example ascent 1.06 + descent 0.34). That bbox is useful for font layout,

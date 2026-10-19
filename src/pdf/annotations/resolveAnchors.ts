@@ -207,7 +207,7 @@ function buildLayoutSearchIndexes(
   return output;
 }
 
-/** Cheap pre-scan so anchor-free specs skip the pdfjs text pass entirely. */
+/** Cheap pre-scan so anchor-free specs skip the page text pass entirely. */
 export function specHasAnchors(spec: unknown): boolean {
   if (!isObject(spec) || !Array.isArray(spec.annotations)) return false;
   return spec.annotations.some(

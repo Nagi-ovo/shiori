@@ -7,7 +7,7 @@ import {
 } from "./paragraphDetect";
 
 // Display space with scale 1 → units are points. Baseline sits at the run's
-// bottom minus a small descent, like real pdf.js-derived runs.
+// bottom minus a small descent, like real text-derived runs.
 function run(
   text: string,
   x: number,
@@ -154,7 +154,7 @@ describe("paragraph detection", () => {
   });
 
   test("excludes rotated runs (baseline direction off horizontal)", () => {
-    // pdf.js lays a 90°-rotated run's width out horizontally, so its box
+    // A 90°-rotated run's width is laid out horizontally, so its box
     // looks like a normal-height page-wide line — only the recorded
     // direction betrays it.
     const stamp = run("arXiv:2603.19312v2 [cs.LG] 24 Mar", 20, 112, 900, 10, {

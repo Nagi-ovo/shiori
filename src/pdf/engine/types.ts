@@ -22,8 +22,7 @@ declare const pdfDocumentBrand: unique symbol;
 /**
  * An open PDF, as the engine that opened it hands it out: an opaque handle
  * the app only passes back to that engine (docs/PLAN-RUST-PDF-CORE-2026-09.md,
- * 4.7c). Behind it is a shiori-core document, or pdf.js's proxy where pdf.js
- * opened the file.
+ * 4.7c). Behind it is a shiori-core document.
  */
 export type PdfDocument = { readonly [pdfDocumentBrand]: true };
 

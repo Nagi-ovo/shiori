@@ -1516,7 +1516,7 @@ function OverlayLayerImpl({ page, scale, overlays }: Props) {
   }, [drag.kind, tool]);
 
   // `user-select: none` alone is not enough in WebKit / Tauri: a
-  // pointerdown that starts on this layer but drags onto pdfjs' text
+  // pointerdown that starts on this layer but drags onto the text
   // layer (which lives below at z:1) can still engage native range
   // selection and paint the page blue during drawing. Harden with an
   // explicit selectstart guard — only leave it open in text-markup

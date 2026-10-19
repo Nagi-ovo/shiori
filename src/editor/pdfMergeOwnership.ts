@@ -111,15 +111,15 @@ export function mergeStillOwnsTarget<TModel>(
  * The commit/abandon decision for an in-app PDF page merge.
  *
  * A merge (pasting an image, appending a PDF) runs a long chain of awaits:
- * flush, export the base, append bytes, hash, load with pdfjs, walk every
+ * flush, export the base, append bytes, hash, open with the engine, walk every
  * page, import annotations, write the workspace cache. The reader can switch
  * to another tab at any point in that chain. Committing anyway would replace
  * the globally shared PDF store — that is, whatever document is on screen now
  * — with the result of a merge that belongs to a tab they have left.
  *
  * Committing is therefore conditional on still owning the target, and the
- * abandoned path has to give back everything the merge allocated: the pdfjs
- * document (its worker, byte buffer, and decoded page caches) and the
+ * abandoned path has to give back everything the merge allocated: the
+ * engine's document (its native or wasm memory and page caches) and the
  * workspace cache row, which nothing references yet.
  *
  * Split out of App.tsx so the decision and its cleanup can be tested against
@@ -148,7 +148,7 @@ export async function finishPdfMerge<TDoc>({
     return true;
   }
   // Order matters only in that both must run: a failure to drop the cache row
-  // must not leak the pdfjs document, which holds a worker.
+  // must not leak the engine's document, which holds native memory.
   destroyDocument(document);
   if (cacheId) {
     await removeCachedSource(cacheId).catch(() => undefined);

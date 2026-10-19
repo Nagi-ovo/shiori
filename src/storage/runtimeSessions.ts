@@ -163,7 +163,7 @@ export function restoreSuspendedPdfSnapshot(
     undoStack: snapshot.undoStack,
     redoStack: snapshot.redoStack,
     completedLiveOperationIds: new Set(snapshot.completedLiveOperationIds),
-    // pdf.js face names are runtime slots and must be rebuilt by the new doc.
+    // Font faces are loaded per session and must be rebuilt by the new doc.
     pdfFontFaces: {},
     pdfFontChars: {},
     textDefaults: { ...snapshot.textDefaults },

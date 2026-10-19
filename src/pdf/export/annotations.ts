@@ -1333,19 +1333,17 @@ function isReplaceableAnnotation(dict: PDFDict): boolean {
   const subtype = dict.lookupMaybe(PDFName.of("Subtype"), PDFName)?.decodeText();
   if (!subtype || !REPLACED_SOURCE_SUBTYPES.has(subtype)) return false;
   // Matching subtype is not enough. Removal is only safe for annotations the
-  // editor actually took ownership of, and it only ever saw the ones pdf.js
-  // handed over. Anything pdf.js filtered out was never drawn, never became an
+  // editor actually took ownership of, and it only ever saw the ones the
+  // importer's listing handed over. Anything it filtered out never became an
   // overlay, and is not re-added on export — so removing it would delete it
   // from the user's file permanently, with no undo (the overlay model never
   // held it). Deliberately NOT keyed on "is it in the model right now":
   // deleting an imported annotation removes it from the model, and that
   // deletion still has to reach the file.
-  return pdfjsWouldHaveImported(dict, subtype);
+  // Only what the importer was handed became an overlay; the listing's
+  // display filter (ported from pdf.js, ../import/sourceAnnotations) decides.
+  return isListedForImport(dict, subtype);
 }
-
-// Only what the importer was handed became an overlay; the file reader's
-// display filter (pdf.js's) decides that.
-const pdfjsWouldHaveImported = isListedForImport;
 
 
 function shioriAnnotationName(id: string): PDFString {

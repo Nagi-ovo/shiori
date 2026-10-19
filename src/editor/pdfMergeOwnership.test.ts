@@ -216,8 +216,8 @@ describe("finishPdfMerge", () => {
     });
 
     expect(committed).toBe(false);
-    // A cache row that outlives its merge is reclaimable; a leaked pdfjs
-    // document holds a worker for the rest of the session.
+    // A cache row that outlives its merge is reclaimable; a leaked document
+    // holds the engine's memory for the rest of the session.
     expect(doc.destroyed).toBe(true);
   });
 });

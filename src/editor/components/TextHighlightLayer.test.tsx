@@ -91,7 +91,7 @@ describe("TextHighlightLayer cancellation", () => {
 });
 
 describe("TextHighlightLayer zoom", () => {
-  // pdf.js lays text out against a 2D canvas context; happy-dom has none.
+  // The text layer measures text with a 2D canvas context; happy-dom has none.
   function fakeContext(canvas: HTMLCanvasElement) {
     return {
       canvas,

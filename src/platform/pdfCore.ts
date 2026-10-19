@@ -1,6 +1,6 @@
 // shiori-core, the Rust/PDFium page renderer, as the desktop app reaches it
-// (docs/PLAN-RUST-PDF-CORE-2026-09.md, stage 3). Web and mobile have no
-// PDFium yet and report it unavailable; callers keep drawing with pdf.js.
+// (docs/PLAN-RUST-PDF-CORE-2026-09.md, stage 3). Web and mobile report it
+// unavailable and run the same core as wasm (src/pdf/engine/wasm/).
 //
 // `pdf_core_open` and `pdf_core_render` move raw bytes (the PDF in, RGBA out)
 // and so have hand-written invokes, like save.ts; the rest go through the
