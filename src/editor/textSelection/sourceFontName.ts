@@ -6,13 +6,6 @@
 
 import type { TextRunDisplayBounds } from "./highlightRects";
 
-// pdf.js loads embedded fonts under session-scoped names ("g_d0_f3": doc 0,
-// font 3). Those must never be persisted — a recovered draft would resolve
-// them against whatever document happens to occupy that slot next session.
-export function isPdfJsInternalFontName(name: string): boolean {
-  return /^g_d\d+_f/.test(name);
-}
-
 // "KAXVBH+EBGaramond-Regular" → "EBGaramond-Regular". The six-letter
 // subset tag differs per export/subsetting pass; the base name is what
 // identifies the font across sessions.
@@ -28,7 +21,7 @@ export function dominantSourceFontName(
 ): string | undefined {
   const votes = new Map<string, number>();
   for (const run of runs) {
-    if (!run.fontName || isPdfJsInternalFontName(run.fontName)) continue;
+    if (!run.fontName) continue;
     const name = normalizeBaseFontName(run.fontName);
     votes.set(name, (votes.get(name) ?? 0) + 1);
   }

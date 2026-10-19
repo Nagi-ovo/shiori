@@ -41,7 +41,6 @@ import {
 import { substituteAbsorbedText } from "../textSelection/absorbText";
 import {
   dominantSourceFontName,
-  isPdfJsInternalFontName,
   normalizeBaseFontName,
 } from "../textSelection/sourceFontName";
 import {
@@ -1778,7 +1777,7 @@ function registerLoadedPdfFontFaces(
   // unknown family as ready, so it cannot tell a loaded face from none.
   for (const [styleKey, faceFamily] of faceFamilies) {
     const resolved = fontNames.get(styleKey);
-    if (!resolved || isPdfJsInternalFontName(resolved)) continue;
+    if (!resolved) continue;
     let usable = false;
     try {
       usable = document.fonts?.check(`12px "${faceFamily}"`) ?? false;

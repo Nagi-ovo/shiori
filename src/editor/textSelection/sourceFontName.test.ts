@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import type { TextRunDisplayBounds } from "./highlightRects";
 import {
   dominantSourceFontName,
-  isPdfJsInternalFontName,
   normalizeBaseFontName,
 } from "./sourceFontName";
 
@@ -22,12 +21,6 @@ describe("sourceFontName", () => {
     expect(normalizeBaseFontName("ABC+Font")).toBe("ABC+Font");
   });
 
-  test("recognises pdf.js session-internal names", () => {
-    expect(isPdfJsInternalFontName("g_d0_f3")).toBe(true);
-    expect(isPdfJsInternalFontName("g_d12_f1")).toBe(true);
-    expect(isPdfJsInternalFontName("EBGaramond-Regular")).toBe(false);
-  });
-
   test("majority vote picks the dominant resolved name", () => {
     const runs = [
       run("KAXVBH+EBGaramond-Regular"),
@@ -37,8 +30,8 @@ describe("sourceFontName", () => {
     expect(dominantSourceFontName(runs)).toBe("EBGaramond-Regular");
   });
 
-  test("internal and missing names never win", () => {
-    expect(dominantSourceFontName([run("g_d0_f1"), run(undefined)])).toBe(
+  test("missing names never win", () => {
+    expect(dominantSourceFontName([run(undefined), run(undefined)])).toBe(
       undefined,
     );
   });
