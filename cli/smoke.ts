@@ -257,6 +257,25 @@ async function main(): Promise<void> {
       ) {
         throw new Error("Compiled CLI failure contract is not deterministic");
       }
+      // An addon that will not load is the engine missing, not a bad PDF.
+      // Checked on the bundle because it holds more than one copy of some
+      // modules, so a class check that passes from source can fail here.
+      const brokenCore = join(temp, "broken-core");
+      await mkdir(brokenCore);
+      await writeFile(join(brokenCore, nativeCoreFiles(target).addon), "");
+      const noEngine = await runRaw(
+        ["inspect", welcomePdf, "--agent"],
+        smokeExecutable,
+        { ...process.env, SHIORI_CORE_DIR: brokenCore },
+      );
+      const noEngineCode = (
+        JSON.parse(noEngine.stdout) as { error?: { code?: string } }
+      ).error?.code;
+      if (noEngine.exitCode === 0 || noEngineCode !== "ERR_PDF_ENGINE_UNAVAILABLE") {
+        throw new Error(
+          `Compiled CLI reported an addon that will not load as ${String(noEngineCode)}`,
+        );
+      }
     } finally {
       await rm(temp, { recursive: true, force: true });
     }

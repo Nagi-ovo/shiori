@@ -60,4 +60,28 @@ describe("PDF open/render policy", () => {
     expect(classifyPdfOpenError(new Error("something else"))).toBe("unknown");
     expect(classifyPdfOpenError(new PdfOpenError("tooLarge", "big"))).toBe("tooLarge");
   });
+
+  test("classifies a PdfOpenError from another copy of this module by its kind", () => {
+    // The CLI bundle holds two copies of this module, so the class thrown
+    // by one copy is not the class the other checks against; the name and
+    // a known kind still identify it. Neither alone does.
+    class OtherCopy extends Error {
+      kind: string;
+      constructor(kind: string, message: string) {
+        super(message);
+        this.name = "PdfOpenError";
+        this.kind = kind;
+      }
+    }
+    expect(classifyPdfOpenError(new OtherCopy("engineUnavailable", "addon did not load"))).toBe(
+      "engineUnavailable",
+    );
+    expect(classifyPdfOpenError(new OtherCopy("pageTooLarge", "PDF page 1 has dimensions"))).toBe(
+      "pageTooLarge",
+    );
+    expect(classifyPdfOpenError(new OtherCopy("notAKind", "something else"))).toBe("unknown");
+    expect(
+      classifyPdfOpenError(Object.assign(new Error("something else"), { kind: "tooLarge" })),
+    ).toBe("unknown");
+  });
 });
