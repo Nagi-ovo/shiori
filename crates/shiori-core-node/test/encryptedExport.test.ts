@@ -2,8 +2,11 @@
 //
 // An encrypted PDF exported with edits, end to end: the app's own export
 // (exportPdf) on PDFium's plaintext, re-encrypted by shiori-core, then read
-// back by two independent readers, PDFium and pdf.js. The fixtures and their
-// generator are in crates/shiori-core/tests/fixtures/encrypted/.
+// back by PDFium and by qpdf (src/test/qpdf.ts). PDFium also did the
+// decrypting and the encrypting, so qpdf is the reader that shares no code
+// with the writer; its tests show as skipped where qpdf is not installed.
+// The fixtures and their generator are in
+// crates/shiori-core/tests/fixtures/encrypted/.
 //
 // What can go wrong:
 // - the export leaves unencrypted, or encrypted under a new key or handler,
@@ -19,7 +22,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import { PDFDocument } from "pdf-lib";
 import { openCoreDocument, type CoreDocument } from "../../../cli/src/coreEngine";
 import type { PdfDocument, PdfSecurity } from "../../../src/pdf/engine/types";
@@ -30,9 +32,17 @@ import {
   type ExportQuality,
 } from "../../../src/pdf/export/exportPdf";
 import { withSourceEncryption, type ExportSourceEncryption } from "../../../src/pdf/export/encryptedSource";
-import { importPdfAnnotations } from "../../../src/pdf/import/annotations";
+import { importFileAnnotations } from "../../../src/pdf/import/annotations";
 import type { DocumentModel, Overlay, PageModel } from "../../../src/pdf/model/types";
 import { fakePdfEngine } from "../../../src/test/fakePdfEngine";
+import {
+  QPDF,
+  QpdfDocument,
+  qpdfCheck,
+  qpdfEncryption,
+  qpdfRejectsPassword,
+  qpdfTest,
+} from "../../../src/test/qpdf";
 
 const ROOT = join(import.meta.dir, "../../..");
 const FIXTURES = join(ROOT, "crates/shiori-core/tests/fixtures/encrypted");
@@ -112,13 +122,7 @@ async function openAsApp(name: string, password: string, bytes = fixture(name)) 
     const geometry = core.pageGeometry(index);
     return { id: `p${index}`, sourceIndex: index, rotation: 0, widthPt: geometry.width, heightPt: geometry.height };
   });
-  const noPdfjs = {
-    annotationStorage: { setValue: () => undefined },
-    getPage: () => {
-      throw new Error("pdf.js was read");
-    },
-  } as unknown as PdfDocument;
-  const imported = await importPdfAnnotations(noPdfjs, pages, bytes, 0, {
+  const imported = await importFileAnnotations(pages, bytes, 0, {
     decryptedBytes: async () => core.decryptedCopy(),
   });
   return { bytes, doc, engine, pages, imported, close: () => engine.destroy(doc) };
@@ -167,49 +171,30 @@ async function exportAsApp(
   return { bytes, plaintext };
 }
 
-type PdfjsDocument = Awaited<ReturnType<typeof pdfjsLib.getDocument>["promise"]>;
-
-async function pdfjsOpen(bytes: Uint8Array, password?: string): Promise<PdfjsDocument> {
-  return pdfjsLib.getDocument({ data: new Uint8Array(bytes), password, isEvalSupported: false }).promise;
-}
-
-/** What pdf.js reads from a document: the parts an edit and a round trip must keep. */
-async function pdfjsReading(doc: PdfjsDocument) {
-  const pages = [];
-  for (let number = 1; number <= doc.numPages; number += 1) {
-    const page = await doc.getPage(number);
-    const text = (await page.getTextContent()).items.map((item) => ("str" in item ? item.str : "")).join("");
-    const annotations = (await page.getAnnotations()).map((a) => ({
-      subtype: a.subtype as string,
-      contents: (a.contentsObj?.str ?? "") as string,
-      author: (a.titleObj?.str ?? "") as string,
-    }));
-    pages.push({ text, annotations });
-  }
-  const metadata = await doc.getMetadata();
-  const attachments = (await doc.getAttachments()) as Record<string, { content: Uint8Array }> | null;
+/** What qpdf reads from a document: the parts an edit and a round trip must keep. */
+function qpdfReading(bytes: Uint8Array, password?: string) {
+  const doc = QpdfDocument.open(bytes, password);
+  const xmp = doc.xmp();
   return {
-    pages,
-    title: (metadata.info as { Title?: string }).Title ?? null,
-    xmpTitle: metadata.metadata?.get("dc:title") ?? null,
+    pages: doc.pages().map((_, index) =>
+      doc.annotations(index).map((annotation) => ({
+        subtype: String(annotation["/Subtype"]).slice(1),
+        contents: doc.text(annotation["/Contents"]) ?? "",
+        author: doc.text(annotation["/T"]) ?? "",
+      })),
+    ),
+    title: doc.text(doc.info["/Title"]),
+    xmpTitle: xmp === null ? null : (/<dc:title>[\s\S]*?<rdf:li[^>]*>([^<]*)</.exec(xmp)?.[1] ?? null),
     attachments: Object.fromEntries(
-      Object.entries(attachments ?? {}).map(([name, file]) => [name, new TextDecoder().decode(file.content)]),
+      Object.entries(doc.attachments()).map(([name, data]) => [name, new TextDecoder().decode(data)]),
     ),
   };
 }
 
-async function pdfjsFails(bytes: Uint8Array, password?: string): Promise<string> {
-  const outcome = await pdfjsOpen(bytes, password).then(
-    async (doc) => {
-      await doc.destroy();
-      return "opened";
-    },
-    (error: { name?: string }) => error.name ?? "error",
-  );
-  return outcome;
-}
-
-function coreOpens(bytes: Uint8Array, password?: string): { revision: number | null; text: string } | "password" {
+function coreOpens(
+  bytes: Uint8Array,
+  password?: string,
+): { revision: number | null; text: string; pages: string[] } | "password" {
   let core: CoreDocument;
   try {
     core = openCoreDocument(bytes, password);
@@ -218,8 +203,10 @@ function coreOpens(bytes: Uint8Array, password?: string): { revision: number | n
     return "password";
   }
   try {
-    const text = core.glyphs(0).map((g) => g.text).join("");
-    return { revision: core.security().revision ?? null, text };
+    const pages = Array.from({ length: core.pageCount() }, (_, index) =>
+      core.glyphs(index).map((g) => g.text).join(""),
+    );
+    return { revision: core.security().revision ?? null, text: pages[0] ?? "", pages };
   } finally {
     core.close();
   }
@@ -246,7 +233,7 @@ async function expectEncryptedLikeSource(name: string, userPassword: string, run
   // PDFium: both passwords, with the source's handler; nothing else.
   for (const password of [userPassword, OWNER]) {
     const opened = coreOpens(bytes, password);
-    expect(opened).toEqual({ revision: sourceRevision.revision, text: expect.stringContaining("Secret page one") });
+    expect(opened).toMatchObject({ revision: sourceRevision.revision, text: expect.stringContaining("Secret page one") });
   }
   expect(coreOpens(bytes, WRONG)).toBe("password");
   if (userPassword !== "") expect(coreOpens(bytes, undefined)).toBe("password");
@@ -261,85 +248,106 @@ async function expectEncryptedLikeSource(name: string, userPassword: string, run
     decrypted.close();
   }
 
-  // pdf.js: the same, and it reads exactly what the plaintext export holds,
-  // except XMP under a V1/V2 handler, which pdf.js never decrypts (it sets
-  // encryptMetadata only for V4/V5), in the source file as in the export.
-  expect(await pdfjsFails(bytes, WRONG)).toBe("PasswordException");
-  if (userPassword !== "") expect(await pdfjsFails(bytes)).toBe("PasswordException");
-  const sourceDoc = await pdfjsOpen(source, OWNER);
-  const sourceXmpTitle = (await pdfjsReading(sourceDoc)).xmpTitle;
-  await sourceDoc.destroy();
-  const expected = { ...(await pdfjsReading(await pdfjsOpen(plaintext!))), xmpTitle: sourceXmpTitle };
+  return opened(bytes, userPassword);
+}
+
+/** The export's pages as PDFium reads them with `password`. */
+function opened(bytes: Uint8Array, password: string): string[] {
+  const reading = coreOpens(bytes, password);
+  if (reading === "password") throw new Error("the export does not open");
+  return reading.pages;
+}
+
+/**
+ * The same checks through qpdf: it opens the export with both passwords and
+ * nothing else, finds the source's security handler, finds no structural
+ * error, and reads exactly what the plaintext export holds.
+ */
+function expectQpdfReadsLikePlaintext(name: string, userPassword: string, run: ExportRun) {
+  const { bytes, plaintext } = run;
+  const source = fixture(name);
+  expect(qpdfRejectsPassword(bytes, WRONG)).toBe(true);
+  if (userPassword !== "") expect(qpdfRejectsPassword(bytes, undefined)).toBe(true);
+  const expected = qpdfReading(plaintext!);
   for (const password of [userPassword, OWNER]) {
-    const doc = await pdfjsOpen(bytes, password);
-    try {
-      expect(await pdfjsReading(doc)).toEqual(expected);
-    } finally {
-      await doc.destroy();
-    }
+    const check = qpdfCheck(bytes, password);
+    expect({ code: check.code, stderr: check.stderr }).toEqual({ code: 0, stderr: "" });
+    expect(qpdfEncryption(bytes, password)).toBe(qpdfEncryption(source, password));
+    expect(qpdfReading(bytes, password)).toEqual(expected);
   }
   return expected;
 }
 
+/** Opens fixture `name` as the app does, adds a highlight and exports it. */
+async function exportFixture(
+  name: string,
+  password: string,
+  options: { mode?: ExportMode; quality?: ExportQuality } = {},
+): Promise<ExportRun> {
+  const opened = await openAsApp(name, password);
+  try {
+    const model = { pages: opened.pages, overlays: [...opened.imported, highlight("p0")] };
+    return await exportAsApp(opened, password, model, options);
+  } finally {
+    await opened.close();
+  }
+}
+
+/** The user password where it allows annotating, else the owner's. */
+const editingPassword = (userPassword: string, userMayAnnotate: boolean) => (userMayAnnotate ? userPassword : OWNER);
+
+const OBJECT_STREAM_FIXTURES = ["aes-256", "rc4-128", "aes-128-nometa"];
+
 describe("an encrypted PDF exported with edits", () => {
   for (const [name, userPassword, userMayAnnotate] of FIXTURE_TABLE) {
-    test(`${name}: keeps its encryption, both passwords and everything it held`, async () => {
-      // The user password where it allows annotating, else the owner's.
-      const password = userMayAnnotate ? userPassword : OWNER;
-      const opened = await openAsApp(name, password);
-      try {
-        const model = { pages: opened.pages, overlays: [...opened.imported, highlight("p0")] };
-        const reading = await expectEncryptedLikeSource(
-          name,
-          userPassword,
-          await exportAsApp(opened, password, model),
-        );
-        expect(reading.pages[0]!.text).toContain("Secret page one");
-        expect(reading.pages[1]!.text).toContain("Secret page two");
-        expect(reading.pages[0]!.annotations).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({ subtype: "Text", contents: "Encrypted note 加密", author: "Reviewer" }),
-            expect.objectContaining({ subtype: "Highlight" }),
-          ]),
-        );
-        expect(reading.title).toBe("Locked title 秘密");
-        expect(reading.attachments).toEqual({ "notes.txt": "attached notes 附件" });
-      } finally {
-        await opened.close();
-      }
+    test(`${name}: keeps its encryption, both passwords and its text (PDFium)`, async () => {
+      const run = await exportFixture(name, editingPassword(userPassword, userMayAnnotate));
+      const pages = await expectEncryptedLikeSource(name, userPassword, run);
+      expect(pages[0]).toContain("Secret page one");
+      expect(pages[1]).toContain("Secret page two");
+    });
+
+    qpdfTest(`${name}: qpdf opens it with both passwords only and reads everything it held`, async () => {
+      const run = await exportFixture(name, editingPassword(userPassword, userMayAnnotate));
+      const reading = expectQpdfReadsLikePlaintext(name, userPassword, run);
+      expect(reading.pages[0]).toEqual(
+        expect.arrayContaining([
+          { subtype: "Text", contents: "Encrypted note 加密", author: "Reviewer" },
+          expect.objectContaining({ subtype: "Highlight" }),
+        ]),
+      );
+      expect(reading.title).toBe("Locked title 秘密");
+      expect(reading.xmpTitle).toBe("Locked title XMP");
+      expect(reading.attachments).toEqual({ "notes.txt": "attached notes 附件" });
     });
   }
 
-  test("object streams and an xref stream (Standard quality) stay readable by both readers", async () => {
-    for (const name of ["aes-256", "rc4-128", "aes-128-nometa"]) {
-      const opened = await openAsApp(name, "user-pw");
-      try {
-        const model = { pages: opened.pages, overlays: [...opened.imported, highlight("p0")] };
-        const run = await exportAsApp(opened, "user-pw", model, { quality: "standard" });
-        // pdf-lib wrote object streams into the plaintext.
-        expect(new TextDecoder("latin1").decode(run.plaintext!)).toContain("/ObjStm");
-        const reading = await expectEncryptedLikeSource(name, "user-pw", run);
-        expect(reading.pages[0]!.annotations.map((a) => a.subtype)).toContain("Highlight");
-      } finally {
-        await opened.close();
-      }
+  test("object streams and an xref stream (Standard quality) stay readable by PDFium", async () => {
+    for (const name of OBJECT_STREAM_FIXTURES) {
+      const run = await exportFixture(name, "user-pw", { quality: "standard" });
+      // pdf-lib wrote object streams into the plaintext.
+      expect(new TextDecoder("latin1").decode(run.plaintext!)).toContain("/ObjStm");
+      expect((await expectEncryptedLikeSource(name, "user-pw", run))[0]).toContain("Secret page one");
+    }
+  });
+
+  qpdfTest("object streams and an xref stream (Standard quality) stay readable by qpdf", async () => {
+    for (const name of OBJECT_STREAM_FIXTURES) {
+      const run = await exportFixture(name, "user-pw", { quality: "standard" });
+      expect(new TextDecoder("latin1").decode(run.plaintext!)).toContain("/ObjStm");
+      const reading = expectQpdfReadsLikePlaintext(name, "user-pw", run);
+      expect(reading.pages[0]!.map((a) => a.subtype)).toContain("Highlight");
     }
   });
 
   test("a flattened export keeps the encryption too", async () => {
-    const opened = await openAsApp("aes-128", "user-pw");
-    try {
-      const model = { pages: opened.pages, overlays: [...opened.imported, highlight("p0")] };
-      const reading = await expectEncryptedLikeSource(
-        "aes-128",
-        "user-pw",
-        await exportAsApp(opened, "user-pw", model, { mode: "flatten" }),
-      );
-      expect(reading.pages[0]!.annotations).toEqual([]);
-      expect(reading.pages[0]!.text).toContain("Secret page one");
-    } finally {
-      await opened.close();
-    }
+    const run = await exportFixture("aes-128", "user-pw", { mode: "flatten" });
+    expect((await expectEncryptedLikeSource("aes-128", "user-pw", run))[0]).toContain("Secret page one");
+  });
+
+  qpdfTest("a flattened export keeps the encryption and no annotations, read by qpdf", async () => {
+    const run = await exportFixture("aes-128", "user-pw", { mode: "flatten" });
+    expect(expectQpdfReadsLikePlaintext("aes-128", "user-pw", run).pages[0]).toEqual([]);
   });
 
   test("the permissions the user password grants decide what may be exported", async () => {
@@ -397,8 +405,12 @@ describe("an encrypted PDF exported with edits", () => {
       const { bytes } = outcome as ExportRun;
       expect(coreOpens(bytes, undefined)).toBe("password");
       expect(coreOpens(bytes, WRONG)).toBe("password");
-      expect(await pdfjsFails(bytes)).toBe("PasswordException");
-      expect(coreOpens(bytes, "user-pw")).toEqual({ revision: 4, text: expect.stringContaining("Secret page one") });
+      expect(coreOpens(bytes, "user-pw")).toMatchObject({ revision: 4, text: expect.stringContaining("Secret page one") });
+      // qpdf, which does not share PDFium's reading of the file, agrees.
+      if (QPDF) {
+        expect(qpdfRejectsPassword(bytes, undefined)).toBe(true);
+        expect(qpdfEncryption(bytes, "user-pw")).toBe(qpdfEncryption(source, "user-pw"));
+      }
     } finally {
       await opened.close();
     }

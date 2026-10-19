@@ -22,6 +22,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # The tests that verify Shiori's own PDF writer read its output with qpdf
+  # (src/test/qpdf.ts). Locally they skip without it; here they must run.
+  SHIORI_REQUIRE_QPDF: "1"
 
 jobs:
   verify:
@@ -62,6 +65,12 @@ jobs:
             crates/shiori-core-wasm -> target
           shared-key: "ci"
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+      # The independent reader for the writer tests (SHIORI_REQUIRE_QPDF):
+      # test:core's encrypted export, and in `bun run test` the FreeText
+      # dictionaries and encrypted page insertion.
+      - name: Install qpdf
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qpdf && qpdf --version
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0

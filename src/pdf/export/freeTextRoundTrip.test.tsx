@@ -2,11 +2,11 @@ import "../../test/setupDom";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { PDFDocument } from "pdf-lib";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import { OverlayDom } from "../../editor/components/overlays/OverlayDom";
 import i18n from "../../i18n";
-import { annotationToOverlay } from "../import/annotations";
-import type { PageModel, TextOverlay } from "../model/types";
+import { QpdfDocument, qpdfTest } from "../../test/qpdf";
+import { importFileAnnotations } from "../import/annotations";
+import type { Overlay, PageModel, TextOverlay } from "../model/types";
 import { exportPdf } from "./exportPdf";
 
 const unicodeFontUrl = new URL(
@@ -43,18 +43,10 @@ describe("FreeText export round trip", () => {
       align: "right",
       fontFamily: "notoSansSc",
     };
-    const [annotation] = await exportAndReadAnnotations([sourceOverlay]);
-    expect((annotation!.richText as { str?: string } | null)?.str).toBe(text);
-    const appearance = annotation!.defaultAppearanceData as {
-      fontSize: number;
-      fontColor: ArrayLike<number>;
-    };
-    expect(appearance.fontSize).toBe(12);
-    expect(Array.from(appearance.fontColor)).toEqual([58, 53, 45]);
-
-    const overlay = annotationToOverlay(annotation!, pageModel, () => "round-trip");
+    const [overlay] = await exportAndImport([sourceOverlay]);
     expect(overlay).toMatchObject({
       type: "text",
+      rect: sourceOverlay.rect,
       text,
       fontSize: 12,
       color: "#3a352d",
@@ -117,10 +109,7 @@ describe("FreeText export round trip", () => {
         fontFamily: "mono",
       },
     ];
-    const annotations = await exportAndReadAnnotations(overlays);
-    const imported = annotations.map((annotation, index) =>
-      annotationToOverlay(annotation, pageModel, () => `round-trip-${index}`),
-    );
+    const imported = await exportAndImport(overlays);
 
     expect(imported[0]).toMatchObject({
       type: "text",
@@ -138,33 +127,84 @@ describe("FreeText export round trip", () => {
     });
   });
 
-  test("keeps control characters in Contents while making AP text safe", async () => {
-    const text = "中文\n\t\u0001";
-    const [annotation] = await exportAndReadAnnotations([
-      {
-        id: "control-text",
-        type: "text",
-        pageId: pageModel.id,
-        rect: { x: 72, y: 650, w: 220, h: 60 },
-        text,
-        fontSize: 12,
-        color: "#3a352d",
-        bold: false,
-        align: "left",
-        fontFamily: "sans",
-      },
-    ]);
-
-    expect((annotation!.contentsObj as { str?: string }).str).toBe(text);
-    expect((annotation!.richText as { str?: string } | null)?.str).toBe(
-      "中文\n\t�",
-    );
+  test("keeps control characters in the text it imports back", async () => {
+    const [overlay] = await exportAndImport([controlTextOverlay]);
+    expect(overlay).toMatchObject({ type: "text", text: controlTextOverlay.text });
   });
 });
 
-async function exportAndReadAnnotations(
-  overlays: TextOverlay[],
-): Promise<Array<Record<string, unknown>>> {
+const controlTextOverlay: TextOverlay = {
+  id: "control-text",
+  type: "text",
+  pageId: pageModel.id,
+  rect: { x: 72, y: 560, w: 220, h: 60 },
+  text: "中文\n\t\u0001",
+  fontSize: 12,
+  color: "#3a352d",
+  bold: false,
+  align: "left",
+  fontFamily: "sans",
+};
+
+// What the exported dictionaries say, read by qpdf rather than by Shiori's
+// own importer: another viewer gets the text from /Contents and /RC, the
+// size and colour from /DA, the alignment from /Q and the box from /Rect.
+describe("FreeText export, read by qpdf", () => {
+  qpdfTest("writes the text, rich text, appearance string, alignment and box", async () => {
+    const text = "中文批注 & <ok>";
+    const doc = QpdfDocument.open(
+      await exportFreeText([
+        {
+          id: "free-text",
+          type: "text",
+          pageId: pageModel.id,
+          rect: { x: 72, y: 650, w: 220, h: 60 },
+          text,
+          fontSize: 12,
+          color: "#3a352d",
+          bold: true,
+          italic: true,
+          align: "right",
+          fontFamily: "notoSansSc",
+        },
+        controlTextOverlay,
+      ]),
+    );
+    const [styled, control] = doc.annotations(0);
+    expect(styled!["/Subtype"]).toBe("/FreeText");
+    expect(styled!["/Rect"]).toEqual([72, 650, 292, 710]);
+    expect(styled!["/Q"]).toBe(2);
+    expect(doc.text(styled!["/Contents"])).toBe(text);
+    expect(richTextOf(doc.text(styled!["/RC"]))).toBe(text);
+    expect(appearanceOf(doc.text(styled!["/DA"]))).toEqual({ fontSize: 12, color: [58, 53, 45] });
+
+    // Contents keeps control characters; the rich text, which an XML
+    // parser must accept, replaces them.
+    expect(control!["/Rect"]).toEqual([72, 560, 292, 620]);
+    expect(control!["/Q"]).toBe(0);
+    expect(doc.text(control!["/Contents"])).toBe("中文\n\t\u0001");
+    expect(richTextOf(doc.text(control!["/RC"]))).toBe("中文\n\t\uFFFD");
+  });
+});
+
+/** The character data of an /RC XHTML body, parsed as XML. */
+function richTextOf(rc: string | null): string | null {
+  if (rc === null) return null;
+  const parsed = new window.DOMParser().parseFromString(rc, "application/xml");
+  return parsed.documentElement.textContent;
+}
+
+/** Font size and RGB fill (0-255) from a /DA string such as "/F 12 Tf 0.2 0.2 0.2 rg". */
+function appearanceOf(da: string | null) {
+  const size = /([\d.]+)\s+Tf/.exec(da ?? "");
+  const rgb = /([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+rg/.exec(da ?? "");
+  return {
+    fontSize: size ? Number(size[1]) : null,
+    color: rgb ? rgb.slice(1, 4).map((value) => Math.round(Number(value) * 255)) : null,
+  };
+}
+
+async function exportFreeText(overlays: TextOverlay[]): Promise<Uint8Array> {
   const source = await PDFDocument.create();
   source.addPage([pageModel.widthPt, pageModel.heightPt]);
   const original = await source.save();
@@ -178,16 +218,10 @@ async function exportAndReadAnnotations(
       requireUnicodeFont: true,
     },
   );
-  const doc = await pdfjsLib.getDocument({
-    data: new Uint8Array(bytes),
-    useSystemFonts: true,
-  }).promise;
-  try {
-    const pdfPage = await doc.getPage(1);
-    return (await pdfPage.getAnnotations()) as unknown as Array<
-      Record<string, unknown>
-    >;
-  } finally {
-    await doc.destroy();
-  }
+  return bytes;
+}
+
+/** Exports `overlays`, then imports the file back as the app opens it. */
+async function exportAndImport(overlays: TextOverlay[]): Promise<Overlay[]> {
+  return importFileAnnotations([pageModel], await exportFreeText(overlays));
 }

@@ -27,7 +27,6 @@ import { afterEach, expect, test } from "bun:test";
 import Dexie from "dexie";
 import { indexedDB, IDBKeyRange } from "fake-indexeddb";
 import { PDFDocument, StandardFonts } from "pdf-lib";
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import { openCoreDocument, resolveCoreFiles, type CoreDocument } from "../../../cli/src/coreEngine";
 
 import { createPdfEditorStore, useEditorStore } from "../../editor/store/store";
@@ -40,6 +39,7 @@ import { sha256Hex } from "../../storage/hash";
 
 
 import { fakePdfEngine } from "../../test/fakePdfEngine";
+import { QPDF, QpdfDocument, qpdfCheck, qpdfEncryption, qpdfRejectsPassword } from "../../test/qpdf";
 import { finalizePdfOpen } from "../intake/finalizePdfOpen";
 import { createWorkspaceStore } from "../workspaceStore";
 import { createPageMerges, type PageMergeNotice, type PageMergePorts } from "./pageMerge";
@@ -58,6 +58,9 @@ const OWNER = "owner-pw";
 // The web-only gate builds WASM, not the native addon. Build the addon first
 // (test:core or the command in the artifact README) to run these real readers.
 const coreTest = test.skipIf(!existsSync(resolveCoreFiles().addon));
+// qpdf reads the merged exports as a reader that shares no code with the
+// writer (PDFium decrypts and re-encrypts); see src/test/qpdf.ts.
+const qpdfCoreTest = test.skipIf(!existsSync(resolveCoreFiles().addon) || !QPDF);
 const cases: [string, string][] = [
   ["rc4-40", "user-pw"], ["rc4-128", "user-pw"], ["r4-rc4", "user-pw"],
   ["aes-128", "user-pw"], ["aes-128-nometa", "user-pw"],
@@ -123,44 +126,61 @@ async function expectLocked(bytes: Uint8Array, source: Uint8Array, user: string,
       expect(core.pageCount()).toBe(texts.length);
       for (let i = 0; i < texts.length; i++) expect(core.glyphs(i).map(g => g.text).join("")).toContain(texts[i]!);
     } finally { core.close(); }
-    const doc = await pdfjs.getDocument({ data: new Uint8Array(bytes), password, isEvalSupported: false }).promise;
-    try {
-      expect(doc.numPages).toBe(texts.length);
-      for (let i = 0; i < texts.length; i++) {
-        const text = (await (await doc.getPage(i + 1)).getTextContent()).items.map(item => "str" in item ? item.str : "").join("");
-        expect(text).toContain(texts[i]!);
-      }
-    } finally { await doc.destroy(); }
   }
   for (const password of user === "" ? ["wrong-password"] : [undefined, "wrong-password"]) {
     expect(() => openCoreDocument(bytes, password)).toThrow(/password/i);
-    await expect(pdfjs.getDocument({ data: new Uint8Array(bytes), password }).promise).rejects.toMatchObject({ name: "PasswordException" });
   }
 }
 
+/** The same lock, read by qpdf: both passwords and no others, the source's handler, a clean structure. */
+function expectQpdfLocked(bytes: Uint8Array, source: Uint8Array, user: string, pageCount: number) {
+  for (const password of [user, OWNER]) {
+    const check = qpdfCheck(bytes, password);
+    expect({ code: check.code, stderr: check.stderr }).toEqual({ code: 0, stderr: "" });
+    expect(qpdfEncryption(bytes, password)).toBe(qpdfEncryption(source, password));
+    expect(QpdfDocument.open(bytes, password).pages()).toHaveLength(pageCount);
+  }
+  for (const password of user === "" ? ["wrong-password"] : [undefined, "wrong-password"]) {
+    expect(qpdfRejectsPassword(bytes, password)).toBe(true);
+  }
+}
+
+/** Inserts a page into fixture `name` and exports the result as the app does. */
+async function insertThenExport(name: string, password: string) {
+  const bytes = fixture(name);
+  const { engine } = nodeEngine();
+  const { doc } = await engine.load(bytes, { password });
+  let merged: Uint8Array;
+  try {
+    merged = (await withSourceEncryption(engine, { doc, bytes, password }, encryption =>
+      insertPdfPages(bytes, awaitIncoming, 1, "insert.pdf", encryption),
+    )).bytes;
+  } finally { await engine.destroy(doc); }
+  const reopened = await engine.load(merged, { password });
+  try {
+    const pages: PageModel[] = (await engine.pageGeometry(reopened.doc)).map((g, sourceIndex) => ({
+      ...g, sourceIndex, id: `p${sourceIndex}`, rotation: sourceIndex === 1 ? 90 : 0,
+    }));
+    const exported = await withSourceEncryption(engine, { doc: reopened.doc, bytes: merged, password }, sourceEncryption =>
+      exportPdf(merged, { pages, overlays: [] }, { mode: "annotations", preserveSourceAnnotations: true, sourceEncryption }),
+    );
+    return { source: bytes, merged, exported: exported.bytes, user: name === "empty-user" ? "" : "user-pw" };
+  } finally { await engine.destroy(reopened.doc); }
+}
+
+const MERGED_TEXTS = ["Secret page one", "Inserted page", "Secret page two"];
+
 for (const [name, password] of cases) {
   coreTest(`${name}: insert then export keeps the original handler and both passwords`, async () => {
-    const bytes = fixture(name);
-    const { engine } = nodeEngine();
-    const { doc } = await engine.load(bytes, { password });
-    let merged: Uint8Array;
-    try {
-      merged = (await withSourceEncryption(engine, { doc, bytes, password }, encryption =>
-        insertPdfPages(bytes, awaitIncoming, 1, "insert.pdf", encryption),
-      )).bytes;
-    } finally { await engine.destroy(doc); }
-    const user = name === "empty-user" ? "" : "user-pw";
-    await expectLocked(merged, bytes, user, ["Secret page one", "Inserted page", "Secret page two"]);
-    const reopened = await engine.load(merged, { password });
-    try {
-      const pages: PageModel[] = (await engine.pageGeometry(reopened.doc)).map((g, sourceIndex) => ({
-        ...g, sourceIndex, id: `p${sourceIndex}`, rotation: sourceIndex === 1 ? 90 : 0,
-      }));
-      const exported = await withSourceEncryption(engine, { doc: reopened.doc, bytes: merged, password }, sourceEncryption =>
-        exportPdf(merged, { pages, overlays: [] }, { mode: "annotations", preserveSourceAnnotations: true, sourceEncryption }),
-      );
-      await expectLocked(exported.bytes, bytes, user, ["Secret page one", "Inserted page", "Secret page two"]);
-    } finally { await engine.destroy(reopened.doc); }
+    const run = await insertThenExport(name, password);
+    await expectLocked(run.merged, run.source, run.user, MERGED_TEXTS);
+    await expectLocked(run.exported, run.source, run.user, MERGED_TEXTS);
+  });
+
+  qpdfCoreTest(`${name}: qpdf opens the inserted and exported files with both passwords only`, async () => {
+    const run = await insertThenExport(name, password);
+    expectQpdfLocked(run.merged, run.source, run.user, MERGED_TEXTS.length);
+    expectQpdfLocked(run.exported, run.source, run.user, MERGED_TEXTS.length);
   });
 }
 
