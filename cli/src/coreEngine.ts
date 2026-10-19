@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PdfiumPageGeometry } from "../../src/pdf/engine/pdfiumGeometry";
 import type { PdfiumGlyphWithBox } from "../../src/pdf/engine/pdfiumText";
+import { PdfOpenError } from "../../src/pdf/openPolicy";
 
 /**
  * shiori-core, Shiori's Rust/PDFium reader, as the CLI loads it: a Node addon
@@ -119,14 +120,24 @@ let addon: CoreAddon | null = null;
 function loadAddon(path: string): CoreAddon {
   if (addon) return addon;
   if (!existsSync(path)) {
-    // "PDF engine unavailable" is what classifyPdfOpenError reads.
-    throw new Error(
-      `PDF engine unavailable: shiori-core addon not found at ${path}; build crates/shiori-core-node or set SHIORI_CORE_DIR`,
+    throw new PdfOpenError(
+      "engineUnavailable",
+      `shiori-core addon not found at ${path}; build crates/shiori-core-node or set SHIORI_CORE_DIR`,
     );
   }
   // process.dlopen takes any file name; require() would insist on ".node".
   const module = { exports: {} as CoreAddon };
-  process.dlopen(module, path);
+  try {
+    process.dlopen(module, path);
+  } catch (error) {
+    // A damaged, truncated or foreign file in the addon's place: the engine
+    // is missing as surely as with no file, so it reads as unavailable, not
+    // as something wrong with the PDF.
+    throw new PdfOpenError(
+      "engineUnavailable",
+      `shiori-core addon at ${path} did not load: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   addon = module.exports;
   return addon;
 }

@@ -13,10 +13,14 @@ type CliProcessResult = {
   stderr: string;
 };
 
-async function runCli(args: string[], cwd = process.cwd()): Promise<CliProcessResult> {
+async function runCli(
+  args: string[],
+  cwd = process.cwd(),
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<CliProcessResult> {
   const child = spawn(process.execPath, [CLI_PATH, ...args], {
     cwd,
-    env: process.env,
+    env,
     stdio: ["ignore", "pipe", "pipe"],
   });
   let stdout = "";
@@ -127,6 +131,31 @@ describe("shiori CLI process contract", () => {
     expect(result.stderr).toContain("ERR_FILE_UNAVAILABLE:");
   });
 
+
+  test("an addon that will not load reports the PDF engine as unavailable", async () => {
+    // SHIORI_CORE_DIR wins over the repo build whenever it holds an addon,
+    // so a damaged one is what the process tries to load.
+    for (const [name, contents] of [
+      ["empty", ""],
+      ["not a library", "not a shared library\n"],
+    ]) {
+      await withTempDir(async (dir) => {
+        await writeFile(join(dir, "shiori_core.node"), contents);
+        const result = await runCli(
+          ["inspect", "site/public/welcome.pdf", "--agent"],
+          process.cwd(),
+          { ...process.env, SHIORI_CORE_DIR: dir },
+        );
+        expect(result.exitCode, name).toBe(1);
+        const envelope = JSON.parse(result.stdout) as {
+          error: { code: string; detail?: string };
+        };
+        expect(envelope.error.code, name).toBe("ERR_PDF_ENGINE_UNAVAILABLE");
+        // The loader's own reason stays for whoever has to fix the install.
+        expect(envelope.error.detail, name).toContain(join(dir, "shiori_core.node"));
+      });
+    }
+  });
 
   test("human output strips terminal escape sequences from document text", async () => {
     await withTempDir(async (dir) => {
