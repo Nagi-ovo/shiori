@@ -11,9 +11,13 @@ Last reconciled against reality: **2026-10-17**.
 - **Shiori is open source** (2026-10-18). `Nagi-ovo/shiori` is the public
   source repo (formerly `shiori-releases`; releases, tags and the updater's
   `gh-pages` live there too). The old private source repo is `shiori-dev`,
-  Actions off, to be archived. Still open: Cloudflare Pages has to be
-  reconnected to the public repo (it still deploys from `shiori-dev`), and
-  the `release` environment lacks the Apple and macOS certificate secrets.
+  Actions off, to be archived. Cloudflare Pages deploys from the public repo
+  since 2026-10-19: `shiori.nagi.fun` → project `shiori-site`,
+  `app.shiori.nagi.fun` → `shiori-web` (DNS: the `@` and `app` CNAMEs in the
+  separate Aliyun zone `shiori.nagi.fun`, not the `shiori` record in
+  `nagi.fun`). The old projects `shiori-promotion` / `shiori-app` stay for
+  rollback until Jesse deletes them. Still open: archive `shiori-dev`, and the
+  `release` environment lacks the Apple and macOS certificate secrets.
 
 - **The encryption, Canvas, tab strip and lib.rs work is on `main`, not in
   a release yet** (58 changes sealed 2026-10-07, rebased onto `a48fb9de` and
