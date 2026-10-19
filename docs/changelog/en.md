@@ -4,7 +4,7 @@
 
 ### Open source
 
-- **Shiori and the Shiori CLI are open source.** All of the source code is public under the MIT license at github.com/Nagi-ovo/shiori: read it, use it, change it, and report problems there.
+- **Shiori and the Shiori CLI are open source! 🎉** As of today, every line of both is public at github.com/Nagi-ovo/shiori under the MIT license: read it, use it, change it, make it yours. After all this time building it, it is finally in everyone's hands. Ideas and bug reports are welcome on GitHub, and a star goes a long way.
 
 ### Encrypted PDFs
 

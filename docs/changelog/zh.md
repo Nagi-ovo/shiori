@@ -4,7 +4,7 @@
 
 ### 开源
 
-- **Shiori 和 Shiori CLI 开源了。** 全部源代码以 MIT 许可证公开在 github.com/Nagi-ovo/shiori，可以自由查看、使用和修改，也欢迎在那里反馈问题。
+- **Shiori 和 Shiori CLI 开源了！🎉** 从今天起，两者的每一行代码都以 MIT 许可证公开在 github.com/Nagi-ovo/shiori：随便看、随便用、随便改。做了这么久，终于能把它完完整整地交到大家手里。有想法、遇到问题，都欢迎来 GitHub 找我；顺手点个 Star，就是很大的鼓励。
 
 ### 加密 PDF
 
