@@ -27,7 +27,6 @@ import {
   PDFNumber,
   PDFRawStream,
   PDFString,
-  StandardFonts,
 } from "pdf-lib";
 import { main } from "../src/main";
 import {
@@ -152,15 +151,6 @@ async function makeRotatedOffsetCropPdf(path: string): Promise<void> {
   const page = doc.addPage([612, 792]);
   page.setCropBox(50, 100, 300, 400);
   page.setRotation(degrees(90));
-  await writeFile(path, await doc.save());
-}
-
-async function makeOutOfBoundsCropTextPdf(path: string): Promise<void> {
-  const doc = await PDFDocument.create();
-  const page = doc.addPage([600, 800]);
-  page.setCropBox(-50, -100, 700, 900);
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  page.drawText("Crop anchor", { x: 150, y: 300, size: 12, font });
   await writeFile(path, await doc.save());
 }
 
@@ -302,33 +292,6 @@ describe("shiori annotate", () => {
       expect(rect[3]!).toBeLessThanOrEqual(500);
     });
   });
-
-  // Resolving a text anchor starts pdf.js from cold: 7.6 s on the windows
-  // x64 runner (cli-verify run 36195073284), past bun's 5 s default, and the
-  // timed-out run then wrote into the next test's captured stdout.
-  test(
-    "uses pdf.js' effective CropBox for resolved anchor export",
-    async () => {
-      await withTempDir(async (dir) => {
-        const input = join(dir, "out-of-bounds-crop.pdf");
-        const output = join(dir, "anchored.pdf");
-        await makeOutOfBoundsCropTextPdf(input);
-        await main([
-          "annotate",
-          input,
-          "--highlight",
-          "Crop anchor",
-          "-o",
-          output,
-        ]);
-        const rect = await firstAnnotationRect(output);
-        expect(rect).toHaveLength(4);
-        expect(rect[0]).toBeGreaterThan(140);
-        expect(rect[0]).toBeLessThan(160);
-      });
-    },
-    { timeout: 30_000 },
-  );
 
   test("rejects quote-only anchoring without geometry", async () => {
     await withTempDir(async (dir) => {
@@ -1061,74 +1024,6 @@ describe("shiori annotate", () => {
     });
   });
 
-  test("resolves quote anchors end-to-end and reports them in dry runs", async () => {
-    await withTempDir(async (dir) => {
-      const input = join(dir, "welcome.pdf");
-      const spec = join(dir, "spec.json");
-      const output = join(dir, "anchored.pdf");
-      await copyFile("site/public/welcome.pdf", input);
-      await writeFile(
-        spec,
-        JSON.stringify({
-          annotations: [
-            { type: "highlight", anchor: { quote: "Shiori", occurrence: 1 } },
-          ],
-        }),
-      );
-
-      const dryRun = await captureCli([
-        "annotate",
-        input,
-        "--spec",
-        spec,
-        "-o",
-        output,
-        "--dry-run",
-        "--agent",
-      ]);
-      const dryPayload = JSON.parse(dryRun.stdout) as {
-        data: {
-          anchors?: Array<{ index: number; page: number; rects: unknown[]; quote: string }>;
-          placements?: Array<{ index: number; page: number; rects: unknown[] }>;
-        };
-      };
-      const anchors = dryPayload.data.anchors ?? [];
-      expect(anchors).toHaveLength(1);
-      expect(anchors[0]!.page).toBe(1);
-      expect(anchors[0]!.quote).toBe("Shiori");
-      expect(anchors[0]!.rects.length).toBeGreaterThan(0);
-      expect(dryPayload.data.placements?.[0]).toMatchObject({
-        index: 0,
-        page: 1,
-      });
-
-      const humanDryRun = await captureCli([
-        "annotate",
-        input,
-        "--spec",
-        spec,
-        "-o",
-        output,
-        "--dry-run",
-      ]);
-      expect(humanDryRun.stdout).toContain("#1 highlight p.1 rects=[x=");
-
-      await main(["annotate", input, "--spec", spec, "-o", output]);
-      const extracted = await captureCli([
-        "extract",
-        output,
-        "--as-spec",
-      ]);
-      const roundTrip = JSON.parse(extracted.stdout) as {
-        annotations: Array<{ type: string; page: number; rects: unknown[]; quote?: string }>;
-      };
-      const highlight = roundTrip.annotations.find((a) => a.type === "highlight");
-      expect(highlight).toBeDefined();
-      expect(highlight!.page).toBe(1);
-      expect(highlight!.rects.length).toBeGreaterThan(0);
-    });
-  });
-
   test("exports the exact source snapshot used to resolve anchors", async () => {
     await withTempDir(async (dir) => {
       const input = join(dir, "input.pdf");
@@ -1169,74 +1064,6 @@ describe("shiori annotate", () => {
       expect(exported.getPage(0).getWidth()).toBe(200);
       const currentPath = await PDFDocument.load(await readFile(input));
       expect(currentPath.getPage(0).getWidth()).toBe(400);
-    });
-  });
-
-  test("reports unresolved and ambiguous anchors with actionable errors", async () => {
-    await withTempDir(async (dir) => {
-      const input = join(dir, "welcome.pdf");
-      const spec = join(dir, "spec.json");
-      await copyFile("site/public/welcome.pdf", input);
-
-      await writeFile(
-        spec,
-        JSON.stringify({
-          annotations: [
-            { type: "highlight", anchor: { quote: "text that is nowhere" } },
-          ],
-        }),
-      );
-      await expectCliError(
-        main(["annotate", input, "--spec", spec, "-o", join(dir, "o1.pdf")]),
-        "ERR_ANCHOR_UNRESOLVED",
-        "was not found",
-      );
-
-      await writeFile(
-        spec,
-        JSON.stringify({
-          annotations: [{ type: "highlight", anchor: { quote: "Shiori" } }],
-        }),
-      );
-      await expectCliError(
-        main(["annotate", input, "--spec", spec, "-o", join(dir, "o2.pdf")]),
-        "ERR_ANCHOR_UNRESOLVED",
-        "anchor.page and/or anchor.occurrence",
-      );
-
-      await writeFile(
-        spec,
-        JSON.stringify({
-          annotations: [
-            { type: "highlight", page: 1, anchor: { quote: "Shiori" } },
-          ],
-        }),
-      );
-      await expectCliError(
-        main(["annotate", input, "--spec", spec, "-o", join(dir, "o3.pdf")]),
-        "ERR_SPEC_INVALID",
-        "page must be omitted",
-      );
-    });
-  });
-
-  test("--highlight annotates without a spec file", async () => {
-    await withTempDir(async (dir) => {
-      const input = join(dir, "welcome.pdf");
-      const output = join(dir, "sugar.pdf");
-      await copyFile("site/public/welcome.pdf", input);
-
-      const before = await annotationCount(input);
-      const { stdout } = await captureCli([
-        "annotate",
-        input,
-        "--highlight",
-        "A Local-First PDF Reader and Editor",
-        "-o",
-        output,
-      ]);
-      expect(stdout).toContain("1 annotations written");
-      await expect(annotationCount(output)).resolves.toBe(before + 1);
     });
   });
 

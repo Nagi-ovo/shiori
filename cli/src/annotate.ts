@@ -654,6 +654,7 @@ export function errorMessageForPdfKind(kind: PdfOpenErrorKind): string {
   if (kind === "tooManyPages") return "PDF exceeds Shiori's page limit";
   if (kind === "pageTooLarge") return "PDF page dimensions are too large";
   if (kind === "renderTooLarge") return "PDF render target is too large";
+  if (kind === "engineUnavailable") return "Shiori's PDF reader (shiori-core) is unavailable";
   return "Could not open PDF";
 }
 

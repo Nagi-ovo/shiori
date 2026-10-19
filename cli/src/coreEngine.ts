@@ -2,44 +2,23 @@ import { existsSync } from "node:fs";
 import { arch, platform } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { PdfiumPageGeometry } from "../../src/pdf/engine/pdfiumGeometry";
+import type { PdfiumGlyphWithBox } from "../../src/pdf/engine/pdfiumText";
 
 /**
  * shiori-core, Shiori's Rust/PDFium reader, as the CLI loads it: a Node addon
  * (crates/shiori-core-node) beside the PDFium library it binds. The packaged
- * CLI ships it in `native/` and reads and renders with it; a run from source
- * uses pdf.js unless SHIORI_PDF_ENGINE=pdfium (docs/PLAN-RUST-PDF-CORE-2026-09.md,
- * stage 5). SHIORI_PDF_ENGINE=pdfjs opts a packaged CLI out.
+ * CLI ships it in `native/`; a run from source loads the one built in the
+ * repo. Every PDF command reads with it. SHIORI_PDF_ENGINE=pdfjs still
+ * selects the old pdf.js reader until that path is removed
+ * (docs/PLAN-RUST-PDF-CORE-2026-09.md).
  */
 
 export type PdfEngineName = "pdfjs" | "pdfium";
 
-export type CoreGlyph = {
-  text: string;
-  /** [x, y] of the baseline start, PDF user space. */
-  origin: [number, number];
-  /** [x, y] of the advance end. */
-  end: [number, number];
-  /** [left, bottom, right, top]: advance box united with ink. */
-  loose: [number, number, number, number];
-  fontSize: number;
-  angle: number;
-  generated: boolean;
-  hyphen: boolean;
-  fontName: string;
-  /** PDF font descriptor flags (1 fixed pitch, 2 serif, 64 italic, …). */
-  fontFlags: number;
-  /** Page units at this glyph's size; descent is negative. */
-  ascent: number;
-  descent: number;
-};
-
-export type CorePageGeometry = {
-  rotation: number;
-  originX: number;
-  originY: number;
-  width: number;
-  height: number;
-};
+/** The core's glyph and page box, typed once for every binding (src/pdf/engine/). */
+export type CoreGlyph = PdfiumGlyphWithBox;
+export type CorePageGeometry = PdfiumPageGeometry;
 
 /** A link annotation's /Rect and where it goes: a page of this document or a URL. */
 export type CoreLink = {
@@ -109,18 +88,8 @@ type CoreAddon = {
 
 const SOURCE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-export function pdfEngineFromEnv(
-  env: NodeJS.ProcessEnv = process.env,
-  packaged: boolean = corePackaged(),
-): PdfEngineName {
-  const chosen = env.SHIORI_PDF_ENGINE?.trim().toLowerCase();
-  if (chosen === "pdfium" || chosen === "pdfjs") return chosen;
-  return packaged ? "pdfium" : "pdfjs";
-}
-
-/** Whether the core ships beside the executable (or SHIORI_CORE_DIR names one). */
-export function corePackaged(): boolean {
-  return resolveCoreFiles().packaged;
+export function pdfEngineFromEnv(env: NodeJS.ProcessEnv = process.env): PdfEngineName {
+  return env.SHIORI_PDF_ENGINE?.trim().toLowerCase() === "pdfjs" ? "pdfjs" : "pdfium";
 }
 
 /** Where the addon and PDFium live: packaged beside the executable, or built in the repo. */
@@ -156,8 +125,9 @@ let addon: CoreAddon | null = null;
 function loadAddon(path: string): CoreAddon {
   if (addon) return addon;
   if (!existsSync(path)) {
+    // "PDF engine unavailable" is what classifyPdfOpenError reads.
     throw new Error(
-      `shiori-core addon not found at ${path}; build crates/shiori-core-node or set SHIORI_CORE_DIR`,
+      `PDF engine unavailable: shiori-core addon not found at ${path}; build crates/shiori-core-node or set SHIORI_CORE_DIR`,
     );
   }
   // process.dlopen takes any file name; require() would insist on ".node".

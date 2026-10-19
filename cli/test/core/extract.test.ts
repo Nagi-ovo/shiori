@@ -1,9 +1,9 @@
-import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
-import { main } from "../src/main";
+import { main } from "../../src/main";
+import { handMadePdf } from "./handMadePdf";
 
 async function captureCli(args: string[]): Promise<{
   stdout: string;
@@ -57,6 +57,16 @@ type ExtractEnvelope = {
 
 type PdfRect = { x: number; y: number; w: number; h: number };
 
+/** shiori-core's text fixture (crates/shiori-core/tests/fixtures/make-fixtures.ts). */
+const TEXT_FIXTURE = "crates/shiori-core/tests/fixtures/text.pdf";
+/**
+ * "Shiori" on that fixture's page 1, as make-fixtures.ts draws it: 12 pt
+ * Helvetica from (72, 700). Helvetica's advances (S 667, h 556, i 222,
+ * o 556, r 333, i 222 per 1000 em) make it 30.672 pt wide; the band runs
+ * from below the descent (-2.5 pt) to above the ascent (8.6 pt).
+ */
+const SHIORI_RECT: PdfRect = { x: 72, y: 697, w: 30.672, h: 12 };
+
 type AnnotationSpec = {
   schema: "shiori.annotations/v1";
   annotations: Array<Record<string, unknown>>;
@@ -65,11 +75,11 @@ type AnnotationSpec = {
 describe("shiori extract", () => {
   test("round-trips annotate output with a text quote", async () => {
     await withTempDir(async (dir) => {
-      const input = join(dir, "welcome.pdf");
+      const input = join(dir, "text.pdf");
       const spec = join(dir, "spec.json");
       const annotated = join(dir, "annotated.pdf");
-      await copyFile("site/public/welcome.pdf", input);
-      const rect = await locateTextRect(input, 1, "Local-First");
+      await copyFile(TEXT_FIXTURE, input);
+      const rect = SHIORI_RECT;
       await writeFile(
         spec,
         JSON.stringify({
@@ -96,6 +106,8 @@ describe("shiori extract", () => {
       const { stdout, warnings, errors } = await captureCli([
         "extract",
         annotated,
+        "--pages",
+        "1",
         "--agent",
       ]);
 
@@ -113,7 +125,7 @@ describe("shiori extract", () => {
         (annotation) => annotation.type === "note",
       );
       expect(highlight).toMatchObject({ type: "highlight", page: 1 });
-      expect(String(highlight?.quote)).toContain("Local-First");
+      expect(String(highlight?.quote)).toContain("Shiori");
       expect(note).toMatchObject({
         type: "note",
         page: 1,
@@ -179,13 +191,34 @@ describe("shiori extract", () => {
     expect(parsed.data.annotations).toEqual([]);
   });
 
+  test("reports annotations it cannot read as unavailable, not as none", async () => {
+    await withTempDir(async (dir) => {
+      // PDFium follows the cross-reference to the catalog; pdf-lib reads
+      // objects in file order, so a later object 1 outside the table
+      // replaces the catalog for it and its annotation pass fails.
+      const input = join(dir, "two-catalogs.pdf");
+      await writeFile(
+        input,
+        handMadePdf(
+          "BT /F1 12 Tf 72 700 Td (Hello) Tj ET",
+          "1 0 obj\n(not a catalog)\nendobj\n",
+        ),
+      );
+      const text = await captureCli(["text", input, "--agent"]);
+      expect(JSON.parse(text.stdout)).toMatchObject({ ok: true });
+      await expect(main(["extract", input, "--agent"])).rejects.toMatchObject({
+        code: "ERR_ANNOTATIONS_UNAVAILABLE",
+      });
+    });
+  });
+
   test("--as-spec emits pure annotate input without an envelope", async () => {
     await withTempDir(async (dir) => {
-      const input = join(dir, "welcome.pdf");
+      const input = join(dir, "text.pdf");
       const seedSpec = join(dir, "seed.json");
       const annotated = join(dir, "annotated.pdf");
-      await copyFile("site/public/welcome.pdf", input);
-      const rect = await locateTextRect(input, 1, "Local-First");
+      await copyFile(TEXT_FIXTURE, input);
+      const rect = SHIORI_RECT;
       await writeFile(
         seedSpec,
         JSON.stringify({
@@ -205,19 +238,21 @@ describe("shiori extract", () => {
       const { stdout } = await captureCli([
         "extract",
         annotated,
+        "--pages",
+        "1",
         "--as-spec",
         "--agent",
       ]);
       const parsed = JSON.parse(stdout) as AnnotationSpec & Record<string, unknown>;
       expect(parsed.schema).toBe("shiori.annotations/v1");
       expect(parsed.annotations).toHaveLength(1);
-      expect(parsed.annotations[0]?.quote).toContain("Local-First");
+      expect(parsed.annotations[0]?.quote).toContain("Shiori");
       expect(parsed.ok).toBeUndefined();
       expect(parsed.command).toBeUndefined();
       expect(parsed.input).toBeUndefined();
       expect(stdout).not.toContain("\n");
 
-      const human = await captureCli(["extract", annotated, "--as-spec"]);
+      const human = await captureCli(["extract", annotated, "--pages", "1", "--as-spec"]);
       expect(human.stdout).toBe(stdout);
       expect(human.stdout).not.toContain("\n");
     });
@@ -230,8 +265,8 @@ describe("shiori extract", () => {
       const extractedSpecPath = join(dir, "extracted.json");
       const seedPdf = join(dir, "seed.pdf");
       const replayPdf = join(dir, "replay.pdf");
-      await copyFile("site/public/welcome.pdf", original);
-      const quoteRect = await locateTextRect(original, 1, "Local-First");
+      await copyFile(TEXT_FIXTURE, original);
+      const quoteRect = SHIORI_RECT;
       const seed: AnnotationSpec = {
         schema: "shiori.annotations/v1",
         annotations: [
@@ -241,7 +276,7 @@ describe("shiori extract", () => {
             rects: [quoteRect],
             color: "#f6c744",
             opacity: 0.35,
-            quote: "Local-First",
+            quote: "Shiori",
           },
           {
             type: "underline",
@@ -330,6 +365,8 @@ describe("shiori extract", () => {
       const first = await captureCli([
         "extract",
         seedPdf,
+        "--pages",
+        "1",
         "--as-spec",
         "--agent",
       ]);
@@ -346,6 +383,8 @@ describe("shiori extract", () => {
       const second = await captureCli([
         "extract",
         replayPdf,
+        "--pages",
+        "1",
         "--as-spec",
         "--agent",
       ]);
@@ -366,62 +405,7 @@ describe("shiori extract", () => {
       expect(replayed.annotations).toEqual(extracted.annotations);
       expect(
         replayed.annotations.find(({ type }) => type === "highlight")?.quote,
-      ).toContain("Local-First");
+      ).toContain("Shiori");
     });
   });
 });
-
-async function locateTextRect(
-  path: string,
-  pageNumber: number,
-  needle: string,
-): Promise<PdfRect> {
-  const bytes = new Uint8Array(await readFile(path));
-  const doc = await pdfjsLib.getDocument({
-    data: bytes,
-    cMapPacked: true,
-    cMapUrl: `${join(resolve("."), "node_modules", "pdfjs-dist", "cmaps")}/`,
-    standardFontDataUrl: `${join(
-      resolve("."),
-      "node_modules",
-      "pdfjs-dist",
-      "standard_fonts",
-    )}/`,
-    wasmUrl: `${join(resolve("."), "node_modules", "pdfjs-dist", "wasm")}/`,
-  }).promise;
-  try {
-    const page = await doc.getPage(pageNumber);
-    const view = page.view;
-    const content = await page.getTextContent({ includeMarkedContent: true });
-    for (const item of content.items) {
-      if (!isTextItem(item) || !item.str.includes(needle)) continue;
-      const transform = item.transform;
-      return {
-        x: transform[4]! - view[0]!,
-        y: transform[5]! - view[1]!,
-        w: item.width,
-        h: item.height,
-      };
-    }
-    throw new Error(`Could not locate text: ${needle}`);
-  } finally {
-    await doc.destroy();
-  }
-}
-
-function isTextItem(value: unknown): value is {
-  str: string;
-  transform: number[];
-  width: number;
-  height: number;
-} {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "str" in value &&
-    typeof (value as { str?: unknown }).str === "string" &&
-    Array.isArray((value as { transform?: unknown }).transform) &&
-    typeof (value as { width?: unknown }).width === "number" &&
-    typeof (value as { height?: unknown }).height === "number"
-  );
-}

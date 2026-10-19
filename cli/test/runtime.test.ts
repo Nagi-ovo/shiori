@@ -46,22 +46,6 @@ async function withTempDir<T>(run: (dir: string) => Promise<T>): Promise<T> {
 }
 
 describe("shiori CLI process contract", () => {
-  test("agent success is one compact JSON envelope on stdout", async () => {
-    const result = await runCli([
-      "inspect",
-      "site/public/welcome.pdf",
-      "--agent",
-    ]);
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toBe("");
-    expect(result.stdout.trim().split("\n")).toHaveLength(1);
-    expect(JSON.parse(result.stdout)).toMatchObject({
-      schema: "shiori.cli/v1",
-      ok: true,
-      command: "inspect",
-    });
-  });
-
   test("pretty JSON success is a valid envelope on stdout", async () => {
     const result = await runCli(["version", "--json"]);
     expect(result.exitCode).toBe(0);

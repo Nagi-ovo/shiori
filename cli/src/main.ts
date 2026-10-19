@@ -20,14 +20,24 @@ import {
   readAnnotateSourcePdf,
   type AnnotateCliErrorCode,
 } from "./annotate";
-import { openCoreDocument, pdfEngineFromEnv } from "./coreEngine";
 import {
+  openCoreDocument,
+  pdfEngineFromEnv,
+  type CoreDocument,
+  type CoreMetadata,
+} from "./coreEngine";
+import {
+  AnnotationsUnavailableError,
+  corePageModel,
   extractResultAsSpec,
+  extractAnnotationsFromCore,
   extractAnnotationsFromPdf,
   formatExtractHumanLine,
   pageModelFromPdfjsPage,
   type ExtractResult,
 } from "./extract";
+import { pageTextFromPdfiumGlyphs } from "../../src/pdf/engine/pdfiumText";
+import type { PdfPageTextContent } from "../../src/pdf/engine/text";
 import {
   MAX_ANNOTATION_SPEC_BYTES,
   annotationSpecByteLength,
@@ -51,7 +61,7 @@ import {
   AnchorGeometryLimitError,
   charRangeToPageRects,
 } from "../../src/pdf/annotations/anchorGeometry";
-import type { OverlayTextAnchor, PdfRect } from "../../src/pdf/model/types";
+import type { OverlayTextAnchor, PageModel, PdfRect } from "../../src/pdf/model/types";
 import {
   MAX_RECTS_PER_ANNOTATION,
   MAX_TOTAL_RECTS_PER_SPEC,
@@ -83,7 +93,6 @@ import {
 import {
   MAX_PDF_BYTES,
   PdfOpenError,
-  assertPdfPageDimensionsWithinLimit,
   assertPdfWithinFileLimit,
   assertPdfWithinPageLimit,
   classifyPdfOpenError,
@@ -140,6 +149,7 @@ type CliErrorCode =
   | "ERR_ANCHOR_UNRESOLVED"
   | "ERR_TEXT_UNAVAILABLE"
   | "ERR_RENDER_UNAVAILABLE"
+  | "ERR_ANNOTATIONS_UNAVAILABLE"
   | "ERR_OUTPUT_EXISTS"
   | "ERR_OUTPUT_CONFLICT"
   | "ERR_OUTPUT_OUTCOME_UNKNOWN"
@@ -404,18 +414,18 @@ async function inspectDocument(
     options.format === "human" &&
     !options.pageInfo &&
     options.pages === undefined;
-  const pdf = await withPdf(file, options, async (doc) => {
-    const metadata = options.metadata ? await pdfMetadata(doc) : undefined;
+  const pdf = await withPdf(file, options, async ({ reader }) => {
+    const metadata = options.metadata ? await reader.metadata() : undefined;
     const pageSelection =
       options.pages ??
-      (humanDefaultPageList && doc.numPages > HUMAN_INSPECT_PAGE_LIMIT
+      (humanDefaultPageList && reader.pageCount > HUMAN_INSPECT_PAGE_LIMIT
         ? `1-${HUMAN_INSPECT_PAGE_LIMIT}`
         : undefined);
     const pages = includePageInfo
-      ? await pdfPageInfo(doc, pageSelection)
+      ? await pdfPageInfo(reader, pageSelection)
       : undefined;
     return {
-      pageCount: doc.numPages,
+      pageCount: reader.pageCount,
       ...(pages ? { pages } : {}),
       ...(metadata ? { metadata } : {}),
     };
@@ -487,9 +497,9 @@ async function extractDocumentText(
     return payload;
   }
 
-  const extracted = await withPdf(file, options, (doc) =>
+  const extracted = await withPdf(file, options, ({ reader }) =>
     pdfTextPages(
-      doc,
+      reader,
       options.pages,
       options.maxChars ?? MAX_EXTRACTED_TEXT_CHARACTERS,
     ),
@@ -525,9 +535,9 @@ async function searchDocument(
   let pdfPages: PdfSearchPage[] | null = null;
   let plainPages: Array<{ page: number; text: string }> = [];
   if (file.kind === "pdf") {
-    pdfPages = await withPdf(file, options, async (doc) => {
+    pdfPages = await withPdf(file, options, async ({ reader }) => {
       try {
-        return await pdfSearchPages(doc, options.pages);
+        return await pdfSearchPages(reader, options.pages);
       } catch (error) {
         if (error instanceof AnchorTextUnavailableError) {
           throw new CliError("ERR_TEXT_UNAVAILABLE", error.message);
@@ -944,7 +954,7 @@ async function annotatePdf(
   return finalPayload;
 }
 
-// Anchored specs need page text; run the pdfjs pass and resolve before the
+// Anchored specs need page text; read it and resolve before the
 // pdf-lib annotate pipeline sees the spec. Alongside the resolved spec it
 // returns the per-annotation anchor provenance (index-aligned), which the
 // annotate pipeline attaches to the built overlays after parsing.
@@ -964,25 +974,18 @@ async function resolveSpecAnchorsWithPdf(
       )
     : "Spec JSON must include an annotations array";
   if (violation) throw new CliError("ERR_SPEC_INVALID", violation);
-  return withPdfBytes(sourceBytes, options, async (doc) => {
+  return withPdfBytes(sourceBytes, options, async ({ reader }) => {
     try {
       const anchors = new Map<number, OverlayTextAnchor>();
       const spec = await resolveAnnotationSpecAnchors(
         specValue,
-        doc.numPages,
-        async (pageNumber) => {
-          const page = await doc.getPage(pageNumber);
-          try {
-            const textContent = await getBoundedTextContent(page);
-            return buildAnchorPageText(
-              pageNumber,
-              textContent,
-              pageModelFromPdfjsPage(page, pageNumber),
-            );
-          } finally {
-            page.cleanup();
-          }
-        },
+        reader.pageCount,
+        async (pageNumber) =>
+          buildAnchorPageText(
+            pageNumber,
+            await reader.pageText(pageNumber),
+            await reader.pageModel(pageNumber),
+          ),
         {
           onAnchorResolved: (index, anchor) => {
             anchors.set(index, anchor);
@@ -1123,23 +1126,18 @@ async function renderPdfPage(
     );
   }
   const requestedScale = options.scale ?? DEFAULT_RENDER_SCALE;
-  const rendered = await withPdf(file, options, async (doc, bytes) => {
-    if (pageNumber > doc.numPages) {
+  const rendered = await withPdf(file, options, async (pdf) => {
+    if (pageNumber > pdf.reader.pageCount) {
       throw new CliError(
         "ERR_USAGE",
-        `--page is ${pageNumber} but the document has ${doc.numPages} pages`,
+        `--page is ${pageNumber} but the document has ${pdf.reader.pageCount} pages`,
       );
     }
-    if (pdfEngineFromEnv() === "pdfium") {
-      const core = openCoreDocument(bytes, options.password);
-      try {
-        return renderCorePageToPng(core, pageNumber, requestedScale);
-      } finally {
-        core.close();
-      }
+    if (pdf.engine === "pdfium") {
+      return renderCorePageToPng(pdf.core, pageNumber, requestedScale);
     }
     try {
-      return await renderPdfPageToPng(doc, pageNumber, requestedScale);
+      return await renderPdfPageToPng(pdf.doc, pageNumber, requestedScale);
     } catch (error) {
       if (error instanceof RenderUnavailableError) {
         throw new CliError(
@@ -1326,18 +1324,22 @@ async function extractPdfAnnotations(
       file.name,
     );
   }
-  const payload = await withPdf(file, options, async (doc, bytes) => {
-    const pageNumbers = selectedPageNumbers(options.pages, doc.numPages);
-    if (pdfEngineFromEnv() === "pdfjs") {
-      return extractAnnotationsFromPdf(doc, file.path, pageNumbers, bytes);
+  const payload = await withPdf(file, options, async (pdf, bytes) => {
+    const pageNumbers = selectedPageNumbers(options.pages, pdf.reader.pageCount);
+    if (pdf.engine === "pdfjs") {
+      return extractAnnotationsFromPdf(pdf.doc, file.path, pageNumbers, bytes);
     }
-    // Annotations still import through pdf.js (plan stage 4.4); page boxes and
-    // quotes come from shiori-core.
-    const core = openCoreDocument(bytes, options.password);
     try {
-      return await extractAnnotationsFromPdf(doc, file.path, pageNumbers, bytes, core);
-    } finally {
-      core.close();
+      return await extractAnnotationsFromCore(pdf.core, file.path, pageNumbers, bytes);
+    } catch (error) {
+      if (error instanceof AnnotationsUnavailableError) {
+        throw new CliError(
+          "ERR_ANNOTATIONS_UNAVAILABLE",
+          "The PDF's annotations could not be read",
+          error.message,
+        );
+      }
+      throw error;
     }
   });
   if (options.format === "human" && !options.asSpec) {
@@ -1373,10 +1375,29 @@ async function readFileInfo(inputPath: string): Promise<FileInfo> {
   return { path, name, sizeBytes, kind };
 }
 
+/**
+ * What the PDF commands read from an open document, whichever reader opened
+ * it: shiori-core, or pdf.js while SHIORI_PDF_ENGINE=pdfjs still selects it.
+ * Page numbers count from 1.
+ */
+type PdfReader = {
+  pageCount: number;
+  /** The document information as pdf.js's documentInfo keys it, strings only. */
+  metadata: () => Promise<Record<string, string>>;
+  /** The page's model; throws when its box exceeds Shiori's page limit. */
+  pageModel: (pageNumber: number) => Promise<PageModel>;
+  /** The page's text as the reading layer consumes it. */
+  pageText: (pageNumber: number) => Promise<PdfPageTextContent>;
+};
+
+type OpenedPdf =
+  | { engine: "pdfium"; reader: PdfReader; core: CoreDocument }
+  | { engine: "pdfjs"; reader: PdfReader; doc: PDFDocumentProxy };
+
 async function withPdf<T>(
   file: FileInfo,
   options: GlobalOptions,
-  run: (doc: PDFDocumentProxy, sourceBytes: Uint8Array) => Promise<T>,
+  run: (pdf: OpenedPdf, sourceBytes: Uint8Array) => Promise<T>,
 ): Promise<T> {
   try {
     assertPdfWithinFileLimit(file.sizeBytes);
@@ -1396,10 +1417,109 @@ async function withPdf<T>(
     throw new CliError("ERR_FILE_UNAVAILABLE", "Could not read file", file.path);
   }
 
-  return withPdfBytes(bytes, options, (doc) => run(doc, bytes));
+  return withPdfBytes(bytes, options, (pdf) => run(pdf, bytes));
 }
 
+/** Opens the PDF once, runs `run` on it and closes it, mapping read failures to CLI errors. */
 async function withPdfBytes<T>(
+  sourceBytes: Uint8Array,
+  options: GlobalOptions,
+  run: (pdf: OpenedPdf) => Promise<T>,
+): Promise<T> {
+  try {
+    if (pdfEngineFromEnv() === "pdfjs") {
+      return await withPdfjsDocument(sourceBytes, options, (doc) =>
+        run({ engine: "pdfjs", reader: pdfjsReader(doc), doc }),
+      );
+    }
+    // The core parses its own copy; the caller's bytes stay intact for the
+    // pdf-lib export.
+    const core = openCoreDocument(sourceBytes, options.password);
+    try {
+      const reader = coreReader(core);
+      assertPdfWithinPageLimit(reader.pageCount);
+      return await run({ engine: "pdfium", reader, core });
+    } finally {
+      core.close();
+    }
+  } catch (err) {
+    if (err instanceof CliError) throw err;
+    if (err instanceof SemanticTextLimitError || isCoreTextLimitError(err)) {
+      throw new CliError(
+        "ERR_TEXT_UNAVAILABLE",
+        "PDF text exceeds Shiori's safe indexing limits",
+        (err as Error).message,
+      );
+    }
+    throw cliErrorForPdfOpenError(err);
+  }
+}
+
+/** shiori-core refused a page with more characters than MAX_PAGE_CHARS (CoreError::TooMuchText). */
+function isCoreTextLimitError(err: unknown): boolean {
+  return err instanceof Error && err.message.startsWith("page text too large");
+}
+
+function coreReader(core: CoreDocument): PdfReader {
+  // The catalog's /Lang, read once for every page's text.
+  let language: string | null | undefined;
+  return {
+    pageCount: core.pageCount(),
+    metadata: async () => coreMetadataStrings(core.metadata()),
+    pageModel: async (pageNumber) => corePageModel(core, pageNumber),
+    pageText: async (pageNumber) => {
+      language ??= core.metadata().language ?? null;
+      return pageTextFromPdfiumGlyphs(core.glyphs(pageNumber - 1), language).content;
+    },
+  };
+}
+
+/** The core's document information under the keys the pdf.js reader printed. */
+const CORE_METADATA_KEYS: ReadonlyArray<[keyof CoreMetadata, string]> = [
+  ["pdfFormatVersion", "PDFFormatVersion"],
+  ["language", "Language"],
+  ["encryptFilterName", "EncryptFilterName"],
+  ["title", "Title"],
+  ["author", "Author"],
+  ["subject", "Subject"],
+  ["keywords", "Keywords"],
+  ["creator", "Creator"],
+  ["producer", "Producer"],
+  ["creationDate", "CreationDate"],
+  ["modDate", "ModDate"],
+];
+
+function coreMetadataStrings(metadata: CoreMetadata): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [field, key] of CORE_METADATA_KEYS) {
+    const value = metadata[field];
+    if (typeof value === "string" && value.trim()) out[key] = value;
+  }
+  return out;
+}
+
+function pdfjsReader(doc: PDFDocumentProxy): PdfReader {
+  const withPage = async <T>(
+    pageNumber: number,
+    read: (page: Awaited<ReturnType<PDFDocumentProxy["getPage"]>>) => Promise<T>,
+  ): Promise<T> => {
+    const page = await doc.getPage(pageNumber);
+    try {
+      return await read(page);
+    } finally {
+      page.cleanup();
+    }
+  };
+  return {
+    pageCount: doc.numPages,
+    metadata: () => pdfMetadata(doc),
+    pageModel: (pageNumber) =>
+      withPage(pageNumber, async (page) => pageModelFromPdfjsPage(page, pageNumber)),
+    pageText: (pageNumber) => withPage(pageNumber, (page) => getBoundedTextContent(page)),
+  };
+}
+
+async function withPdfjsDocument<T>(
   sourceBytes: Uint8Array,
   options: GlobalOptions,
   run: (doc: PDFDocumentProxy) => Promise<T>,
@@ -1422,52 +1542,34 @@ async function withPdfBytes<T>(
     const doc = await task.promise;
     assertPdfWithinPageLimit(doc.numPages);
     return await run(doc);
-  } catch (err) {
-    if (err instanceof CliError) throw err;
-    if (err instanceof SemanticTextLimitError) {
-      throw new CliError(
-        "ERR_TEXT_UNAVAILABLE",
-        "PDF text exceeds Shiori's safe indexing limits",
-        err.message,
-      );
-    }
-    throw cliErrorForPdfOpenError(err);
   } finally {
     await task?.destroy().catch(() => undefined);
   }
 }
 
 async function pdfPageInfo(
-  doc: PDFDocumentProxy,
+  reader: PdfReader,
   pageSelection?: string,
 ): Promise<PdfPageInfo[]> {
   const pages: PdfPageInfo[] = [];
-  for (const pageNumber of selectedPageNumbers(pageSelection, doc.numPages)) {
-    const page = await doc.getPage(pageNumber);
-    try {
-      const view = page.view;
-      const widthPt = view[2]! - view[0]!;
-      const heightPt = view[3]! - view[1]!;
-      assertPdfPageDimensionsWithinLimit(widthPt, heightPt, pageNumber);
-      pages.push({
-        page: pageNumber,
-        widthPt,
-        heightPt,
-        rotation: (((page.rotate ?? 0) % 360) + 360) % 360,
-      });
-    } finally {
-      page.cleanup();
-    }
+  for (const pageNumber of selectedPageNumbers(pageSelection, reader.pageCount)) {
+    const model = await reader.pageModel(pageNumber);
+    pages.push({
+      page: pageNumber,
+      widthPt: model.widthPt,
+      heightPt: model.heightPt,
+      rotation: model.rotation,
+    });
   }
   return pages;
 }
 
 async function pdfTextPages(
-  doc: PDFDocumentProxy,
+  reader: PdfReader,
   pageSelection?: string,
   maxChars?: number,
 ): Promise<PdfTextExtraction> {
-  const pageNumbers = selectedPageNumbers(pageSelection, doc.numPages);
+  const pageNumbers = selectedPageNumbers(pageSelection, reader.pageCount);
   const pages: TextPage[] = [];
   let remaining = maxChars;
   let truncated = false;
@@ -1477,57 +1579,45 @@ async function pdfTextPages(
       truncated = true;
       break;
     }
-    const page = await doc.getPage(pageNumber);
-    try {
-      const content = await getBoundedTextContent(page);
-      const text = semanticTextContentToString(content);
-      const limited = limitText(text, remaining);
-      pages.push({
-        page: pageNumber,
-        ...limited,
-      });
-      if (remaining != null) {
-        remaining = Math.max(0, remaining - limited.text.length);
-      }
-      if (limited.truncated || (remaining === 0 && index < pageNumbers.length - 1)) {
-        truncated = true;
-      }
-    } finally {
-      page.cleanup();
+    const text = semanticTextContentToString(await reader.pageText(pageNumber));
+    const limited = limitText(text, remaining);
+    pages.push({
+      page: pageNumber,
+      ...limited,
+    });
+    if (remaining != null) {
+      remaining = Math.max(0, remaining - limited.text.length);
+    }
+    if (limited.truncated || (remaining === 0 && index < pageNumbers.length - 1)) {
+      truncated = true;
     }
   }
   return { pages, truncated };
 }
 
 async function pdfSearchPages(
-  doc: PDFDocumentProxy,
+  reader: PdfReader,
   pageSelection?: string,
 ): Promise<PdfSearchPage[]> {
   const pages: PdfSearchPage[] = [];
   let characters = 0;
   const retentionBudget = createPdfSearchRetentionBudget();
-  for (const pageNumber of selectedPageNumbers(pageSelection, doc.numPages)) {
-    const page = await doc.getPage(pageNumber);
-    try {
-      const content = await getBoundedTextContent(page);
-      const text = buildAnchorPageText(
-        pageNumber,
-        content,
-        pageModelFromPdfjsPage(page, pageNumber),
+  for (const pageNumber of selectedPageNumbers(pageSelection, reader.pageCount)) {
+    const text = buildAnchorPageText(
+      pageNumber,
+      await reader.pageText(pageNumber),
+      await reader.pageModel(pageNumber),
+    );
+    characters += text.index.text.length;
+    if (characters > MAX_EXTRACTED_TEXT_CHARACTERS) {
+      throw new CliError(
+        "ERR_TEXT_UNAVAILABLE",
+        `Search text exceeds the ${MAX_EXTRACTED_TEXT_CHARACTERS}-character safety limit`,
+        "Narrow the search with --pages",
       );
-      characters += text.index.text.length;
-      if (characters > MAX_EXTRACTED_TEXT_CHARACTERS) {
-        throw new CliError(
-          "ERR_TEXT_UNAVAILABLE",
-          `Search text exceeds the ${MAX_EXTRACTED_TEXT_CHARACTERS}-character safety limit`,
-          "Narrow the search with --pages",
-        );
-      }
-      consumePdfSearchRetentionBudget(text, retentionBudget);
-      pages.push({ page: pageNumber, text });
-    } finally {
-      page.cleanup();
     }
+    consumePdfSearchRetentionBudget(text, retentionBudget);
+    pages.push({ page: pageNumber, text });
   }
   return pages;
 }

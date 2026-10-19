@@ -7,7 +7,10 @@ import type {
 } from "./text";
 import type { PdfPageText } from "./types";
 
-/** One character as shiori-core reads it through PDFium, PDF user space. */
+/**
+ * One glyph as shiori-core reads it through PDFium, PDF user space: the
+ * shape every binding reports (Tauri IPC, wasm, the CLI's Node addon).
+ */
 export type PdfiumGlyph = {
   text: string;
   /** Baseline start. */
@@ -25,6 +28,18 @@ export type PdfiumGlyph = {
   /** Page units at this glyph's size; descent is negative. */
   ascent: number;
   descent: number;
+  /**
+   * A line-end hyphen PDFium recognised as hyphenation (`text` is "-"),
+   * where a binding reports it; the CLI's Node addon does.
+   */
+  hyphen?: boolean;
+};
+
+/** A glyph as the Node addon reports it: with its box and hyphenation. */
+export type PdfiumGlyphWithBox = PdfiumGlyph & {
+  /** [left, bottom, right, top]: the advance box united with the glyph's ink. */
+  loose: [number, number, number, number];
+  hyphen: boolean;
 };
 
 // A run continues while the next glyph starts no further back than this
@@ -81,8 +96,13 @@ export function pageTextFromPdfiumGlyphs(
 ): PdfPageText {
   const builder = new PageTextBuilder();
   for (const glyph of glyphs) {
-    if (!glyph.generated) builder.glyph(glyph);
-    else if (/[\r\n]/u.test(glyph.text)) builder.lineBreak();
+    if (!glyph.generated) {
+      builder.glyph(glyph);
+      // PDFium joins a word hyphenated across lines with no break between;
+      // the line still ends at the hyphen, as pdf.js reports it, so the
+      // reading layer rejoins the word.
+      if (glyph.hyphen) builder.lineBreak();
+    } else if (/[\r\n]/u.test(glyph.text)) builder.lineBreak();
     else if (/\s/u.test(glyph.text)) builder.space();
   }
   return builder.finish(lang);

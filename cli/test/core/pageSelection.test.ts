@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { PDFDocument, StandardFonts } from "pdf-lib";
-import { main } from "../src/main";
+import { main } from "../../src/main";
 
 async function captureCli(args: string[]): Promise<{
   stdout: string;

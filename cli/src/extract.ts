@@ -1,5 +1,9 @@
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist/types/src/display/api";
-import { importPdfAnnotations } from "../../src/pdf/import/annotations";
+import {
+  importFileAnnotations,
+  importPdfAnnotations,
+} from "../../src/pdf/import/annotations";
+import { pageGeometryFromPdfium } from "../../src/pdf/engine/pdfiumGeometry";
 import type {
   Overlay,
   PageModel,
@@ -51,25 +55,71 @@ const INTERSECTION_EPSILON_PT = 0.75;
 /** How far outside a highlight rect a glyph's middle may sit and still count. */
 const QUOTE_EPSILON_PT = 0.5;
 
+/** pdf-lib could not read the file's annotations: unknown, which is not "none". */
+export class AnnotationsUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AnnotationsUnavailableError";
+  }
+}
+
+/**
+ * The selected pages' annotations: page boxes and quotes from shiori-core,
+ * the annotations themselves from the file through pdf-lib (an encrypted
+ * file through the core's copy in the clear, which keeps its object
+ * numbers and so the overlay ids).
+ */
+export async function extractAnnotationsFromCore(
+  core: CoreDocument,
+  input: string,
+  pageNumbers: number[],
+  sourceBytes: Uint8Array,
+): Promise<ExtractResult> {
+  const pageContexts = corePageContexts(core, pageNumbers);
+  const bytes = core.security().revision != null ? core.decryptedCopy() : sourceBytes;
+  // The importer reports what its pdf-lib pass found; null when it could
+  // not read the file, which would otherwise import as no annotations.
+  let readable = false;
+  let overlays: Overlay[];
+  try {
+    overlays = await importFileAnnotations(
+      pageContexts.map((context) => context.model),
+      bytes,
+      undefined,
+      { onSourceInfo: ({ encrypted }) => (readable = encrypted === false) },
+    );
+  } catch (error) {
+    throw new AnnotationsUnavailableError(
+      `pdf-lib could not read the file's annotations: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!readable) {
+    throw new AnnotationsUnavailableError("pdf-lib could not parse the file's annotation structures");
+  }
+  return extractResult(input, pageNumbers, pageContexts, overlays);
+}
+
 export async function extractAnnotationsFromPdf(
   doc: PDFDocumentProxy,
   input: string,
   pageNumbers: number[],
   sourceBytes?: Uint8Array,
-  /** Reads page boxes and quotes from shiori-core instead of pdf.js. */
-  core?: CoreDocument,
 ): Promise<ExtractResult> {
-  const pageContexts = core
-    ? corePageContexts(core, pageNumbers)
-    : await readPageContexts(doc, pageNumbers);
+  const pageContexts = await readPageContexts(doc, pageNumbers);
   const overlays = await importPdfAnnotations(
     doc,
     pageContexts.map((context) => context.model),
     sourceBytes,
-    undefined,
-    // With the core, an encrypted file's annotations come from its copy in the clear.
-    core ? { decryptedBytes: async () => core.decryptedCopy() } : {},
   );
+  return extractResult(input, pageNumbers, pageContexts, overlays);
+}
+
+function extractResult(
+  input: string,
+  pageNumbers: number[],
+  pageContexts: PageContext[],
+  overlays: Overlay[],
+): ExtractResult {
   const contextByPageId = new Map(
     pageContexts.map((context) => [context.model.id, context]),
   );
@@ -139,19 +189,16 @@ async function readPageContexts(
   return contexts;
 }
 
+/** Page `pageNumber` (from 1) as the CLI models it; throws past Shiori's page limit. */
+export function corePageModel(core: CoreDocument, pageNumber: number): PageModel {
+  const geometry = pageGeometryFromPdfium(core.pageGeometry(pageNumber - 1));
+  assertPdfPageDimensionsWithinLimit(geometry.widthPt, geometry.heightPt, pageNumber);
+  return { id: `page-${pageNumber}`, sourceIndex: pageNumber - 1, ...geometry };
+}
+
 function corePageContexts(core: CoreDocument, pageNumbers: number[]): PageContext[] {
   return pageNumbers.map((pageNumber) => {
-    const geometry = core.pageGeometry(pageNumber - 1);
-    assertPdfPageDimensionsWithinLimit(geometry.width, geometry.height, pageNumber);
-    const model: PageModel = {
-      id: `page-${pageNumber}`,
-      sourceIndex: pageNumber - 1,
-      rotation: normalizeRotation(geometry.rotation),
-      originXPt: geometry.originX,
-      originYPt: geometry.originY,
-      widthPt: geometry.width,
-      heightPt: geometry.height,
-    };
+    const model = corePageModel(core, pageNumber);
     let glyphs: CoreGlyph[] | null = null;
     return {
       model,

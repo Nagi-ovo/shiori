@@ -322,16 +322,18 @@ async function main(): Promise<void> {
           ["inspect", welcomePdf, "--agent"],
           smokeExecutable,
         );
+        // PDFs read through shiori-core in native/, which needs nothing
+        // from node_modules.
         const canvasFreePdfPayload = JSON.parse(canvasFreePdf.stdout) as {
           ok?: boolean;
-          error?: { code?: string };
+          data?: { pdf?: { pageCount?: number } };
         };
         if (
-          canvasFreePdf.exitCode !== 1 ||
-          canvasFreePdfPayload.ok !== false ||
-          canvasFreePdfPayload.error?.code !== "ERR_PDF_UNKNOWN"
+          canvasFreePdf.exitCode !== 0 ||
+          canvasFreePdfPayload.ok !== true ||
+          canvasFreePdfPayload.data?.pdf?.pageCount !== 3
         ) {
-          throw new Error("A missing optional render runtime caused an unframed crash");
+          throw new Error("A missing optional render runtime broke PDF reading");
         }
       } finally {
         await rename(hiddenRuntimeModules, runtimeModules);

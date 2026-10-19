@@ -14,7 +14,6 @@ import {
   pdfCoreRender,
   pdfCoreSecurity,
 } from "../../platform/pdfCore";
-import type { Rotation } from "../model/types";
 import { importFileAnnotations } from "../import/annotations";
 import { MAX_THUMBNAIL_CANVAS_PIXELS, assertCanvasPixelBudget } from "../openPolicy";
 import { releaseCanvasBackingStore } from "../render/canvasMemory";
@@ -22,6 +21,7 @@ import { retainPdfSourceBytes } from "../render/pdfByteOwnership";
 import { decodeEmbeddedFonts } from "./fontContainer";
 import { addOutlineFontFace, loadEmbeddedFontFace } from "./fontFaces";
 import { decodeFontOutlines } from "./fontOutlines";
+import { pageGeometryFromPdfium } from "./pdfiumGeometry";
 import { pageTextFromPdfiumGlyphs } from "./pdfiumText";
 import type { PdfDocument, PdfEngine, PdfLink, PdfPageGeometry, PdfSecurity } from "./types";
 
@@ -90,8 +90,6 @@ type CoreDoc = {
   rebuiltFaces: FontFace[];
   closed: boolean;
 };
-
-const ROTATIONS = new Set([0, 90, 180, 270]);
 
 export function createPdfiumEngine(core: PdfCoreBridge, label = "PDFium 7881"): PdfEngine {
   const docs = new WeakMap<PdfDocument, CoreDoc>();
@@ -166,13 +164,7 @@ export function createPdfiumEngine(core: PdfCoreBridge, label = "PDFium 7881"): 
       }
       let pages: PdfPageGeometry[];
       try {
-        pages = (await core.pageGeometry(id)).map((g) => ({
-          rotation: (ROTATIONS.has(g.rotation) ? g.rotation : 0) as Rotation,
-          originXPt: g.originX,
-          originYPt: g.originY,
-          widthPt: g.width,
-          heightPt: g.height,
-        }));
+        pages = (await core.pageGeometry(id)).map(pageGeometryFromPdfium);
       } catch (error) {
         core.close(id);
         throw asError(error);

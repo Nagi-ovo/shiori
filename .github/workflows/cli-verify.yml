@@ -88,9 +88,6 @@ jobs:
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
 
-      - name: Test CLI contracts
-        run: bun test cli/test
-
       # The shiori-core addon (crates/shiori-core-node) is built on each
       # target's own runner by cli/build.ts, which also fetches the pinned
       # PDFium (scripts/pdfium/fetch.ts) beside it.
@@ -107,6 +104,11 @@ jobs:
 
       - name: Build native CLI package
         run: bun run cli:build
+
+      # After the build: tests that open PDFs (cli/test/core) read through
+      # the shiori-core addon it compiled and the PDFium it fetched.
+      - name: Test CLI contracts
+        run: bun test cli/test
 
       - name: Smoke-test packaged executable
         run: bun run cli:smoke

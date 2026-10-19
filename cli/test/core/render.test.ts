@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, test } from "bun:test";
 import { PDFDocument } from "pdf-lib";
-import { main } from "../src/main";
+import { main } from "../../src/main";
 
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47];
 const execFileAsync = promisify(execFile);
