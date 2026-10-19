@@ -3,7 +3,7 @@ import { useLang } from "../i18n/context";
 import { useRelease } from "../release/context";
 import { Brand } from "./Brand";
 
-const RELEASES_URL = "https://github.com/Nagi-ovo/shiori-releases";
+const RELEASES_URL = "https://github.com/Nagi-ovo/shiori";
 
 export function Nav() {
   const { t } = useLang();

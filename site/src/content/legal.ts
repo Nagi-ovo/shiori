@@ -389,7 +389,7 @@ export const SUPPORT_DOC: Record<Lang, LegalDoc> = {
         heading: "Contact us",
         blocks: [
           {
-            p: `The fastest way to reach us is email: ${CONTACT_EMAIL}. We read every message. You can also join our community on Discord at https://discord.gg/G5uzmAaHY, or report issues on GitHub at https://github.com/Nagi-ovo/shiori-releases/issues.`,
+            p: `The fastest way to reach us is email: ${CONTACT_EMAIL}. We read every message. You can also join our community on Discord at https://discord.gg/G5uzmAaHY, or report issues on GitHub at https://github.com/Nagi-ovo/shiori/issues.`,
           },
         ],
       },
@@ -447,7 +447,7 @@ export const SUPPORT_DOC: Record<Lang, LegalDoc> = {
         heading: "联系我们",
         blocks: [
           {
-            p: `找我们最快的方式是电子邮件：${CONTACT_EMAIL}。我们会阅读每一封来信。你也可以加入我们的 Discord 社群 https://discord.gg/G5uzmAaHY，或在 GitHub 上报告问题 https://github.com/Nagi-ovo/shiori-releases/issues。`,
+            p: `找我们最快的方式是电子邮件：${CONTACT_EMAIL}。我们会阅读每一封来信。你也可以加入我们的 Discord 社群 https://discord.gg/G5uzmAaHY，或在 GitHub 上报告问题 https://github.com/Nagi-ovo/shiori/issues。`,
           },
         ],
       },
@@ -505,7 +505,7 @@ export const SUPPORT_DOC: Record<Lang, LegalDoc> = {
         heading: "お問い合わせ",
         blocks: [
           {
-            p: `いちばん早いのはメールです：${CONTACT_EMAIL}。すべてのメッセージに目を通しています。Discord コミュニティ https://discord.gg/G5uzmAaHY への参加や、GitHub での不具合報告 https://github.com/Nagi-ovo/shiori-releases/issues もできます。`,
+            p: `いちばん早いのはメールです：${CONTACT_EMAIL}。すべてのメッセージに目を通しています。Discord コミュニティ https://discord.gg/G5uzmAaHY への参加や、GitHub での不具合報告 https://github.com/Nagi-ovo/shiori/issues もできます。`,
           },
         ],
       },
