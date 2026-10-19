@@ -341,13 +341,13 @@ fn reads_the_document_language_when_the_catalog_gives_one() {
 }
 
 // Metadata and the page text bound. What can go wrong: a UTF-16 or
-// PDFDocEncoding string decoded wrongly; a date reformatted instead of kept
-// raw; an absent key, an empty string or a missing /Info coming back as "";
-// XMP read in place of /Info; an encrypted file's strings left encrypted
-// (user or owner password, /EncryptMetadata false); a filter name reported
-// for a file without encryption; the version misformatted; the text bound
-// off by one, refusing an empty page, or reported as a password or damage
-// error.
+// PDFDocEncoding string decoded wrongly or cut at an embedded NUL; a date
+// reformatted instead of kept raw; an absent key, an empty string or a
+// missing /Info coming back as ""; XMP read in place of /Info; an encrypted
+// file's strings left encrypted (user or owner password, /EncryptMetadata
+// false); a filter name reported for a file without encryption; the version
+// misformatted; the text bound off by one, refusing an empty page, or
+// reported as a password or damage error.
 
 /// A PDF written here object by object, its cross-reference worked out:
 /// `objects[i]` is object i + 1, the catalog first.
@@ -429,6 +429,19 @@ fn reads_the_information_dictionary_as_the_file_writes_it() {
             encrypt_filter_name: None,
         }
     );
+}
+
+#[test]
+fn an_information_string_keeps_a_nul_inside_it() {
+    // UTF-16BE "A", U+0000, "B": the string runs to PDFium's byte count,
+    // not to the first zero unit.
+    let doc = core()
+        .open(
+            hello_pdf("1.7", "", Some("<< /Title <FEFF004100000042> >>")),
+            None,
+        )
+        .unwrap();
+    assert_eq!(doc.metadata().title.as_deref(), Some("A\u{0}B"));
 }
 
 #[test]

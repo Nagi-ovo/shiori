@@ -1637,15 +1637,19 @@ fn uri_text(bytes: &[u8]) -> String {
         .to_string()
 }
 
-/// PDFium's UTF-16LE strings, NUL-terminated.
+/// PDFium's UTF-16LE strings, sized by the byte count PDFium returns and
+/// ending in one NUL terminator. Only that terminator goes: a NUL inside the
+/// string is part of it.
 fn utf16le(bytes: &[u8]) -> String {
-    let units: Vec<u16> = bytes
+    let mut units: Vec<u16> = bytes
         .as_chunks::<2>()
         .0
         .iter()
         .map(|pair| u16::from_le_bytes(*pair))
-        .take_while(|unit| *unit != 0)
         .collect();
+    if units.last() == Some(&0) {
+        units.pop();
+    }
     String::from_utf16_lossy(&units)
 }
 
