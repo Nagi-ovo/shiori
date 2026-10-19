@@ -4,7 +4,6 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { beforeAll, describe, expect, test } from "bun:test";
 import fontkit from "@pdf-lib/fontkit";
-import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
 import { PDFDocument, PDFHexString, PDFName } from "pdf-lib";
 import { openCoreDocument } from "../../../cli/src/coreEngine";
 import { decodeEmbeddedFonts } from "../../../src/pdf/engine/fontContainer";
@@ -128,7 +127,9 @@ describe("shiori-core in wasm", () => {
 
   test("rebuilds embedded fonts a browser refuses so they draw as PDFium draws them", async () => {
     // Bare CFF (as XeTeX and InDesign embed) and pdf-lib's TrueType subset,
-    // rebuilt from PDFium's glyphs, set in Skia at the runs' own positions.
+    // rebuilt from PDFium's glyphs, then set at the runs' own positions in a
+    // new PDF and drawn by the same PDFium: what can differ is the outlines,
+    // advances and metrics of the rebuilt font, not the rasteriser.
     const doc = wasm.CoreDocument.open(readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures/embedded-fonts.pdf")), undefined);
     try {
       const [liberation] = decodeEmbeddedFonts(doc.embeddedFonts(0));
@@ -142,17 +143,18 @@ describe("shiori-core in wasm", () => {
       const fonts = decodeFontOutlines(doc.fontOutlines(0, JSON.stringify(runs.map((run) => run.name))));
       for (const run of runs) {
         const font = fonts.find((f) => f.name === run.name)!;
-        const family = `rebuilt-${run.name}`;
-        GlobalFonts.register(Buffer.from(await buildOutlineFont(font)), family);
-        const canvas = createCanvas(width, height);
-        const ctx = canvas.getContext("2d");
-        ctx.fillStyle = "#fff";
-        ctx.fillRect(0, 0, width, height);
-        ctx.fillStyle = "#000";
-        ctx.font = `${20 * scale}px "${family}"`;
+        const pdf = await PDFDocument.create();
+        pdf.registerFontkit(fontkit);
+        const rebuilt = await pdf.embedFont(new Uint8Array(await buildOutlineFont(font)), { subset: false });
         // Both runs sit on the baseline 150 pt up a 200 pt page.
-        ctx.fillText(run.text, run.x * scale, 50 * scale);
-        const drawn = ctx.getImageData(0, 0, width, height).data;
+        pdf.addPage([300, 200]).drawText(run.text, { x: run.x, y: 150, size: 20, font: rebuilt });
+        const redrawn = wasm.CoreDocument.open(await pdf.save(), undefined);
+        let drawn: Uint8Array;
+        try {
+          drawn = redrawn.render(0, 0, scale, 0, 0, width, height, true);
+        } finally {
+          redrawn.free();
+        }
         let ink = 0;
         let differing = 0;
         for (let y = 20; y < 130; y += 1) {
@@ -162,10 +164,11 @@ describe("shiori-core in wasm", () => {
             differing += Number(page[i]! < 128 !== drawn[i]! < 128);
           }
         }
-        // Only the two rasterisers' edge weights differ (about 15%); a
-        // metric-compatible Times differs by more than the ink itself.
+        // The rebuilt CFF loses the TrueType hinting (about 7% of the ink
+        // for Liberation, nothing for Foxit Serif); the metric-compatible
+        // Helvetica in Liberation's place differs by about 18%.
         expect(ink).toBeGreaterThan(1000);
-        expect(differing / ink).toBeLessThan(0.25);
+        expect(differing / ink).toBeLessThan(0.12);
       }
     } finally {
       doc.free();

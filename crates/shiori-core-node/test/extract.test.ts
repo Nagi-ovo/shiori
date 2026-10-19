@@ -12,9 +12,11 @@ afterAll(async () => {
   for (const dir of dirs) await rm(dir, { recursive: true, force: true });
 });
 
-async function cli(args: string[], engine: "pdfjs" | "pdfium" = "pdfjs") {
+async function cli(args: string[]) {
+  // Source runs read through pdf.js by default until the CLI reads only
+  // through the core; ask for the core explicitly.
   const previous = process.env.SHIORI_PDF_ENGINE;
-  process.env.SHIORI_PDF_ENGINE = engine;
+  process.env.SHIORI_PDF_ENGINE = "pdfium";
   const logs: string[] = [];
   const log = console.log;
   console.log = (message?: unknown) => logs.push(String(message ?? ""));
@@ -28,8 +30,8 @@ async function cli(args: string[], engine: "pdfjs" | "pdfium" = "pdfjs") {
   return logs.join("\n");
 }
 
-async function extract(file: string, engine: "pdfjs" | "pdfium") {
-  const output = await cli(["extract", file, "--agent"], engine);
+async function extract(file: string) {
+  const output = await cli(["extract", file, "--agent"]);
   const parsed = JSON.parse(output) as {
     ok: boolean;
     data: { annotations: Array<Record<string, unknown>> };
@@ -39,7 +41,7 @@ async function extract(file: string, engine: "pdfjs" | "pdfium") {
 }
 
 describe("extract through shiori-core", () => {
-  test("quotes exactly the highlighted words, and agrees with pdf.js on everything else", async () => {
+  test("quotes exactly the highlighted words and reads back what annotate wrote", async () => {
     const dir = await mkdtemp(join(tmpdir(), "shiori-core-extract-"));
     dirs.push(dir);
     const input = join(dir, "welcome.pdf");
@@ -84,20 +86,20 @@ describe("extract through shiori-core", () => {
     );
     await cli(["annotate", input, "--spec", spec, "-o", annotated, "--agent"]);
 
-    const viaPdfjs = await extract(annotated, "pdfjs");
-    const viaCore = await extract(annotated, "pdfium");
-    const quote = (list: Array<Record<string, unknown>>) =>
-      list.find((annotation) => annotation.type === "highlight")?.quote;
-    expect(quote(viaCore)).toBe("Local-First");
-    // pdf.js can only hand back the whole text item around the words.
-    expect(String(quote(viaPdfjs))).toContain("Local-First");
-    const withoutQuotes = (list: Array<Record<string, unknown>>) =>
-      list.map((annotation) => {
-        const rest = { ...annotation };
-        delete rest.quote;
-        return rest;
-      });
-    expect(withoutQuotes(viaCore)).toEqual(withoutQuotes(viaPdfjs));
+    const highlight = {
+      x: left - geometry.originX,
+      y: bottom - geometry.originY,
+      w: right - left,
+      h: top - bottom,
+    };
+    const [extracted, note, ...rest] = await extract(annotated);
+    expect(rest).toEqual([]);
+    expect(extracted).toMatchObject({ type: "highlight", page: 1, color: "#f6c744", opacity: 0.35, quote: "Local-First" });
+    // The rect as the spec gave it; the CLI prints it rounded to 0.001 pt.
+    const [rect, ...otherRects] = extracted!.rects as Array<typeof highlight>;
+    expect(otherRects).toEqual([]);
+    for (const key of ["x", "y", "w", "h"] as const) expect(rect![key]).toBeCloseTo(highlight[key], 2);
+    expect(note).toEqual({ type: "note", page: 1, at: { x: 300, y: 600 }, text: "n", color: "#f6c744" });
   });
 
 });
