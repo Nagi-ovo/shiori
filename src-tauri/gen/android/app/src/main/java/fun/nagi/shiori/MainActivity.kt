@@ -491,12 +491,8 @@ class MainActivity : TauriActivity() {
       throw IllegalArgumentException("android-update-url-not-allowed")
     }
     val path = uri.path ?: ""
-    // Mirrors OFFICIAL_APK_PATH_PREFIXES in src/platform/androidUpdatePolicy.ts:
-    // the release repo was renamed from shiori-releases to shiori.
-    val officialPrefixes = listOf(
-      "/Nagi-ovo/shiori-releases/releases/download/",
-      "/Nagi-ovo/shiori/releases/download/",
-    )
+    // Mirrors OFFICIAL_APK_PATH_PREFIXES in src/platform/androidUpdatePolicy.ts.
+    val officialPrefixes = listOf("/Nagi-ovo/shiori/releases/download/")
     if (officialPrefixes.none { path.startsWith(it) } || !path.endsWith(".apk")) {
       throw IllegalArgumentException("android-update-url-not-allowed")
     }

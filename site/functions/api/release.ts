@@ -18,6 +18,7 @@ import {
   readLastGood,
   rememberLastGood,
   upstreamFailureResponse,
+  wantsLegacyApkPath,
   type ReleaseEnv,
 } from "../_release";
 
@@ -28,9 +29,13 @@ export const onRequestGet: PagesFunction<ReleaseEnv> = async (ctx) => {
   // so a cold cache can't double-hit GitHub or return a version whose
   // platforms were resolved from a different fetch.
   const { releases, upstreamStatus } = await getRecentReleasesWithStatus(ctx);
-  const payload = buildReleaseInfo(releases);
+  const legacyApkPath = wantsLegacyApkPath(ctx.request.url);
+  const payload = buildReleaseInfo(releases, { legacyApkPath });
+  // Each APK path keeps its own fallback, so neither kind of build is handed
+  // a URL it refuses.
+  const lastGoodKey = legacyApkPath ? LAST_GOOD_KEY : `${LAST_GOOD_KEY}?apkRepo=shiori`;
   if (!payload) {
-    return upstreamFailureResponse(await readLastGood(LAST_GOOD_KEY), upstreamStatus, {
+    return upstreamFailureResponse(await readLastGood(lastGoodKey), upstreamStatus, {
       maxAgeSeconds: CACHE_TTL_SECONDS,
       staleHeader: "X-Release-Stale",
       cors: corsHeaders,
@@ -38,7 +43,7 @@ export const onRequestGet: PagesFunction<ReleaseEnv> = async (ctx) => {
   }
 
   const body = JSON.stringify(payload);
-  rememberLastGood(ctx, LAST_GOOD_KEY, body);
+  rememberLastGood(ctx, lastGoodKey, body);
 
   return new Response(body, {
     headers: {

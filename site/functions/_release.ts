@@ -383,14 +383,19 @@ export interface ReleaseInfo {
   platforms: Partial<Record<Platform, PlatformInfo>>;
 }
 
-// Installed direct-APK builds refuse any APK URL outside the
-// shiori-releases download path (src/platform/androidUpdatePolicy.ts and
-// MainActivity.kt). Once that repo is renamed to Nagi-ovo/shiori, GitHub
-// returns asset URLs under the new name and redirects the old ones, so the
-// Android URL is written back to the old form until every installed build
-// accepts both.
+// Direct-APK builds up to 26.9.27 refuse any APK URL outside the
+// shiori-releases download path. The repo is now Nagi-ovo/shiori and GitHub
+// returns asset URLs under that name, redirecting the old ones, so for those
+// builds the Android URL is written back to the old form. Later builds ask
+// with `?apkRepo=shiori` (src/platform/updater.ts) and accept only the
+// current path. Delete this rewrite once 26.9.27 and older no longer need to
+// self-update; they would then have to be updated by hand.
 const RENAMED_DOWNLOAD_PREFIX = "https://github.com/Nagi-ovo/shiori/releases/download/";
 const LEGACY_DOWNLOAD_PREFIX = "https://github.com/Nagi-ovo/shiori-releases/releases/download/";
+
+export function wantsLegacyApkPath(requestUrl: string): boolean {
+  return new URL(requestUrl).searchParams.get("apkRepo") !== "shiori";
+}
 
 function legacyApkDownloadUrl(url: string): string {
   return url.startsWith(RENAMED_DOWNLOAD_PREFIX)
@@ -403,7 +408,10 @@ function legacyApkDownloadUrl(url: string): string {
 // carries an asset for it, because mobile and desktop artifacts can be
 // published from separate CI runs. Null when the window is empty, which
 // only happens when the upstream fetch failed.
-export function buildReleaseInfo(releases: Release[]): ReleaseInfo | null {
+export function buildReleaseInfo(
+  releases: Release[],
+  { legacyApkPath = true }: { legacyApkPath?: boolean } = {},
+): ReleaseInfo | null {
   const release = releases[0];
   if (!release) return null;
 
@@ -425,7 +433,7 @@ export function buildReleaseInfo(releases: Release[]): ReleaseInfo | null {
         publishedAt: match.release.published_at,
         size: match.asset.size,
         url:
-          platform === "android"
+          platform === "android" && legacyApkPath
             ? legacyApkDownloadUrl(match.asset.browser_download_url)
             : match.asset.browser_download_url,
         ...(sha256 ? { sha256 } : {}),

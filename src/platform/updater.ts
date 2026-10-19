@@ -63,7 +63,10 @@ type DirectReleaseInfo = {
   };
 };
 
-const DIRECT_ANDROID_RELEASE_URL = `${WEBSITE_URL}/api/release`;
+// `apkRepo=shiori` asks for the APK under the repo's current name; without it
+// /api/release serves the pre-rename path that builds up to 26.9.27 require
+// (site/functions/_release.ts).
+const DIRECT_ANDROID_RELEASE_URL = `${WEBSITE_URL}/api/release?apkRepo=shiori`;
 
 export async function checkForUpdate(): Promise<ShioriUpdate | null> {
   if (CAPABILITIES.androidDirectUpdater) {

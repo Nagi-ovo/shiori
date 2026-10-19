@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildReleaseInfo,
+  wantsLegacyApkPath,
   githubHeaders,
   upstreamFailureResponse,
   type Release,
@@ -122,6 +123,27 @@ describe("buildReleaseInfo", () => {
     expect(info?.platforms["mac-silicon"]?.url).toBe(
       "https://github.com/Nagi-ovo/shiori/releases/download/v26.10.1/Shiori_26.10.1_aarch64.dmg",
     );
+  });
+
+  test("serves the renamed APK URL as is to builds that ask for it", () => {
+    const url = "https://github.com/Nagi-ovo/shiori/releases/download/v26.10.1/Shiori_26.10.1.apk";
+    const info = buildReleaseInfo(
+      [
+        {
+          tag_name: "v26.10.1",
+          published_at: "2026-10-20T00:00:00Z",
+          assets: [asset("Shiori_26.10.1.apk", { browser_download_url: url })],
+        },
+      ],
+      { legacyApkPath: false },
+    );
+    expect(info?.platforms.android?.url).toBe(url);
+  });
+
+  test("only a request naming the renamed repo opts out of the old APK path", () => {
+    expect(wantsLegacyApkPath("https://shiori.nagi.fun/api/release")).toBe(true);
+    expect(wantsLegacyApkPath("https://shiori.nagi.fun/api/release?apkRepo=other")).toBe(true);
+    expect(wantsLegacyApkPath("https://shiori.nagi.fun/api/release?apkRepo=shiori")).toBe(false);
   });
 
   test("leaves a pre-rename APK URL as GitHub returned it", () => {

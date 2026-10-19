@@ -1,12 +1,8 @@
-// The public release repo was renamed from shiori-releases to shiori.
-// GitHub redirects the old download path, and /api/release keeps serving
-// it (site/functions/_release.ts) until builds accepting both are
-// everywhere. Spelled out rather than derived from RELEASES_URL so that
-// updating the link cannot drop the old path. MainActivity.kt mirrors this.
-const OFFICIAL_APK_PATH_PREFIXES = [
-  "/Nagi-ovo/shiori-releases/releases/download/",
-  "/Nagi-ovo/shiori/releases/download/",
-];
+// Spelled out rather than derived from RELEASES_URL, so that a change to the
+// link cannot widen what the updater installs. MainActivity.kt mirrors this.
+// The repo used to be shiori-releases; this build asks /api/release for the
+// current path (updater.ts), so only that one is official.
+const OFFICIAL_APK_PATH_PREFIXES = ["/Nagi-ovo/shiori/releases/download/"];
 const SHA256_HEX = /^[0-9a-f]{64}$/i;
 
 export function requireDirectAndroidSha256(value: string | null): string {

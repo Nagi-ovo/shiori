@@ -52,7 +52,9 @@ export function ReleaseProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/release")
+    // The page links the APK directly, so it can take the repo's current
+    // path; the bare route keeps the old one for installed Android builds.
+    fetch("/api/release?apkRepo=shiori")
       .then((r) => (r.ok ? r.json() : null))
       .then((data: ReleaseInfo | null) => {
         if (!cancelled && data) setRelease(data);
