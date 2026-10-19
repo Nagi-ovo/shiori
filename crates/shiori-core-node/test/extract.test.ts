@@ -1,10 +1,9 @@
 // Run by `bun run test:core` after the addon is built; `bun run test` skips
 // crates/ because a fresh checkout has no addon.
-import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, test } from "bun:test";
-import { openCoreDocument } from "../../../cli/src/coreEngine";
 import { main } from "../../../cli/src/main";
 
 const dirs: string[] = [];
@@ -13,10 +12,6 @@ afterAll(async () => {
 });
 
 async function cli(args: string[]) {
-  // Source runs read through pdf.js by default until the CLI reads only
-  // through the core; ask for the core explicitly.
-  const previous = process.env.SHIORI_PDF_ENGINE;
-  process.env.SHIORI_PDF_ENGINE = "pdfium";
   const logs: string[] = [];
   const log = console.log;
   console.log = (message?: unknown) => logs.push(String(message ?? ""));
@@ -24,14 +19,12 @@ async function cli(args: string[]) {
     await main(args);
   } finally {
     console.log = log;
-    if (previous === undefined) delete process.env.SHIORI_PDF_ENGINE;
-    else process.env.SHIORI_PDF_ENGINE = previous;
   }
   return logs.join("\n");
 }
 
 async function extract(file: string) {
-  const output = await cli(["extract", file, "--agent"]);
+  const output = await cli(["extract", file, "--pages", "1", "--agent"]);
   const parsed = JSON.parse(output) as {
     ok: boolean;
     data: { annotations: Array<Record<string, unknown>> };
@@ -40,66 +33,44 @@ async function extract(file: string) {
   return parsed.data.annotations;
 }
 
+/** shiori-core's text fixture (crates/shiori-core/tests/fixtures/make-fixtures.ts). */
+const FIXTURE = join(import.meta.dir, "../../shiori-core/tests/fixtures/text.pdf");
+/**
+ * "Shi" of the fixture's page 1, as make-fixtures.ts draws it: "Shiori" in
+ * 12 pt Helvetica from (72, 700). Helvetica's advances (S 667, h 556,
+ * i 222 per 1000 em) end "Shi" 17.34 pt along, where "o" begins; the band
+ * runs from below the descent to above the ascent.
+ */
+const SHI = { x: 72, y: 697, w: 17.34, h: 12 };
+
 describe("extract through shiori-core", () => {
-  test("quotes exactly the highlighted words and reads back what annotate wrote", async () => {
+  test("quotes exactly the highlighted letters and reads back what annotate wrote", async () => {
     const dir = await mkdtemp(join(tmpdir(), "shiori-core-extract-"));
     dirs.push(dir);
-    const input = join(dir, "welcome.pdf");
+    const input = join(dir, "text.pdf");
     const spec = join(dir, "spec.json");
     const annotated = join(dir, "annotated.pdf");
-    await copyFile("site/public/welcome.pdf", input);
-
-    // The box of "Local-First" on page 1, from the core's own glyphs.
-    const core = openCoreDocument(new Uint8Array(await readFile(input)));
-    const geometry = core.pageGeometry(0);
-    const glyphs = core.glyphs(0);
-    core.close();
-    const text = glyphs.map((glyph) => glyph.text).join("");
-    const start = text.indexOf("Local-First");
-    expect(start).toBeGreaterThanOrEqual(0);
-    const word = glyphs.slice(start, start + "Local-First".length);
-    const left = Math.min(...word.map((g) => g.origin[0]));
-    const right = Math.max(...word.map((g) => g.end[0]));
-    const bottom = Math.min(...word.map((g) => g.loose[1]));
-    const top = Math.max(...word.map((g) => g.loose[3]));
+    await copyFile(FIXTURE, input);
     await writeFile(
       spec,
       JSON.stringify({
         annotations: [
-          {
-            type: "highlight",
-            page: 1,
-            rects: [
-              {
-                x: left - geometry.originX,
-                y: bottom - geometry.originY,
-                w: right - left,
-                h: top - bottom,
-              },
-            ],
-            color: "#f6c744",
-            opacity: 0.35,
-          },
+          { type: "highlight", page: 1, rects: [SHI], color: "#f6c744", opacity: 0.35 },
           { type: "note", page: 1, at: { x: 300, y: 600 }, text: "n", color: "#f6c744" },
         ],
       }),
     );
     await cli(["annotate", input, "--spec", spec, "-o", annotated, "--agent"]);
 
-    const highlight = {
-      x: left - geometry.originX,
-      y: bottom - geometry.originY,
-      w: right - left,
-      h: top - bottom,
-    };
     const [extracted, note, ...rest] = await extract(annotated);
     expect(rest).toEqual([]);
-    expect(extracted).toMatchObject({ type: "highlight", page: 1, color: "#f6c744", opacity: 0.35, quote: "Local-First" });
+    // The quote follows from where the fixture drew its glyphs: a reader
+    // placing them anywhere else quotes more or fewer letters.
+    expect(extracted).toMatchObject({ type: "highlight", page: 1, color: "#f6c744", opacity: 0.35, quote: "Shi" });
     // The rect as the spec gave it; the CLI prints it rounded to 0.001 pt.
-    const [rect, ...otherRects] = extracted!.rects as Array<typeof highlight>;
+    const [rect, ...otherRects] = extracted!.rects as Array<typeof SHI>;
     expect(otherRects).toEqual([]);
-    for (const key of ["x", "y", "w", "h"] as const) expect(rect![key]).toBeCloseTo(highlight[key], 2);
+    for (const key of ["x", "y", "w", "h"] as const) expect(rect![key]).toBeCloseTo(SHI[key], 2);
     expect(note).toEqual({ type: "note", page: 1, at: { x: 300, y: 600 }, text: "n", color: "#f6c744" });
   });
-
 });

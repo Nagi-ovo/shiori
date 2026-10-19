@@ -63,18 +63,12 @@ async function renderPage2() {
   const dir = await mkdtemp(join(tmpdir(), "shiori-core-render-"));
   dirs.push(dir);
   const output = join(dir, "page2.png");
-  // Source runs read through pdf.js by default until the CLI reads only
-  // through the core; ask for the core explicitly.
-  const previous = process.env.SHIORI_PDF_ENGINE;
-  process.env.SHIORI_PDF_ENGINE = "pdfium";
   const log = console.log;
   console.log = () => {};
   try {
     await main(["render", FIXTURE, "--page", "2", "-o", output, "--scale", "1"]);
   } finally {
     console.log = log;
-    if (previous === undefined) delete process.env.SHIORI_PDF_ENGINE;
-    else process.env.SHIORI_PDF_ENGINE = previous;
   }
   return decodePng(new Uint8Array(await readFile(output)));
 }

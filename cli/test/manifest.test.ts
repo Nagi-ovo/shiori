@@ -19,6 +19,7 @@ import {
   AUDITED_NODE_VERSION,
   AUDITED_NOTO_JP_SHA256,
   AUDITED_NOTO_SC_SHA256,
+  nativeCoreFiles,
 } from "../build";
 import packageJson from "../package.json" with { type: "json" };
 
@@ -39,13 +40,9 @@ describe("CLI post-signing manifest refresh", () => {
   test("updates hashes without rebuilding, replacing, or deleting signed files", async () => {
     await withTempDir(async (dir) => {
       const executable = join(dir, "shiori");
-      const bindingDirectory = join(
-        dir,
-        "node_modules",
-        "@napi-rs",
-        "canvas-darwin-arm64",
-      );
-      const binding = join(bindingDirectory, "skia.darwin-arm64.node");
+      // The signed shiori-core addon, where cli/build.ts puts it.
+      const bindingDirectory = join(dir, "native");
+      const binding = join(bindingDirectory, nativeCoreFiles("darwin-arm64").addon);
       const signature = join(dir, "shiori.signature");
       await mkdir(bindingDirectory, { recursive: true });
       await writeFile(executable, "signed executable bytes");
@@ -81,7 +78,7 @@ describe("CLI post-signing manifest refresh", () => {
       expect(executableAfter.mtimeMs).toBe(executableBefore.mtimeMs);
       expect(bindingAfter.mtimeMs).toBe(bindingBefore.mtimeMs);
       expect((await readdir(dir)).sort()).toEqual(
-        ["manifest.json", "node_modules", "shiori", "shiori.signature"].sort(),
+        ["manifest.json", "native", "shiori", "shiori.signature"].sort(),
       );
 
       const manifest = JSON.parse(
@@ -95,7 +92,7 @@ describe("CLI post-signing manifest refresh", () => {
       expect(manifest.bundler).toBe(`bun ${AUDITED_BUN_VERSION}`);
       expect(manifest.files).toEqual([
         {
-          path: "node_modules/@napi-rs/canvas-darwin-arm64/skia.darwin-arm64.node",
+          path: "native/shiori_core.node",
           size: bindingBytes.byteLength,
           sha256: digest(bindingBytes),
         },
