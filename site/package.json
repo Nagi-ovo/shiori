@@ -2,7 +2,7 @@
   "name": "shiori-site",
   "private": true,
   "license": "MIT",
-  "version": "26.9.27",
+  "version": "26.10.20",
   "type": "module",
   "description": "Shiori 栞 — public homepage. Standalone Vite + React project, deployed independently of the main app and Tauri bundle.",
   "scripts": {

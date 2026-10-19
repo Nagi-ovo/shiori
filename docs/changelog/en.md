@@ -1,6 +1,8 @@
 # What's new
 
-## [Unreleased]
+## 26.10.20
+
+> A Risky Racket
 
 ### Open source
 

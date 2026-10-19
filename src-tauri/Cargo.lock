@@ -4077,7 +4077,7 @@ checksum = "dc6fe69c597f9c37bfeeeeeb33da3530379845f10be461a66d16d03eca2ded77"
 
 [[package]]
 name = "shiori"
-version = "26.9.27"
+version = "26.10.20"
 dependencies = [
  "base64 0.22.1",
  "fontdb",

@@ -1,6 +1,6 @@
 [package]
 name = "shiori"
-version = "26.9.27"
+version = "26.10.20"
 description = "Local-first document reader and PDF editor"
 authors = ["Jesse Zhang"]
 license = "MIT"

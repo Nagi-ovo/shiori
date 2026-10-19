@@ -2,7 +2,7 @@
   "name": "shiori",
   "private": true,
   "license": "MIT",
-  "version": "26.9.27",
+  "version": "26.10.20",
   "type": "module",
   "scripts": {
     "dev": "vite",

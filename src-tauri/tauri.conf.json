@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Shiori",
-  "version": "26.9.27",
+  "version": "26.10.20",
   "identifier": "fun.nagi.shiori",
   "build": {
     "frontendDist": "../dist",
