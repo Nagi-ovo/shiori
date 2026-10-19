@@ -4,7 +4,7 @@ Current state and next steps only. History lives in `jj log`, `CHANGELOG.md`
 and `docs/POSTMORTEMS.md` — when an item here is done, delete it rather than
 marking it done.
 
-Last reconciled against reality: **2026-10-17**.
+Last reconciled against reality: **2026-10-20**.
 
 ## Current state
 
@@ -16,44 +16,28 @@ Last reconciled against reality: **2026-10-17**.
   `app.shiori.nagi.fun` → `shiori-web` (DNS: the `@` and `app` CNAMEs in the
   separate Aliyun zone `shiori.nagi.fun`, not the `shiori` record in
   `nagi.fun`). The old projects `shiori-promotion` / `shiori-app` stay for
-  rollback until Jesse deletes them. Still open: archive `shiori-dev`, and the
-  `release` environment lacks the Apple and macOS certificate secrets.
+  rollback until Jesse deletes them. The `release` environment holds every
+  signing secret. The Discord bot on `oracle-arm` (`discord-bot.service`,
+  `~/Project/nagis_discord/watcher.py`) watches `Nagi-ovo/shiori` since
+  2026-10-20; it had silently missed releases because the API answers the
+  old name with a 301. Still open: archive `shiori-dev`.
 
-- **The encryption, Canvas, tab strip and lib.rs work is on `main`, not in
-  a release yet** (58 changes sealed 2026-10-07, rebased onto `a48fb9de` and
-  pushed 2026-10-17; the web version deploys from `main`, so it already
-  runs them). Gates after the rebase: `bun run verify` 1979 pass,
-  `test:core` green; `tauri build` green before the rebase. Three tracks, each
-  Codex-reviewed, plus two tab-strip fixes:
-  - *Encrypted PDFs keep their encryption:* annotate/export re-encrypts with
-    the source's own /Encrypt, key and /ID[0] (user and owner passwords both
-    still work); permissions (print, modify, annotate, assemble) are honored;
-    unknown security fails closed; page insertion into an encrypted base
-    keeps its encryption; printing goes through the engine's plaintext,
-    which reaches only the hidden print frame. Web E2E in
-    `test-artifacts/encrypted-pdf-export/`.
-  - *`src-tauri/src/lib.rs` split* from ~5900 lines to 563 across domain
-    modules (`docs/PLAN-TAURI-MODULES-2026-10.md`); `bindings.ts` and the
-    ACL manifest byte-identical. Windows/Linux only type-checked, Android/iOS
-    not built.
-  - *Canvas viewport layer* (`docs/PLAN-CANVAS-VIEWPORT-2026-10.md`, all 5
-    phases): print, zoom gesture stream, page tracker, keymap, viewport
-    controller under `src/editor/viewport/`; fixes a lost pinch commit, a
-    press-scrolls-to-top jump and a 474 px reopen offset. Artifacts in
-    `test-artifacts/{viewport-controller,zoom-gestures,navigation,print}/`.
-  - *Tab strip drag:* a dragged tab stays on the strip's axis and inside it,
-    and moves as a whole tab instead of a stretched, faded label
-    (`test-artifacts/tab-strip-drag/`, web only; three-finger drag in the
-    macOS app still to check by hand).
+- **26.10.20 shipped the encryption, Canvas viewport, tab strip and lib.rs
+  work** (details in `CHANGELOG.md`): encrypted PDFs keep their encryption
+  through export, page insertion and printing; the Canvas viewport layer
+  (`docs/PLAN-CANVAS-VIEWPORT-2026-10.md`); whole-tab dragging; the
+  `src-tauri/src/lib.rs` split (`docs/PLAN-TAURI-MODULES-2026-10.md`). None
+  of it was walked by hand on a device; see Next up 0.
 - **Open product question:** a signed PDF whose print copy needs a rebuild
   (overlays) is refused printing, though paper has no signature to break.
 
-- **App 26.9.27 (赤毛异人) is the live release** (2026-09-27): macOS,
-  Windows, Linux, Android direct APK; `alpha/latest.json` points at it and
-  the live verifier passes on all four desktop platforms. Ships the Windows
-  in-app title bar, hidden Windows menu bar, thin Windows/Linux scrollbars,
-  closable toasts and the moved-file message. Released without device checks
-  (A0.13 included). Epigraph pool: 5 of 20 used.
+- **App 26.10.20 (四面楚歌) is the live release** (2026-10-20), the first
+  from the public repo: macOS (local signed + notarized), Windows, Linux,
+  Android direct APK (versionCode 26010020); `alpha/latest.json` points at
+  `Nagi-ovo/shiori` assets and the live verifier passes on all four desktop
+  platforms. Announced in the Shiori QQ group and Discord `shiori-zh` /
+  `shiori-en`. Released without device checks, by Jesse's decision, A0.13
+  (Android wasm engine) included. Epigraph pool: 6 of 20 used.
 - **Shipped in 26.9.27, from a Windows tester's screenshot:** toasts get a
   real close button (the error X was a decorative glyph); a moved/deleted
   file reads as such instead of "(os error 3)"; thin scrollbars on
@@ -87,9 +71,8 @@ Last reconciled against reality: **2026-10-17**.
   `docs/PLAN-RUST-PDF-CORE-2026-09.md`): desktop uses the native core,
   web and Android the wasm core in a Worker; pdf.js is gone from the repo
   (2026-10-19).
-  **Android now runs on the wasm engine unverified on a device — the
-  largest release risk; RELEASE-CHECKS A0.13 must pass before an Android
-  release.** The local desktop bundle was rebuilt and Developer ID signed
+  **Android runs on the wasm engine, shipped in 26.10.20 without a device
+  check — A0.13 is still owed; watch for Android reports.** The local desktop bundle was rebuilt and Developer ID signed
   on 2026-09-25 (not notarized; releases still go through
   `./scripts/build-signed.sh`).
 - **DOCX engine bumped to 2.21.1** (unreleased), which fixes the CJK overrun
