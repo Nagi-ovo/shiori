@@ -49,16 +49,28 @@ const TEXT_ICON_SIZE = 22;
 /**
  * One page's annotations as pdf.js lists them for display: the page's
  * /Annots in order, popups last, without those pdf.js would not show.
- * Null when the file is encrypted.
+ * Null when the file is encrypted. A page pdf-lib does not have, or whose
+ * /Annots is not an array, lists none; `strict` throws for those instead.
  */
-export function readSourceAnnotations(pdf: PDFDocument, pageIndex: number): SourceAnnotation[] | null {
+export function readSourceAnnotations(
+  pdf: PDFDocument,
+  pageIndex: number,
+  strict = false,
+): SourceAnnotation[] | null {
   if (pdf.isEncrypted) return null;
   const page = pdf.getPages()[pageIndex];
-  if (!page) return [];
+  if (!page) {
+    if (strict) throw new Error(`pdf-lib finds no page ${pageIndex + 1} in the page tree`);
+    return [];
+  }
   let annots: PDFArray | undefined;
   try {
     annots = page.node.Annots();
-  } catch {
+  } catch (error) {
+    if (strict) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`page ${pageIndex + 1}'s /Annots is not an array: ${detail}`);
+    }
     return [];
   }
   if (!annots) return [];

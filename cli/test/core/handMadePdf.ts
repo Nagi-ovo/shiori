@@ -2,13 +2,14 @@
  * A one-page Letter PDF written object by object, its cross-reference
  * worked out, for cases pdf-lib will not write: `content` is the page's
  * content stream with Helvetica as /F1, `after` is appended past the last
- * object (outside the cross-reference) before the table.
+ * object (outside the cross-reference) before the table, `pageEntries` is
+ * added to the page dictionary.
  */
-export function handMadePdf(content: string, after = ""): Uint8Array {
+export function handMadePdf(content: string, after = "", pageEntries = ""): Uint8Array {
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R ${pageEntries}>>`,
     `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
   ];

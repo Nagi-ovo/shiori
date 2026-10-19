@@ -82,6 +82,14 @@ export type PdfAnnotationImportOptions = {
    * object numbers, and so the overlay ids, are the file's own.
    */
   decryptedBytes?: () => Promise<Uint8Array>;
+  /**
+   * Throw when the file's annotations cannot be read, instead of importing
+   * them as none: pdf-lib cannot parse or decrypt the file, a page's /Annots
+   * does not resolve to an array, or pdf-lib's page tree lacks the page. For
+   * a caller that must tell "no annotations" from "unknown" (the CLI's
+   * `extract`); the app stays lenient, so such a file still opens and draws.
+   */
+  strict?: boolean;
 };
 
 // Subtypes Shiori draws itself without importing them as overlays: links as
@@ -140,6 +148,11 @@ export async function importFileAnnotations(
   // The file itself, read with pdf-lib (./sourceAnnotations), unless it is
   // still encrypted: pdf-lib cannot decrypt its strings.
   const fileReader = rawPdf && !rawPdf.isEncrypted ? rawPdf : null;
+  if (options.strict && !fileReader) {
+    throw new Error(
+      rawPdf ? "pdf-lib cannot read an encrypted file's annotations" : "pdf-lib could not parse the file",
+    );
+  }
   options.onSourceInfo?.({ encrypted: rawData.encrypted });
   for (const [sourceIndex, links] of rawData.namedLinks) {
     options.onNamedLinks?.(sourceIndex, links);
@@ -149,7 +162,7 @@ export async function importFileAnnotations(
       options.overlayPageIds === undefined ||
       options.overlayPageIds.has(page.id);
     const annotations = fileReader
-      ? (readSourceAnnotations(fileReader, page.sourceIndex) ?? [])
+      ? (readSourceAnnotations(fileReader, page.sourceIndex, options.strict) ?? [])
       : [];
     const pageCallouts = rawData.callouts.get(page.sourceIndex) ?? [];
     const pageInteriorColors = rawData.interiorColors.get(page.sourceIndex);

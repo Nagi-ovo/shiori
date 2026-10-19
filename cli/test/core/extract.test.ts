@@ -212,6 +212,49 @@ describe("shiori extract", () => {
     });
   });
 
+  test("reports a page whose /Annots is not an array as unavailable, not as none", async () => {
+    await withTempDir(async (dir) => {
+      // PDFium draws and reads the page regardless; pdf-lib cannot list
+      // its annotations, so how many it has is unknown.
+      for (const [name, entry] of [
+        ["number", "/Annots 42"],
+        ["reference to a font", "/Annots 5 0 R"],
+      ]) {
+        const input = join(dir, `annots-${name.replaceAll(" ", "-")}.pdf`);
+        await writeFile(
+          input,
+          handMadePdf("BT /F1 12 Tf 72 700 Td (Hello) Tj ET", "", entry),
+        );
+        const text = await captureCli(["text", input, "--agent"]);
+        expect(JSON.parse(text.stdout), name).toMatchObject({ ok: true });
+        await expect(main(["extract", input, "--agent"]), name).rejects.toMatchObject({
+          code: "ERR_ANNOTATIONS_UNAVAILABLE",
+        });
+      }
+    });
+  });
+
+  test("reports a page pdf-lib's page tree lacks as unavailable, not as none", async () => {
+    await withTempDir(async (dir) => {
+      // A later object 2 outside the cross-reference empties the page tree
+      // for pdf-lib, which reads objects in file order; PDFium still has
+      // the page.
+      const input = join(dir, "pageless-for-pdf-lib.pdf");
+      await writeFile(
+        input,
+        handMadePdf(
+          "BT /F1 12 Tf 72 700 Td (Hello) Tj ET",
+          "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n",
+        ),
+      );
+      const text = await captureCli(["text", input, "--agent"]);
+      expect(JSON.parse(text.stdout)).toMatchObject({ ok: true });
+      await expect(main(["extract", input, "--agent"])).rejects.toMatchObject({
+        code: "ERR_ANNOTATIONS_UNAVAILABLE",
+      });
+    });
+  });
+
   test("--as-spec emits pure annotate input without an envelope", async () => {
     await withTempDir(async (dir) => {
       const input = join(dir, "text.pdf");

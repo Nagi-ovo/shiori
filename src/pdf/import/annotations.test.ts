@@ -5,6 +5,7 @@ import {
   PDFHexString,
   PDFName,
   PDFNumber,
+  PDFObject,
   PDFRef,
   PDFString,
 } from "pdf-lib";
@@ -54,6 +55,82 @@ describe("PDF annotation import", () => {
     });
 
     expect(encrypted).toBe(true);
+  });
+
+  // When the file's annotations cannot be read. What can go wrong: a page
+  // whose /Annots is not an array (directly, or through a reference) or a
+  // page pdf-lib's page tree lacks importing as "no annotations" under
+  // `strict`; pdf-lib unable to parse or decrypt the file passing for none;
+  // the lenient default (the app's) refusing such a file instead of
+  // importing it without annotations; a dangling /Annots reference, which
+  // PDF reads as null, refused as unreadable.
+  describe("unreadable annotation structures", () => {
+    async function pdfWithAnnots(
+      annots: (pdf: PDFDocument) => PDFObject | undefined,
+    ): Promise<Uint8Array> {
+      const pdf = await PDFDocument.create();
+      const added = pdf.addPage([300, 400]);
+      const value = annots(pdf);
+      if (value) added.node.set(PDFName.of("Annots"), value);
+      return pdf.save({ useObjectStreams: false });
+    }
+
+    const unreadable: Array<[string, (pdf: PDFDocument) => PDFObject | undefined]> = [
+      ["a number", () => PDFNumber.of(42)],
+      ["a reference to a dictionary", (pdf) => pdf.context.register(PDFDict.withContext(pdf.context))],
+    ];
+
+    for (const [name, annots] of unreadable) {
+      test(`/Annots as ${name} is an error under strict, none otherwise`, async () => {
+        const bytes = await pdfWithAnnots(annots);
+        expect(await importFileAnnotations([page], bytes, IMPORTED_AT)).toEqual([]);
+        await expect(
+          importFileAnnotations([page], bytes, IMPORTED_AT, { strict: true }),
+        ).rejects.toThrow(/Annots/);
+      });
+    }
+
+    test("a page pdf-lib's page tree lacks is an error under strict", async () => {
+      const bytes = await pdfWithAnnots(() => undefined);
+      const engineOnlyPage = { ...page, id: "p2", sourceIndex: 1 };
+      expect(await importFileAnnotations([engineOnlyPage], bytes, IMPORTED_AT)).toEqual([]);
+      await expect(
+        importFileAnnotations([engineOnlyPage], bytes, IMPORTED_AT, { strict: true }),
+      ).rejects.toThrow(/page 2/);
+    });
+
+    test("bytes pdf-lib cannot parse are an error under strict", async () => {
+      const bytes = new TextEncoder().encode("not a pdf");
+      expect(await importFileAnnotations([page], bytes, IMPORTED_AT)).toEqual([]);
+      await expect(
+        importFileAnnotations([page], bytes, IMPORTED_AT, { strict: true }),
+      ).rejects.toThrow();
+    });
+
+    test("a file still encrypted for pdf-lib is an error under strict", async () => {
+      const source = await PDFDocument.create();
+      source.addPage([300, 400]);
+      const encrypt = PDFDict.withContext(source.context);
+      encrypt.set(PDFName.of("Filter"), PDFName.of("Standard"));
+      encrypt.set(PDFName.of("V"), PDFNumber.of(2));
+      source.context.trailerInfo.Encrypt = source.context.register(encrypt);
+      const bytes = await source.save();
+      await expect(
+        importFileAnnotations([page], bytes, IMPORTED_AT, { strict: true }),
+      ).rejects.toThrow(/encrypted/);
+    });
+
+    test("no /Annots, or a dangling reference, is none even under strict", async () => {
+      for (const annots of [
+        () => undefined,
+        () => PDFRef.of(999),
+      ]) {
+        const bytes = await pdfWithAnnots(annots);
+        expect(
+          await importFileAnnotations([page], bytes, IMPORTED_AT, { strict: true }),
+        ).toEqual([]);
+      }
+    });
   });
 
   test("derives stable reopen IDs from bounded pdf.js annotation refs", () => {

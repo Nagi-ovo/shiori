@@ -57,24 +57,20 @@ export async function extractAnnotationsFromCore(
 ): Promise<ExtractResult> {
   const pageContexts = corePageContexts(core, pageNumbers);
   const bytes = core.security().revision != null ? core.decryptedCopy() : sourceBytes;
-  // The importer reports what its pdf-lib pass found; null when it could
-  // not read the file, which would otherwise import as no annotations.
-  let readable = false;
+  // Strict: what pdf-lib cannot read is an error, where the app would
+  // import it as no annotations.
   let overlays: Overlay[];
   try {
     overlays = await importFileAnnotations(
       pageContexts.map((context) => context.model),
       bytes,
       undefined,
-      { onSourceInfo: ({ encrypted }) => (readable = encrypted === false) },
+      { strict: true },
     );
   } catch (error) {
     throw new AnnotationsUnavailableError(
       `pdf-lib could not read the file's annotations: ${error instanceof Error ? error.message : String(error)}`,
     );
-  }
-  if (!readable) {
-    throw new AnnotationsUnavailableError("pdf-lib could not parse the file's annotation structures");
   }
   return extractResult(input, pageNumbers, pageContexts, overlays);
 }
