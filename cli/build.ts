@@ -229,6 +229,7 @@ async function main(): Promise<void> {
     throw new AggregateError(build.logs, "Could not bundle Shiori CLI");
   }
   await assertAuditedBundleMetafile(metafilePath);
+  assertBundleDefinesEachErrorClassOnce(await readFile(bundlePath, "utf8"));
 
   const seaConfigPath = join(buildDir, "sea-config.json");
   await writeFile(
@@ -408,6 +409,27 @@ export function assertAuditedExternalImports(
   if (unexpected.length > 0) {
     throw new Error(
       `CLI bundle contains unaudited external imports: ${unexpected.join(", ")}`,
+    );
+  }
+}
+
+/**
+ * Each error class once: a module bundled twice brings its classes twice,
+ * and an instanceof against one copy misses errors thrown by the other, so
+ * the packaged CLI misreports them while every test from source passes.
+ * Bun did this when the entry carried a `#!/usr/bin/env bun` line (it then
+ * linked that entry for the bun target and its imports for node as well).
+ * Class names survive minification, so `this.name = "…"` finds the copies.
+ */
+export function assertBundleDefinesEachErrorClassOnce(bundle: string): void {
+  const seen = new Map<string, number>();
+  for (const [, name] of bundle.matchAll(/this\.name\s*=\s*"([^"]+)"/g)) {
+    seen.set(name!, (seen.get(name!) ?? 0) + 1);
+  }
+  const duplicated = [...seen].filter(([, count]) => count > 1).map(([name]) => name);
+  if (duplicated.length > 0) {
+    throw new Error(
+      `CLI bundle defines these error classes more than once, so a module is bundled twice: ${duplicated.join(", ")}`,
     );
   }
 }

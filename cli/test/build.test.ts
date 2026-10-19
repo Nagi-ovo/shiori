@@ -7,6 +7,7 @@ import {
   AUDITED_LICENSE_TREE_SHA256,
   AUDITED_NODE_VERSION,
   assertAuditedBundledPackages,
+  assertBundleDefinesEachErrorClassOnce,
   assertAuditedExternalImports,
   assertAuditedLicenseTreeDigest,
   assertAuditedFontkitBundleDigest,
@@ -158,6 +159,25 @@ describe("Shiori CLI distribution build", () => {
         { path: "new-package", external: true },
       ]),
     ).toThrow("unaudited external imports");
+  });
+
+  test("fails when the bundle defines an error class twice", () => {
+    // A second copy of a module brings a second copy of its error classes,
+    // and an instanceof against one copy misses errors thrown by the other
+    // (a bun shebang on the entry once did this to openPolicy.ts and five
+    // more). Minified and unminified spellings both count.
+    expect(() =>
+      assertBundleDefinesEachErrorClassOnce(
+        'class a extends Error{constructor(){super();this.name="PdfOpenError"}}' +
+          'class b extends Error{constructor(){super();this.name="BoundedFileError"}}',
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertBundleDefinesEachErrorClassOnce(
+        'class a extends Error{constructor(){super();this.name="PdfOpenError"}}' +
+          'class b extends Error{constructor(){super();this.name = "PdfOpenError";}}',
+      ),
+    ).toThrow("PdfOpenError");
   });
 
   test("forces a new audit when any packaged license text changes", () => {

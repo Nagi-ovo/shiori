@@ -1,4 +1,6 @@
-#!/usr/bin/env bun
+// No `#!/usr/bin/env bun` line: Bun.build then links this entry for the bun
+// target and the modules it imports for node too, bundling those twice
+// (cli/build.ts refuses such a bundle). Run it as `bun cli/src/main.ts`.
 import { lstat, realpath, stat } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
