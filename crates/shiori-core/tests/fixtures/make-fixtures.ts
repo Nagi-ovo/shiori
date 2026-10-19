@@ -298,8 +298,10 @@ fontsPage.drawText("Liberation", { x: 20, y: 150, size: 20, font: liberation });
 fontsPage.drawText("日本", { x: 20, y: 100, size: 20, font: noto });
 fontsPage.drawText("Helvetica", { x: 20, y: 50, size: 20, font: helvetica });
 {
-  // pdf.js ships its standard fonts as bare CFF, whatever the extension says.
-  const program = readFileSync(join(root, "node_modules/pdfjs-dist/standard_fonts/FoxitSerif.pfb"));
+  // PDFium's Foxit Serif, as pdf.js shipped it: bare CFF, whatever the
+  // extension says. Vendored in fonts/ with its licence (LICENSE_FOXIT,
+  // PDFium's BSD terms) so the fixtures regenerate without pdf.js.
+  const program = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "fonts/FoxitSerif.pfb"));
   const fontFile = fonts.context.register(fonts.context.stream(program, { Subtype: "Type1C" }));
   // Foxit Serif keeps Times-Roman's metrics.
   const times = await fonts.embedFont(StandardFonts.TimesRoman);
