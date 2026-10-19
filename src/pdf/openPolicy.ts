@@ -128,26 +128,9 @@ export function isCanvasWithinPixelBudget(
   );
 }
 
-const PDF_OPEN_ERROR_KINDS: ReadonlySet<string> = new Set<PdfOpenErrorKind>([
-  "tooLarge",
-  "tooManyPages",
-  "pageTooLarge",
-  "renderTooLarge",
-  "password",
-  "damaged",
-  "engineUnavailable",
-  "unknown",
-]);
-
 export function classifyPdfOpenError(err: unknown): PdfOpenErrorKind {
   if (err instanceof PdfOpenError) return err.kind;
   const name = String((err as { name?: unknown })?.name ?? "");
-  // A PdfOpenError from another copy of this module, which the CLI bundle
-  // carries: not this class, but its name and kind.
-  const kind = (err as { kind?: unknown })?.kind;
-  if (name === "PdfOpenError" && typeof kind === "string" && PDF_OPEN_ERROR_KINDS.has(kind)) {
-    return kind as PdfOpenErrorKind;
-  }
   const message = String((err as { message?: unknown })?.message ?? "");
   const joined = `${name} ${message}`.toLowerCase();
   if (name === "PasswordException" || /password|encrypted/.test(joined)) {

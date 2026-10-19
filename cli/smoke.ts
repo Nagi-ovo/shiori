@@ -258,8 +258,8 @@ async function main(): Promise<void> {
         throw new Error("Compiled CLI failure contract is not deterministic");
       }
       // An addon that will not load is the engine missing, not a bad PDF.
-      // Checked on the bundle because it holds more than one copy of some
-      // modules, so a class check that passes from source can fail here.
+      // Checked on the binary: when the bundle carried a second copy of
+      // openPolicy.ts this failed here while every test from source passed.
       const brokenCore = join(temp, "broken-core");
       await mkdir(brokenCore);
       await writeFile(join(brokenCore, nativeCoreFiles(target).addon), "");
