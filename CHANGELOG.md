@@ -10,7 +10,52 @@
 
 ## [未发布]
 
+### 开源
+
+- **Shiori 与 Shiori CLI 开源（2026-10-18，`7874bc8`）。** `Nagi-ovo/shiori`（原
+  `shiori-releases`）成为公开源码仓库：代码 MIT（`LICENSE`），品牌素材见 `TRADEMARK.md`；
+  旧私有仓库改名 `shiori-dev`。开源快照把 26.9.27 之后的 96 个私有提交合成一个提交，
+  下面「新增」「修复」各条的 SHA 只在 `shiori-dev` 里。发布、tag 与 `gh-pages` 更新清单仍在
+  同一仓库；Cloudflare Pages 改从公开仓库部署（`shiori-site`、`shiori-web`）。新版 Android
+  只认 `Nagi-ovo/shiori` 的 APK 路径（`8c77877`），`/api/release` 不带 `apkRepo=shiori` 时
+  仍把 APK 地址改写回 `shiori-releases`，给 26.9.27 及更早的版本自更新。
+
+### 新增
+
+- **加密 PDF 导出保留原加密（`c2c1760a` `2b020169` `5ce7952a` `30a5f4dd` `882a2128`
+  `c3b45f9e` `015fcfba`）。** 以前导出带密码的 PDF 直接失败（"先用别的工具去掉密码"）。
+  现在从 PDFium 明文重建，再用源文件的 Standard 安全处理器（同一 /Encrypt、文件密钥、
+  /ID[0]）重新加密，并用同一密码重开校验；用户密码与所有者密码都还能打开。编辑按 /P 授权：
+  批注 bit 6，页面内容 bit 4，页面结构 bit 4（R3 起 bit 11）；未知安全处理器一律拒绝，
+  重新加密失败即导出失败，不回退明文。
+- **加密 PDF 可插入页面、可打印（`344eb4e9` `a94b695e` `b25a91d1` `7af35a4c` `ec7f1f77`
+  `11d76a7a`）。** 插入页并入引擎明文后按源文件重新加密，受 "pages" 权限约束；打印从引擎
+  明文重建，明文只进隐藏的打印 frame；/P 不许打印（bit 3）时拒绝并给出翻译后的提示。
+
+### 修复
+
+- **Canvas 视口层（`docs/PLAN-CANVAS-VIEWPORT-2026-10.md` 5 个阶段）。**
+  - 触控板 pinch 收不到 gestureend 时停在预览：每个 gesturechange 重设 900 ms 兜底提交
+    （`e6e83604`），兜底提交后把滚轮还回去（`1d39e326`）；PDF、Word、文本、HTML 视图共用
+    一条缩放手势流（`2f38d05d` `d217f5f2` `6fa28d43` `5b1312dc` `af4c64e8` `4a95013f`）。
+  - 按下页面会把它平滑滚到顶部（E2E 中 747 px）：activePageId 不再触发滚动，导航统一走
+    `goToPage`（`256265e1`）；活动页改由页面追踪模块推导（`db6a337c` `80c34a5d` `2877c1f1`）。
+  - 重开 PDF 落点偏 474 px：打开时钉住目标页顶部直到首次滚动或缩放（`89dbfdf8` `c9256b3f`），
+    resize / fit / 缩放提交收进视口控制器（`b57d2085`）。
+  - 键盘与菜单缩放固定 ±0.1，与工具栏档位不一致：统一走 `zoomStepUp/Down`（`5040b87c`）。
+  - 弹窗打开时 Delete、工具字母、J / K 仍作用于后面的 Canvas：有 modal 时 Canvas 忽略所有
+    按键（`d11e85a9` `bddba564`）。
+- **标签页拖动（`a7dee5c8` `81424e30`）。** 拖动中的标签只平移不缩放、限制在标签栏轴向与
+  范围内，以活动标签的外形整体移动（此前 scaleX 1.5 拉伸、非活动标签变淡成裸文字）。
+- **CI 上 ToastHost 关闭测试失败（`voxsrprn`，仅测试）。** dnd-kit 结束拖动后 50 ms 才移除
+  document 上吞点击的 capture 监听；happy-dom 全程共用一个 document，CI 上
+  `TabStrip.keyboard.test.tsx` 紧挨 `ToastHost.test.tsx`，Close 的点击被吞。拖动测试的
+  `afterEach` 现在等到探针点击能到达页面再交出 document。
+
 ### 改动
+
+- **`src-tauri/src/lib.rs` 拆分（`docs/PLAN-TAURI-MODULES-2026-10.md`，`3bf33ab2` … `668eb50f`）。**
+  约 5900 行拆到 563 行加按领域分的模块；`bindings.ts` 与 ACL manifest 逐字节不变。
 
 - **pdf.js 移出仓库（计划 5.3；jj change id，提交 SHA 会随整合变动）。** App 自 4.7 起已不含
   pdf.js，这一批让 CLI 和测试也不再依赖它，`pdfjs-dist` 与随它装进来的 `@napi-rs/canvas`
@@ -39,6 +84,15 @@
     pdf.js 在读、画、解密的地方改成引擎（`mxqprkso`）。
   - 已知缺口：竖排与 tagged 文本既无 fixture 也无对照读取者（pdf-lib 写不出 Identity-V）。
     THIRD_PARTY_NOTICES 保留移植自 pdf.js 的代码（文字层、批注列表）的署名。
+  - Codex review 之后的修复：`/Info` 字符串中间的 NUL 不再截断（`svokyzzp`）；插件存在但
+    加载失败也报 `ERR_PDF_ENGINE_UNAVAILABLE`（`nxsrmyrl`）；`extract` 用 strict 导入，
+    `/Annots` 不是数组或 pdf-lib 页树缺页时报 `ERR_ANNOTATIONS_UNAVAILABLE`，App 仍宽松
+    （`rquopxzt`）；删除永远匹配不到的 `isPdfJsInternalFontName`（`ysllqyrl`）。
+  - CLI bundle 重复模块：`cli/src/main.ts` 首行 `#!/usr/bin/env bun` 让 Bun 以
+    `target: "node"` 打包时把入口的依赖再链接一遍，6 个错误类各有两份，`instanceof`
+    只在打包后的二进制里失败（如超大页报 `ERR_PDF_UNKNOWN`）。去掉 shebang，`cli/build.ts`
+    拒绝重复定义错误类的 bundle（`zlwlrtrt`）；临时的按名称识别回退随之删除（`sqvktypl`
+    `wqvyuwum`）。
 
 ## [26.9.27]
 

@@ -1,5 +1,28 @@
 # What's new
 
+## [Unreleased]
+
+### Open source
+
+- **Shiori and the Shiori CLI are open source.** All of the source code is public under the MIT license at github.com/Nagi-ovo/shiori: read it, use it, change it, and report problems there.
+
+### Encrypted PDFs
+
+- **You can export edits to a password-protected PDF, and the export keeps its password.** Export used to ask you to remove the password with another tool first. Now the exported file opens with the same password as the original, and the original's limits on printing, editing and annotating still apply.
+- **Password-protected PDFs can take inserted pages and be printed.** If the original doesn't allow printing, Shiori tells you so.
+
+### Zoom and navigation
+
+- **A trackpad pinch no longer gets stuck halfway.** Now and then the page stayed in its preview after you let go, until you zoomed again.
+- **Pressing on a page no longer pulls it to the top.** Pressing on the sliver of the next page used to scroll the whole page up under the pointer.
+- **Reopening a PDF lands at the top of the page you were on.** It could land hundreds of pixels off.
+- **Keyboard and menu zoom step through the same levels as the toolbar.** From 150%, zooming out goes 125%, 110%, 100%.
+- **Keys no longer reach the document behind an open dialog.** With the shortcut sheet open, Delete used to remove the selected annotation behind it.
+
+### Interface
+
+- **Dragging a tab to reorder it moves the whole tab.** Its title used to stretch and fade, and the tab could leave the tab strip.
+
 ## 26.9.27
 
 > Stranger Searching
