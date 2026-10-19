@@ -4,10 +4,6 @@ import { fileURLToPath } from "node:url";
 
 export type CliRuntimeAssets = {
   root: string;
-  cmaps: string;
-  standardFonts: string;
-  wasm: string;
-  iccs: string;
   notoSansSc: string;
   notoSansJp: string;
 };
@@ -32,17 +28,9 @@ export function resolveCliRuntimeAssets(): CliRuntimeAssets {
   );
 }
 
-export function directoryUrl(path: string): string {
-  return `${path.endsWith("/") ? path : `${path}/`}`;
-}
-
 function packagedAssets(root: string): CliRuntimeAssets {
   return {
     root,
-    cmaps: join(root, "pdfjs", "cmaps"),
-    standardFonts: join(root, "pdfjs", "standard_fonts"),
-    wasm: join(root, "pdfjs", "wasm"),
-    iccs: join(root, "pdfjs", "iccs"),
     notoSansSc: join(root, "fonts", "NotoSansSC-Regular.otf"),
     notoSansJp: join(root, "fonts", "NotoSansJP-Regular.otf"),
   };
@@ -51,22 +39,11 @@ function packagedAssets(root: string): CliRuntimeAssets {
 function sourceAssets(root: string): CliRuntimeAssets {
   return {
     root,
-    cmaps: join(root, "node_modules", "pdfjs-dist", "cmaps"),
-    standardFonts: join(root, "node_modules", "pdfjs-dist", "standard_fonts"),
-    wasm: join(root, "node_modules", "pdfjs-dist", "wasm"),
-    iccs: join(root, "node_modules", "pdfjs-dist", "iccs"),
     notoSansSc: join(root, "src", "assets", "fonts", "NotoSansSC-Regular.otf"),
     notoSansJp: join(root, "src", "assets", "fonts", "NotoSansJP-Regular.otf"),
   };
 }
 
 function assetsExist(assets: CliRuntimeAssets): boolean {
-  return (
-    existsSync(join(assets.cmaps, "Adobe-GB1-UCS2.bcmap")) &&
-    existsSync(join(assets.standardFonts, "LiberationSans-Regular.ttf")) &&
-    existsSync(join(assets.wasm, "openjpeg.wasm")) &&
-    existsSync(join(assets.iccs, "CGATS001Compat-v2-micro.icc")) &&
-    existsSync(assets.notoSansSc) &&
-    existsSync(assets.notoSansJp)
-  );
+  return existsSync(assets.notoSansSc) && existsSync(assets.notoSansJp);
 }

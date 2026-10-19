@@ -8,18 +8,16 @@ Rollup build and checked against the shipped unminified bundle. The audited
 `d60739f02b41b636ee0cc2fb79ba589958144f9240e585dbc19e6a3b08d82825`.
 The build compares Bun's module metafile with the complete audited package
 allowlist, so a new reachable npm dependency fails closed. It also pins the
-audited metadata of every directly bundled package, the adjacent canvas
-runtime and native target package, and the two font hashes. The 49-file static
-license tree is pinned by SHA-256
-`7165c4ab9909ad1e206f7643842683f3f61894f39858b8132f8e273f17a11425`;
+audited metadata of every directly bundled package and the two font hashes.
+The 48-file static license tree is pinned by SHA-256
+`95df4336ace1280caaea39706ef2f119e43c01c9a1ed232fee09ca8ab27ad7b3`;
 the build fails if a notice is added, removed, or changed, forcing this
 inventory to be reviewed.
 
 | Component | Version | Declared license |
 | --- | --- | --- |
 | Node.js | Build-pinned 26.5.0 for production | Node.js license and bundled notices |
-| `pdfjs-dist` | 5.6.205 | Apache-2.0 |
-| `@napi-rs/canvas` + target native binding | 0.1.99 | MIT |
+| Code ported from PDF.js (`src/pdf/import/sourceAnnotations.ts`) | mozilla/pdf.js | Apache-2.0 |
 | `pdf-lib` | 1.17.1 | MIT |
 | `@pdf-lib/fontkit` | 1.1.1 | MIT; embedded MIT/Apache notices |
 | `@pdf-lib/brotli` (embedded) | 0.0.0 | MIT / Apache-2.0 |
@@ -81,7 +79,5 @@ excluded); the build fails when the committed file is stale. `napi` and
 used. PDFium's component licenses are identical across the release targets
 except for line endings and comment markers; the Linux texts are committed.
 
-PDF.js also ships CMaps, standard-font data, ICC profiles, and decoder WASM.
-Their upstream notices are included through the PDF.js license and packaged
-asset files. The Node.js license file copied from the exact build runtime
+The Node.js license file copied from the exact build runtime
 contains Node's own third-party notice inventory.

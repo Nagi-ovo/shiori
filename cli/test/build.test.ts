@@ -13,7 +13,6 @@ import {
   assertAuditedBunVersion,
   assertSeaBuildNodeVersion,
   SUPPORTED_CLI_TARGETS,
-  canvasPackageForTarget,
   cliTargetName,
   copyCliLicense,
   findNodeLicense,
@@ -89,31 +88,6 @@ describe("Shiori CLI distribution build", () => {
     );
   });
 
-  test("maps every release target to one audited native canvas package", () => {
-    expect(canvasPackageForTarget("darwin-arm64")).toBe(
-      "@napi-rs/canvas-darwin-arm64",
-    );
-    // darwin-x64 is not a release target: node --build-sea produces a binary
-    // that segfaults on Intel macOS. Asking for it must fail, not silently
-    // resolve to a canvas package for a target nobody can run.
-    expect(() => canvasPackageForTarget("darwin-x64")).toThrow();
-    expect(canvasPackageForTarget("linux-arm64-gnu")).toBe(
-      "@napi-rs/canvas-linux-arm64-gnu",
-    );
-    expect(canvasPackageForTarget("linux-x64-gnu")).toBe(
-      "@napi-rs/canvas-linux-x64-gnu",
-    );
-    expect(canvasPackageForTarget("win32-arm64")).toBe(
-      "@napi-rs/canvas-win32-arm64-msvc",
-    );
-    expect(canvasPackageForTarget("win32-x64")).toBe(
-      "@napi-rs/canvas-win32-x64-msvc",
-    );
-    expect(() => canvasPackageForTarget("linux-riscv64")).toThrow(
-      "No audited canvas package",
-    );
-  });
-
   // A release target without a pinned, hashed PDFium would ship an addon
   // with nothing to bind; one added to the matrix must bring its build.
   test("every release target has a pinned PDFium build to ship beside the addon", () => {
@@ -160,7 +134,6 @@ describe("Shiori CLI distribution build", () => {
       "pako",
       "parse5",
       "pdf-lib",
-      "pdfjs-dist",
       "tslib",
     ];
     expect(() => assertAuditedBundledPackages(audited)).not.toThrow();

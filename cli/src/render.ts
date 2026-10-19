@@ -1,7 +1,6 @@
 import { lstat, open, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
-import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import {
   assertCanvasPixelBudget,
   assertPdfPageDimensionsWithinLimit,
@@ -29,23 +28,6 @@ export type RenderPageResult = {
   scale: number;
 };
 
-type NodeCanvasFactoryLike = {
-  create: (
-    width: number,
-    height: number,
-  ) => {
-    canvas: { toBuffer: (mime: "image/png") => Uint8Array };
-    context: unknown;
-  };
-};
-
-export class RenderUnavailableError extends Error {
-  constructor(detail: string) {
-    super(detail);
-    this.name = "RenderUnavailableError";
-  }
-}
-
 export class RenderOutputConflictError extends Error {
   constructor(message: string) {
     super(message);
@@ -61,79 +43,9 @@ export class RenderOutputExistsError extends Error {
 }
 
 /**
- * Rasterize one page via pdf.js' own node canvas path (NodeCanvasFactory +
- * its optional @napi-rs/canvas dependency). The factory probe fails cleanly
- * when the native canvas is not resolvable — notably in the packaged SEA
- * binary, which does not ship the prebuild yet — so callers can report a
- * stable ERR_RENDER_UNAVAILABLE instead of a bare require stack.
- */
-export async function renderPdfPageToPng(
-  doc: PDFDocumentProxy,
-  pageNumber: number,
-  requestedScale: number,
-): Promise<RenderPageResult> {
-  const factory = (doc as unknown as { canvasFactory?: NodeCanvasFactoryLike })
-    .canvasFactory;
-  if (!factory || typeof factory.create !== "function") {
-    throw new RenderUnavailableError(
-      "pdf.js did not expose a canvas factory in this runtime",
-    );
-  }
-  let probe: ReturnType<NodeCanvasFactoryLike["create"]>;
-  try {
-    probe = factory.create(1, 1);
-  } catch (error) {
-    throw new RenderUnavailableError(
-      error instanceof Error ? error.message : String(error),
-    );
-  }
-  if (typeof probe?.canvas?.toBuffer !== "function") {
-    throw new RenderUnavailableError(
-      "the canvas implementation cannot encode PNG output",
-    );
-  }
-
-  const page = await doc.getPage(pageNumber);
-  try {
-    const base = page.getViewport({ scale: 1 });
-    assertPdfPageDimensionsWithinLimit(base.width, base.height, pageNumber);
-    const scale = clampScaleToCanvasBudget(
-      requestedScale,
-      base.width,
-      base.height,
-      1,
-    );
-    const viewport = page.getViewport({ scale });
-    const widthPx = Math.max(1, Math.floor(viewport.width));
-    const heightPx = Math.max(1, Math.floor(viewport.height));
-    // The scale clamp uses fractional viewport dimensions. Recheck the actual
-    // integer canvas, especially for pathological aspect ratios where forcing
-    // the short side to one pixel can push the rounded target over budget.
-    assertCanvasPixelBudget(widthPx, heightPx);
-    const target = factory.create(widthPx, heightPx);
-    // pdf.js' node path renders through canvasContext (the official node
-    // example does the same); the typed RenderParameters insists on a DOM
-    // canvas that does not exist here.
-    const params = {
-      canvasContext: target.context,
-      viewport,
-    } as unknown as Parameters<typeof page.render>[0];
-    await page.render(params).promise;
-    return {
-      png: target.canvas.toBuffer("image/png"),
-      widthPx,
-      heightPx,
-      scale,
-    };
-  } finally {
-    page.cleanup();
-  }
-}
-
-/**
  * Rasterize one page with shiori-core: PDFium draws it, annotations and form
- * fields included, the pixels the desktop app shows. Same scale clamp and
- * page-size limits as the pdf.js path; the page's own /Rotate applies.
+ * fields included, the pixels the desktop app shows, within Shiori's page
+ * and canvas limits; the page's own /Rotate applies.
  */
 export function renderCorePageToPng(
   core: CoreDocument,

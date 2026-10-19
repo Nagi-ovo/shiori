@@ -7,7 +7,6 @@ import {
   mkdtemp,
   readdir,
   readFile,
-  rename,
   rm,
   symlink,
   writeFile,
@@ -18,7 +17,6 @@ import { fileURLToPath } from "node:url";
 import {
   AUDITED_LICENSE_TREE_SHA256,
   auditedLicenseTreeDigest,
-  canvasPackageForTarget,
   cliTargetName,
   nativeCoreFiles,
 } from "./build";
@@ -33,36 +31,13 @@ const executable = join(outputDir, platform() === "win32" ? "shiori.exe" : "shio
 async function main(): Promise<void> {
   await Promise.all([
     access(executable),
-    access(join(outputDir, "assets", "pdfjs", "cmaps", "Adobe-GB1-UCS2.bcmap")),
-    access(
-      join(
-        outputDir,
-        "assets",
-        "pdfjs",
-        "standard_fonts",
-        "LiberationSans-Regular.ttf",
-      ),
-    ),
-    access(join(outputDir, "assets", "pdfjs", "wasm", "openjpeg.wasm")),
-    access(
-      join(outputDir, "assets", "pdfjs", "iccs", "CGATS001Compat-v2-micro.icc"),
-    ),
     access(join(outputDir, "assets", "fonts", "NotoSansSC-Regular.otf")),
     access(join(outputDir, "assets", "fonts", "NotoSansJP-Regular.otf")),
     access(join(outputDir, "LICENSE")),
     access(join(outputDir, "THIRD_PARTY_NOTICES.md")),
     access(join(outputDir, "licenses", "Node.js-LICENSE.txt")),
-    access(join(outputDir, "node_modules", "@napi-rs", "canvas", "package.json")),
     access(join(outputDir, "native", nativeCoreFiles(target).addon)),
     access(join(outputDir, "native", nativeCoreFiles(target).pdfium)),
-    access(
-      join(
-        outputDir,
-        "node_modules",
-        ...canvasPackageForTarget(target).split("/"),
-        "package.json",
-      ),
-    ),
   ]);
   const packagedLicenseDigest = await auditedLicenseTreeDigest(
     join(outputDir, "licenses"),
@@ -206,24 +181,6 @@ async function main(): Promise<void> {
       ) {
         throw new Error("Compiled CLI did not extract exactly one annotation");
       }
-      // The round trip above went through shiori-core, the packaged CLI's
-      // default: the addon has to load from native/ and bind the packaged
-      // PDFium, outside the repo. The pdf.js opt-out still has to work too.
-      const viaPdfjs = await run(
-        ["extract", outputPath, "--as-spec", "--agent"],
-        smokeExecutable,
-        { ...process.env, SHIORI_PDF_ENGINE: "pdfjs" },
-      );
-      const viaPdfjsSpec = JSON.parse(viaPdfjs.stdout) as {
-        annotations?: Array<{ type?: string; quote?: string }>;
-      };
-      if (
-        viaPdfjsSpec.annotations?.length !== 1 ||
-        viaPdfjsSpec.annotations[0]?.type !== "highlight" ||
-        !viaPdfjsSpec.annotations[0]?.quote
-      ) {
-        throw new Error("Compiled CLI could not extract through pdf.js");
-      }
       const renderOutput = join(temp, "page1.png");
       const rendered = await run(
         [
@@ -299,44 +256,6 @@ async function main(): Promise<void> {
         !failure.stderr.includes("ERR_USAGE")
       ) {
         throw new Error("Compiled CLI failure contract is not deterministic");
-      }
-
-      const runtimeModules = join(isolatedOutput, "node_modules");
-      const hiddenRuntimeModules = join(isolatedOutput, ".node_modules-hidden");
-      await rename(runtimeModules, hiddenRuntimeModules);
-      try {
-        const canvasFreeVersion = await run(["--version"], smokeExecutable);
-        if (canvasFreeVersion.stdout.trim() !== `shiori ${packageJson.version}`) {
-          throw new Error("A missing optional render runtime broke a basic command");
-        }
-        const markdown = join(temp, "canvas-free.md");
-        await writeFile(markdown, "basic command remains available");
-        const canvasFreeText = await run(
-          ["text", markdown, "--agent"],
-          smokeExecutable,
-        );
-        if (!(JSON.parse(canvasFreeText.stdout) as { ok?: boolean }).ok) {
-          throw new Error("A missing optional render runtime broke text extraction");
-        }
-        const canvasFreePdf = await runRaw(
-          ["inspect", welcomePdf, "--agent"],
-          smokeExecutable,
-        );
-        // PDFs read through shiori-core in native/, which needs nothing
-        // from node_modules.
-        const canvasFreePdfPayload = JSON.parse(canvasFreePdf.stdout) as {
-          ok?: boolean;
-          data?: { pdf?: { pageCount?: number } };
-        };
-        if (
-          canvasFreePdf.exitCode !== 0 ||
-          canvasFreePdfPayload.ok !== true ||
-          canvasFreePdfPayload.data?.pdf?.pageCount !== 3
-        ) {
-          throw new Error("A missing optional render runtime broke PDF reading");
-        }
-      } finally {
-        await rename(hiddenRuntimeModules, runtimeModules);
       }
     } finally {
       await rm(temp, { recursive: true, force: true });

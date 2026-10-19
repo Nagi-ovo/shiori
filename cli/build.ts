@@ -92,11 +92,10 @@ export const AUDITED_NOTO_SC_SHA256 =
   "faa6c9df652116dde789d351359f3d7e5d2285a2b2a1f04a2d7244df706d5ea9";
 export const AUDITED_NOTO_JP_SHA256 =
   "dff723ba59d57d136764a04b9b2d03205544f7cd785a711442d6d2d085ac5073";
-const AUDITED_CANVAS_VERSION = "0.1.99";
 export const AUDITED_BUN_VERSION = "1.3.12";
 export const AUDITED_NODE_VERSION = "26.5.0";
 export const AUDITED_LICENSE_TREE_SHA256 =
-  "7165c4ab9909ad1e206f7643842683f3f61894f39858b8132f8e273f17a11425";
+  "95df4336ace1280caaea39706ef2f119e43c01c9a1ed232fee09ca8ab27ad7b3";
 export const AUDITED_LICENSE_FILES = [
   "Apache-2.0.txt",
   "fontkit-bundle/base64-arraybuffer-MIT.txt",
@@ -127,7 +126,6 @@ export const AUDITED_LICENSE_FILES = [
   "fontkit-bundle/string_decoder-MIT.txt",
   "fontkit-bundle/tiny-inflate-1.0.3-MIT.txt",
   "fontkit-bundled-NOTICES.txt",
-  "napi-rs-canvas-MIT.txt",
   "Noto-CJK-OFL-1.1.txt",
   "pdf-lib-fontkit-MIT.txt",
   "pdfium/abseil.txt",
@@ -149,7 +147,6 @@ export const AUDITED_LICENSE_FILES = [
   "rust-crates-NOTICES.txt",
 ] as const;
 const AUDITED_DEPENDENCIES = [
-  ["node_modules/pdfjs-dist/package.json", "pdfjs-dist", "5.6.205", "Apache-2.0"],
   ["node_modules/pdf-lib/package.json", "pdf-lib", "1.17.1", "MIT"],
   ["node_modules/@pdf-lib/fontkit/package.json", "@pdf-lib/fontkit", "1.1.1", "MIT"],
   ["node_modules/@pdf-lib/standard-fonts/package.json", "@pdf-lib/standard-fonts", "1.0.0", "MIT"],
@@ -188,13 +185,6 @@ const PDFIUM_TARGET_BY_TARGET: Readonly<Record<string, PdfiumTarget>> = {
   "linux-x64-gnu": "linux-x64",
   "win32-arm64": "win-arm64",
   "win32-x64": "win-x64",
-};
-const CANVAS_PACKAGE_BY_TARGET: Readonly<Record<string, string>> = {
-  "darwin-arm64": "@napi-rs/canvas-darwin-arm64",
-  "linux-arm64-gnu": "@napi-rs/canvas-linux-arm64-gnu",
-  "linux-x64-gnu": "@napi-rs/canvas-linux-x64-gnu",
-  "win32-arm64": "@napi-rs/canvas-win32-arm64-msvc",
-  "win32-x64": "@napi-rs/canvas-win32-x64-msvc",
 };
 
 async function main(): Promise<void> {
@@ -271,7 +261,6 @@ async function main(): Promise<void> {
   }
 
   await copyRuntimeAssets(outputDir);
-  await copyRuntimeCanvasPackages(outputDir, target);
   await copyNativeCore(outputDir, target);
   await copyNotices(outputDir);
   const files = await distributionFiles(outputDir);
@@ -477,13 +466,7 @@ export async function auditedLicenseTreeDigest(root: string): Promise<string> {
 }
 
 async function copyRuntimeAssets(outputDir: string): Promise<void> {
-  const pdfjs = join(REPO_ROOT, "node_modules", "pdfjs-dist");
   const assets = join(outputDir, "assets");
-  for (const directory of ["cmaps", "standard_fonts", "wasm", "iccs"] as const) {
-    await cp(join(pdfjs, directory), join(assets, "pdfjs", directory), {
-      recursive: true,
-    });
-  }
   await mkdir(join(assets, "fonts"), { recursive: true });
   await copyFile(
     join(REPO_ROOT, "src", "assets", "fonts", "NotoSansSC-Regular.otf"),
@@ -577,41 +560,6 @@ async function copyNativeCore(outputDir: string, target: string): Promise<void> 
   }
 }
 
-export function canvasPackageForTarget(target: string): string {
-  const packageName = CANVAS_PACKAGE_BY_TARGET[target];
-  if (!packageName) throw new Error(`No audited canvas package for target ${target}`);
-  return packageName;
-}
-
-async function copyRuntimeCanvasPackages(
-  outputDir: string,
-  target: string,
-): Promise<void> {
-  const packages = ["@napi-rs/canvas", canvasPackageForTarget(target)];
-  for (const packageName of packages) {
-    const source = join(REPO_ROOT, "node_modules", ...packageName.split("/"));
-    const metadata = JSON.parse(await readFile(join(source, "package.json"), "utf8")) as {
-      name?: string;
-      version?: string;
-      license?: string;
-    };
-    if (
-      metadata.name !== packageName ||
-      metadata.version !== AUDITED_CANVAS_VERSION ||
-      metadata.license !== "MIT"
-    ) {
-      throw new Error(
-        `${packageName} metadata changed; refresh SBOM.md and bundled license notices before release`,
-      );
-    }
-    await cp(
-      source,
-      join(outputDir, "node_modules", ...packageName.split("/")),
-      { recursive: true },
-    );
-  }
-}
-
 async function copyNotices(outputDir: string): Promise<void> {
   await copyFile(join(CLI_ROOT, "README.md"), join(outputDir, "README.md"));
   await copyFile(join(CLI_ROOT, "SBOM.md"), join(outputDir, "SBOM.md"));
@@ -628,7 +576,6 @@ async function copyNotices(outputDir: string): Promise<void> {
     join(licensesDir, "Node.js-LICENSE.txt"),
   );
   const licenses: Array<[string, string]> = [
-    ["node_modules/pdfjs-dist/LICENSE", "pdfjs-dist-Apache-2.0.txt"],
     ["node_modules/pdf-lib/LICENSE.md", "pdf-lib-MIT.txt"],
     ["node_modules/@pdf-lib/standard-fonts/LICENSE.md", "pdf-lib-standard-fonts-MIT.txt"],
     ["node_modules/@pdf-lib/upng/LICENSE", "pdf-lib-upng-MIT.txt"],

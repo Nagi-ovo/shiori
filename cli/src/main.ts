@@ -2,7 +2,6 @@
 import { lstat, realpath, stat } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import {
   defaultTreeAdapter,
   parse as parseHtml,
@@ -20,20 +19,13 @@ import {
   readAnnotateSourcePdf,
   type AnnotateCliErrorCode,
 } from "./annotate";
-import {
-  openCoreDocument,
-  pdfEngineFromEnv,
-  type CoreDocument,
-  type CoreMetadata,
-} from "./coreEngine";
+import { openCoreDocument, type CoreDocument, type CoreMetadata } from "./coreEngine";
 import {
   AnnotationsUnavailableError,
   corePageModel,
   extractResultAsSpec,
   extractAnnotationsFromCore,
-  extractAnnotationsFromPdf,
   formatExtractHumanLine,
-  pageModelFromPdfjsPage,
   type ExtractResult,
 } from "./extract";
 import { pageTextFromPdfiumGlyphs } from "../../src/pdf/engine/pdfiumText";
@@ -67,13 +59,11 @@ import {
   MAX_TOTAL_RECTS_PER_SPEC,
 } from "../../src/pdf/annotations/spec";
 import {
-  RenderUnavailableError,
   RenderOutputConflictError,
   RenderOutputExistsError,
   assertRenderOutputIsDistinct,
   atomicWriteNewFile,
   renderCorePageToPng,
-  renderPdfPageToPng,
 } from "./render";
 import { specHelpPayload, specHelpText } from "./helpSpec";
 import { detectDocumentKind, type DocumentKind } from "../../src/documents/types";
@@ -87,7 +77,6 @@ import {
 } from "../../src/editor/search/findMatches";
 import {
   SemanticTextLimitError,
-  getBoundedTextContent,
   semanticTextContentToString,
 } from "../../src/editor/textSelection/semanticText";
 import {
@@ -99,7 +88,6 @@ import {
   diagnosticCode,
 } from "../../src/pdf/openPolicy";
 import { BoundedFileError, readFileWithinLimit } from "./safeRead";
-import { directoryUrl, resolveCliRuntimeAssets } from "./runtimeAssets";
 import {
   LiveAppError,
   annotateLiveApp,
@@ -148,7 +136,6 @@ type CliErrorCode =
   | "ERR_SPEC_INVALID"
   | "ERR_ANCHOR_UNRESOLVED"
   | "ERR_TEXT_UNAVAILABLE"
-  | "ERR_RENDER_UNAVAILABLE"
   | "ERR_ANNOTATIONS_UNAVAILABLE"
   | "ERR_OUTPUT_EXISTS"
   | "ERR_OUTPUT_CONFLICT"
@@ -237,19 +224,6 @@ const HUMAN_ANCHOR_RECT_LIMIT = 8;
 const MAX_HIGHLIGHT_FLAGS = 16;
 const MAX_MARKDOWN_BYTES = 20 * 1024 * 1024;
 const MAX_HTML_BYTES = 10 * 1024 * 1024;
-type PdfJsModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
-let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
-
-function loadPdfJs(): Promise<PdfJsModule> {
-  pdfJsModulePromise ??= Promise.all([
-    // pdfjs ships this runtime module without a declaration file.
-    // @ts-expect-error -- side-effect worker entry is still bundled by Bun.
-    import("pdfjs-dist/legacy/build/pdf.worker.mjs"),
-    import("pdfjs-dist/legacy/build/pdf.mjs"),
-  ]).then(([, pdfjs]) => pdfjs);
-  return pdfJsModulePromise;
-}
-
 export async function main(argv: string[]): Promise<void> {
   const startedAt = performance.now();
   const parsed = parseArgs(argv);
@@ -1133,21 +1107,7 @@ async function renderPdfPage(
         `--page is ${pageNumber} but the document has ${pdf.reader.pageCount} pages`,
       );
     }
-    if (pdf.engine === "pdfium") {
-      return renderCorePageToPng(pdf.core, pageNumber, requestedScale);
-    }
-    try {
-      return await renderPdfPageToPng(pdf.doc, pageNumber, requestedScale);
-    } catch (error) {
-      if (error instanceof RenderUnavailableError) {
-        throw new CliError(
-          "ERR_RENDER_UNAVAILABLE",
-          "Rendering is unavailable in this build; run the CLI from source (bun) for render support",
-          error.message,
-        );
-      }
-      throw error;
-    }
+    return renderCorePageToPng(pdf.core, pageNumber, requestedScale);
   });
   try {
     await atomicWriteNewFile(file.path, output, rendered.png);
@@ -1326,9 +1286,6 @@ async function extractPdfAnnotations(
   }
   const payload = await withPdf(file, options, async (pdf, bytes) => {
     const pageNumbers = selectedPageNumbers(options.pages, pdf.reader.pageCount);
-    if (pdf.engine === "pdfjs") {
-      return extractAnnotationsFromPdf(pdf.doc, file.path, pageNumbers, bytes);
-    }
     try {
       return await extractAnnotationsFromCore(pdf.core, file.path, pageNumbers, bytes);
     } catch (error) {
@@ -1375,11 +1332,7 @@ async function readFileInfo(inputPath: string): Promise<FileInfo> {
   return { path, name, sizeBytes, kind };
 }
 
-/**
- * What the PDF commands read from an open document, whichever reader opened
- * it: shiori-core, or pdf.js while SHIORI_PDF_ENGINE=pdfjs still selects it.
- * Page numbers count from 1.
- */
+/** What the PDF commands read from a document shiori-core opened; pages count from 1. */
 type PdfReader = {
   pageCount: number;
   /** The document information as pdf.js's documentInfo keys it, strings only. */
@@ -1390,9 +1343,7 @@ type PdfReader = {
   pageText: (pageNumber: number) => Promise<PdfPageTextContent>;
 };
 
-type OpenedPdf =
-  | { engine: "pdfium"; reader: PdfReader; core: CoreDocument }
-  | { engine: "pdfjs"; reader: PdfReader; doc: PDFDocumentProxy };
+type OpenedPdf = { reader: PdfReader; core: CoreDocument };
 
 async function withPdf<T>(
   file: FileInfo,
@@ -1427,18 +1378,13 @@ async function withPdfBytes<T>(
   run: (pdf: OpenedPdf) => Promise<T>,
 ): Promise<T> {
   try {
-    if (pdfEngineFromEnv() === "pdfjs") {
-      return await withPdfjsDocument(sourceBytes, options, (doc) =>
-        run({ engine: "pdfjs", reader: pdfjsReader(doc), doc }),
-      );
-    }
     // The core parses its own copy; the caller's bytes stay intact for the
     // pdf-lib export.
     const core = openCoreDocument(sourceBytes, options.password);
     try {
       const reader = coreReader(core);
       assertPdfWithinPageLimit(reader.pageCount);
-      return await run({ engine: "pdfium", reader, core });
+      return await run({ reader, core });
     } finally {
       core.close();
     }
@@ -1496,55 +1442,6 @@ function coreMetadataStrings(metadata: CoreMetadata): Record<string, string> {
     if (typeof value === "string" && value.trim()) out[key] = value;
   }
   return out;
-}
-
-function pdfjsReader(doc: PDFDocumentProxy): PdfReader {
-  const withPage = async <T>(
-    pageNumber: number,
-    read: (page: Awaited<ReturnType<PDFDocumentProxy["getPage"]>>) => Promise<T>,
-  ): Promise<T> => {
-    const page = await doc.getPage(pageNumber);
-    try {
-      return await read(page);
-    } finally {
-      page.cleanup();
-    }
-  };
-  return {
-    pageCount: doc.numPages,
-    metadata: () => pdfMetadata(doc),
-    pageModel: (pageNumber) =>
-      withPage(pageNumber, async (page) => pageModelFromPdfjsPage(page, pageNumber)),
-    pageText: (pageNumber) => withPage(pageNumber, (page) => getBoundedTextContent(page)),
-  };
-}
-
-async function withPdfjsDocument<T>(
-  sourceBytes: Uint8Array,
-  options: GlobalOptions,
-  run: (doc: PDFDocumentProxy) => Promise<T>,
-): Promise<T> {
-  let task: ReturnType<PdfJsModule["getDocument"]> | null = null;
-  try {
-    const pdfjsLib = await loadPdfJs();
-    const assets = resolveCliRuntimeAssets();
-    task = pdfjsLib.getDocument({
-      // pdf.js may transfer/detach its input. Keep the caller's source
-      // snapshot intact for the subsequent pdf-lib export.
-      data: new Uint8Array(sourceBytes),
-      password: options.password,
-      cMapPacked: true,
-      cMapUrl: directoryUrl(assets.cmaps),
-      standardFontDataUrl: directoryUrl(assets.standardFonts),
-      wasmUrl: directoryUrl(assets.wasm),
-      iccUrl: directoryUrl(assets.iccs),
-    });
-    const doc = await task.promise;
-    assertPdfWithinPageLimit(doc.numPages);
-    return await run(doc);
-  } finally {
-    await task?.destroy().catch(() => undefined);
-  }
 }
 
 async function pdfPageInfo(
@@ -1667,21 +1564,6 @@ export function consumePdfSearchRetentionBudget(
   }
   for (const key of Object.keys(costs) as Array<keyof PdfSearchRetentionBudget>) {
     budget[key] -= costs[key];
-  }
-}
-
-async function pdfMetadata(doc: PDFDocumentProxy): Promise<Record<string, string>> {
-  try {
-    const raw = await doc.getMetadata();
-    const info = raw.info as Record<string, unknown> | undefined;
-    if (!info) return {};
-    const out: Record<string, string> = {};
-    for (const [key, value] of Object.entries(info)) {
-      if (typeof value === "string" && value.trim()) out[key] = value;
-    }
-    return out;
-  } catch {
-    return {};
   }
 }
 

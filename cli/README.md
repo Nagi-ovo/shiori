@@ -100,8 +100,7 @@ recorded at upload.
 Signing state: `cli-release.yml` Developer ID signs and notarizes the macOS
 executable (since `1d0cf953`), so the first signed macOS build is the next
 `cli-v` release — the live `cli-v0.1.25` archives predate it and carry only an
-ad-hoc signature. The packaged canvas `.node` binding is not signed, and
-Windows has no Authenticode certificate.
+ad-hoc signature. Windows has no Authenticode certificate.
 
 ```text
 macOS, Linux   curl -fsSL https://shiori.nagi.fun/cli | sh
@@ -185,8 +184,8 @@ runs the release binary.
 `cli:build` is a local verification build and uses an ad-hoc signature on
 macOS. Releases must be built on a matching OS/architecture runner with
 Node.js 26.5.0 and Bun 1.3.12 pinned, then Developer ID signed + notarized on macOS and
-Authenticode signed on Windows. Sign both the executable and packaged native
-canvas binding. The generated manifest hashes every packaged file, but it is
+Authenticode signed on Windows. Sign the executable and the native libraries
+in `native/` (the shiori-core addon and PDFium). The generated manifest hashes every packaged file, but it is
 not itself a signature. After platform signing, run `bun run cli:manifest` to
 recompute the existing package's inventory without rebuilding or deleting any
 signed file. Then publish through the `cli-v*` release. Do not ship ad-hoc
@@ -207,11 +206,11 @@ unsigned artifacts are verification outputs, not user downloads.
   `MACOS_CERT_P12`, `MACOS_CERT_PASSWORD`, `MACOS_SIGN_IDENTITY`, `APPLE_ID`,
   `APPLE_PASSWORD` and `APPLE_TEAM_ID` secrets; without them the build falls
   back to ad-hoc and the verify step is skipped.
-- [ ] Sign the packaged canvas `.node` binding on macOS (only the executable
-  is signed today), Authenticode sign the Windows executable and native
-  binding (no certificate exists yet; an unsigned executable is the main
+- [ ] Authenticode sign the Windows executable and the libraries in
+  `native/` (no certificate exists yet; an unsigned executable is the main
   source of antivirus false positives there), and apply the chosen Linux
-  packaging signature.
+  packaging signature. On macOS `cli/build.ts` signs `native/` with the
+  executable's identity.
 - [ ] After platform signing, run `bun run cli:manifest` to regenerate the
   package inventory without rebuilding signed files, then `bun run cli:pack`.
   A `cli-v<version>` tag runs `.github/workflows/cli-release.yml`, which packs

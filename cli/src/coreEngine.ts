@@ -9,12 +9,9 @@ import type { PdfiumGlyphWithBox } from "../../src/pdf/engine/pdfiumText";
  * shiori-core, Shiori's Rust/PDFium reader, as the CLI loads it: a Node addon
  * (crates/shiori-core-node) beside the PDFium library it binds. The packaged
  * CLI ships it in `native/`; a run from source loads the one built in the
- * repo. Every PDF command reads with it. SHIORI_PDF_ENGINE=pdfjs still
- * selects the old pdf.js reader until that path is removed
- * (docs/PLAN-RUST-PDF-CORE-2026-09.md).
+ * repo. Every PDF command reads and renders with it.
  */
 
-export type PdfEngineName = "pdfjs" | "pdfium";
 
 /** The core's glyph and page box, typed once for every binding (src/pdf/engine/). */
 export type CoreGlyph = PdfiumGlyphWithBox;
@@ -88,9 +85,6 @@ type CoreAddon = {
 
 const SOURCE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-export function pdfEngineFromEnv(env: NodeJS.ProcessEnv = process.env): PdfEngineName {
-  return env.SHIORI_PDF_ENGINE?.trim().toLowerCase() === "pdfjs" ? "pdfjs" : "pdfium";
-}
 
 /** Where the addon and PDFium live: packaged beside the executable, or built in the repo. */
 export function resolveCoreFiles(): { addon: string; pdfiumDir: string; packaged: boolean } {

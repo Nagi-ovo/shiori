@@ -1,17 +1,11 @@
-import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist/types/src/display/api";
-import {
-  importFileAnnotations,
-  importPdfAnnotations,
-} from "../../src/pdf/import/annotations";
+import { importFileAnnotations } from "../../src/pdf/import/annotations";
 import { pageGeometryFromPdfium } from "../../src/pdf/engine/pdfiumGeometry";
 import type {
   Overlay,
   PageModel,
   PdfRect,
-  Rotation,
 } from "../../src/pdf/model/types";
 import { assertPdfPageDimensionsWithinLimit } from "../../src/pdf/openPolicy";
-import { getBoundedTextContent } from "../../src/editor/textSelection/semanticText";
 import type { CoreDocument, CoreGlyph } from "./coreEngine";
 import {
   ANNOTATION_SPEC_SCHEMA,
@@ -38,20 +32,6 @@ type PageContext = {
   quote: (rects: PdfRect[]) => string;
 };
 
-type TextItemRect = {
-  index: number;
-  text: string;
-  rect: PdfRect;
-};
-
-type TextItemLike = {
-  str: string;
-  transform?: unknown;
-  width?: unknown;
-  height?: unknown;
-};
-
-const INTERSECTION_EPSILON_PT = 0.75;
 /** How far outside a highlight rect a glyph's middle may sit and still count. */
 const QUOTE_EPSILON_PT = 0.5;
 
@@ -96,21 +76,6 @@ export async function extractAnnotationsFromCore(
   if (!readable) {
     throw new AnnotationsUnavailableError("pdf-lib could not parse the file's annotation structures");
   }
-  return extractResult(input, pageNumbers, pageContexts, overlays);
-}
-
-export async function extractAnnotationsFromPdf(
-  doc: PDFDocumentProxy,
-  input: string,
-  pageNumbers: number[],
-  sourceBytes?: Uint8Array,
-): Promise<ExtractResult> {
-  const pageContexts = await readPageContexts(doc, pageNumbers);
-  const overlays = await importPdfAnnotations(
-    doc,
-    pageContexts.map((context) => context.model),
-    sourceBytes,
-  );
   return extractResult(input, pageNumbers, pageContexts, overlays);
 }
 
@@ -167,28 +132,6 @@ export function formatExtractHumanLine(annotation: ExtractAnnotation): string {
   return parts.join(" ");
 }
 
-async function readPageContexts(
-  doc: PDFDocumentProxy,
-  pageNumbers: number[],
-): Promise<PageContext[]> {
-  const contexts: PageContext[] = [];
-  for (const pageNumber of pageNumbers) {
-    const page = await doc.getPage(pageNumber);
-    try {
-      const model = pageModelFromPdfjsPage(page, pageNumber);
-      const textItems = await textItemRectsForPage(page, model);
-      contexts.push({
-        model,
-        pageNumber,
-        quote: (rects) => quoteForRects(textItems, rects),
-      });
-    } finally {
-      page.cleanup();
-    }
-  }
-  return contexts;
-}
-
 /** Page `pageNumber` (from 1) as the CLI models it; throws past Shiori's page limit. */
 export function corePageModel(core: CoreDocument, pageNumber: number): PageModel {
   const geometry = pageGeometryFromPdfium(core.pageGeometry(pageNumber - 1));
@@ -214,8 +157,7 @@ function corePageContexts(core: CoreDocument, pageNumbers: number[]): PageContex
 /**
  * The text under `rects` (page space, origin at the page box corner), glyph by
  * glyph: a glyph belongs when the middle of its advance box lies inside a rect.
- * Unlike the pdf.js path, which can only take whole text items, a highlight
- * over two words of a line quotes those two words. Breaks PDFium inserted
+ * A highlight over two words of a line quotes those two words. Breaks PDFium inserted
  * between runs become spaces, and a word PDFium saw hyphenated across a line
  * break comes back whole.
  */
@@ -259,61 +201,6 @@ export function quoteFromGlyphs(
     hyphenated = false;
   }
   return quote.replace(/\s+/g, " ").trim().slice(0, MAX_TEXT_CHARACTERS);
-}
-
-export function pageModelFromPdfjsPage(
-  page: PDFPageProxy,
-  pageNumber: number,
-): PageModel {
-  const view = page.view;
-  const widthPt = view[2]! - view[0]!;
-  const heightPt = view[3]! - view[1]!;
-  assertPdfPageDimensionsWithinLimit(widthPt, heightPt, pageNumber);
-  return {
-    id: `page-${pageNumber}`,
-    sourceIndex: pageNumber - 1,
-    rotation: normalizeRotation(page.rotate ?? 0),
-    originXPt: view[0]!,
-    originYPt: view[1]!,
-    widthPt,
-    heightPt,
-  };
-}
-
-async function textItemRectsForPage(
-  page: PDFPageProxy,
-  model: PageModel,
-): Promise<TextItemRect[]> {
-  const content = await getBoundedTextContent(page);
-  const items: TextItemRect[] = [];
-  content.items.forEach((item, index) => {
-    if (!isTextItemLike(item)) return;
-    const text = item.str.replace(/\s+/g, " ").trim();
-    if (!text) return;
-    const rect = textItemRect(item, model);
-    if (!rect) return;
-    items.push({ index, text, rect });
-  });
-  return items;
-}
-
-function textItemRect(item: TextItemLike, page: PageModel): PdfRect | null {
-  const transform = item.transform;
-  if (!Array.isArray(transform) || transform.length < 6) return null;
-  const x = numberValue(transform[4]);
-  const y = numberValue(transform[5]);
-  const rawWidth = numberValue(item.width);
-  const rawHeight = numberValue(item.height);
-  if (x == null || y == null || rawWidth == null || rawHeight == null) return null;
-  const width = Math.abs(rawWidth);
-  const height = Math.abs(rawHeight);
-  if (width <= 0 || height <= 0) return null;
-  return {
-    x: x - (page.originXPt ?? 0),
-    y: y - (page.originYPt ?? 0),
-    w: width,
-    h: height,
-  };
 }
 
 function serializeOverlay(
@@ -415,28 +302,6 @@ function serializeOverlay(
   return null;
 }
 
-function quoteForRects(textItems: TextItemRect[], rects: PdfRect[]): string {
-  const quote = textItems
-    .filter((item) =>
-      rects.some((rect) => rectsIntersect(item.rect, rect, INTERSECTION_EPSILON_PT)),
-    )
-    .sort((a, b) => a.index - b.index)
-    .map((item) => item.text)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return quote.slice(0, MAX_TEXT_CHARACTERS);
-}
-
-function rectsIntersect(a: PdfRect, b: PdfRect, epsilon: number): boolean {
-  return !(
-    a.x + a.w < b.x - epsilon ||
-    b.x + b.w < a.x - epsilon ||
-    a.y + a.h < b.y - epsilon ||
-    b.y + b.h < a.y - epsilon
-  );
-}
-
 function optionalItalic(overlay: { italic?: boolean }): { italic?: boolean } {
   return typeof overlay.italic === "boolean" ? { italic: overlay.italic } : {};
 }
@@ -454,21 +319,4 @@ function cloneRect(rect: PdfRect): PdfRect {
 function truncateQuote(text: string): string {
   const normalized = text.replace(/\s+/g, " ").trim();
   return normalized.length <= 80 ? normalized : `${normalized.slice(0, 79)}…`;
-}
-
-function normalizeRotation(angle: number): Rotation {
-  return ((((angle % 360) + 360) % 360) as Rotation);
-}
-
-function isTextItemLike(value: unknown): value is TextItemLike {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "str" in value &&
-    typeof (value as { str?: unknown }).str === "string"
-  );
-}
-
-function numberValue(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

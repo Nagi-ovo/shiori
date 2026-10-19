@@ -8,11 +8,7 @@ Corresponding license texts are included in the adjacent `licenses/` folder.
 | Component | License | Purpose |
 | --- | --- | --- |
 | Node.js runtime | Node.js license and bundled third-party notices | Standalone JavaScript runtime |
-| PDF.js / `pdfjs-dist` | Apache-2.0 | PDF parsing and text extraction |
-| `@napi-rs/canvas` + platform binding | MIT | Packaged PDF page rasterization |
-| PDF.js CMaps | BSD-style terms in upstream file | CJK character maps |
-| PDF.js Foxit/Liberation fonts | Upstream terms in included files | Standard PDF font fallback |
-| OpenJPEG, JBIG2, QCMS and PDF.js WASM glue | Upstream licenses in included files | Image/color decoding |
+| Code ported from PDF.js (Copyright Mozilla Foundation) | Apache-2.0 | Annotation import, see below |
 | `pdf-lib` | MIT | PDF writing |
 | `@pdf-lib/fontkit` and bundled helpers | MIT / Apache-2.0 | Font parsing and WOFF2 decoding |
 | `@pdf-lib/standard-fonts` | MIT | Standard font metrics |
@@ -29,6 +25,13 @@ Corresponding license texts are included in the adjacent `licenses/` folder.
 The Noto font files are distributed as fonts, not relicensed as part of the
 Shiori CLI. They may not be sold by themselves. See
 `licenses/Noto-CJK-OFL-1.1.txt`.
+
+Shiori's annotation import (`src/pdf/import/sourceAnnotations.ts`) follows
+PDF.js's annotation parsing (`src/core/annotation.js`, `default_appearance.js`,
+`colorspace.js`, `core_utils.js`, mozilla/pdf.js) and carries its DeviceCMYK
+conversion polynomial and `stringToPDFString` decoding, Copyright Mozilla
+Foundation, under the Apache License 2.0 (`licenses/Apache-2.0.txt`). PDF.js
+itself is not bundled.
 
 The fontkit bundle retains code derived from Node contributors,
 `base64-arraybuffer`, and Google Brotli. Their copyright notices are preserved
