@@ -2,6 +2,8 @@
 
 阶段 3（`docs/PLAN-RUST-PDF-CORE-2026-09.md`）的实测记录。计时是人工证据，不是 CI 门槛。
 
+2026-10-19 起 pdf.js 已移出仓库，下文的 pdf.js 对照与 `scripts/pdfium/compare-*.ts` 脚本随之删除；本文是当时的记录，不再能复现。
+
 ## IPC 吞吐（2026-09-25，写 `render_tile` 之前）
 
 - 机器：Apple M5 Pro，macOS 26.4.1；`bun run tauri:dev`（WKWebView，debug 构建）。

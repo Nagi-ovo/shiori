@@ -25,10 +25,10 @@ lives in `cli/` and releases on its own `cli-v*` tags. Open source: code
 under MIT (`LICENSE`), brand assets under `TRADEMARK.md`.
 
 - Frontend: React 19, TypeScript, Vite 8, Zustand, react-virtuoso, @dnd-kit
-- PDF: PDFium through `crates/shiori-core` (reads and draws: native on
-  desktop, wasm in a worker on web/mobile, the packaged CLI's default) +
-  `pdf-lib` + `@pdf-lib/fontkit` (import reading, write/export). `pdfjs-dist`
-  remains only for the CLI and as a test oracle; the app bundle has none.
+- PDF: PDFium through `crates/shiori-core` is the only reader everywhere
+  (native on desktop, wasm in a worker on web/mobile, a napi addon in the
+  CLI); `pdf-lib` + `@pdf-lib/fontkit` write exports and read annotations for
+  import.
 - Word: `@docx-editor.dev/*` (third-party DOM editor; upstream ships often,
   keep it current)
 - Markdown: CodeMirror 6 live editor + `marked` preview; code blocks highlight

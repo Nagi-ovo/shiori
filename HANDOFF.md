@@ -75,16 +75,18 @@ Last reconciled against reality: **2026-10-17**.
   linux x64/arm64 (glibc), win32 x64/arm64 — no darwin-x64 (upstream Node SEA
   bug, POSTMORTEMS 2026-08-17). The 0.1.25 macOS binary is ad-hoc signed;
   Developer ID signing (`1d0cf953`) lands with the next `cli-v` tag.
-  Archives are 57–74 MB compressed, ~146 MB unpacked (Node SEA 105 MB +
-  `@napi-rs/canvas` 25 MB + pdf.js cmaps/fonts 16 MB). From the next `cli-v`
-  tag they also carry `native/` (shiori-core addon + PDFium, ~9 MB), which the
-  packaged CLI now reads and renders with by default (`SHIORI_PDF_ENGINE=pdfjs`
-  opts out; a source run still defaults to pdf.js). Its Linux/Windows builds
-  have run only in CI, so check `cli-verify` after the push.
+  From the next `cli-v` tag the CLI reads and renders only through
+  `native/` (shiori-core addon + PDFium, ~9 MB); pdf.js and the canvas
+  runtime are gone (unreleased, 2026-10-19). darwin-arm64 is now 54 MB
+  compressed, 131 MB unpacked (was 68 / 156 MB). Error codes changed:
+  `ERR_RENDER_UNAVAILABLE` is gone; a missing addon is
+  `ERR_PDF_ENGINE_UNAVAILABLE`, unreadable annotations
+  `ERR_ANNOTATIONS_UNAVAILABLE`. Its Linux/Windows builds have run only in
+  CI, so check `cli-verify` after the push.
 - **PDFium is the app's only PDF engine** (unreleased,
   `docs/PLAN-RUST-PDF-CORE-2026-09.md`): desktop uses the native core,
-  web and Android the wasm core in a Worker; pdf.js is gone from the app
-  bundle and stays in the repo only for the CLI and as a test oracle.
+  web and Android the wasm core in a Worker; pdf.js is gone from the repo
+  (2026-10-19).
   **Android now runs on the wasm engine unverified on a device — the
   largest release risk; RELEASE-CHECKS A0.13 must pass before an Android
   release.** The local desktop bundle was rebuilt and Developer ID signed

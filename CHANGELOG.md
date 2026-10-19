@@ -8,6 +8,38 @@
 
 ---
 
+## [未发布]
+
+### 改动
+
+- **pdf.js 移出仓库（计划 5.3；jj change id，提交 SHA 会随整合变动）。** App 自 4.7 起已不含
+  pdf.js，这一批让 CLI 和测试也不再依赖它，`pdfjs-dist` 与随它装进来的 `@napi-rs/canvas`
+  离开 `package.json` 与 `bun.lock`。
+  - 核心绑定补上 CLI 需要的读取（`kqsuskvo`）：`Document::metadata()`（/Info 原文、版本、
+    /Lang、加密时 `EncryptFilterName: "Standard"`）；`chars(index, max)` 在分配前拒绝字符数
+    超过 `MAX_PAGE_CHARS`（2,000,000）的页，Tauri 去掉事后长度检查、wasm 补上原本缺的上限；
+    napi `links()`。
+  - CLI 每条命令只用核心打开一次（`zouknknq`），文字经 App 的 `pageTextFromPdfiumGlyphs`；
+    跨行连字符的单词照常可搜。错误码：超大页 `ERR_TEXT_UNAVAILABLE`，pdf-lib 读不了批注时
+    `extract` 报 `ERR_ANNOTATIONS_UNAVAILABLE`（不再是空列表），缺插件
+    `ERR_PDF_ENGINE_UNAVAILABLE`；`ERR_RENDER_UNAVAILABLE` 与 `SHIORI_PDF_ENGINE` 删除
+    （`nypvqkxw`）。CLI 包不再带 pdf.js 的 CMap、标准字体、wasm 解码器与 canvas 原生绑定，
+    许可树 48 个文件、摘要与 `cli/SBOM.md` 重算；darwin-arm64 压缩 54 MB、解开 131 MB
+    （此前 68 / 156 MB）。打开 PDF 的 CLI 测试移到 `test:core`，`cli-verify` 先编插件再跑。
+  - 测试的独立依据换掉 pdf.js：写入方由 qpdf 检查（`ouruzotp`，CI 装 qpdf 并设
+    `SHIORI_REQUIRE_QPDF`）；导入测试以构造参数为期望值（`okqqqltt`）；render 以 fixture
+    推出的参考图比对，字体重建由同一 PDFium 画出比较（`tywwqnnt`）；页面插入的命名目标经
+    核心 `links()` 读落点（`mtonwyvy`）；core extract 测试按 fixture 的字形位置放高亮并要求
+    引文恰为 "Shi"（`yvrslmyn`）。Foxit Serif 随 fixtures 入库，fixture 可脱离 pdf.js 重生成
+    （`xsxmtrlw`）。
+  - 删除只为 pdf.js 存在的代码：`scripts/pdfium/compare-*` 与 `pdfjs-reference/`、
+    `scripts/import/compare-annotation-readers.ts`、`annotationReader: "pdfjs"`（`tpkzoxzz`
+    `okqqqltt`），pdf.js 形状的 `importPdfAnnotations` 入口（`kyoxolnk`），只剩自身测试在用的
+    `getBoundedTextContent`（`wuutyrpl`），ESLint 的 pdf.js 围栏（`zuxkwzmp`）。注释里仍说
+    pdf.js 在读、画、解密的地方改成引擎（`mxqprkso`）。
+  - 已知缺口：竖排与 tagged 文本既无 fixture 也无对照读取者（pdf-lib 写不出 Identity-V）。
+    THIRD_PARTY_NOTICES 保留移植自 pdf.js 的代码（文字层、批注列表）的署名。
+
 ## [26.9.27]
 
 ### 界面

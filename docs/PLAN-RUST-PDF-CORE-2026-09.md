@@ -6,7 +6,7 @@ pdf.js 调用、修正阶段 1 的前提、记录新决策、改成可逐项勾�
 **这是 Rust 核心的唯一进度来源。** 做完一项就在这里勾掉，在文末「进度日志」记一行；
 决策变了就改「已定决策」并写日期。HANDOFF 只指向本文件。
 
-状态：**阶段 0–4 已完成，待环境的验收除外：3.6 的 Windows 实测，4.6c 的 Android 真机（测试包已出，待真机过 A0.13）。阶段 5：5.1 完成；5.2 Android 原生 PDFium 是性能优化，不阻塞任何发布，需要 Android 环境（见决策表）。pdf.js 已不在 App 里。**
+状态：**阶段 0–4 已完成，待环境的验收除外：3.6 的 Windows 实测，4.6c 的 Android 真机（测试包已出，待真机过 A0.13）。阶段 5：5.1 完成；5.2 Android 原生 PDFium 是性能优化，不阻塞任何发布，需要 Android 环境（见决策表）。pdf.js 已不在 App 里；2026-10-19 起也不在仓库里（5.3）：CLI、测试都只经核心读取，`pdfjs-dist` 与 `@napi-rs/canvas` 已从依赖移除。**
 
 ## 原则
 
@@ -49,7 +49,8 @@ pdf.js 调用、修正阶段 1 的前提、记录新决策、改成可逐项勾�
 | 2026-09-25 | **加密文件交给 PDFium 生成解密副本，pdf-lib 照常读**，不在 Rust 里再写一个批注读取者 | pdf-lib 只缺解密；`FPDF_REMOVE_SECURITY` 另存保留对象编号，4.4 的读取者与 ID 规则原样复用。同一能力日后可让导出支持加密源文件（今天 `ExportEncryptedSourceError` 直接拒绝），那是产品决定，另议 |
 | 2026-09-25 | **删除「GPU 加速」设置项** | 它只是 pdf.js 画布的 `enableHWA` 开关（加一个设备探针兜底）；PDFium 自己画位图、再整块交给画布，开关没有作用对象，留一个无效开关比删掉更让人困惑。资源面板的 GPU 一行保留，改为显示厂商与渲染器 |
 | 2026-09-25 | **Web 与移动端都用 WASM 版核心**，阶段 4 移除 pdf.js 后 Android WebView 也由它读和画；阶段 5 的 Android 原生 PDFium 只是性能优化，不是前提 | 否则阶段 4 删掉 pdf.js 会让 Android 在阶段 5 之前没有引擎 |
-| 2026-09-25 | **`pdfjs-dist` 从 App 的产物移除，仍留在仓库的 `package.json`**：4.7 的「从 App 依赖移除」指 App 的 bundle，不是仓库 | CLI 从源码运行的默认读取与 `SHIORI_PDF_ENGINE=pdfjs` 退出路径用它；核心与 wasm 的对照测试、`scripts/pdfium/pdfjs-reference/`（选区测试的输入构造器、文字比对脚本）以它为 oracle。App 不导入它由 ESLint 保证，产物里 pdf.js 字样为 0（4.7d）。CLI 全面改用核心后再评估能否移出 |
+| 2026-09-25 | **（2026-10-19 推翻，见下一行）`pdfjs-dist` 从 App 的产物移除，仍留在仓库的 `package.json`**：4.7 的「从 App 依赖移除」指 App 的 bundle，不是仓库 | CLI 从源码运行的默认读取与 `SHIORI_PDF_ENGINE=pdfjs` 退出路径用它；核心与 wasm 的对照测试、`scripts/pdfium/pdfjs-reference/`（选区测试的输入构造器、文字比对脚本）以它为 oracle。App 不导入它由 ESLint 保证，产物里 pdf.js 字样为 0（4.7d）。CLI 全面改用核心后再评估能否移出 |
+| 2026-10-19 | **pdf.js 移出仓库**：CLI 每条命令只经核心读与画，`SHIORI_PDF_ENGINE` 删除，缺插件报 `ERR_PDF_ENGINE_UNAVAILABLE`；元数据、有上限的 `chars`、`links()` 补进核心绑定；测试的独立依据换成 fixture 的构造参数、qpdf（写入方）和核心；`pdfjs-dist` 与随它而来的 `@napi-rs/canvas` 离开 `package.json` 与 lockfile，ESLint 的 pdf.js 围栏一并删除 | 上一行留下的三个用途都已有替代：CLI 读取（5.3）、对照测试（fixture 参数与 qpdf，比两套读取者互相印证更独立）、`pdfjs-reference/` 比对脚本（阶段 4 已完成其使命）。CLI 包 darwin-arm64 压缩 54 MB、解开 131 MB（此前 68 / 156 MB）。代价：竖排与 tagged 文本失去对照读取者（4.3 已知缺口）。THIRD_PARTY_NOTICES 保留移植代码的署名 |
 | 2026-09-25 | **浏览器不收的嵌入字体按 PDFium 画出的字形重建**，不逐个格式修复（原 4.3e 计划：CFF 包 OTF、Type1 转 CFF、补 TrueType 表、按 ToUnicode 重建 cmap）| PDFium 的 FreeType 已把所有格式装好，`FPDFFont_GetGlyphPath` 按 Unicode 给出它实际画的轮廓；一条路覆盖所有格式、顺带生成 Unicode cmap，不必写字体解析器（pdf.js 为此写了数千行）。写 OpenType 用 opentype.js（MIT，按需加载）。代价：只含本页用到的字符，按页追加；合字拆开后反查不到的字符回退系统字体 |
 | 2026-09-25 | **PDF 里的每个批注都显示，而且只显示一次。** Shiori 能编辑的（导入成可编辑对象的）由 Shiori 画，其余由 PDFium 画；表单控件在任何缩放、包括 tile 里都显示 | 别人不都用 Shiori，他们的批注必须完整可见；同一批注画两遍或表单在放大时消失都是缺陷 |
 
@@ -71,7 +72,7 @@ pdf.js 调用、修正阶段 1 的前提、记录新决策、改成可逐项勾�
 | 2 Rust 核心起步 | CLI `extract` 的文字位置与 App 一致（先在开关后面） | PDFium（CLI） | ✅ 已完成（Linux/Windows 待 CI） |
 | 3 桌面画面换 PDFium | 桌面端手势中即时清晰，放大不再"先糊后清" | PDFium 画，pdf.js 读 | ✅ 已完成（3.6 Windows 实测待补） |
 | 4 读取层迁移 + Web | 文字、批注、目录、查找全部走同一核心；Web 用 WASM；pdf.js 从 App 移除 | PDFium（桌面 + Web） | ✅ 已完成（4.6c Android 真机待验） |
-| 5 CLI 全面接入 + Android | CLI `render` 与 App 同源；Android 同一引擎 | PDFium（全部） | 5.1 ✅；5.2 待 Android 环境 |
+| 5 CLI 全面接入 + Android | CLI `render` 与 App 同源；Android 同一引擎；pdf.js 移出仓库 | PDFium（全部） | 5.1 ✅、5.3 ✅；5.2 待 Android 环境 |
 
 原 2026-09-07 版本的编号：旧阶段 2 = 新阶段 3，旧阶段 3 = 新阶段 4，旧阶段 4 拆进新阶段
 2 和 5。
@@ -463,6 +464,14 @@ renderRegion: (
   经 CLI 渲染 fixture 第 2 页（裁剪 + 旋转 90°），核心与 pdf.js 尺寸相同、角标同在左上、
   差异像素 < 100（去掉旋转或 PNG 滤波各自变红）；Bun 1.3.12 重新打包后 `cli:smoke`
   以核心默认跑通 extract 与 render（1224×1584），并覆盖 pdf.js 退出路径。
+- [x] **5.3 pdf.js 移出仓库**（2026-10-19，见决策表）。CLI 的 inspect / text / search / extract /
+  render 每次只用核心打开一次文档，文字经 App 的 `pageTextFromPdfiumGlyphs`；`--metadata` 读核心的
+  `metadata()`（键名沿用 pdf.js 的 `documentInfo`）；超过 `MAX_PAGE_CHARS` 的页报
+  `ERR_TEXT_UNAVAILABLE`；pdf-lib 读不了批注时 `extract` 报 `ERR_ANNOTATIONS_UNAVAILABLE` 而不是空列表；
+  `ERR_RENDER_UNAVAILABLE` 与 `SHIORI_PDF_ENGINE` 删除。CLI 包不再带 pdf.js 资源与 canvas。
+  测试：导入以构造参数为期望值，写入方由 qpdf 检查（CI 装 qpdf，`SHIORI_REQUIRE_QPDF`），
+  render 以 fixture 推出的参考图比对，打开 PDF 的 CLI 测试移到 `test:core`。
+  `importPdfAnnotations`（pdf.js 形状的入口）与 `getBoundedTextContent` 一并删除。
 - [ ] **5.2 Android 原生 PDFium（性能优化，不阻塞发布）。** 按决策表，Android 已由 wasm 引擎
   覆盖；本项只为速度，需要 Android 环境，留作后续。pdfium-binaries 有 arm64/arm/x64/x86 构建（arm64 6.5 MB）；
   放进 `jniLibs/<abi>/`，`bind_to_library(path)`。Tauri 在 Android 上始终走
@@ -527,3 +536,4 @@ renderRegion: (
 - 2026-09-25 4.3e 完成：浏览器不收的嵌入字体按 PDFium 画出的字形重建为 OpenType，Chrome 与 WebKit 均接受，与 PDFium 渲染逐像素相符；编辑框的字体回到 pdf.js 时代的覆盖。阶段 4 除 4.6c（需 Android 设备）外完成。
 - 2026-09-25 桌面发布包本机重新打包：Developer ID 签名带时间戳，`codesign --verify --deep --strict` 通过（此前沙箱内连不上时间戳服务器）。
 - 2026-09-25 2.3 在 CI 上验收：cli-verify run 36197348107 五个目标（darwin-arm64、linux x64/arm64 gnu、win32 x64/arm64）打包、冒烟全部通过。途中修了两处只在 Windows 出现的问题：`napi-rs` 许可文本被 CRLF checkout 改了字节（标 `-text`），冷启动 pdf.js 的锚点测试在 x64 runner 上超过 5 s 默认超时。
+- 2026-10-19 5.3 完成：pdf.js 移出仓库。CLI 只经核心读与画，测试改用 fixture 构造参数、qpdf 与核心 `links()`，`pdfjs-dist` / `@napi-rs/canvas` 从依赖与 lockfile 移除；CLI 包 darwin-arm64 压缩 54 MB、解开 131 MB（此前 68 / 156 MB）。

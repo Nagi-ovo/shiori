@@ -146,8 +146,8 @@ span layout and takes Shiori's engine-neutral page text.
 `src/pdf/import/sourceAnnotations.ts` follows PDF.js's annotation parsing
 (`src/core/annotation.js`, `default_appearance.js`, `colorspace.js`,
 `core_utils.js`) and carries its DeviceCMYK conversion polynomial and
-`stringToPDFString` decoding, under the same copyright and license. Neither the
-app nor the Shiori CLI bundles PDF.js itself; the CLI carries the annotation
+`stringToPDFString` decoding, under the same copyright and license. Shiori
+does not depend on or bundle PDF.js itself; the CLI carries the annotation
 port (see `cli/THIRD_PARTY_NOTICES.md`).
 
 ## Word editor (@docx-editor.dev)

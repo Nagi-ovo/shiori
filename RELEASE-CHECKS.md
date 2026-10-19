@@ -121,7 +121,7 @@
 上下滚动；Windows 上用 Process Explorer、Linux 上用 `lsof -p <pid> | grep pdfium` 看
 进程是否加载了包内的 `pdfium.dll` / `libpdfium.so`。
 **通过**：PDFium 库已加载；8× 下文字清晰；外部批注和表单各显示一次；滚动跟手。
-**失败**：库未加载（页面仍能显示，是 pdf.js 在画，说明打包或路径不对）；批注重复或消失；
+**失败**：库未加载（文档打不开、提示 PDF 引擎不可用，说明打包或路径不对）；批注重复或消失；
 8× 下滚动明显卡顿（Windows 的 IPC 开销是计划里的未验证风险）。
 
 ### A0.13. Android 上页面由 wasm 版 PDFium 绘制
@@ -131,7 +131,7 @@
 `chrome://inspect` 里连上 WebView，看渲染诊断的引擎标签，Network 里看字体请求。
 **通过**：引擎标签为 `PDFium 7881 wasm`；未嵌入的中文正常显示；8× 与快速翻页不崩溃；
 字体请求带 `Range`（分块）或确认整份读取的时间可接受。
-**失败**：标签是 pdf.js（Worker 或 wasm 未加载）；中文空白（字体目录没生效）；
+**失败**：文档打不开、提示 PDF 引擎不可用（Worker 或 wasm 未加载）；中文空白（字体目录没生效）；
 翻页或放大时 WebView 被杀（wasm 堆太大，需给 wasm 设更低的底图预算）。
 
 ### A1. 粘贴图片后，链接和表单还在

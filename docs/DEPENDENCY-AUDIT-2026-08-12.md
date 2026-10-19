@@ -1,5 +1,10 @@
 # pdfjs-dist advisory (CLI only)
 
+**Resolved 2026-10-19:** `pdfjs-dist` is no longer a dependency. The CLI reads
+only through shiori-core, `SHIORI_PDF_ENGINE` is gone, and the oracle scripts
+under `scripts/pdfium/` were deleted (`docs/PLAN-RUST-PDF-CORE-2026-09.md`,
+5.3). GHSA-hq66-cqwq-w95j no longer applies. The record below is historical.
+
 Re-checked 2026-10-17: the original 2026-08-12 justification cited app code
 that no longer exists. `src/pdf/render/annotationLayerPolicy.ts` and its test were
 removed with the move to PDFium (`docs/PLAN-RUST-PDF-CORE-2026-09.md`,
