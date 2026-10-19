@@ -131,6 +131,12 @@ Last reconciled against reality: **2026-10-17**.
    A0.12 on Windows/Linux, CLI Linux/Windows `cli-verify` after the push;
    5.2 (native PDFium on Android) is performance only and needs an Android
    environment.
-4. Target-page-first open: on a 500-page synthetic PDF the prep chain (load +
+4. **Drop the old APK path a few months after the next Android release:**
+   builds from then on ask `/api/release?apkRepo=shiori` and accept only the
+   renamed repo; the bare route still rewrites the APK URL to
+   `shiori-releases` for 26.9.27 and older. Once those need not self-update,
+   delete `legacyApkDownloadUrl` and `wantsLegacyApkPath` in
+   `site/functions/_release.ts`.
+5. Target-page-first open: on a 500-page synthetic PDF the prep chain (load +
    page info + annotation import) takes a median 154 ms; measure
    first-target-page time on a large real PDF before splitting it.
