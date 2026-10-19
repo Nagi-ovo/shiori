@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
 import {
   PDFArray,
@@ -9,8 +10,13 @@ import {
   PDFRef,
   PDFString,
 } from "pdf-lib";
+import { openCoreDocument, resolveCoreFiles } from "../../../cli/src/coreEngine";
 import { inspectDocumentFiles } from "../export/navigation";
 import { insertPdfPages, PdfPageInsertError } from "./insertPdf";
+
+// Where a link lands is read by PDFium through the native addon, which a
+// plain `bun run test` may not have; test:core builds it first.
+const coreTest = test.skipIf(!existsSync(resolveCoreFiles().addon));
 
 describe("insertPdfPages", () => {
   test("inserts at a page boundary and preserves only the base attachments", async () => {
@@ -101,93 +107,58 @@ describe("insertPdfPages", () => {
     expect(target.get(0).toString()).toBe(loaded.getPage(2).ref.toString());
   });
 
-  test("keeps repeated Unicode named destinations isolated", async () => {
+  const repeatedUnicodeInsert = async () => {
     const base = await onePagePdf(500);
     const incomingBytes = await unicodeNamedDestinationPdf();
-    const once = await insertPdfPages(
-      await base.save(),
-      incomingBytes,
-      1,
-      "来源😀.pdf",
-    );
-    const twice = await insertPdfPages(
-      once.bytes,
-      incomingBytes,
-      3,
-      "来源😀.pdf",
-    );
+    const once = await insertPdfPages(await base.save(), incomingBytes, 1, "来源😀.pdf");
+    return (await insertPdfPages(once.bytes, incomingBytes, 3, "来源😀.pdf")).bytes;
+  };
 
-    const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    const pdfjs = await getDocument({ data: new Uint8Array(twice.bytes) }).promise;
-    try {
-      const first = await pdfjsLinkTarget(pdfjs, 2);
-      const second = await pdfjsLinkTarget(pdfjs, 4);
-      expect(first.name).not.toBe(second.name);
-      expect([...first.name].every((character) => character.codePointAt(0)! < 0x80)).toBe(
-        true,
-      );
-      expect([...second.name].every((character) => character.codePointAt(0)! < 0x80)).toBe(
-        true,
-      );
-      expect(first.targetPage).toBe(3);
-      expect(second.targetPage).toBe(5);
-    } finally {
-      await pdfjs.destroy();
+  test("keeps repeated Unicode named destinations isolated under ASCII names", async () => {
+    const twice = await PDFDocument.load(await repeatedUnicodeInsert());
+    const first = linkDestinationName(twice, 1);
+    const second = linkDestinationName(twice, 3);
+    expect(first).not.toBe(second);
+    for (const name of [first, second]) {
+      expect([...name].every((character) => character.codePointAt(0)! < 0x80)).toBe(true);
     }
   });
 
-  test("accepts equivalent legacy and name-tree named destinations", async () => {
+  coreTest("each repeated Unicode named destination still lands on its own copy's page", async () => {
+    const twice = await repeatedUnicodeInsert();
+    // Pages: base, copy 1 (link, target), base... copy 2 (link, target).
+    expect(coreLinkTargetPage(twice, 2)).toBe(3);
+    expect(coreLinkTargetPage(twice, 4)).toBe(5);
+  });
+
+  const equivalentDestinationsInsert = async () => {
     const base = await onePagePdf(500);
     const incomingBytes = await duplicateNamedDestinationPdf(false);
-    const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    const source = await getDocument({
-      data: new Uint8Array(incomingBytes),
-    }).promise;
-    try {
-      expect(await pdfjsLinkTarget(source, 1)).toEqual({
-        name: "shared-target",
-        targetPage: 2,
-      });
-    } finally {
-      await source.destroy();
-    }
+    const result = await insertPdfPages(await base.save(), incomingBytes, 1, "duplicate-destinations.pdf");
+    return { incomingBytes, merged: result.bytes };
+  };
 
-    const result = await insertPdfPages(
-      await base.save(),
-      incomingBytes,
-      1,
-      "duplicate-destinations.pdf",
-    );
-    const merged = await getDocument({
-      data: new Uint8Array(result.bytes),
-    }).promise;
-    try {
-      const target = await pdfjsLinkTarget(merged, 2);
-      expect(target.name).toStartWith("Shiori:");
-      expect(target.targetPage).toBe(3);
-    } finally {
-      await merged.destroy();
-    }
+  test("accepts equivalent legacy and name-tree named destinations", async () => {
+    const { merged } = await equivalentDestinationsInsert();
+    expect(linkDestinationName(await PDFDocument.load(merged), 1)).toStartWith("Shiori:");
+  });
+
+  coreTest("an equivalent legacy and name-tree destination keeps landing on its page", async () => {
+    const { incomingBytes, merged } = await equivalentDestinationsInsert();
+    expect(coreLinkTargetPage(incomingBytes, 1)).toBe(2);
+    expect(coreLinkTargetPage(merged, 2)).toBe(3);
+  });
+
+  coreTest("PDFium resolves the conflicting fixture's link through the name tree", async () => {
+    // Readers give /Names/Dests precedence over the legacy Catalog /Dests,
+    // so the original link targets source page 3, not the legacy page 2:
+    // a merge that kept only one of them would move the link.
+    expect(coreLinkTargetPage(await duplicateNamedDestinationPdf(true), 1)).toBe(3);
   });
 
   test("rejects conflicting legacy and name-tree named destinations", async () => {
     const base = await onePagePdf(500);
     const incomingBytes = await duplicateNamedDestinationPdf(true);
-    const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    const source = await getDocument({
-      data: new Uint8Array(incomingBytes),
-    }).promise;
-    try {
-      // pdf.js gives /Names/Dests precedence over the legacy Catalog /Dests.
-      // The fixture proves the original link therefore targets source page 3.
-      expect(await pdfjsLinkTarget(source, 1)).toEqual({
-        name: "shared-target",
-        targetPage: 3,
-      });
-    } finally {
-      await source.destroy();
-    }
-
     const error = await insertPdfPages(
       await base.save(),
       incomingBytes,
@@ -744,21 +715,28 @@ function actionTargetIndex(action: PDFDict): number {
     .asNumber();
 }
 
-async function pdfjsLinkTarget(
-  document: import("pdfjs-dist/types/src/display/api").PDFDocumentProxy,
-  pageNumber: number,
-): Promise<{ name: string; targetPage: number }> {
-  const annotations = await (await document.getPage(pageNumber)).getAnnotations();
-  const rawDestination = (annotations[0] as { dest?: unknown } | undefined)?.dest;
-  if (typeof rawDestination !== "string") {
-    throw new Error(`Page ${pageNumber} has no named link destination`);
+/** The named destination the first link on page `pageIndex` (0-based) goes to, read with pdf-lib. */
+function linkDestinationName(document: PDFDocument, pageIndex: number): string {
+  const annotation = firstAnnotation(document, pageIndex);
+  const action = annotation.lookup(PDFName.of("A"));
+  const name = action instanceof PDFDict ? action.lookup(PDFName.of("D")) : annotation.lookup(PDFName.of("Dest"));
+  // A name object, as the merge writes it, or a string, as files often do.
+  if (!(name instanceof PDFName || name instanceof PDFString || name instanceof PDFHexString)) {
+    throw new Error(`Page ${pageIndex + 1} has no named link destination`);
   }
-  const destination = await document.getDestination(rawDestination);
-  if (!destination) throw new Error(`Destination ${rawDestination} is unresolved`);
-  return {
-    name: rawDestination,
-    targetPage: (await document.getPageIndex(destination[0] as never)) + 1,
-  };
+  return name.decodeText();
+}
+
+/** The page (1-based) PDFium resolves the first link on page `pageNumber` to. */
+function coreLinkTargetPage(bytes: Uint8Array, pageNumber: number): number {
+  const core = openCoreDocument(bytes);
+  try {
+    const destination = core.links(pageNumber - 1)[0]?.destination;
+    if (!destination) throw new Error(`Page ${pageNumber} has no link to a page`);
+    return destination.pageIndex + 1;
+  } finally {
+    core.close();
+  }
 }
 
 function addActionLink(
