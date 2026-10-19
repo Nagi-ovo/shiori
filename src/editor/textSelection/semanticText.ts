@@ -4,12 +4,6 @@ import type {
   PdfTextMarkedContent as TextMarkedContent,
 } from "../../pdf/engine/text";
 
-/** A page that streams its text in chunks, as pdf.js's PDFPageProxy does. */
-type TextContentStreamer = {
-  isPureXfa?: boolean;
-  streamTextContent: (options: { includeMarkedContent: boolean }) => ReadableStream;
-};
-
 type RuntimeTextItem = TextItem & {
   /** Compatibility hook only. pdf.js 5 does not guarantee general PDF
    * /ActualText exposure through its public text-content API. */
@@ -72,99 +66,10 @@ export class SemanticTextLimitError extends Error {
 }
 
 export type BoundedTextContentOptions = {
-  /** Caller-owned deadline/cancellation hook, checked while awaiting chunks. */
+  /** Caller-owned deadline/cancellation hook, checked while the engine reads
+   * the page (PdfEngine.pageText). */
   checkAbort?: () => void;
 };
-
-/**
- * Consume pdf.js text as a backpressured stream so limits apply before the
- * full page is materialized. pdf.js getTextContent() concatenates every chunk
- * first, which lets a decompression-bomb page exhaust memory before Shiori can
- * inspect the resulting array.
- */
-export async function getBoundedTextContent(
-  page: TextContentStreamer,
-  options: BoundedTextContentOptions = {},
-): Promise<TextContent> {
-  if (page.isPureXfa) {
-    throw new SemanticTextLimitError(
-      "XFA text cannot be streamed within Shiori's safe extraction limits",
-    );
-  }
-  const stream = page.streamTextContent({
-    includeMarkedContent: true,
-  }) as ReadableStream<TextContent>;
-  const reader = stream.getReader();
-  const items: TextContent["items"] = [];
-  const styles: TextContent["styles"] = Object.create(null) as TextContent["styles"];
-  let styleCount = 0;
-  let sourceCharacters = 0;
-  let markedContentDepth = 0;
-  let lang: string | null = null;
-  try {
-    while (true) {
-      options.checkAbort?.();
-      const { done, value } = await readTextChunk(reader, options.checkAbort);
-      options.checkAbort?.();
-      if (done) break;
-      if (!value || !Array.isArray(value.items) || !isObject(value.styles)) {
-        throw new SemanticTextLimitError("PDF text stream returned an invalid chunk");
-      }
-      if (items.length + value.items.length > MAX_SEMANTIC_CONTENT_ITEMS_PER_PAGE) {
-        throw new SemanticTextLimitError(
-          `Page text content exceeds ${MAX_SEMANTIC_CONTENT_ITEMS_PER_PAGE} items`,
-        );
-      }
-      for (const item of value.items as RuntimeTextContentItem[]) {
-        if (isMarkedContentBegin(item)) {
-          markedContentDepth += 1;
-          if (markedContentDepth > MAX_SEMANTIC_MARKED_CONTENT_DEPTH) {
-            throw new SemanticTextLimitError(
-              `Page marked-content nesting exceeds ${MAX_SEMANTIC_MARKED_CONTENT_DEPTH}`,
-            );
-          }
-        } else if ("type" in item && item.type === "endMarkedContent") {
-          if (markedContentDepth === 0) {
-            throw new SemanticTextLimitError(
-              "Page text contains unbalanced marked content",
-            );
-          }
-          markedContentDepth -= 1;
-        }
-        sourceCharacters += semanticTextItemCharacterCount(item);
-        if (sourceCharacters > MAX_SEMANTIC_SOURCE_CHARACTERS_PER_PAGE) {
-          throw new SemanticTextLimitError(
-            `Page text content exceeds ${MAX_SEMANTIC_SOURCE_CHARACTERS_PER_PAGE} characters`,
-          );
-        }
-        items.push(item);
-      }
-      for (const [name, style] of Object.entries(value.styles)) {
-        if (!Object.hasOwn(styles, name)) {
-          styleCount += 1;
-          if (styleCount > MAX_SEMANTIC_STYLES_PER_PAGE) {
-            throw new SemanticTextLimitError(
-              `Page text content exceeds ${MAX_SEMANTIC_STYLES_PER_PAGE} styles`,
-            );
-          }
-        }
-        styles[name] = style;
-      }
-      if (lang === null && typeof value.lang === "string") lang = value.lang;
-    }
-    if (markedContentDepth !== 0) {
-      throw new SemanticTextLimitError(
-        "Page text contains unbalanced marked content",
-      );
-    }
-    return { items, styles, lang };
-  } catch (error) {
-    await reader.cancel(error).catch(() => undefined);
-    throw error;
-  } finally {
-    reader.releaseLock();
-  }
-}
 
 export function semanticTextContentCost(textContent: TextContent): {
   items: number;
@@ -693,37 +598,6 @@ function assertSemanticTextContentWithinLimits(textContent: TextContent): void {
 function semanticTextItemCharacterCount(item: RuntimeTextContentItem): number {
   const raw = isTextItem(item) ? item.str.length : 0;
   return raw + (maybeActualText(item)?.length ?? 0);
-}
-
-async function readTextChunk(
-  reader: ReadableStreamDefaultReader<TextContent>,
-  checkAbort: (() => void) | undefined,
-): Promise<ReadableStreamReadResult<TextContent>> {
-  if (!checkAbort) return reader.read();
-  return new Promise((resolveRead, rejectRead) => {
-    const timer = globalThis.setInterval(() => {
-      try {
-        checkAbort();
-      } catch (error) {
-        globalThis.clearInterval(timer);
-        rejectRead(error);
-      }
-    }, 100);
-    reader.read().then(
-      (value) => {
-        globalThis.clearInterval(timer);
-        resolveRead(value);
-      },
-      (error: unknown) => {
-        globalThis.clearInterval(timer);
-        rejectRead(error);
-      },
-    );
-  });
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function clampSearchOffset(value: number, max: number): number {

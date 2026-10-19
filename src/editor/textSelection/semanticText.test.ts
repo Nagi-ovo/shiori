@@ -6,7 +6,6 @@ import {
   MAX_SEMANTIC_SEARCH_SPANS_PER_PAGE,
   SemanticTextLimitError,
   buildSemanticTextLayerModel,
-  getBoundedTextContent,
   semanticRangeToUnitOffsets,
   semanticTextContentToString,
   semanticUnitsToSearchIndex,
@@ -161,62 +160,6 @@ describe("semantic text extraction", () => {
     );
   });
 
-  test("cancels streaming extraction before an oversized page is materialized", async () => {
-    let cancelled = false;
-    const oversizedChunk = {
-      items: [
-        {
-          str: "x".repeat(MAX_SEMANTIC_SOURCE_CHARACTERS_PER_PAGE + 1),
-          hasEOL: false,
-        },
-      ],
-      styles: {},
-      lang: null,
-    } as unknown as TextContent;
-    const page = {
-      isPureXfa: false,
-      streamTextContent: () =>
-        new ReadableStream<TextContent>({
-          start(controller) {
-            controller.enqueue(oversizedChunk);
-          },
-          cancel() {
-            cancelled = true;
-          },
-        }),
-    };
-    await expect(getBoundedTextContent(page as never)).rejects.toBeInstanceOf(
-      SemanticTextLimitError,
-    );
-    expect(cancelled).toBe(true);
-  });
-
-  test("polls caller cancellation while a PDF text chunk is stalled", async () => {
-    const deadline = new Error("deadline exceeded");
-    let checks = 0;
-    let cancelled = false;
-    const page = {
-      isPureXfa: false,
-      streamTextContent: () =>
-        new ReadableStream<TextContent>({
-          pull: () => new Promise<void>(() => undefined),
-          cancel() {
-            cancelled = true;
-          },
-        }),
-    };
-
-    await expect(
-      getBoundedTextContent(page as never, {
-        checkAbort: () => {
-          checks += 1;
-          if (checks >= 2) throw deadline;
-        },
-      }),
-    ).rejects.toBe(deadline);
-    expect(cancelled).toBe(true);
-  });
-
   test("rejects adversarial alternating text before allocating span objects", () => {
     const units = [
       {
@@ -246,7 +189,7 @@ describe("semantic text extraction", () => {
     );
   });
 
-  test("rejects unbalanced marked content instead of silently dropping text", async () => {
+  test("rejects unbalanced marked content instead of silently dropping text", () => {
     const unclosed = {
       items: [
         { type: "beginMarkedContentProps", actualText: "replacement" },
@@ -264,20 +207,6 @@ describe("semantic text extraction", () => {
       lang: null,
     } as unknown as TextContent;
     expect(() => buildSemanticTextLayerModel(unclosed)).toThrow(
-      "unbalanced marked content",
-    );
-
-    const page = {
-      isPureXfa: false,
-      streamTextContent: () =>
-        new ReadableStream<TextContent>({
-          start(controller) {
-            controller.enqueue(unclosed);
-            controller.close();
-          },
-        }),
-    };
-    await expect(getBoundedTextContent(page as never)).rejects.toThrow(
       "unbalanced marked content",
     );
   });
