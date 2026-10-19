@@ -34,6 +34,29 @@ function stubResizeObserver(): () => void {
   };
 }
 
+// Once a drag activates, dnd-kit swallows every click at the document
+// (capture-phase stopPropagation) so the drop's own click selects nothing,
+// and on drop it removes that listener only 50 ms later. The document is
+// shared by every file in the run, so a file that starts right after the drag
+// test loses its clicks too: ToastHost's Close button did nothing in CI.
+// Wait until a click reaches the page again before handing the document on.
+async function documentTakesClicksAgain(): Promise<void> {
+  const probe = document.createElement("button");
+  let reached = false;
+  probe.addEventListener("click", () => {
+    reached = true;
+  });
+  document.body.append(probe);
+  try {
+    await waitFor(() => {
+      fireEvent.click(probe);
+      expect(reached).toBe(true);
+    });
+  } finally {
+    probe.remove();
+  }
+}
+
 function renderStrip() {
   const selected: string[] = [];
   const view = render(
@@ -62,10 +85,11 @@ describe("TabStrip keyboard contract", () => {
     restoreResizeObserver = stubResizeObserver();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
     document.body.replaceChildren();
     restoreResizeObserver();
+    await documentTakesClicksAgain();
   });
 
   test("Enter activates the tab", () => {
