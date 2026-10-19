@@ -5,7 +5,9 @@
 use std::path::Path;
 
 use serde::Serialize;
-use shiori_core::{AnnotationKey, Core, CoreError, Destination, LinkTarget, OutlineItem, Rect};
+use shiori_core::{
+    AnnotationKey, Core, CoreError, Destination, LinkTarget, OutlineItem, Rect, MAX_PAGE_CHARS,
+};
 use wasm_bindgen::prelude::*;
 
 fn js_error(error: CoreError) -> JsValue {
@@ -49,6 +51,22 @@ struct Glyph {
 struct PageText {
     glyphs: Vec<Glyph>,
     lang: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Metadata {
+    title: Option<String>,
+    author: Option<String>,
+    subject: Option<String>,
+    keywords: Option<String>,
+    creator: Option<String>,
+    producer: Option<String>,
+    creation_date: Option<String>,
+    mod_date: Option<String>,
+    pdf_format_version: Option<String>,
+    language: Option<String>,
+    encrypt_filter_name: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -135,10 +153,11 @@ impl CoreDocument {
         })
     }
 
-    /// JSON `{ glyphs, lang }`, as `pdf_core_page_text` returns it.
+    /// JSON `{ glyphs, lang }`, as `pdf_core_page_text` returns it; an
+    /// error for a page over shiori_core::MAX_PAGE_CHARS characters.
     #[wasm_bindgen(js_name = pageText)]
     pub fn page_text(&self, index: u32) -> Result<String, JsValue> {
-        let chars = self.inner.chars(index).map_err(js_error)?;
+        let chars = self.inner.chars(index, MAX_PAGE_CHARS).map_err(js_error)?;
         json(&PageText {
             glyphs: chars
                 .into_iter()
@@ -219,6 +238,25 @@ impl CoreDocument {
             serde_json::from_str(names).map_err(|error| JsValue::from_str(&error.to_string()))?;
         let fonts = self.inner.font_outlines(index, &names).map_err(js_error)?;
         Ok(shiori_core::encode_font_outlines(&fonts))
+    }
+
+    /// JSON document information (shiori_core::Metadata), camelCase keys,
+    /// null where the file has no value.
+    pub fn metadata(&self) -> Result<String, JsValue> {
+        let m = self.inner.metadata();
+        json(&Metadata {
+            title: m.title,
+            author: m.author,
+            subject: m.subject,
+            keywords: m.keywords,
+            creator: m.creator,
+            producer: m.producer,
+            creation_date: m.creation_date,
+            mod_date: m.mod_date,
+            pdf_format_version: m.pdf_format_version,
+            language: m.language,
+            encrypt_filter_name: m.encrypt_filter_name,
+        })
     }
 
     /// JSON outline entries, nested.

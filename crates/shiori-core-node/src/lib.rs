@@ -7,7 +7,7 @@ use std::path::Path;
 use napi::bindgen_prelude::{Buffer, Result};
 use napi::Error;
 use napi_derive::napi;
-use shiori_core::{Core, CoreError};
+use shiori_core::{Core, CoreError, LinkTarget, MAX_PAGE_CHARS};
 
 fn js_error(error: CoreError) -> Error {
     Error::from_reason(error.to_string())
@@ -60,6 +60,42 @@ pub struct Security {
     pub user_permissions: u32,
 }
 
+/// The document information (shiori_core::Metadata), keyed as pdf.js's
+/// `documentInfo`; absent fields have no value in the file.
+#[napi(object)]
+pub struct Metadata {
+    pub title: Option<String>,
+    pub author: Option<String>,
+    pub subject: Option<String>,
+    pub keywords: Option<String>,
+    pub creator: Option<String>,
+    pub producer: Option<String>,
+    pub creation_date: Option<String>,
+    pub mod_date: Option<String>,
+    pub pdf_format_version: Option<String>,
+    pub language: Option<String>,
+    pub encrypt_filter_name: Option<String>,
+}
+
+/// A page of this document and a view of it (shiori_core::Destination).
+#[napi(object)]
+pub struct Destination {
+    pub page_index: u32,
+    /// The fit name: `XYZ`, `Fit`, `FitH`, …
+    pub view: String,
+    /// Its operands in order; null for one the file leaves null.
+    pub args: Vec<Option<f64>>,
+}
+
+/// A link annotation: its /Rect and either a destination or a URL.
+#[napi(object)]
+pub struct Link {
+    /// [left, bottom, right, top].
+    pub rect: Vec<f64>,
+    pub destination: Option<Destination>,
+    pub url: Option<String>,
+}
+
 #[napi]
 pub struct CoreDocument {
     inner: Option<shiori_core::Document>,
@@ -102,7 +138,7 @@ impl CoreDocument {
 
     #[napi]
     pub fn glyphs(&self, index: u32) -> Result<Vec<Glyph>> {
-        let chars = self.doc()?.chars(index).map_err(js_error)?;
+        let chars = self.doc()?.chars(index, MAX_PAGE_CHARS).map_err(js_error)?;
         Ok(chars
             .into_iter()
             .map(|ch| Glyph {
@@ -125,6 +161,54 @@ impl CoreDocument {
                 descent: f64::from(ch.descent),
             })
             .collect())
+    }
+
+    /// The page's links that go to a page of this document or a URL.
+    #[napi]
+    pub fn links(&self, index: u32) -> Result<Vec<Link>> {
+        let links = self.doc()?.links(index).map_err(js_error)?;
+        Ok(links
+            .into_iter()
+            .map(|link| {
+                let r = link.rect;
+                let rect = [r.left, r.bottom, r.right, r.top].map(f64::from).to_vec();
+                match link.target {
+                    LinkTarget::Url(url) => Link {
+                        rect,
+                        destination: None,
+                        url: Some(url),
+                    },
+                    LinkTarget::Destination(d) => Link {
+                        rect,
+                        destination: Some(Destination {
+                            page_index: d.page_index,
+                            view: d.view.to_string(),
+                            args: d.args.into_iter().map(|a| a.map(f64::from)).collect(),
+                        }),
+                        url: None,
+                    },
+                }
+            })
+            .collect())
+    }
+
+    /// The document information: /Info strings, version, /Lang, handler.
+    #[napi]
+    pub fn metadata(&self) -> Result<Metadata> {
+        let m = self.doc()?.metadata();
+        Ok(Metadata {
+            title: m.title,
+            author: m.author,
+            subject: m.subject,
+            keywords: m.keywords,
+            creator: m.creator,
+            producer: m.producer,
+            creation_date: m.creation_date,
+            mod_date: m.mod_date,
+            pdf_format_version: m.pdf_format_version,
+            language: m.language,
+            encrypt_filter_name: m.encrypt_filter_name.map(str::to_string),
+        })
     }
 
     /// Draws a region of a page as RGBA rows (`width × height × 4` bytes),

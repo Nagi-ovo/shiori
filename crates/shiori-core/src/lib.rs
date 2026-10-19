@@ -57,6 +57,11 @@ const FPDF_BITMAP_BGRA: i32 = 4;
 /// budget (src/pdf/openPolicy.ts MAX_CANVAS_PIXELS).
 pub const MAX_RENDER_PIXELS: u64 = 32_000_000;
 
+/// The most characters one page's text may hold before [`Document::chars`]
+/// refuses it: the reading layer's own limit
+/// (`MAX_SEMANTIC_SOURCE_CHARACTERS_PER_PAGE`, src/editor/textSelection/semanticText.ts).
+pub const MAX_PAGE_CHARS: usize = 2_000_000;
+
 /// How close two characters' origins must be to belong to one glyph, and how
 /// far outside a box a point may land and still count as inside, in points.
 const SAME_POINT_PT: f32 = 0.001;
@@ -78,6 +83,12 @@ pub enum CoreError {
     Pdfium(String),
     /// The export cannot be encrypted the way the source was.
     Encryption(encryption::EncryptionError),
+    /// The page holds more characters than the caller would read.
+    TooMuchText {
+        index: u32,
+        count: usize,
+        max: usize,
+    },
 }
 
 impl fmt::Display for CoreError {
@@ -93,6 +104,10 @@ impl fmt::Display for CoreError {
             }
             CoreError::Pdfium(detail) => write!(f, "PDFium error: {detail}"),
             CoreError::Encryption(error) => write!(f, "{error}"),
+            CoreError::TooMuchText { index, count, max } => write!(
+                f,
+                "page text too large: page index {index} has {count} characters, over {max}"
+            ),
         }
     }
 }
@@ -569,6 +584,29 @@ pub struct Security {
     pub permissions: u32,
     /// FPDF_GetDocUserPermissions: /P whichever password opened the file.
     pub user_permissions: u32,
+}
+
+/// The document information PDF readers show, as pdf.js's `documentInfo`
+/// names it: the trailer's /Info strings as the file writes them (dates
+/// unparsed, XMP never consulted), the header version, the catalog's /Lang
+/// and the encryption handler. A field is None when the file has no value
+/// for it or an empty one.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Metadata {
+    pub title: Option<String>,
+    pub author: Option<String>,
+    pub subject: Option<String>,
+    pub keywords: Option<String>,
+    pub creator: Option<String>,
+    pub producer: Option<String>,
+    pub creation_date: Option<String>,
+    pub mod_date: Option<String>,
+    /// "1.7": the catalog's /Version when it has one, else the header's.
+    pub pdf_format_version: Option<String>,
+    pub language: Option<String>,
+    /// "Standard" for an encrypted file: the only handler PDFium opens
+    /// (any other fails to open with FPDF_ERR_SECURITY).
+    pub encrypt_filter_name: Option<&'static str>,
 }
 
 // A document may move to another thread, but only the thread that owns it
@@ -1075,6 +1113,43 @@ impl Document {
         self.handle as usize
     }
 
+    /// The document information: /Info strings, header version, /Lang and
+    /// encryption handler (see [`Metadata`]).
+    pub fn metadata(&self) -> Metadata {
+        let version = {
+            let mut version: c_int = 0;
+            let ok = unsafe { self.lib.FPDF_GetFileVersion(self.handle, &mut version) };
+            (ok != 0 && version > 0).then(|| format!("{}.{}", version / 10, version % 10))
+        };
+        Metadata {
+            title: self.meta_text("Title"),
+            author: self.meta_text("Author"),
+            subject: self.meta_text("Subject"),
+            keywords: self.meta_text("Keywords"),
+            creator: self.meta_text("Creator"),
+            producer: self.meta_text("Producer"),
+            creation_date: self.meta_text("CreationDate"),
+            mod_date: self.meta_text("ModDate"),
+            pdf_format_version: version,
+            language: self.language(),
+            encrypt_filter_name: self.encryption.is_some().then_some("Standard"),
+        }
+    }
+
+    /// One /Info entry as text (PDFium decodes PDFDocEncoding and UTF-16),
+    /// None when /Info lacks it or holds an empty string.
+    fn meta_text(&self, key: &str) -> Option<String> {
+        let lib = self.lib;
+        // Bytes of UTF-16LE with a two-byte terminator; 0 without /Info.
+        let len = unsafe { lib.FPDF_GetMetaText(self.handle, key, std::ptr::null_mut(), 0) };
+        if len <= 2 {
+            return None;
+        }
+        let mut buffer = vec![0u8; len as usize];
+        unsafe { lib.FPDF_GetMetaText(self.handle, key, buffer.as_mut_ptr().cast(), len) };
+        Some(utf16le(&buffer)).filter(|text| !text.is_empty())
+    }
+
     /// The document's natural language, the catalog's /Lang (a BCP 47 tag
     /// such as "ja"), when it gives one.
     pub fn language(&self) -> Option<String> {
@@ -1266,8 +1341,15 @@ impl Document {
         Ok(links)
     }
 
-    /// Every glyph on the page, in PDFium's reading order.
-    pub fn chars(&self, index: u32) -> Result<Vec<TextChar>, CoreError> {
+    /// Every glyph on the page, in PDFium's reading order, or
+    /// [`CoreError::TooMuchText`] when PDFium counts more than `max`
+    /// characters on it ([`MAX_PAGE_CHARS`] for a reader). The count is
+    /// PDFium's characters, which a ligature or surrogate pair makes more
+    /// than the glyphs returned. It is checked before anything is read per
+    /// character, so a page of millions of characters costs no glyph list
+    /// here or in a binding's JSON; PDFium has already parsed the whole page
+    /// to count them, which this does not bound.
+    pub fn chars(&self, index: u32, max: usize) -> Result<Vec<TextChar>, CoreError> {
         let page = self.page(index)?;
         let text = TextPage {
             lib: self.lib,
@@ -1277,6 +1359,13 @@ impl Document {
             return Err(CoreError::Pdfium(format!("no text layer for page {index}")));
         }
         let count = unsafe { self.lib.FPDFText_CountChars(text.handle) }.max(0);
+        if count as usize > max {
+            return Err(CoreError::TooMuchText {
+                index,
+                count: count as usize,
+                max,
+            });
+        }
         let mut fonts = std::collections::HashMap::new();
         let raw: Vec<RawChar> = (0..count)
             .map(|i| raw_char(self.lib, &text, i, &mut fonts))

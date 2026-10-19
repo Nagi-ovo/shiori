@@ -44,7 +44,12 @@ fn main() {
             geometry.height
         )
         .unwrap();
-        for (i, ch) in doc.chars(index).expect("chars").iter().enumerate() {
+        for (i, ch) in doc
+            .chars(index, shiori_core::MAX_PAGE_CHARS)
+            .expect("chars")
+            .iter()
+            .enumerate()
+        {
             if i > 0 {
                 out.push(',');
             }

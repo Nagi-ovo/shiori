@@ -590,9 +590,6 @@ pub(crate) struct PdfCorePageText {
     lang: Option<String>,
 }
 
-#[cfg(not(mobile))]
-const PDF_CORE_MAX_PAGE_CHARS: usize = 2_000_000;
-
 #[tauri::command]
 #[specta::specta]
 #[cfg(not(mobile))]
@@ -604,13 +601,11 @@ pub(crate) async fn pdf_core_page_text<R: Runtime>(
 ) -> Result<PdfCorePageText, String> {
     enforce_main_webview(&caller)?;
     core.read(doc, move |document| {
-        let chars = document.chars(page).map_err(|error| error.to_string())?;
-        // The reading layer refuses more than this per page
-        // (MAX_SEMANTIC_SOURCE_CHARACTERS_PER_PAGE); a decompression-bomb page
-        // stops here instead of crossing IPC as hundreds of megabytes of JSON.
-        if chars.len() > PDF_CORE_MAX_PAGE_CHARS {
-            return Err("page-text-too-large".into());
-        }
+        // A decompression-bomb page stops at the core's bound instead of
+        // crossing IPC as hundreds of megabytes of JSON.
+        let chars = document
+            .chars(page, shiori_core::MAX_PAGE_CHARS)
+            .map_err(|error| error.to_string())?;
         Ok(PdfCorePageText {
             glyphs: chars
                 .into_iter()

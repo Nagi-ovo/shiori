@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use shiori_core::{Core, CoreError, Destination, LinkTarget};
+use shiori_core::{Core, CoreError, Destination, LinkTarget, Metadata, MAX_PAGE_CHARS};
 
 fn core() -> Core {
     let dir = std::env::var_os("SHIORI_PDFIUM_DIR")
@@ -65,7 +65,7 @@ fn reads_each_page_box_and_rotation() {
 fn places_each_character_on_its_baseline_by_advance() {
     let doc = core().open(fixture("text.pdf"), None).unwrap();
     let chars: Vec<_> = doc
-        .chars(0)
+        .chars(0, MAX_PAGE_CHARS)
         .unwrap()
         .into_iter()
         .filter(|ch| !ch.generated)
@@ -145,14 +145,14 @@ fn a_page_past_the_end_is_an_error_not_a_crash() {
         doc.page_geometry(9).err(),
         Some(CoreError::PageOutOfRange { index: 9, count: 9 })
     );
-    assert!(doc.chars(70_000).is_err());
+    assert!(doc.chars(70_000, MAX_PAGE_CHARS).is_err());
 }
 
 #[test]
 fn a_split_ligature_comes_back_as_one_glyph_ending_where_the_next_starts() {
     let doc = core().open(fixture("text.pdf"), None).unwrap();
     let chars: Vec<_> = doc
-        .chars(2)
+        .chars(2, MAX_PAGE_CHARS)
         .unwrap()
         .into_iter()
         .filter(|ch| !ch.generated)
@@ -168,7 +168,7 @@ fn a_split_ligature_comes_back_as_one_glyph_ending_where_the_next_starts() {
 #[test]
 fn a_turned_glyph_advances_along_its_own_baseline() {
     let doc = core().open(fixture("text.pdf"), None).unwrap();
-    let chars = doc.chars(3).unwrap();
+    let chars = doc.chars(3, MAX_PAGE_CHARS).unwrap();
     let s = chars.iter().find(|ch| ch.text == "S").unwrap();
     assert!(close(s.origin.0, 300.0, 0.01) && close(s.origin.1, 400.0, 0.01));
     // A quarter turn counter-clockwise: the 8.004 pt advance runs up the page.
@@ -184,7 +184,7 @@ fn a_turned_glyph_advances_along_its_own_baseline() {
 #[test]
 fn a_glyph_whose_ink_overhangs_ends_at_its_advance_not_its_ink() {
     let doc = core().open(fixture("text.pdf"), None).unwrap();
-    let chars = doc.chars(3).unwrap();
+    let chars = doc.chars(3, MAX_PAGE_CHARS).unwrap();
     let f = chars.iter().find(|ch| ch.text == "f").unwrap();
     // The f is set in an embedded Liberation Sans Italic, so its ink is the
     // file's, not a platform substitute's. Its /W is 569/2048 em = 277.83/1000,
@@ -204,7 +204,7 @@ fn a_glyph_whose_ink_overhangs_ends_at_its_advance_not_its_ink() {
 #[test]
 fn a_line_end_hyphen_reads_as_a_hyphen() {
     let doc = core().open(fixture("text.pdf"), None).unwrap();
-    let chars = doc.chars(4).unwrap();
+    let chars = doc.chars(4, MAX_PAGE_CHARS).unwrap();
     let hyphen = chars
         .iter()
         .find(|ch| ch.hyphen)
@@ -222,7 +222,7 @@ fn a_line_end_hyphen_reads_as_a_hyphen() {
 fn a_width_looked_up_for_the_wrong_code_is_not_trusted() {
     let doc = core().open(fixture("text.pdf"), None).unwrap();
     let chars: Vec<_> = doc
-        .chars(5)
+        .chars(5, MAX_PAGE_CHARS)
         .unwrap()
         .into_iter()
         .filter(|ch| !ch.generated)
@@ -315,7 +315,7 @@ fn reads_each_link_with_its_rect_and_target() {
 #[test]
 fn a_glyph_carries_its_font_and_metrics() {
     let doc = core().open(fixture("text.pdf"), None).unwrap();
-    let chars = doc.chars(8).unwrap();
+    let chars = doc.chars(8, MAX_PAGE_CHARS).unwrap();
     let text: String = chars.iter().map(|c| c.text.as_str()).collect();
     assert_eq!(text, "One Two");
     let glyph = |s: &str| chars.iter().find(|c| c.text == s).unwrap();
@@ -338,6 +338,178 @@ fn reads_the_document_language_when_the_catalog_gives_one() {
     assert_eq!(doc.language().as_deref(), Some("ja-JP"));
     let locked = core().open(fixture("locked.pdf"), Some("shiori")).unwrap();
     assert_eq!(locked.language(), None);
+}
+
+// Metadata and the page text bound. What can go wrong: a UTF-16 or
+// PDFDocEncoding string decoded wrongly; a date reformatted instead of kept
+// raw; an absent key, an empty string or a missing /Info coming back as "";
+// XMP read in place of /Info; an encrypted file's strings left encrypted
+// (user or owner password, /EncryptMetadata false); a filter name reported
+// for a file without encryption; the version misformatted; the text bound
+// off by one, refusing an empty page, or reported as a password or damage
+// error.
+
+/// A PDF written here object by object, its cross-reference worked out:
+/// `objects[i]` is object i + 1, the catalog first.
+fn hand_made_pdf(version: &str, objects: &[String], trailer: &str) -> Vec<u8> {
+    let mut out = format!("%PDF-{version}\n").into_bytes();
+    let mut offsets = Vec::new();
+    for (i, body) in objects.iter().enumerate() {
+        offsets.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n{body}\nendobj\n", i + 1).as_bytes());
+    }
+    let xref = out.len();
+    let mut table = format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1);
+    for offset in offsets {
+        table.push_str(&format!("{offset:010} 00000 n \n"));
+    }
+    out.extend_from_slice(table.as_bytes());
+    out.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R {trailer} >>\nstartxref\n{xref}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .as_bytes(),
+    );
+    out
+}
+
+/// Two Letter pages, the first reading "Hello" in Helvetica, the second
+/// blank; `catalog` adds to the catalog, `info` (object 7) is /Info when given.
+fn hello_pdf(version: &str, catalog: &str, info: Option<&str>) -> Vec<u8> {
+    let content = "BT /F1 12 Tf 72 700 Td (Hello) Tj ET";
+    let mut objects = vec![
+        format!("<< /Type /Catalog /Pages 2 0 R {catalog} >>"),
+        "<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>".to_string(),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] \
+         /Resources << /Font << /F1 6 0 R >> >> /Contents 4 0 R >>"
+            .to_string(),
+        format!(
+            "<< /Length {} >>\nstream\n{content}\nendstream",
+            content.len() + 1
+        ),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>".to_string(),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+    ];
+    let trailer = match info {
+        Some(info) => {
+            objects.push(info.to_string());
+            "/Info 7 0 R"
+        }
+        None => "",
+    };
+    hand_made_pdf(version, &objects, trailer)
+}
+
+#[test]
+fn reads_the_information_dictionary_as_the_file_writes_it() {
+    // Title UTF-16BE "秘密", Author PDFDocEncoding "Café" (\351), Producer
+    // a hex string, dates as written, Subject empty; Trapped is a name and
+    // Custom a key outside the eight.
+    let info = r"<< /Title <FEFF79D85BC6> /Author (Caf\351) /Subject () /Keywords (a, b)
+        /Creator (Hand) /Producer <48616E64> /CreationDate (D:20260102030405+09'00')
+        /ModDate (D:2026) /Trapped /True /Custom (x) >>";
+    let doc = core()
+        .open(hello_pdf("1.6", "/Lang (en-GB)", Some(info)), None)
+        .unwrap();
+    let some = |text: &str| Some(text.to_string());
+    assert_eq!(
+        doc.metadata(),
+        Metadata {
+            title: some("秘密"),
+            author: some("Café"),
+            subject: None,
+            keywords: some("a, b"),
+            creator: some("Hand"),
+            producer: some("Hand"),
+            creation_date: some("D:20260102030405+09'00'"),
+            mod_date: some("D:2026"),
+            pdf_format_version: some("1.6"),
+            language: some("en-GB"),
+            encrypt_filter_name: None,
+        }
+    );
+}
+
+#[test]
+fn a_file_without_an_information_dictionary_has_only_its_version() {
+    let doc = core().open(hello_pdf("1.3", "", None), None).unwrap();
+    assert_eq!(
+        doc.metadata(),
+        Metadata {
+            pdf_format_version: Some("1.3".into()),
+            ..Metadata::default()
+        }
+    );
+}
+
+#[test]
+fn a_catalog_version_overrides_the_header() {
+    // As pdf.js reads it: the catalog's /Version when it has one.
+    for (header, catalog, expected) in [("1.4", "1.7", "1.7"), ("1.7", "1.4", "1.4")] {
+        let doc = core()
+            .open(
+                hello_pdf(header, &format!("/Version /{catalog}"), None),
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            doc.metadata().pdf_format_version.as_deref(),
+            Some(expected),
+            "header {header}, catalog {catalog}"
+        );
+    }
+}
+
+#[test]
+fn an_encrypted_file_reads_its_information_decrypted_whichever_password_opened_it() {
+    // Every encrypted fixture has the Info title "Locked title 秘密" and an
+    // XMP title "Locked title XMP" (fixtures/encrypted/README.md).
+    for (name, password) in [
+        ("aes-256", "user-pw"),
+        ("aes-256", OWNER),
+        ("aes-128-nometa", "user-pw"),
+        ("rc4-40", OWNER),
+        ("empty-user", ""),
+    ] {
+        let doc = open_with(&encrypted_fixture(name), password).unwrap();
+        let metadata = doc.metadata();
+        assert_eq!(
+            metadata.title.as_deref(),
+            Some("Locked title 秘密"),
+            "{name} with {password:?}"
+        );
+        assert_eq!(metadata.encrypt_filter_name, Some("Standard"), "{name}");
+    }
+    let plain = core().open(fixture("text.pdf"), None).unwrap().metadata();
+    assert_eq!(plain.encrypt_filter_name, None);
+    // make-fixtures.ts sets no title; pdf-lib stamps its producer.
+    assert_eq!(plain.title, None);
+    assert_eq!(
+        plain.producer.as_deref(),
+        Some("pdf-lib (https://github.com/Hopding/pdf-lib)")
+    );
+}
+
+#[test]
+fn a_page_with_more_characters_than_the_bound_is_refused_whole() {
+    let doc = core().open(hello_pdf("1.7", "", None), None).unwrap();
+    let text: String = doc
+        .chars(0, 5)
+        .unwrap()
+        .into_iter()
+        .map(|ch| ch.text)
+        .collect();
+    assert_eq!(text, "Hello");
+    assert_eq!(
+        doc.chars(0, 4).err(),
+        Some(CoreError::TooMuchText {
+            index: 0,
+            count: 5,
+            max: 4
+        })
+    );
+    assert_eq!(doc.chars(1, 0).unwrap(), vec![]);
 }
 
 #[test]
@@ -422,7 +594,7 @@ fn rebuilds_a_bare_cff_font_from_the_glyphs_the_page_sets() {
     // The reading layer finds a run's rebuilt font by the name its glyphs
     // carry, so the two must agree.
     let t = doc
-        .chars(0)
+        .chars(0, MAX_PAGE_CHARS)
         .unwrap()
         .into_iter()
         .find(|c| c.text == "T")
@@ -526,7 +698,7 @@ fn encrypted_fixture(name: &str) -> Vec<u8> {
 }
 
 fn page_text(doc: &shiori_core::Document, index: u32) -> String {
-    doc.chars(index)
+    doc.chars(index, MAX_PAGE_CHARS)
         .unwrap()
         .into_iter()
         .map(|c| c.text)

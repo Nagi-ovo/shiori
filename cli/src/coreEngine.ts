@@ -41,10 +41,46 @@ export type CorePageGeometry = {
   height: number;
 };
 
+/** A link annotation's /Rect and where it goes: a page of this document or a URL. */
+export type CoreLink = {
+  /** [left, bottom, right, top], PDF user space. */
+  rect: [number, number, number, number];
+  destination?: {
+    pageIndex: number;
+    /** The fit name: `XYZ`, `Fit`, `FitH`, … */
+    view: string;
+    /** Its operands in order; null for one the file leaves null. */
+    args: Array<number | null>;
+  };
+  url?: string;
+};
+
+/**
+ * The document information, keyed as pdf.js's `documentInfo`: /Info strings
+ * as written (dates unparsed, no XMP), the version, /Lang and the encryption
+ * handler. A key is absent when the file has no value for it.
+ */
+export type CoreMetadata = {
+  title?: string;
+  author?: string;
+  subject?: string;
+  keywords?: string;
+  creator?: string;
+  producer?: string;
+  creationDate?: string;
+  modDate?: string;
+  pdfFormatVersion?: string;
+  language?: string;
+  encryptFilterName?: string;
+};
+
 export type CoreDocument = {
   pageCount(): number;
   pageGeometry(index: number): CorePageGeometry;
+  /** The page's glyphs; throws "page text too large" past shiori-core's MAX_PAGE_CHARS. */
   glyphs(index: number): CoreGlyph[];
+  links(index: number): CoreLink[];
+  metadata(): CoreMetadata;
   /** RGBA rows of a region of the page, `width × height × 4` bytes. */
   render(
     index: number,
