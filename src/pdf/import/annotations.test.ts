@@ -15,6 +15,7 @@ import {
 } from "../model/note";
 import {
   annotationToOverlay,
+  importFileAnnotations,
   importPdfAnnotations,
   importedAnnotationOverlayId,
   parsePdfDateString,
@@ -799,19 +800,18 @@ describe("annotation ownership", () => {
   // keep out of the page raster: the subtype and /Rect of each claimed one.
   async function importClaims(
     annotations: Array<Record<string, unknown>>,
-  ): Promise<{ overlays: Awaited<ReturnType<typeof importPdfAnnotations>>; claimed: string[] }> {
+  ): Promise<{ overlays: Awaited<ReturnType<typeof importFileAnnotations>>; claimed: string[] }> {
     const pdf = await PDFDocument.create();
-    pdf.addPage([300, 400]);
+    const pdfPage = pdf.addPage([300, 400]);
+    pdfPage.node.set(
+      PDFName.of("Annots"),
+      pdf.context.obj(
+        annotations.map((entries) => pdf.context.register(pdf.context.obj({ Type: "Annot", ...entries } as never))),
+      ),
+    );
     const bytes = await pdf.save({ useObjectStreams: false });
     const claimed: string[] = [];
-    const proxy = {
-      getData: async () => bytes,
-      getPage: async () => ({ getAnnotations: async () => annotations }),
-    } as unknown as PDFDocumentProxy;
-    // The annotations are pdf.js-shaped fakes: ownership is decided on what
-    // the reader lists, whichever reader it is.
-    const overlays = await importPdfAnnotations(proxy, [page], bytes, undefined, {
-      annotationReader: "pdfjs",
+    const overlays = await importFileAnnotations([page], bytes, undefined, {
       onSuppress: (_index, annotation) => claimed.push(`${annotation.subtype} ${annotation.rect.join(",")}`),
     });
     return { overlays, claimed };
@@ -820,15 +820,13 @@ describe("annotation ownership", () => {
   test("claims what it imported, plus links and popups", async () => {
     const { overlays, claimed } = await importClaims([
       {
-        id: "1R",
-        subtype: "Highlight",
-        annotationType: 9,
-        rect: [20, 20, 120, 40],
-        quadPoints: [20, 40, 120, 40, 20, 20, 120, 20],
-        color: [244, 214, 116],
+        Subtype: "Highlight",
+        Rect: [20, 20, 120, 40],
+        QuadPoints: [20, 40, 120, 40, 20, 20, 120, 20],
+        C: [0.96, 0.84, 0.45],
       },
-      { id: "2R", subtype: "Link", annotationType: 2, rect: [0, 0, 10, 10] },
-      { id: "3R", subtype: "Popup", rect: [0, 0, 10, 10] },
+      { Subtype: "Link", Rect: [0, 0, 10, 10] },
+      { Subtype: "Popup", Rect: [0, 0, 10, 10] },
     ]);
     expect(overlays).toHaveLength(1);
     expect(overlays[0]!.type).toBe("highlight");
@@ -837,12 +835,12 @@ describe("annotation ownership", () => {
 
   test("leaves annotations it cannot edit to be drawn from their appearance", async () => {
     const { overlays, claimed } = await importClaims([
-      { id: "1R", subtype: "Circle", annotationType: 6, rect: [20, 20, 120, 100] },
-      { id: "2R", subtype: "Line", annotationType: 4, rect: [20, 20, 120, 100] },
-      { id: "3R", subtype: "Polygon", annotationType: 7, rect: [20, 20, 120, 100] },
-      { id: "4R", subtype: "Stamp", annotationType: 13, rect: [20, 20, 120, 100] },
-      { id: "5R", subtype: "FileAttachment", annotationType: 17, rect: [20, 20, 40, 40] },
-      { id: "6R", subtype: "Widget", annotationType: 20, rect: [20, 20, 120, 40] },
+      { Subtype: "Circle", Rect: [20, 20, 120, 100] },
+      { Subtype: "Line", Rect: [20, 20, 120, 100], L: [20, 20, 120, 100] },
+      { Subtype: "Polygon", Rect: [20, 20, 120, 100], Vertices: [20, 20, 120, 20, 70, 100] },
+      { Subtype: "Stamp", Rect: [20, 20, 120, 100] },
+      { Subtype: "FileAttachment", Rect: [20, 20, 40, 40] },
+      { Subtype: "Widget", FT: "Tx", Rect: [20, 20, 120, 40] },
     ]);
     expect(overlays).toEqual([]);
     expect(claimed).toEqual([]);
@@ -852,7 +850,7 @@ describe("annotation ownership", () => {
   // it must stay drawn rather than being silently claimed and lost.
   test("does not claim a markup annotation it failed to import", async () => {
     const { overlays, claimed } = await importClaims([
-      { id: "1R", subtype: "Highlight", annotationType: 9, quadPoints: [] },
+      { Subtype: "Highlight", Rect: [20, 20, 120, 40], QuadPoints: [] },
     ]);
     expect(overlays).toEqual([]);
     expect(claimed).toEqual([]);

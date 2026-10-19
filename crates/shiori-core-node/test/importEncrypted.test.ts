@@ -2,43 +2,54 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import { openCoreDocument } from "../../../cli/src/coreEngine";
-import type { PdfDocument } from "../../../src/pdf/engine/types";
-import { importPdfAnnotations } from "../../../src/pdf/import/annotations";
+import { importFileAnnotations } from "../../../src/pdf/import/annotations";
 import type { PageModel } from "../../../src/pdf/model/types";
 
+// encrypted-notes.pdf (crates/shiori-core/tests/fixtures/make-fixtures.ts):
+// owner password only; 4 0 obj is a Text note at [40 300 60 320], colour
+// [1 0.8 0], /Contents "Encrypted note 加密", /T "Reviewer", /M
+// D:20260925120000Z; 5 0 obj a Highlight over [20 20 120 40], colour [1 1 0].
 const ENCRYPTED = readFileSync(join(import.meta.dir, "../../shiori-core/tests/fixtures/encrypted-notes.pdf"));
 const page: PageModel = { id: "p1", sourceIndex: 0, rotation: 0, widthPt: 300, heightPt: 400 };
 
 describe("importing an encrypted file's annotations", () => {
-  test("reads them from PDFium's decrypted copy exactly as pdf.js reads the file", async () => {
-    const doc = (await pdfjsLib.getDocument({ data: new Uint8Array(ENCRYPTED) }).promise) as unknown as PdfDocument;
+  test("reads them from PDFium's decrypted copy, under the file's own object ids", async () => {
     const core = openCoreDocument(new Uint8Array(ENCRYPTED));
     try {
-      // No pdf.js to fall back on: the file itself, decrypted, is all it reads.
-      const noPdfjs = {
-        annotationStorage: { setValue: () => undefined },
-        getPage: () => {
-          throw new Error("pdf.js was read");
-        },
-      } as unknown as PdfDocument;
-      const viaCore = await importPdfAnnotations(noPdfjs, [page], new Uint8Array(ENCRYPTED), 0, {
+      const overlays = await importFileAnnotations([page], new Uint8Array(ENCRYPTED), 0, {
         decryptedBytes: async () => core.decryptedCopy(),
       });
-      const viaPdfjs = await importPdfAnnotations(doc, [page], new Uint8Array(ENCRYPTED), 0, {
-        annotationReader: "pdfjs",
-      });
-      // The note keeps its text and author, and its id is the file's object.
-      expect(viaCore.map((o) => [o.type, o.id])).toEqual([
-        ["note", "pdf-annotation-0-4R"],
-        ["highlight", "pdf-annotation-0-5R"],
+      expect(overlays).toEqual([
+        {
+          type: "note",
+          id: "pdf-annotation-0-4R",
+          pageId: "p1",
+          // The note card opens down from the icon's top-left corner.
+          rect: { x: 40, y: 226, w: 168, h: 94 },
+          text: "Encrypted note 加密",
+          color: "#ffcc00",
+          createdAt: 0,
+          updatedAt: 0,
+          sourceAuthor: "Reviewer",
+          sourceModifiedAt: Date.UTC(2026, 8, 25, 12),
+          origin: "imported",
+          importedAt: 0,
+        },
+        expect.objectContaining({
+          type: "highlight",
+          id: "pdf-annotation-0-5R",
+          rects: [{ x: 20, y: 20, w: 100, h: 20 }],
+          color: "#ffff00",
+          sourceAuthor: "Reviewer",
+        }),
       ]);
-      expect(viaCore.find((o) => o.type === "note")).toMatchObject({ text: "Encrypted note 加密", sourceAuthor: "Reviewer" });
-      expect(viaCore).toEqual(viaPdfjs);
     } finally {
       core.close();
-      await (doc as unknown as { destroy: () => Promise<void> }).destroy();
     }
+  });
+
+  test("imports nothing, rather than undecrypted strings, without a decrypted copy", async () => {
+    expect(await importFileAnnotations([page], new Uint8Array(ENCRYPTED), 0)).toEqual([]);
   });
 });

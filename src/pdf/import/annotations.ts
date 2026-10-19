@@ -77,13 +77,6 @@ export type PdfAnnotationImportOptions = {
    */
   onNamedLinks?: (sourceIndex: number, links: PdfLink[]) => void;
   /**
-   * Which reader lists each page's annotations: the file itself, read with
-   * pdf-lib (./sourceAnnotations), or pdf.js. Defaults to the file, and to
-   * pdf.js when the file is encrypted, since pdf-lib cannot decrypt its
-   * strings. Both give the same annotations under the same ids.
-   */
-  annotationReader?: "file" | "pdfjs";
-  /**
    * The source rewritten without its encryption, from an engine that can
    * decrypt (PDFium). With it an encrypted file is read like any other; the
    * object numbers, and so the overlay ids, are the file's own.
@@ -189,8 +182,9 @@ async function importAnnotations(
     // Raw scanning is an enhancement for FreeTextCallout semantics. pdf.js
     // import remains available when bytes cannot be copied or parsed.
   }
-  const fileReader =
-    options.annotationReader !== "pdfjs" && rawPdf && !rawPdf.isEncrypted ? rawPdf : null;
+  // The file itself, read with pdf-lib (./sourceAnnotations), unless it is
+  // still encrypted: pdf-lib cannot decrypt its strings.
+  const fileReader = rawPdf && !rawPdf.isEncrypted ? rawPdf : null;
   options.onSourceInfo?.({ encrypted: rawData.encrypted });
   for (const [sourceIndex, links] of rawData.namedLinks) {
     options.onNamedLinks?.(sourceIndex, links);

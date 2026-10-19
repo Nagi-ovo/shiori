@@ -8,43 +8,27 @@ import {
   type PDFObject,
   type PDFRef,
 } from "pdf-lib";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { PageModel } from "../model/types";
-import type { PdfDocument } from "../engine/types";
-import { importPdfAnnotations } from "./annotations";
+import { importFileAnnotations } from "./annotations";
 
-// The file reader is right when an import through it matches an import
-// through pdf.js, which the importer was written against: same overlays,
-// same ids, same annotations claimed from the canvas. pdf.js is the oracle.
+// What the app imports from annotations it did not write: each expected
+// overlay follows from the dictionary the test builds. The reader mirrors
+// pdf.js 5.6's annotation.js (./sourceAnnotations.ts), so where PDF leaves a
+// choice open (CMYK to RGB, a rect rounded to float32, a border too wide
+// for its box) the expected value is pdf.js's; these values were checked
+// against pdf.js's own import of the same files before pdf.js left the repo.
 
 const page: PageModel = { id: "p1", sourceIndex: 0, rotation: 0, widthPt: 300, heightPt: 400 };
 const NOW = 1_700_000_000_000;
+const imported = { origin: "imported", importedAt: NOW } as const;
 
-async function importBoth(bytes: Uint8Array) {
-  const doc = await pdfjsLib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
-  const run = async (annotationReader: "file" | "pdfjs") => {
-    const claimed: string[] = [];
-    const reported: unknown[] = [];
-    const proxy = new Proxy(doc, {
-      get(target, key) {
-        if (key === "annotationStorage") {
-          return { setValue: (id: string, value: { noView?: boolean }) => value.noView && claimed.push(id) };
-        }
-        const value = Reflect.get(target, key) as unknown;
-        return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
-      },
-    }) as unknown as PdfDocument;
-    const overlays = await importPdfAnnotations(proxy, [page], bytes, NOW, {
-      annotationReader,
-      onSuppress: (_index, annotation) => reported.push(annotation),
-    });
-    return { overlays, claimed, reported };
-  };
-  try {
-    return { file: await run("file"), pdfjs: await run("pdfjs") };
-  } finally {
-    await doc.destroy();
-  }
+/** The overlays imported from `bytes`, and each annotation claimed from the page raster. */
+async function importFile(bytes: Uint8Array) {
+  const reported: Array<{ subtype: string; rect: number[] }> = [];
+  const overlays = await importFileAnnotations([page], bytes, NOW, {
+    onSuppress: (_index, annotation) => reported.push(annotation),
+  });
+  return { overlays, reported };
 }
 
 async function onePage(build: (pdf: PDFDocument, add: (dict: Record<string, unknown>, direct?: boolean) => PDFRef | null) => void) {
@@ -69,7 +53,7 @@ async function onePage(build: (pdf: PDFDocument, add: (dict: Record<string, unkn
 const utf16 = (text: string) => PDFHexString.fromText(text);
 
 describe("the file annotation reader", () => {
-  test("reads text markup as pdf.js does: colours, quads, opacity, flags", async () => {
+  test("reads text markup: colours, quads, opacity, flags", async () => {
     const bytes = await onePage((_pdf, add) => {
       // A skewed quad, an RGB colour, an opacity and PDFDocEncoding text.
       add({
@@ -88,16 +72,32 @@ describe("the file annotation reader", () => {
       // A direct dictionary, which pdf.js names by its place on the page.
       add({ Subtype: "StrikeOut", Rect: [18, 258, 122, 282], QuadPoints: [20, 280, 120, 280, 20, 260, 120, 260] }, true);
     });
-    const { file, pdfjs } = await importBoth(bytes);
-    expect(file.overlays).toHaveLength(5);
-    expect(file).toEqual(pdfjs);
-    // PDFium hides what Shiori claims by /Rect. pdf.js moves a markup's rect
-    // to the bounds of the appearance it draws when there is none; the
-    // claim still names the file's.
-    expect(pdfjs.reported[0]).toEqual({ subtype: "Highlight", rect: [18, 18, 122, 42] });
+    const { overlays, reported } = await importFile(bytes);
+    expect(overlays).toEqual([
+      // The skewed quad's bounds; dates in UTC.
+      {
+        type: "highlight", id: "pdf-annotation-0-5R", pageId: "p1", rects: [{ x: 20, y: 19, w: 100, h: 22 }],
+        color: "#3399ff", opacity: 0.3, sourceAuthor: "Réviseur 审阅",
+        sourceCreatedAt: Date.UTC(2026, 8, 24), sourceModifiedAt: Date.UTC(2026, 8, 25, 2, 15), ...imported,
+      },
+      // pdf.js's CMYK conversion, not the naive (1 - c)(1 - k).
+      { type: "underline", id: "pdf-annotation-0-6R", pageId: "p1", rects: [{ x: 20, y: 60, w: 100, h: 20 }], color: "#dd6791", opacity: 1, ...imported },
+      { type: "strikethrough", id: "pdf-annotation-0-7R", pageId: "p1", rects: [{ x: 20, y: 100, w: 100, h: 20 }], color: "#808080", opacity: 1, ...imported },
+      // 8R has a short quad list and 10R is NoView; 9R's Invisible flag is ignored.
+      { type: "highlight", id: "pdf-annotation-0-9R", pageId: "p1", rects: [{ x: 20, y: 180, w: 100, h: 20 }], color: "#f4d674", opacity: 0.45, ...imported },
+      { type: "strikethrough", id: "pdf-annotation-0-annot_p0_1", pageId: "p1", rects: [{ x: 20, y: 260, w: 100, h: 20 }], color: "#b13a2e", opacity: 1, ...imported },
+    ]);
+    // PDFium hides what Shiori claims by the file's own /Rect.
+    expect(reported).toEqual([
+      { subtype: "Highlight", rect: [18, 18, 122, 42] },
+      { subtype: "Underline", rect: [18, 58, 122, 82] },
+      { subtype: "StrikeOut", rect: [18, 98, 122, 122] },
+      { subtype: "Highlight", rect: [18, 178, 122, 202] },
+      { subtype: "StrikeOut", rect: [18, 258, 122, 282] },
+    ]);
   });
 
-  test("reads notes, replies, shapes and ink as pdf.js does", async () => {
+  test("reads notes, replies, shapes and ink", async () => {
     const bytes = await onePage((_pdf, add) => {
       const parent = add({
         Subtype: "Text", Rect: [40, 300, 60, 320], C: [1, 0.8, 0], T: PDFString.of("Ann"),
@@ -117,12 +117,37 @@ describe("the file annotation reader", () => {
       add({ Subtype: "Popup", Rect: [150, 200, 250, 280], Parent: note });
       add({ Subtype: "Widget", FT: "Tx", Rect: [10, 350, 100, 370] });
     });
-    const { file, pdfjs } = await importBoth(bytes);
-    expect(file.overlays.map((overlay) => overlay.type)).toEqual(["note", "note", "note", "rect", "rect", "rect", "ink", "note"]);
-    expect(file).toEqual(pdfjs);
+    const { overlays, reported } = await importFile(bytes);
+    // A note opens its 168 × 94 card down from the icon's top-left corner.
+    const note = (id: string, x: number) => ({ id: `pdf-annotation-0-${id}`, pageId: "p1", type: "note", rect: { x, y: 226, w: 168, h: 94 }, createdAt: NOW, updatedAt: NOW });
+    const parent = { text: "Parent note", color: "#ffcc00", sourceAuthor: "Ann", sourceModifiedAt: Date.UTC(2026, 0, 1) };
+    expect(overlays).toEqual([
+      { ...note("5R", 40), ...parent, ...imported },
+      { ...note("6R", 70), ...parent, sourceInReplyToId: "pdf-annotation-0-5R", sourceReplyType: "Group", ...imported },
+      { ...note("7R", 100), text: "A reply", color: "#f7e9a8", sourceInReplyToId: "pdf-annotation-0-5R", sourceReplyType: "R", ...imported },
+      {
+        type: "rect", id: "pdf-annotation-0-8R", pageId: "p1",
+        rect: { x: Math.fround(10.1), y: Math.fround(20.3), w: Math.fround(90.7) - Math.fround(10.1), h: Math.fround(80.9) - Math.fround(20.3) },
+        color: "#0000ff", strokeWidth: 3, fill: "#ff0000", ...imported,
+      },
+      { type: "rect", id: "pdf-annotation-0-9R", pageId: "p1", rect: { x: 110, y: 20, w: 80, h: 60 }, color: "#0000ff", strokeWidth: 2, fill: null, ...imported },
+      // A dash array of zeros draws no border.
+      { type: "rect", id: "pdf-annotation-0-10R", pageId: "p1", rect: { x: 210, y: 20, w: 80, h: 60 }, color: "#b13a2e", strokeWidth: 0, fill: null, ...imported },
+      {
+        type: "ink", id: "pdf-annotation-0-11R", pageId: "p1",
+        paths: [[{ x: 12, y: 102 }, { x: 30, y: 140 }, { x: 58, y: 120 }], [{ x: 15, y: 110 }, { x: 16, y: 111 }]],
+        color: "#b13a2e", width: 1, ...imported,
+      },
+      { ...note("13R", 150), text: "with popup", color: "#f7e9a8", ...imported },
+    ]);
+    // Links and popups are claimed too (Shiori draws them); the form field is not.
+    expect(reported.map((annotation) => annotation.subtype)).toEqual([
+      "Text", "Text", "Text", "Square", "Square", "Square", "Ink", "Link", "Text", "Popup",
+    ]);
+    expect(reported[3]!.rect).toEqual([10.1, 20.3, 90.7, 80.9]);
   });
 
-  test("reads free text size and colour from its appearance, as pdf.js does", async () => {
+  test("reads free text size and colour from its appearance, else its /DA", async () => {
     const bytes = await onePage((pdf, add) => {
       const appearance = pdf.context.flateStream("q 0 0 1 rg BT 2 0 0 2 0 0 Tm /F1 9 Tf 5 5 Td (Big) Tj ET Q", {
         Type: "XObject", Subtype: "Form", BBox: [0, 0, 100, 40],
@@ -137,27 +162,19 @@ describe("the file annotation reader", () => {
         ),
       });
     });
-    const { file, pdfjs } = await importBoth(bytes);
-    expect(file.overlays.map((overlay) => overlay.type)).toEqual(["text", "text", "stamp", "text"]);
-    expect(file).toEqual(pdfjs);
-  });
-
-  test("an encrypted file is read by pdf.js, whose strings pdf-lib cannot decrypt", async () => {
-    const source = await PDFDocument.create();
-    source.addPage([300, 400]);
-    source.context.trailerInfo.Encrypt = source.context.register(
-      source.context.obj({ Filter: "Standard", V: 2 }),
-    );
-    const bytes = await source.save();
-    const highlight = {
-      id: "7R", subtype: "Highlight", rect: [20, 20, 120, 40],
-      quadPoints: [20, 40, 120, 40, 20, 20, 120, 20], color: [244, 214, 116],
-    };
-    const proxy = {
-      annotationStorage: { setValue: () => undefined },
-      getPage: async () => ({ getAnnotations: async () => [highlight] }),
-    } as unknown as PdfDocument;
-    const overlays = await importPdfAnnotations(proxy, [page], bytes, NOW);
-    expect(overlays.map((overlay) => overlay.id)).toEqual(["pdf-annotation-0-7R"]);
+    const { overlays, reported } = await importFile(bytes);
+    const text = (id: string, y: number, w: number) => ({ type: "text", id: `pdf-annotation-0-${id}`, pageId: "p1", rect: { x: 20, y, w, h: 40 } });
+    expect(overlays).toEqual([
+      // 9 pt under a 2× text matrix, blue, from the appearance stream.
+      { ...text("6R", 20, 100), text: "From AP", fontSize: 18, color: "#0000ff", bold: false, align: "left", fontFamily: "sans", ...imported },
+      { ...text("7R", 80, 100), text: "From DA", fontSize: 11, color: "#008000", bold: false, align: "left", fontFamily: "sans", ...imported },
+      // A lone ZapfDingbats check mark is a stamp.
+      {
+        type: "stamp", id: "pdf-annotation-0-annot_p0_1", pageId: "p1", kind: "check",
+        rect: { x: 20, y: 140, w: 40, h: 40 }, color: "#000000", strokeWidth: 0, ...imported,
+      },
+      { ...text("8R", 200, 180), text: "Styled", fontSize: 12, color: "#000000", bold: true, italic: true, align: "center", fontFamily: "serif", ...imported },
+    ]);
+    expect(reported.map((annotation) => annotation.subtype)).toEqual(["FreeText", "FreeText", "FreeText", "FreeText"]);
   });
 });
