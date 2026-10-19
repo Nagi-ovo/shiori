@@ -1,5 +1,5 @@
-//! Prints every page's characters as JSON, for comparing PDFium's text
-//! geometry with another engine's (scripts/pdfium/compare-glyphs.ts).
+//! Prints every page's characters as JSON, for inspecting PDFium's text
+//! geometry by hand.
 //! Run: cargo run --example dump_chars -- <pdfium lib dir> <file.pdf>
 
 use std::fmt::Write;

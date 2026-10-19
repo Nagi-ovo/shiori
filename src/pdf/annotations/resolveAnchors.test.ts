@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { TextContent } from "pdfjs-dist/types/src/display/api";
+import type { PdfPageTextContent as TextContent } from "../engine/text";
 import type {
   Overlay,
   OverlayTextAnchor,

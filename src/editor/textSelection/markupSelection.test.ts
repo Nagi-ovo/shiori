@@ -1,11 +1,8 @@
 import "../../test/setupDom";
 import { afterEach, describe, expect, test } from "bun:test";
-import { OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
-import type { TextContent, TextItem } from "pdfjs-dist/types/src/display/api";
+import type { PdfPageTextContent, PdfTextGlyph, PdfTextItem } from "../../pdf/engine/text";
 import type { PageModel } from "../../pdf/model/types";
 import { mapTextContentGlyphs, type MappedTextGlyph } from "./glyphGeometry";
-// pdf.js's operator-list glyph reader, as a compact way to lay glyphs out.
-import { textGlyphsFromOperators } from "../../../scripts/pdfium/pdfjs-reference/pdfjsGlyphs";
 import { glyphCaretAtPoint, markupRectsForRange, rangeInTextDiv } from "./markupSelection";
 import { displayRectsToPdfRects } from "./highlightRects";
 
@@ -17,20 +14,27 @@ afterEach(() => document.body.replaceChildren());
 
 const page: PageModel = { id: "p", sourceIndex: 0, rotation: 0, widthPt: 400, heightPt: 600 };
 const font = { ascent: 0.8, descent: -0.2 };
-const glyph = (unicode: string, width = 500) => ({ unicode, width, isSpace: unicode === " " });
-const ops = (entries: Array<[number, unknown[]?]>) => ({
-  fnArray: entries.map(([op]) => op), argsArray: entries.map(([, args]) => args ?? []),
-});
-function content(str: string, width: number, transform = [10, 0, 0, 10, 100, 500], dir = "ltr"): TextContent {
-  return { items: [{ str, width, height: 10, transform, dir, fontName: "font", hasEOL: false } as TextItem],
-    styles: { font: { ...font, fontFamily: "sans-serif", vertical: false } }, lang: null };
+function content(str: string, width: number, transform = [10, 0, 0, 10, 100, 500], dir = "ltr"): PdfPageTextContent {
+  const item: PdfTextItem = { str, width, height: 10, transform, dir, fontName: "font", hasEOL: false };
+  return { items: [item], styles: { font: { ...font, fontFamily: "sans-serif", vertical: false } }, lang: null };
 }
-function placedGlyphs(text: string, width = 500, size = 10) {
-  return textGlyphsFromOperators(ops([
-    [OPS.beginText], [OPS.setFont, ["font", size]],
-    [OPS.setTextMatrix, [[1, 0, 0, 1, 100, 500]]],
-    [OPS.showText, [[...text].map(c => glyph(c, width))]],
-  ]), () => font);
+/**
+ * `text` set left to right on the baseline y = 500 from x = 100 at `size`
+ * points, each character one glyph `width` thousandths of an em wide, its
+ * advance cell running from 0.2 em below the baseline to 0.8 em above.
+ */
+function placedGlyphs(text: string, width = 500, size = 10): PdfTextGlyph[] {
+  const advance = (width * size) / 1000;
+  const [top, bottom] = [500 + size * font.ascent, 500 + size * font.descent];
+  let x = 0;
+  return [...text].map(unicode => {
+    const [left, right] = [100 + x, 100 + x + advance];
+    x += advance;
+    return {
+      text: unicode, fontName: "font", origin: { x: left, y: 500 }, end: { x: right, y: 500 },
+      quad: [{ x: left, y: top }, { x: right, y: top }, { x: right, y: bottom }, { x: left, y: bottom }],
+    };
+  });
 }
 function divWithText(text: string): HTMLElement {
   const div = document.createElement("span");
@@ -44,49 +48,7 @@ function select(div: HTMLElement, start: number, end: number): Range {
   return range;
 }
 
-describe("pdf.js reference glyph positions (scripts/pdfium/pdfjs-reference)", () => {
-  test("uses per-glyph advances, Tc, Tw and TJ instead of stretching the whole string", () => {
-    const result = textGlyphsFromOperators(ops([
-      [OPS.beginText], [OPS.setFont, ["font", 10]], [OPS.setTextMatrix, [[1, 0, 0, 1, 100, 500]]],
-      [OPS.setCharSpacing, [2]], [OPS.setWordSpacing, [4]],
-      [OPS.showText, [[glyph("A"), glyph(" ", 250), -100, glyph("B")]]],
-      [OPS.showText, [[glyph("C")]]],
-    ]), () => font);
-    expect(result.map(g => g.origin.x)).toEqual([100, 107, 116.5, 123.5]);
-    expect(result.map(g => g.end.x)).toEqual([105, 109.5, 121.5, 128.5]);
-  });
-
-  test("restores graphics state and applies form transforms, text rise and horizontal scale", () => {
-    const result = textGlyphsFromOperators(ops([
-      [OPS.setFont, ["font", 10]], [OPS.setTextMatrix, [[1, 0, 0, 1, 100, 500]]],
-      [OPS.paintFormXObjectBegin, [[2, 0, 0, 2, 10, 20], null]],
-      [OPS.setTextRise, [3]], [OPS.setHScale, [50]], [OPS.showText, [[glyph("A")]]],
-      [OPS.paintFormXObjectEnd], [OPS.showText, [[glyph("B")]]],
-    ]), () => font);
-    expect(result[0]!.origin).toEqual({ x: 210, y: 1026 });
-    expect(result[0]!.end).toEqual({ x: 215, y: 1026 });
-    expect(result[1]!.origin).toEqual({ x: 100, y: 500 });
-    expect(result[1]!.end).toEqual({ x: 105, y: 500 });
-  });
-
-  test("handles leading and fonts supplied through an ExtGState", () => {
-    const result = textGlyphsFromOperators(ops([
-      [OPS.setGState, [[["Font", ["font", 10]]]]], [OPS.beginText],
-      [OPS.setLeadingMoveText, [20, -12]], [OPS.showText, [[glyph("A")]]],
-      [OPS.nextLine], [OPS.showText, [[glyph("B")]]],
-    ]), () => font);
-    expect(result.map(g => g.origin)).toEqual([{ x: 20, y: -12 }, { x: 20, y: -24 }]);
-  });
-
-  test("does not mix annotation appearance text into page glyphs", () => {
-    const result = textGlyphsFromOperators(ops([
-      [OPS.setFont, ["font", 10]], [OPS.beginAnnotation],
-      [OPS.showText, [[glyph("X")]]], [OPS.endAnnotation], [OPS.showText, [[glyph("A")]]],
-    ]), () => font);
-    expect(result.map(g => g.text)).toEqual(["A"]);
-    expect(textGlyphsFromOperators(ops([[OPS.setFont, ["missing", 10]], [OPS.showText, [[glyph("A")]]]]), () => null)).toEqual([]);
-  });
-
+describe("matching a text run to its glyphs", () => {
   test("matches PDF-inserted whitespace without inventing extra glyphs", () => {
     const result = mapTextContentGlyphs(content("A B", 10), placedGlyphs("AB"))[0]!;
     expect(result.map(g => [g.start, g.endOffset, g.origin.x])).toEqual([[0, 1, 100], [2, 3, 105]]);

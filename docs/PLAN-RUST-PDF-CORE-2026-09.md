@@ -285,7 +285,8 @@ renderRegion: (
     整页 695 字 11–13 ms，span 数等于 item 数。`pdfiumText.test.ts` 9 个测试（10 处 mutation
     各自变红），`tests/core.rs` 字体度量与语言，引擎测试补 PDFium / 回退两条路。
     已知缺口：竖排（PDFium 不报书写方向，按旋转的横排处理）；marked content（PDFium 已把
-    /ActualText 代入字形）；RTL 未验证。
+    /ActualText 代入字形）；RTL 未验证。pdf.js 移出仓库（2026-10）后竖排与 tagged 文本既无
+    fixture 也无对照读取者：pdf-lib 写不出 Identity-V，上面的比对脚本随 pdf.js 删除。
   - [x] **4.3d 嵌入字体注册（浏览器能直接用的部分）。** 核心 `embedded_fonts(page)`：遍历页面对象
     （递归进表单 XObject，深度上限 32），按字体去重，只取 PDFium 确实用上了的嵌入字体
     （`FPDFFont_GetIsEmbedded`；FreeType 加载失败而改用替代字体的不算，那时拿到的数据是替代

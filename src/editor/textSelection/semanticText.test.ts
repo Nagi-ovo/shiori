@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { TextContent } from "pdfjs-dist/types/src/display/api";
+import type { PdfPageTextContent as TextContent } from "../../pdf/engine/text";
 import {
   MAX_SEMANTIC_MARKED_CONTENT_DEPTH,
   MAX_SEMANTIC_SOURCE_CHARACTERS_PER_PAGE,
