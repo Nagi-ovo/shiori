@@ -1,7 +1,7 @@
 // Shared helper for the /download/* and /api/release Pages Functions.
 //
 // Both routes need the same thing: the latest release from
-// Nagi-ovo/shiori-releases, with its asset list. Hitting the GitHub API
+// Nagi-ovo/shiori, with its asset list. Hitting the GitHub API
 // per request would burn through the 60 req/hr/IP anonymous limit on
 // any traffic spike, so the response gets cached at the edge for 5
 // minutes. New releases become discoverable within that TTL without
@@ -16,18 +16,16 @@ import { parseGithubSha256 } from "./_cliRelease";
 // from separate CI runs; a single latest release may not contain every
 // platform's asset.
 //
-// Releases live in Nagi-ovo/shiori, which used to be Nagi-ovo/shiori-releases.
-// api.github.com answers the old name with a 301 to /repositories/<id>/...,
-// same origin, which fetch follows with the token still attached; naming the
-// repo directly only saves that hop.
+// Releases live in Nagi-ovo/shiori, which used to be Nagi-ovo/shiori-releases;
+// the old name still redirects, but naming the repo directly saves the 301.
 const RELEASES_API =
-  "https://api.github.com/repos/Nagi-ovo/shiori-releases/releases?per_page=10";
+  "https://api.github.com/repos/Nagi-ovo/shiori/releases?per_page=10";
 
 // Every release ever published, for the lifetime download total. GitHub
 // caps a page at 100, which still covers every release. Revisit once it
 // stops being true.
 const ALL_RELEASES_API =
-  "https://api.github.com/repos/Nagi-ovo/shiori-releases/releases?per_page=100";
+  "https://api.github.com/repos/Nagi-ovo/shiori/releases?per_page=100";
 
 export const CACHE_TTL_SECONDS = 300;
 
