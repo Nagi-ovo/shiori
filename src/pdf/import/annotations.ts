@@ -63,8 +63,8 @@ export type PdfAnnotationImportOptions = {
   onSourceInfo?: (info: { encrypted: boolean | null }) => void;
   /**
    * Reports every source annotation Shiori takes over from the page raster,
-   * so an engine other than pdf.js can hide the same ones. `rect` is the
-   * annotation's /Rect as pdf.js normalizes it.
+   * so the engine can hide the same ones. `rect` is the annotation's /Rect,
+   * normalized.
    */
   onSuppress?: (
     sourceIndex: number,
@@ -89,8 +89,11 @@ export type PdfAnnotationImportOptions = {
 const SHIORI_DRAWN_SUBTYPES = new Set(["Link", "Popup"]);
 
 /**
- * Turns the source PDF's annotations into editable overlays, read through
- * pdf.js (the CLI's reader; the app reads the file, `importFileAnnotations`).
+ * Turns the source PDF's annotations into editable overlays, read from the
+ * file with pdf-lib (./sourceAnnotations, in the shape pdf.js listed them so
+ * imports and draft ids carry over). An encrypted file is read through the
+ * engine's decrypted copy (`decryptedBytes`); without one, or for a file
+ * pdf-lib cannot parse, nothing is imported.
  *
  * Ownership is decided in exactly one place: every annotation Shiori takes
  * over, and so draws itself, is reported through `onSuppress`, and the
@@ -98,60 +101,11 @@ const SHIORI_DRAWN_SUBTYPES = new Set(["Link", "Popup"]);
  * ellipses, polygons, stamps, file attachments, form fields — are drawn from
  * their own appearance streams.
  */
-/** What of pdf.js's document proxy the pdf.js path reads (the engine seam keeps its type out). */
-export type PdfjsAnnotationSource = {
-  getData: () => Promise<Uint8Array>;
-  getPage: (pageNumber: number) => Promise<{ getAnnotations: (options: { intent: string }) => Promise<unknown[]> }>;
-};
-
-export async function importPdfAnnotations(
-  doc: PdfjsAnnotationSource,
-  pages: PageModel[],
-  sourceBytes?: Uint8Array,
-  now: number = Date.now(),
-  options: PdfAnnotationImportOptions = {},
-): Promise<Overlay[]> {
-  const proxy = doc;
-  return importAnnotations(
-    {
-      bytes: async () => sourceBytes ?? (await proxy.getData()),
-      pdfjsAnnotations: async (sourceIndex) =>
-        (await (await proxy.getPage(sourceIndex + 1)).getAnnotations({
-          intent: "display",
-        })) as PdfjsAnnotation[],
-    },
-    pages,
-    now,
-    options,
-  );
-}
-
-/**
- * The same import for an engine that draws with PDFium: annotations only
- * ever come from the file itself (decrypted by the engine when encrypted),
- * and the ones Shiori takes over are reported through `onSuppress` for the
- * engine to hide. A file pdf-lib cannot parse imports nothing.
- */
 export async function importFileAnnotations(
   pages: PageModel[],
   bytes: Uint8Array,
   now: number = Date.now(),
   options: PdfAnnotationImportOptions = {},
-): Promise<Overlay[]> {
-  return importAnnotations({ bytes: async () => bytes }, pages, now, options);
-}
-
-type AnnotationSource = {
-  bytes: () => Promise<Uint8Array>;
-  /** pdf.js's listing, for a file the file reader cannot read; none means import nothing. */
-  pdfjsAnnotations?: (sourceIndex: number) => Promise<PdfjsAnnotation[]>;
-};
-
-async function importAnnotations(
-  source: AnnotationSource,
-  pages: PageModel[],
-  now: number,
-  options: PdfAnnotationImportOptions,
 ): Promise<Overlay[]> {
   const overlays: Overlay[] = [];
   // Thread replies whose parent callout may appear anywhere in its page's
@@ -171,7 +125,7 @@ async function importAnnotations(
   };
   let rawPdf: PDFDocument | null = null;
   try {
-    rawPdf = await loadRawPdf(await source.bytes());
+    rawPdf = await loadRawPdf(bytes);
     const encrypted = rawPdf?.isEncrypted ?? null;
     if (rawPdf?.isEncrypted && options.decryptedBytes) {
       const clear = await loadRawPdf(await options.decryptedBytes()).catch(() => null);
@@ -179,8 +133,9 @@ async function importAnnotations(
     }
     if (rawPdf) rawData = { ...readRawCallouts(rawPdf, pages), encrypted };
   } catch {
-    // Raw scanning is an enhancement for FreeTextCallout semantics. pdf.js
-    // import remains available when bytes cannot be copied or parsed.
+    // The raw pass (callouts, /IC, anchors, replies) is best effort: if it
+    // fails, the annotations still import without what it adds. A file
+    // pdf-lib cannot parse at all imports nothing; the engine still draws it.
   }
   // The file itself, read with pdf-lib (./sourceAnnotations), unless it is
   // still encrypted: pdf-lib cannot decrypt its strings.
@@ -195,7 +150,7 @@ async function importAnnotations(
       options.overlayPageIds.has(page.id);
     const annotations = fileReader
       ? (readSourceAnnotations(fileReader, page.sourceIndex) ?? [])
-      : ((await source.pdfjsAnnotations?.(page.sourceIndex)) ?? []);
+      : [];
     const pageCallouts = rawData.callouts.get(page.sourceIndex) ?? [];
     const pageInteriorColors = rawData.interiorColors.get(page.sourceIndex);
     const pageAnchors = rawData.anchors.get(page.sourceIndex);
@@ -635,7 +590,7 @@ function rawCalloutFromDict(
     pdfArrayNumbers(dict.lookupMaybe(PDFName.of("CL"), PDFArray), 6),
   );
   // A malformed callout remains importable through the ordinary FreeText
-  // path. Returning null here intentionally lets pdf.js perform that fallback.
+  // path. Returning null here intentionally leaves it to that fallback.
   if (!outerRect || !standardLeader) return null;
 
   const shio = dict.lookupMaybe(PDFName.of("Shio"), PDFDict);

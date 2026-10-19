@@ -19,11 +19,13 @@ import {
  * (docs/PLAN-RUST-PDF-CORE-2026-09.md, stage 4.4). Only the subtypes the
  * importer turns into overlays or draws itself are read, and of those only
  * the fields it consumes; each follows pdf.js 5.6's annotation.js so an
- * import reads the same whichever reader ran. The ids are pdf.js's too
- * (`12R` for an indirect annotation), so drafts keyed by them carry over.
+ * import reads as it did when pdf.js listed the annotations. The ids are
+ * pdf.js's too (`12R` for an indirect annotation), so drafts keyed by them
+ * carry over.
  *
  * pdf-lib cannot decrypt, so an encrypted file is not read here
- * (`readSourceAnnotations` returns null) and the caller asks its engine.
+ * (`readSourceAnnotations` returns null); the importer reads the engine's
+ * decrypted copy instead.
  */
 
 export type SourceAnnotation = Record<string, unknown>;

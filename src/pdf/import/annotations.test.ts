@@ -5,9 +5,9 @@ import {
   PDFHexString,
   PDFName,
   PDFNumber,
+  PDFRef,
   PDFString,
 } from "pdf-lib";
-import type { PdfjsAnnotationSource as PDFDocumentProxy } from "./annotations";
 import type { PageModel } from "../model/types";
 import {
   NOTE_DEFAULT_HEIGHT_PT,
@@ -16,7 +16,6 @@ import {
 import {
   annotationToOverlay,
   importFileAnnotations,
-  importPdfAnnotations,
   importedAnnotationOverlayId,
   parsePdfDateString,
 } from "./annotations";
@@ -46,13 +45,9 @@ describe("PDF annotation import", () => {
     encrypt.set(PDFName.of("V"), PDFNumber.of(2));
     source.context.trailerInfo.Encrypt = source.context.register(encrypt);
     const bytes = await source.save();
-    const proxy = {
-      annotationStorage: { setValue: () => undefined },
-      getPage: async () => ({ getAnnotations: async () => [] }),
-    } as unknown as PDFDocumentProxy;
     let encrypted: boolean | null = null;
 
-    await importPdfAnnotations(proxy, [page], bytes, IMPORTED_AT, {
+    await importFileAnnotations([page], bytes, IMPORTED_AT, {
       onSourceInfo: (info) => {
         encrypted = info.encrypted;
       },
@@ -455,8 +450,7 @@ describe("PDF annotation import", () => {
       shioLeader: [90, 145, 130, 165, 160, 165],
       shioLeaderKind: "Quadratic",
     });
-    const overlays = await importPdfAnnotations(
-      fixture.proxy,
+    const overlays = await importFileAnnotations(
       [offsetPage],
       fixture.bytes,
       IMPORTED_AT,
@@ -465,7 +459,7 @@ describe("PDF annotation import", () => {
     expect(overlays).toHaveLength(1);
     expect(overlays[0]).toMatchObject({
       type: "callout",
-      id: `pdf-annotation-0-${fixture.pdfjsId}`,
+      id: `pdf-annotation-0-${fixture.ref.objectNumber}R`,
       rect: { x: 110, y: 40, w: 90, h: 50 },
       targetRects: [{ x: 20, y: 30, w: 40, h: 15 }],
       leader: [
@@ -492,8 +486,7 @@ describe("PDF annotation import", () => {
     const fixture = await makeAnchoredHighlightFixture({
       anchor: { Q: "the variance term σ²", Pg: 2, Occ: 3 },
     });
-    const overlays = await importPdfAnnotations(
-      fixture.proxy,
+    const overlays = await importFileAnnotations(
       [page],
       fixture.bytes,
     );
@@ -509,8 +502,7 @@ describe("PDF annotation import", () => {
     const fixture = await makeAnchoredHighlightFixture({
       anchor: { Q: "selected words", Pg: 1 },
     });
-    const overlays = await importPdfAnnotations(
-      fixture.proxy,
+    const overlays = await importFileAnnotations(
       [page],
       fixture.bytes,
     );
@@ -528,9 +520,8 @@ describe("PDF annotation import", () => {
     ];
     for (const anchor of cases) {
       const fixture = await makeAnchoredHighlightFixture({ anchor });
-      const overlays = await importPdfAnnotations(
-        fixture.proxy,
-        [page],
+      const overlays = await importFileAnnotations(
+      [page],
         fixture.bytes,
       );
       expect(overlays).toHaveLength(1);
@@ -540,8 +531,7 @@ describe("PDF annotation import", () => {
 
   test("folds Shiori-exported /IRT replies back into the callout thread", async () => {
     const fixture = await makeThreadedCalloutFixture();
-    const overlays = await importPdfAnnotations(
-      fixture.proxy,
+    const overlays = await importFileAnnotations(
       [page],
       fixture.bytes,
     );
@@ -564,8 +554,7 @@ describe("PDF annotation import", () => {
 
   test("keeps an orphaned Shiori reply as a note when its callout is gone", async () => {
     const fixture = await makeThreadedCalloutFixture({ dropCallout: true });
-    const overlays = await importPdfAnnotations(
-      fixture.proxy,
+    const overlays = await importFileAnnotations(
       [page],
       fixture.bytes,
     );
@@ -611,8 +600,7 @@ describe("PDF annotation import", () => {
       shioLeader: [60, 60, 90, 75, 120, 80],
       shioLeaderKind: "Quadratic",
     });
-    const overlays = await importPdfAnnotations(
-      fixture.proxy,
+    const overlays = await importFileAnnotations(
       [page],
       fixture.bytes,
     );
@@ -732,24 +720,9 @@ describe("square interior colour", () => {
     const ref = context.register(square);
     pdfPage.node.addAnnot(ref);
     const bytes = await pdf.save({ useObjectStreams: false });
-    const pdfjsId = `${ref.objectNumber}R`;
 
-    const proxy = {
-      getPage: async () => ({
-        getAnnotations: async () => [
-          {
-            id: pdfjsId,
-            subtype: "Square",
-            annotationType: 5,
-            rect: [20, 20, 120, 100],
-            color: [176, 59, 46],
-            borderStyle: { width: 2 },
-          },
-        ],
-      }),
-    } as unknown as PDFDocumentProxy;
 
-    const overlays = await importPdfAnnotations(proxy, [page], bytes);
+    const overlays = await importFileAnnotations([page], bytes);
     const rect = overlays.find((o) => o.type === "rect");
     if (!rect || rect.type !== "rect") throw new Error("expected a rect");
     expect(rect.fill).toBe("#ff0000");
@@ -768,30 +741,16 @@ describe("square interior colour", () => {
     pdfPage.node.addAnnot(ref);
     const bytes = await pdf.save({ useObjectStreams: false });
 
-    const proxy = {
-      getPage: async () => ({
-        getAnnotations: async () => [
-          {
-            id: `${ref.objectNumber}R`,
-            subtype: "Square",
-            annotationType: 5,
-            rect: [20, 20, 120, 100],
-            color: [176, 59, 46],
-            borderStyle: { width: 2 },
-          },
-        ],
-      }),
-    } as unknown as PDFDocumentProxy;
 
-    const overlays = await importPdfAnnotations(proxy, [page], bytes);
+    const overlays = await importFileAnnotations([page], bytes);
     const rect = overlays.find((o) => o.type === "rect");
     if (!rect || rect.type !== "rect") throw new Error("expected a rect");
     expect(rect.fill).toBeNull();
   });
 });
 
-// The page canvas renders with AnnotationMode.ENABLE_STORAGE, so anything the
-// importer does NOT flag here gets painted by pdf.js. Ownership must therefore
+// The engine draws every annotation the importer does NOT claim here into
+// the page raster. Ownership must therefore
 // be exact in both directions: flag too little and an imported annotation is
 // drawn twice (flat bitmap + live overlay); flag too much and an annotation
 // Shiori cannot edit disappears from the page even though export keeps it.
@@ -858,11 +817,10 @@ describe("annotation ownership", () => {
 });
 
 // A real one-page PDF holding a Highlight annotation whose Shio dictionary
-// carries anchor provenance, plus the matching pdf.js view of it. Exercises
-// the raw-pass -> pdf.js join in importPdfAnnotations.
+// carries anchor provenance. Exercises the raw pass's join onto the listing.
 async function makeAnchoredHighlightFixture(options: {
   anchor: Record<string, unknown>;
-}): Promise<{ bytes: Uint8Array; proxy: PDFDocumentProxy }> {
+}): Promise<{ bytes: Uint8Array }> {
   const pdf = await PDFDocument.create();
   const pdfPage = pdf.addPage([300, 400]);
   const context = pdf.context;
@@ -886,32 +844,16 @@ async function makeAnchoredHighlightFixture(options: {
   const ref = context.register(annotation);
   pdfPage.node.addAnnot(ref);
   const bytes = await pdf.save({ useObjectStreams: false });
-  const pdfjsId = `${ref.objectNumber}R`;
-  const proxy = {
-    getPage: async () => ({
-      getAnnotations: async () => [
-        {
-          id: pdfjsId,
-          annotationType: 9,
-          rect: [10, 20, 110, 40],
-          quadPoints: {
-            0: 10, 1: 40, 2: 110, 3: 40, 4: 10, 5: 20, 6: 110, 7: 20,
-          },
-          color: { 0: 255, 1: 230, 2: 51 },
-          opacity: 0.35,
-        },
-      ],
-    }),
-  } as unknown as PDFDocumentProxy;
-  return { bytes, proxy };
+  return { bytes };
 }
 
 // A callout plus two Shiori-exported /IRT Text replies (agent then user),
-// mirroring what export writes. `dropCallout` removes the parent from BOTH
-// passes (raw bytes keep the replies) to exercise the orphan fallback.
+// mirroring what export writes. `dropCallout` leaves the parent out of the
+// page's /Annots (the replies still point at it) to exercise the orphan
+// fallback.
 async function makeThreadedCalloutFixture(options?: {
   dropCallout?: boolean;
-}): Promise<{ bytes: Uint8Array; proxy: PDFDocumentProxy }> {
+}): Promise<{ bytes: Uint8Array }> {
   const pdf = await PDFDocument.create();
   const pdfPage = pdf.addPage([300, 400]);
   const context = pdf.context;
@@ -938,7 +880,6 @@ async function makeThreadedCalloutFixture(options?: {
     }),
   });
   const calloutRef = context.register(calloutDict);
-  const calloutId = `${calloutRef.objectNumber}R`;
   if (!options?.dropCallout) pdfPage.node.addAnnot(calloutRef);
 
   const reply = (
@@ -968,65 +909,23 @@ async function makeThreadedCalloutFixture(options?: {
     dict.set(PDFName.of("IRT"), calloutRef);
     const ref = context.register(dict);
     pdfPage.node.addAnnot(ref);
-    return `${ref.objectNumber}R`;
   };
-  const firstId = reply(
+  reply(
     "turn-1",
     "Agent",
     "Agent turn",
     "Claude Code",
     "D:20260728030000Z",
   );
-  const secondId = reply("turn-2", "User", "User turn");
+  reply("turn-2", "User", "User turn");
 
   const bytes = await pdf.save({ useObjectStreams: false });
-  const pdfjsAnnotations: Record<string, unknown>[] = [
-    ...(options?.dropCallout
-      ? []
-      : [
-          {
-            id: calloutId,
-            subtype: "FreeText",
-            rect: [60, 120, 260, 220],
-            contentsObj: { str: "Root question" },
-            defaultAppearanceData: {
-              fontName: "SHelv",
-              fontSize: 12,
-              fontColor: [176, 59, 46],
-            },
-            textAlignment: 0,
-          },
-        ]),
-    {
-      id: firstId,
-      annotationType: 1,
-      rect: [160, 170, 180, 190],
-      contentsObj: { str: "Agent turn" },
-      titleObj: { str: "Claude Code" },
-      creationDate: "D:20260728030000Z",
-      inReplyTo: calloutId,
-      replyType: "R",
-    },
-    {
-      id: secondId,
-      annotationType: 1,
-      rect: [160, 170, 180, 190],
-      contentsObj: { str: "User turn" },
-      inReplyTo: calloutId,
-      replyType: "R",
-    },
-  ];
-  const proxy = {
-    getPage: async () => ({
-      getAnnotations: async () => pdfjsAnnotations,
-    }),
-  } as unknown as PDFDocumentProxy;
-  return { bytes, proxy };
+  return { bytes };
 }
 
 async function makeRawCalloutFixture(
   options: RawCalloutFixtureOptions,
-): Promise<{ bytes: Uint8Array; proxy: PDFDocumentProxy; pdfjsId: string }> {
+): Promise<{ bytes: Uint8Array; ref: PDFRef }> {
   const pdf = await PDFDocument.create();
   const pdfPage = pdf.addPage([300, 400]);
   const context = pdf.context;
@@ -1054,26 +953,7 @@ async function makeRawCalloutFixture(
   const ref = context.register(annotation);
   pdfPage.node.addAnnot(ref);
   const bytes = await pdf.save({ useObjectStreams: false });
-  const pdfjsId = `${ref.objectNumber}R`;
-  const proxy = {
-    getPage: async () => ({
-      getAnnotations: async () => [
-        {
-          id: pdfjsId,
-          subtype: "FreeText",
-          rect: options.rect,
-          contentsObj: { str: "Callout text" },
-          defaultAppearanceData: {
-            fontName: "SHelv",
-            fontSize: 12,
-            fontColor: [176, 59, 46],
-          },
-          textAlignment: 0,
-        },
-      ],
-    }),
-  } as unknown as PDFDocumentProxy;
-  return { bytes, proxy, pdfjsId };
+  return { bytes, ref };
 }
 
 describe("links with Named actions", () => {
@@ -1091,11 +971,8 @@ describe("links with Named actions", () => {
       pdfPage.node.addAnnot(context.register(context.obj({ Type: "Annot", Subtype: "Link", ...annot })));
     }
     const bytes = await pdf.save({ useObjectStreams: false });
-    const proxy = {
-      getPage: async () => ({ getAnnotations: async () => [] }),
-    } as unknown as PDFDocumentProxy;
     const reported: Array<[number, unknown]> = [];
-    await importPdfAnnotations(proxy, [page], bytes, 0, {
+    await importFileAnnotations([page], bytes, 0, {
       onNamedLinks: (sourceIndex, links) => reported.push([sourceIndex, links]),
     });
     expect(reported).toEqual([
