@@ -257,6 +257,16 @@ describe("openDocument", () => {
     expect(clean?.textLossy).toBeUndefined();
   });
 
+  test("a byte order mark is kept on the tab, not in the text the editor parses", async () => {
+    const store = workspace();
+    const { ports } = fakePorts(store);
+    const withBom = bytes(0xef, 0xbb, 0xbf, ...new TextEncoder().encode("# Hi"));
+
+    await openDocument({ kind: "markdown", name: "bom.md", size: withBom.length, bytes: withBom, path: "/n/bom.md" }, {}, ports);
+
+    expect(store.getState().tabs[0]).toMatchObject({ text: "# Hi", textBom: true });
+  });
+
   test("a rejected document restore marks its tab unavailable", async () => {
     const tab = { id: "t", kind: "docx", title: "a.docx", status: "loading", source: { type: "path", path: "/a.docx" } } as WorkspaceRuntimeTab;
     const store = workspace([tab], "t");

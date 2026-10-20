@@ -6,6 +6,7 @@ import type { WriteBackResult, WriteBackTarget } from "../../platform/writeBack"
 import { createSerialQueue } from "../../shared/serialQueue";
 import { sha256Hex } from "../../storage/hash";
 import type { WorkspaceStore } from "../workspaceStore";
+import { encodeTextDocument, textDocumentContents } from "./textEncoding";
 
 export type TextKind = Extract<DocumentKind, "markdown" | "html">;
 
@@ -79,7 +80,8 @@ export function createTextSources(ports: TextSourcePorts) {
 
   async function persistNow(tabId: string, save: PendingSave): Promise<void> {
     if (seqs.get(tabId) !== save.seq) return;
-    const bytes = new TextEncoder().encode(save.text);
+    const bom = store.getState().tabs.find((tab) => tab.id === tabId)?.textBom;
+    const bytes = encodeTextDocument(save.text, bom);
     const hash = await sha256Hex(bytes);
     const cacheId = await ports.cache.put({
       kind: save.kind,
@@ -235,7 +237,7 @@ export function createTextSources(ports: TextSourcePorts) {
         return Promise.resolve();
       }
       const mime = tab.kind === "html" ? "text/html" : "text/markdown";
-      const bytes = new TextEncoder().encode(text);
+      const bytes = encodeTextDocument(text, tab.textBom);
       // Not awaited before the write: the browser grants File System Access
       // write permission only during the click's transient activation, which
       // an IndexedDB flush can outlive. The copy holds the same text anyway.
@@ -267,7 +269,10 @@ export function createTextSources(ports: TextSourcePorts) {
           return;
         }
         try {
-          const result = await ports.writeBack.write(target, text);
+          const result = await ports.writeBack.write(
+            target,
+            textDocumentContents(text, tab.textBom),
+          );
           if (result.status === "written") {
             await markSaved();
             ports.notify({

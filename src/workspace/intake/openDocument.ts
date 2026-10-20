@@ -153,6 +153,7 @@ export async function openNonPdf(
     hash: contentHash,
     text: decoded?.text,
     ...(decoded?.lossy ? { textLossy: true } : {}),
+    ...(decoded?.bom ? { textBom: true } : {}),
     bytes: isBinary ? sourcePayload.bytes : undefined,
     textView: options.textView ?? patchWorkspaceTextView(undefined, {}),
     status: "loaded",

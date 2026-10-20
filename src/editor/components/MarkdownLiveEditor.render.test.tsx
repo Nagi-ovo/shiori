@@ -170,6 +170,41 @@ describe("MarkdownLiveEditor integration", () => {
     expect(currentText).toBe("Draft");
   });
 
+  test("an edit keeps a CRLF document's line endings, across a remount too", () => {
+    let currentText = "# Title\r\n\r\nbody\r\n";
+    const editor = (key: string) => (
+      <MarkdownLiveEditor
+        key={key}
+        documentId="crlf-document"
+        title="Markdown editor"
+        text={currentText}
+        zoom={1}
+        appearance={DEFAULT_MARKDOWN_APPEARANCE}
+        scrollTop={0}
+        onScrollTopChange={noop}
+        onTextChange={(text) => {
+          currentText = text;
+        }}
+      />
+    );
+    const first = render(editor("first"));
+    const firstEditor = editorView(first.container);
+    act(() => {
+      firstEditor.dispatch({ changes: { from: firstEditor.state.doc.length, insert: "more\nlines" } });
+    });
+    expect(currentText).toBe("# Title\r\n\r\nbody\r\nmore\r\nlines");
+    first.unmount();
+
+    const second = render(editor("second"));
+    const secondEditor = editorView(second.container);
+    act(() => {
+      secondEditor.focus();
+      runEditorCommand("undo");
+    });
+
+    expect(currentText).toBe("# Title\r\n\r\nbody\r\n");
+  });
+
   test("select all keeps folded front matter in the source selection", () => {
     const text = ["---", "title: Notes", "---", "", "Body"].join("\n");
     const view = render(

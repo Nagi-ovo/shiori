@@ -47,7 +47,7 @@ function setup(tab = markdown(), overrides: Partial<TextSourcePorts> = {}) {
     cache: {
       put: async (entry) => {
         const id = `copy-${++nextCache}`;
-        cache.set(id, new TextDecoder().decode(entry.bytes));
+        cache.set(id, new TextDecoder("utf-8", { ignoreBOM: true }).decode(entry.bytes));
         return id;
       },
       remove: (id) => removed.push(id),
@@ -213,6 +213,17 @@ describe("saving to the source file", () => {
     expect(writes).toEqual([]);
     expect(tabNow().textDirty).toBe(true);
     expect(notices).toEqual([{ kind: "saveEncodingUnsupported", title: "notes.md" }]);
+  });
+
+  test("a file that began with a byte order mark keeps it, in the copy and on disk", async () => {
+    const { sources, cache, writes, pause } = setup(markdown({ text: "hello", textBom: true }));
+
+    sources.edit("md", "hello world");
+    await pause();
+    await sources.saveToSource("md");
+
+    expect([...cache.values()]).toEqual(["\uFEFFhello world"]);
+    expect(writes).toEqual(["\uFEFFhello world"]);
   });
 
   test("a clean document is not written", async () => {

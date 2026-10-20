@@ -46,6 +46,12 @@ export type WorkspaceRuntimeTab = WorkspaceTabMeta & {
    */
   textLossy?: boolean;
   /**
+   * The file began with a UTF-8 byte order mark, which `text` leaves out and
+   * every encode puts back. Runtime only: the working copy keeps the mark, so
+   * a restore re-derives it from the bytes.
+   */
+  textBom?: boolean;
+  /**
    * Binary non-PDF documents (`docx`) live here instead of `text`. There is no
    * working copy and no save-back path for them yet, so these bytes are read
    * only — the viewer renders them and nothing writes them.
