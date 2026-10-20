@@ -13,7 +13,6 @@ import {
 import { LiveAppError, remoteError, unavailable } from "./liveAppError";
 import {
   CONNECT_FAILURE_MESSAGE,
-  readLiveAppDescriptor,
   readOpenFileWithinLimit,
   withLiveAppDescriptor,
   type LiveAppClientOptions,
@@ -95,10 +94,16 @@ export async function annotateLiveApp(
   specPath: string | null,
   options: LiveAnnotateOptions = {},
 ): Promise<LiveAnnotateResponse> {
-  const descriptor = await readLiveAppDescriptor(options);
   // Read context first so every mutation is anchored to the document the user
   // can currently see. The server rechecks this same target during POST.
-  const context = await requestLiveAppContext(descriptor, options);
+  // Only this read may rediscover: a POST connect failure is OUTCOME_UNKNOWN.
+  const { descriptor, context } = await withLiveAppDescriptor(
+    options,
+    async (descriptor) => ({
+      descriptor,
+      context: await requestLiveAppContext(descriptor, options),
+    }),
+  );
   const expectedHash = options.baseSha256?.trim().toLowerCase();
   if (expectedHash != null) {
     if (!SHA256_PATTERN.test(expectedHash) || expectedHash !== context.sha256) {
