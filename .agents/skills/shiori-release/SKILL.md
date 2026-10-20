@@ -130,8 +130,11 @@ node .agents/skills/shiori-release/scripts/verify-updater-manifest.mjs \
   --platform windows-x86_64
 ```
 
-The verifier must show both:
+The verifier must show all of:
 
+- the manifest has a version, and every desktop key (`darwin-aarch64`,
+  `darwin-x86_64`, `windows-x86_64`, `linux-x86_64`) points at that version's
+  asset (`/vX.Y.Z/…_X.Y.Z_…`), not an older release's validly signed one
 - manifest signature equals the remote `.sig` asset
 - minisign verification passes against the asset downloaded from the manifest
   URL
