@@ -60,6 +60,13 @@ impl Core {
             // c_ulong is u64 here but u32 on Windows.
             #[allow(clippy::useless_conversion)]
             let code = u64::from(unsafe { self.lib.FPDF_GetLastError() });
+            // pdfium-render's wasm bridge copied the file into PDFium's heap
+            // for this load and frees that copy only in FPDF_CloseDocument,
+            // which PDFium lets take a null document.
+            #[cfg(target_arch = "wasm32")]
+            unsafe {
+                self.lib.FPDF_CloseDocument(handle)
+            };
             return Err(match code {
                 FPDF_ERR_PASSWORD => CoreError::Password,
                 FPDF_ERR_SECURITY => CoreError::Pdfium("unsupported security handler".into()),

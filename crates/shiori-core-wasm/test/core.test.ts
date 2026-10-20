@@ -14,14 +14,27 @@ const ROOT = join(import.meta.dir, "../../..");
 const GENERATED = join(ROOT, "src/pdf/engine/wasm/generated");
 const FIXTURE = readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures/text.pdf"));
 let wasm: WasmCore;
+/** PDFium's heap, caught as its module instantiates. */
+let pdfiumMemory: WebAssembly.Memory | undefined;
 
 beforeAll(async () => {
-  wasm = await loadWasmCore({
-    pdfium: readFileSync(join(GENERATED, "pdfium.wasm")),
-    core: readFileSync(join(GENERATED, "shiori_core_wasm_bg.wasm")),
-    fonts: [{ file: "NotoSansSC-Regular.otf", bytes: readFileSync(join(ROOT, "src/assets/fonts/NotoSansSC-Regular.otf")) }],
-    require: createRequire(import.meta.url),
-  });
+  const instantiate = WebAssembly.instantiate;
+  WebAssembly.instantiate = (async (...args: Parameters<typeof instantiate>) => {
+    const result = await instantiate(...args);
+    const { exports } = result instanceof WebAssembly.Instance ? result : result.instance;
+    if ("FPDF_LoadMemDocument64" in exports && exports.memory instanceof WebAssembly.Memory) pdfiumMemory = exports.memory;
+    return result;
+  }) as typeof instantiate;
+  try {
+    wasm = await loadWasmCore({
+      pdfium: readFileSync(join(GENERATED, "pdfium.wasm")),
+      core: readFileSync(join(GENERATED, "shiori_core_wasm_bg.wasm")),
+      fonts: [{ file: "NotoSansSC-Regular.otf", bytes: readFileSync(join(ROOT, "src/assets/fonts/NotoSansSC-Regular.otf")) }],
+      require: createRequire(import.meta.url),
+    });
+  } finally {
+    WebAssembly.instantiate = instantiate;
+  }
 });
 
 describe("shiori-core in wasm", () => {
@@ -46,6 +59,20 @@ describe("shiori-core in wasm", () => {
       fromWasm.free();
       native.close();
     }
+  });
+
+  test("a failed open leaves no copy of the file in PDFium's heap", () => {
+    // Every wrong password and every damaged file: pdfium-render copies the
+    // bytes into PDFium's heap for each load, and only closing frees them.
+    const damaged = new Uint8Array(8 << 20);
+    damaged.set(Buffer.from("%PDF-1.7\n"));
+    const heap = () => pdfiumMemory!.buffer.byteLength;
+    expect(() => wasm.CoreDocument.open(damaged, undefined)).toThrow("damaged");
+    const before = heap();
+    for (let i = 0; i < 12; i += 1) {
+      expect(() => wasm.CoreDocument.open(damaged, undefined)).toThrow("damaged");
+    }
+    expect(heap() - before).toBeLessThan(damaged.length);
   });
 
   test("draws a page with embedded fonts pixel for pixel as the native core does", async () => {
