@@ -131,13 +131,19 @@ export function PageTiles({
     const scaleChanged =
       previous !== null && (previous.scale !== scale || previous.dpr !== dpr);
     if (scaleChanged) {
-      releaseStale();
       for (const [key, tile] of previous.tiles) {
         if (tile.ready) continue;
         releaseTile(previous, tile);
         previous.tiles.delete(key);
       }
-      staleRef.current = previous;
+      // A layer with nothing finished is no stand-in: inside a stream of
+      // changes, keep the stale layer that still holds the sharp tiles.
+      if (previous.tiles.size > 0) {
+        releaseStale();
+        staleRef.current = previous;
+      } else {
+        releaseLayer(previous);
+      }
       currentRef.current = null;
     }
     const stale = staleRef.current;

@@ -355,6 +355,28 @@ describe("PageCanvas lifecycle", () => {
       await waitFor(() => expect(tileRequests).toHaveLength(25));
     });
 
+    // A window resize at fit width re-fits the scale every frame: the sharp
+    // tiles of the last settled scale must outlast the whole stream, not
+    // only its first step.
+    test("finished tiles stay on screen through a stream of scale changes", async () => {
+      setDpr(2);
+      visible = screen;
+      const view = render(<PageCanvas {...tiledPage(8)} />);
+      await waitFor(() => expect(tileRequests).toHaveLength(25));
+      const sharp = [...tileRequests];
+      act(() => {
+        for (const tile of sharp) tile.finish();
+      });
+      await pause(0);
+
+      for (const scale of [7.9, 7.8, 7.7]) {
+        view.rerender(<PageCanvas {...tiledPage(scale)} />);
+        await pause(20);
+      }
+      expect(sharp.every((tile) => tile.canvas.width > 0)).toBe(true);
+      expect(sharp.every((tile) => tile.canvas.isConnected)).toBe(true);
+    });
+
     test("unmounting frees every tile bitmap", async () => {
       setDpr(2);
       visible = screen;
