@@ -135,6 +135,7 @@ function readAnnotation(
       break;
     case "FreeText":
       data.defaultAppearanceData = freeTextAppearance(dict, appearance, acroFormDA);
+      data.rotation = annotationRotation(dict);
       break;
     case "Square":
       // Without an appearance pdf.js draws one and sets the rect to its
@@ -326,6 +327,14 @@ function borderWidth(dict: PDFDict, rect: readonly number[]): number {
 
 function borderWidthOf(data: SourceAnnotation): number {
   return (data.borderStyle as { width: number }).width;
+}
+
+/** pdf.js's setRotation: /Rotate as 0, 90, 180 or 270; anything else is 0. */
+function annotationRotation(dict: PDFDict): number {
+  const value = dict.lookup(PDFName.of("Rotate"));
+  const angle = value instanceof PDFNumber ? value.asNumber() : 0;
+  if (!Number.isInteger(angle) || angle % 90 !== 0) return 0;
+  return ((angle % 360) + 360) % 360;
 }
 
 function opacityOrOne(dict: PDFDict): number {

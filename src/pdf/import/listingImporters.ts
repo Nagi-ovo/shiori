@@ -223,7 +223,17 @@ function importFreeText(
 ): StampOverlay | TextOverlay | null {
   const rect = rectFromAnnot(annot);
   if (!rect) return null;
-  const localRect = pdfRectToPageLocal(page, rect);
+  // A FreeText's own /Rotate (Acrobat writes the page's, so the text reads
+  // upright on a rotated page) turns its content within /Rect. Shiori keeps
+  // the box unrotated and turns it by `angle` (clockwise, the opposite sense)
+  // about its centre, so a quarter turn swaps the box's sides there.
+  const rotation = numberValue(annot.rotation, 0);
+  const box =
+    rotation % 180 === 0
+      ? rect
+      : { x: rect.x + (rect.w - rect.h) / 2, y: rect.y + (rect.h - rect.w) / 2, w: rect.h, h: rect.w };
+  const localRect = pdfRectToPageLocal(page, box);
+  const angle = rotation ? { angle: 360 - rotation } : {};
   const appearance = recordValue(annot.defaultAppearanceData);
   const text = contentsText(annot);
   const stampKind = stampKindFromText(text);
@@ -237,6 +247,7 @@ function importFreeText(
       rect: localRect,
       color: colorToHex(annot.color ?? appearance?.fontColor, "#1a1815"),
       strokeWidth: numberValue(border?.width, 1.8),
+      ...angle,
     };
   }
   const appearanceStyle = freeTextStyle(appearance);
@@ -257,6 +268,7 @@ function importFreeText(
       richTextStyle.align ??
       alignFromNumber(numberValue(annot.textAlignment, 0)),
     fontFamily: richTextStyle.fontFamily ?? appearanceStyle.fontFamily,
+    ...angle,
   };
 }
 
