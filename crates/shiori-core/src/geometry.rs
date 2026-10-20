@@ -1,5 +1,7 @@
 //! A page's visible box and rotation, in PDF user space.
 
+use pdfium_render::prelude::FS_RECTF;
+
 use crate::{normalized, CoreError, Document, Rect};
 
 /// One page's visible box — the crop box clipped to the media box, as pdf.js
@@ -17,27 +19,32 @@ pub struct PageGeometry {
 impl Document {
     pub fn page_geometry(&self, index: u32) -> Result<PageGeometry, CoreError> {
         let page = self.page(index)?;
-        let (mut l, mut b, mut r, mut t) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
-        let has_media = unsafe {
-            self.lib
-                .FPDFPage_GetMediaBox(page.handle, &mut l, &mut b, &mut r, &mut t)
+        // The box PDFium draws: the crop box clipped to the media box, each
+        // inherited through the page tree, and US Letter for a missing or
+        // empty media box (PDF 32000 §7.7.3.3). FPDFPage_GetMediaBox and
+        // GetCropBox read the page's own dictionary only.
+        let mut bbox = FS_RECTF {
+            left: 0.0,
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
         };
-        let media = if has_media != 0 {
-            normalized(l, b, r, t)
-        } else {
-            // PDF 32000 §7.7.3.3: a page without /MediaBox is US Letter.
-            normalized(0.0, 0.0, 612.0, 792.0)
-        };
-        let has_crop = unsafe {
-            self.lib
-                .FPDFPage_GetCropBox(page.handle, &mut l, &mut b, &mut r, &mut t)
-        };
-        // A crop box that misses the media box is ignored, as pdf.js does.
-        let visible = if has_crop != 0 {
-            intersect(normalized(l, b, r, t), media).unwrap_or(media)
-        } else {
-            media
-        };
+        let has_box = unsafe { self.lib.FPDF_GetPageBoundingBox(page.handle, &mut bbox) } != 0;
+        let filled = |r: &Rect| r.right > r.left && r.top > r.bottom;
+        let visible = Some(normalized(bbox.left, bbox.bottom, bbox.right, bbox.top))
+            .filter(|visible| has_box && filled(visible))
+            .unwrap_or_else(|| {
+                // Empty when the crop box misses the media box, a crop box
+                // ignored, as pdf.js does: the page's media box instead.
+                let (mut l, mut b, mut r, mut t) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+                let has_media = unsafe {
+                    self.lib
+                        .FPDFPage_GetMediaBox(page.handle, &mut l, &mut b, &mut r, &mut t)
+                } != 0;
+                Some(normalized(l, b, r, t))
+                    .filter(|media| has_media && filled(media))
+                    .unwrap_or(normalized(0.0, 0.0, 612.0, 792.0))
+            });
         let quarter_turns = unsafe { self.lib.FPDFPage_GetRotation(page.handle) }.rem_euclid(4);
         Ok(PageGeometry {
             rotation: (quarter_turns * 90) as u16,
@@ -47,14 +54,4 @@ impl Document {
             height: visible.top - visible.bottom,
         })
     }
-}
-
-fn intersect(a: Rect, b: Rect) -> Option<Rect> {
-    let rect = Rect {
-        left: a.left.max(b.left),
-        bottom: a.bottom.max(b.bottom),
-        right: a.right.min(b.right),
-        top: a.top.min(b.top),
-    };
-    (rect.right > rect.left && rect.top > rect.bottom).then_some(rect)
 }
