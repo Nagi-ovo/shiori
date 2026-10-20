@@ -271,9 +271,15 @@ pub(crate) async fn share_exported_file<R: Runtime>(
     use tauri_plugin_shiori_browser::{ShareFilePayload, ShioriBrowserExt};
     enforce_main_webview(&caller)?;
     enforce_runtime_guard()?;
+    let export_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join("exports");
+    let path = shareable_export_path(&path, &export_dir)?;
     app.shiori_browser()
         .share_file(ShareFilePayload {
-            path,
+            path: path.to_string_lossy().into_owned(),
             filename,
             mime,
         })
@@ -292,6 +298,27 @@ pub(crate) async fn share_exported_file<R: Runtime>(
 ) -> Result<bool, String> {
     enforce_main_webview(&caller)?;
     Err("share-not-supported-on-desktop".into())
+}
+
+// The iOS share sheet offers the file to any app the user picks, so share
+// only a file inside the exports folder save_pdf_dialog writes to, the rule
+// Android's shareCachedExport (MainActivity.kt) already applies; forwarding
+// the path as given let the webview offer any file in the sandbox (drafts,
+// WebKit data). Both sides are canonicalised: `..` and symlinks resolve
+// first, and iOS reaches the cache through the /var -> /private/var link.
+#[cfg(any(mobile, all(test, unix)))]
+fn shareable_export_path(
+    path: &str,
+    export_dir: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    let invalid = || "share-export-path-invalid".to_string();
+    let export_dir = fs::canonicalize(export_dir).map_err(|_| invalid())?;
+    let file = fs::canonicalize(path).map_err(|_| invalid())?;
+    if file != export_dir && file.starts_with(&export_dir) && file.is_file() {
+        Ok(file)
+    } else {
+        Err(invalid())
+    }
 }
 
 #[cfg(mobile)]
@@ -400,6 +427,40 @@ mod tests {
         assert_eq!(fs::read_to_string(&victim).unwrap(), "keep me");
         assert!(fs::symlink_metadata(&path).unwrap().file_type().is_file());
         assert_eq!(fs::read_to_string(&path).unwrap(), "new");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // The share sheet hands a file to any app the user picks, so the path the
+    // webview names must be an export save_pdf_dialog wrote, as on Android
+    // (MainActivity.kt shareCachedExport), not any file in the sandbox.
+    #[test]
+    #[cfg(all(not(mobile), unix))]
+    fn share_accepts_only_files_inside_the_exports_folder() {
+        let dir = text_image_test_dir("share-exports");
+        let exports = dir.join("exports");
+        fs::create_dir_all(&exports).unwrap();
+        fs::write(exports.join("out.pdf"), b"%PDF").unwrap();
+        fs::write(dir.join("drafts.sqlite"), b"private").unwrap();
+        std::os::unix::fs::symlink(dir.join("drafts.sqlite"), exports.join("link.pdf")).unwrap();
+        let share = |path: std::path::PathBuf| {
+            super::shareable_export_path(&path.to_string_lossy(), &exports)
+        };
+
+        let ok = share(exports.join("out.pdf")).unwrap();
+        assert_eq!(ok, fs::canonicalize(exports.join("out.pdf")).unwrap());
+        for bad in [
+            dir.join("drafts.sqlite"),
+            exports.join("../drafts.sqlite"),
+            exports.join("link.pdf"),
+            exports.join("missing.pdf"),
+            exports.clone(),
+        ] {
+            assert!(
+                share(bad.clone()).is_err(),
+                "should refuse {}",
+                bad.display()
+            );
+        }
         let _ = fs::remove_dir_all(&dir);
     }
 
