@@ -1,5 +1,5 @@
 // Spelled out rather than derived from RELEASES_URL, so that a change to the
-// link cannot widen what the updater installs. MainActivity.kt mirrors this.
+// link cannot widen what the updater installs. DirectApkUpdater.kt (Android) mirrors this.
 // The repo used to be shiori-releases; this build asks /api/release for the
 // current path (updater.ts), so only that one is official.
 const OFFICIAL_APK_PATH_PREFIXES = ["/Nagi-ovo/shiori/releases/download/"];
