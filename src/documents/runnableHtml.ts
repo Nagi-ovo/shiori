@@ -18,6 +18,12 @@
 //   to generated data: URLs instead of relying on child-frame inline script
 //   allowances that the parent CSP would still block.
 //
+//   Neither lock stops the frame navigating itself (`location.href = …`
+//   beacons the open): no browser implements `navigate-to`. That is the
+//   embedding page's `frame-src 'self' blob:`, in the desktop CSP
+//   (src-tauri/tauri.conf.json) and the web app's headers (public/_headers).
+//   A `<meta http-equiv="refresh">`, which needs no script, is removed here.
+//
 // A small bridge script is injected before user scripts to report content
 // height back to the host, forward zoom gestures, and surface runtime errors
 // and CSP violations (the host cannot read the cross-origin frame directly),
@@ -183,9 +189,10 @@ function runCsp(
     "externalScripts" in mode ? "data:" : "'unsafe-inline'";
 
   // User-approved origins widen exactly one resource-fetching directive each.
-  // connect-src / form-action / base-uri / navigate-to stay 'none' regardless,
-  // so even an approved remote script cannot phone home, and there is never a
-  // blanket https: source.
+  // connect-src / form-action / base-uri stay 'none' regardless, so even an
+  // approved remote script cannot fetch or post anywhere, and there is never
+  // a blanket https: source. navigate-to is kept but enforced nowhere (see the
+  // header for what stops navigation).
   return [
     "default-src 'none'",
     `script-src ${scriptSource}`,
@@ -237,7 +244,7 @@ export function buildRunnableHtml(
   // own references, never the shim/bridge scripts added below.
   const remoteDependencies = scanRemoteDependencies(parsed);
 
-  removeDocumentCspMetas(parsed);
+  removeCspAndRefreshMetas(parsed);
 
   // The CSP must be the very first thing the parser sees so it governs every
   // script that follows. Prepending to <head> guarantees that. Existing CSP
@@ -291,10 +298,10 @@ function createRunNonce(): string {
   );
 }
 
-function removeDocumentCspMetas(doc: Document) {
+function removeCspAndRefreshMetas(doc: Document) {
   for (const meta of Array.from(doc.querySelectorAll("meta[http-equiv]"))) {
     const header = meta.getAttribute("http-equiv")?.trim().toLowerCase();
-    if (header === "content-security-policy") meta.remove();
+    if (header === "content-security-policy" || header === "refresh") meta.remove();
   }
 }
 

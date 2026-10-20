@@ -828,10 +828,10 @@ function RunHtmlFrame({
             className="shioriHtmlFrame"
             title={title}
             // Opaque-origin sandbox: scripts run, but the frame has NO access to
-            // the app's origin, DOM, storage, or Tauri IPC. Combined with the CSP
-            // injected by buildRunnableHtml (connect-src 'none', generated data:
-            // scripts), the content can animate but cannot phone home, fetch
-            // remote code, or read anything outside its own box. NEVER add
+            // the app's origin, DOM, storage, or Tauri IPC. The CSP injected by
+            // buildRunnableHtml blocks fetches and unapproved remote code, and
+            // the app's frame-src stops the frame navigating away (see
+            // runnableHtml.ts). NEVER add
             // allow-same-origin — that would let the frame escape the sandbox.
             sandbox="allow-scripts"
             referrerPolicy="no-referrer"

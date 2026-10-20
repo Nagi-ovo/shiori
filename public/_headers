@@ -1,0 +1,10 @@
+# Cloudflare Pages response headers for the web app (app.shiori.nagi.fun,
+# built into dist/ with the rest of public/).
+#
+# Run mode (src/documents/runnableHtml.ts) executes a document's scripts in a
+# sandboxed blob: frame. No CSP inside that frame can stop it navigating
+# itself to a remote page to beacon the open; only the embedding page's
+# frame-src can, so the web app sends the same frame-src as the desktop CSP
+# in src-tauri/tauri.conf.json. Every frame the app makes is srcdoc or blob:.
+/*
+  Content-Security-Policy: frame-src 'self' blob:
