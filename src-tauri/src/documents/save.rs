@@ -133,10 +133,9 @@ fn write_file_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         .unwrap_or_else(|| "export".to_string());
     // Same directory as the destination, so the rename never crosses a device
     // boundary (which would make it a copy, and non-atomic).
-    let temp_path = parent.join(format!(".{file_name}.shiori-tmp"));
+    let (temp_path, mut file) = create_temp_beside(parent, &file_name)?;
 
     let write_result = (|| -> std::io::Result<()> {
-        let mut file = fs::File::create(&temp_path)?;
         file.write_all(bytes)?;
         // Without fsync the rename can land before the contents do, leaving a
         // zero-length file after a crash or power loss.
@@ -166,6 +165,36 @@ fn write_file_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         return Err(err);
     }
     Ok(())
+}
+
+// A fixed temp name opened with File::create followed a symlink already at
+// that name, truncating its target and filling it with the document, and the
+// rename then turned the document itself into that symlink; two saves of one
+// path also shared the temp inode. create_new (O_EXCL, which also refuses a
+// symlink) under a per-save name sidesteps whatever sits there. A crash now
+// leaves its own temp behind instead of the next save reusing it.
+#[cfg(not(mobile))]
+fn create_temp_beside(parent: &Path, file_name: &str) -> std::io::Result<(PathBuf, fs::File)> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let pid = std::process::id();
+    for _ in 0..16 {
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        let temp_path = parent.join(format!(".{file_name}.shiori-tmp-{pid}-{n}"));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+        {
+            Ok(file) => return Ok((temp_path, file)),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(err),
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "no free temporary file name beside the destination",
+    ))
 }
 
 #[tauri::command]
@@ -349,6 +378,28 @@ mod tests {
         let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "a 0600 note must not become world-readable");
         assert_eq!(fs::read_to_string(&path).unwrap(), "still secret");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // The temp file sits beside the destination under a name anyone who can
+    // write that folder could predict. Whatever already sits there (a planted
+    // symlink, a leftover, another save's temp) must not be written through
+    // or renamed over the document.
+    #[test]
+    #[cfg(all(not(mobile), unix))]
+    fn atomic_write_never_writes_through_an_existing_temp_entry() {
+        let dir = text_image_test_dir("atomic-temp-symlink");
+        let victim = dir.join("victim.txt");
+        let path = dir.join("note.md");
+        fs::write(&victim, b"keep me").unwrap();
+        fs::write(&path, b"old").unwrap();
+        std::os::unix::fs::symlink(&victim, dir.join(".note.md.shiori-tmp")).unwrap();
+
+        super::write_file_atomically(&path, b"new").unwrap();
+
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "keep me");
+        assert!(fs::symlink_metadata(&path).unwrap().file_type().is_file());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
         let _ = fs::remove_dir_all(&dir);
     }
 
