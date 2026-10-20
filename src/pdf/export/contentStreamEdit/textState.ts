@@ -81,8 +81,19 @@ export type XObjectUse = {
   ctm: [number, number, number, number, number, number];
 };
 
+// An inline image (BI…EI) paints the unit square under the CTM in effect.
+export type InlineImageUse = {
+  opIndex: number;
+  ctm: [number, number, number, number, number, number];
+};
+
 export type TextWalkResult =
-  | { ok: true; glyphs: GlyphPlacement[]; xobjects: XObjectUse[] }
+  | {
+      ok: true;
+      glyphs: GlyphPlacement[];
+      xobjects: XObjectUse[];
+      inlineImages: InlineImageUse[];
+    }
   | { ok: false; reason: string };
 
 type GraphicsState = {
@@ -124,6 +135,7 @@ export function walkTextPlacements(
 ): TextWalkResult {
   const glyphs: GlyphPlacement[] = [];
   const xobjects: XObjectUse[] = [];
+  const inlineImages: InlineImageUse[] = [];
   const stack: GraphicsState[] = [];
   let gs: GraphicsState = {
     ctm: IDENTITY,
@@ -415,6 +427,9 @@ export function walkTextPlacements(
         xobjects.push({ opIndex, name, ctm: [...gs.ctm] });
         break;
       }
+      case "BI":
+        inlineImages.push({ opIndex, ctm: [...gs.ctm] });
+        break;
       default:
         // Painting, color, path, and marked-content operators do not affect
         // text geometry. Their bytes pass through the rewrite verbatim.
@@ -422,5 +437,5 @@ export function walkTextPlacements(
     }
   }
   if (inTextObject) return fail("unterminated BT");
-  return { ok: true, glyphs, xobjects };
+  return { ok: true, glyphs, xobjects, inlineImages };
 }

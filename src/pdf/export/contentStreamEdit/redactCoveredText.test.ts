@@ -162,6 +162,24 @@ describe("page text redaction clean rect report", () => {
     expect(report.cleanRects).toEqual([false]);
   });
 
+  test("reports dirty when an inline image overlaps the rect", async () => {
+    // Invisible (Tr 3) OCR text over inline scan pixels: removing the glyphs
+    // does not remove the visible word, so the rect still needs its cover.
+    const page = await pageWithContent(
+      "q 66 0 0 10 100 698 cm BI /W 1 /H 1 /BPC 8 /CS /G ID \u0000 EI Q " +
+        "BT 3 Tr /F1 12 Tf 100 700 Td (A) Tj ET",
+    );
+    const rects: PdfRect[] = [
+      { x: 99, y: 697, w: 8, h: 13 },
+      { x: 300, y: 300, w: 20, h: 20 },
+    ];
+
+    const report = redactCoveredTextOnPage(page, rects);
+
+    expect(report.removedCount).toBe(1);
+    expect(report.cleanRects).toEqual([false, true]);
+  });
+
   test("fails closed to dirty rects on walk failure", async () => {
     const page = await pageWithContent("BT BT");
     const rects: PdfRect[] = [

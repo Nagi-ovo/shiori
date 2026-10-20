@@ -27,7 +27,7 @@ import {
   type PDFPage,
 } from "pdf-lib";
 import type { PdfRect } from "../../model/types";
-import type { GlyphPlacement, XObjectUse } from "./textState";
+import type { GlyphPlacement, InlineImageUse, XObjectUse } from "./textState";
 import type { RectFontAttribution } from "./removeGlyphs";
 import { coalesceContentStreams, tokenizeContentStream } from "./tokenizer";
 import { walkTextPlacements } from "./textState";
@@ -153,14 +153,25 @@ function xObjectQuad(
   return null;
 }
 
+function inlineImageQuad(use: InlineImageUse): GlyphPlacement["quad"] | null {
+  if (!use.ctm.every((value) => Number.isFinite(value))) return null;
+  return boxQuad(0, 0, 1, 1, use.ctm as Matrix);
+}
+
+// Images and forms may carry the very pixels of the text being replaced (a
+// scan under invisible OCR text), so any rect they touch keeps its cover.
 function applyXObjectDirtiness(
   cleanRects: boolean[],
   coverRects: PdfRect[],
   xobjects: XObjectUse[],
+  inlineImages: InlineImageUse[],
   xObjectDict: PDFDict | undefined,
 ): void {
-  for (const use of xobjects) {
-    const quad = xObjectQuad(use, xObjectDict);
+  const quads = [
+    ...xobjects.map((use) => xObjectQuad(use, xObjectDict)),
+    ...inlineImages.map(inlineImageQuad),
+  ];
+  for (const quad of quads) {
     if (!quad) {
       cleanRects.fill(false);
       return;
@@ -230,7 +241,13 @@ export function redactCoveredTextOnPage(
 
     const result = removeCoveredGlyphs(source, ops, walk.glyphs, coverRects);
     const cleanRects = [...result.cleanRects];
-    applyXObjectDirtiness(cleanRects, coverRects, walk.xobjects, xObjectDict);
+    applyXObjectDirtiness(
+      cleanRects,
+      coverRects,
+      walk.xobjects,
+      walk.inlineImages,
+      xObjectDict,
+    );
 
     if (result.changed) {
       const rewritten = context.flateStream(result.bytes);
