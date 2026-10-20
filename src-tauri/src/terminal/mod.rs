@@ -449,10 +449,9 @@ fn normalize_terminal_dimensions(cols: u16, rows: u16) -> TerminalDimensions {
 
 #[cfg(not(mobile))]
 fn resolve_terminal_cwd(input: Option<String>) -> Result<PathBuf, String> {
-    let Some(raw) = input
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    else {
+    // Whitespace-only means "use the default"; otherwise keep the string as
+    // is, because leading/trailing spaces are legal path characters.
+    let Some(raw) = input.filter(|value| !value.trim().is_empty()) else {
         return default_terminal_cwd();
     };
     let mut path = PathBuf::from(raw);
@@ -573,6 +572,21 @@ mod tests {
             current,
         );
         assert_ne!(super::normalize_terminal_dimensions(399, 200), current);
+    }
+
+    // Leading and trailing spaces are legal in folder names, and a PDF's
+    // folder reaches us as the frontend sliced it from the file path.
+    #[test]
+    #[cfg(not(mobile))]
+    fn terminal_cwd_keeps_spaces_that_are_part_of_the_folder_name() {
+        let parent = std::env::temp_dir().join(format!("shiori-cwd-{}", std::process::id()));
+        let dir = parent.join("project ");
+        std::fs::create_dir_all(&dir).unwrap();
+        let resolved = super::resolve_terminal_cwd(Some(dir.to_string_lossy().into_owned()));
+        let blank = super::resolve_terminal_cwd(Some("  ".into()));
+        let _ = std::fs::remove_dir_all(&parent);
+        assert_eq!(resolved, Ok(dir));
+        assert_eq!(blank, super::default_terminal_cwd());
     }
 
     #[test]
