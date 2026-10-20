@@ -1,7 +1,11 @@
 import { nanoid } from "nanoid";
 import type { StoreApi } from "zustand";
 import type { Overlay } from "../../pdf/model/types";
-import { cloneOverlayWithId } from "../overlays/geometry";
+import {
+  cloneOverlayWithId,
+  translateCalloutWithTarget,
+  translateOverlay,
+} from "../overlays/geometry";
 import { nudgeOverlays } from "../overlays/nudge";
 import { noteTimestamps } from "../overlays/noteMetadata";
 import type { Store } from "./store";
@@ -43,44 +47,20 @@ export function selectedOverlayActions(
         (o) => selectedIds.includes(o.id) && o.type !== "contentText",
       );
       if (selected.length === 0) return;
+      // The same offset the clipboard paste applies (overlays/clipboard.ts),
+      // from the same helpers: the hand-kept list of geometry fields here
+      // missed ink paths, so a duplicated stroke or signature sat exactly
+      // on its original.
       const newOnes = selected.map((o) => {
         const copy = cloneOverlayWithId(o, nanoid());
-        if (copy.type === "note") Object.assign(copy, noteTimestamps());
-        if ("rect" in copy && copy.rect) {
-          copy.rect = {
-            ...copy.rect,
-            x: copy.rect.x + 12,
-            y: copy.rect.y - 12,
-          };
-        }
-        if ("rects" in copy && copy.rects) {
-          copy.rects = copy.rects.map((r) => ({
-            ...r,
-            x: r.x + 12,
-            y: r.y - 12,
-          }));
-        }
-        if ("targetRects" in copy && copy.targetRects) {
-          copy.targetRects = copy.targetRects.map((r) => ({
-            ...r,
-            x: r.x + 12,
-            y: r.y - 12,
-          }));
-        }
-        if ("leader" in copy && copy.leader) {
-          copy.leader = copy.leader.map((point) => ({
-            x: point.x + 12,
-            y: point.y - 12,
-          }));
-        }
-        if ("coverRects" in copy && copy.coverRects) {
-          copy.coverRects = copy.coverRects.map((r) => ({
-            ...r,
-            x: r.x + 12,
-            y: r.y - 12,
-          }));
-        }
-        return copy;
+        const offset = {
+          ...copy,
+          ...(copy.type === "callout"
+            ? translateCalloutWithTarget(copy, 12, -12)
+            : translateOverlay(copy, 12, -12)),
+        } as Overlay;
+        if (offset.type === "note") Object.assign(offset, noteTimestamps());
+        return offset;
       });
       get().commit({ overlays: [...model.overlays, ...newOnes] });
       set({ selectedIds: newOnes.map((o) => o.id) });
