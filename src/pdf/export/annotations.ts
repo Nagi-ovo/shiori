@@ -33,6 +33,7 @@ import { buildCallout, buildCalloutReply } from "./calloutAnnotations";
 import { buildFreeText, buildStampFreeText } from "./freeTextAnnotations";
 import {
   markKeptAnnotationLinks,
+  relinkKeptReplies,
   takeKeptAnnotationLinks,
   type RemovedAnnotation,
 } from "./keptAnnotationLinks";
@@ -152,6 +153,7 @@ export function attachAnnotationsToPage(
   // reply may be built before the comment it answers. Threads that span pages
   // are not rebuilt: /IRT is defined within a page's annotation list.
   linkReplyThreads(page, pageOverlays, refsByOverlayId, kept.parents);
+  relinkKeptReplies(kept.replies, refsByOverlayId);
   // Callout conversation turns become native /IRT Text replies, appended in
   // thread order so a round trip reads them back in the same order.
   for (const o of pageOverlays) {

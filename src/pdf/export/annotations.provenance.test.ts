@@ -240,4 +240,41 @@ describe("reply links between rebuilt and kept annotations", () => {
     expect(reply?.dict.get(PDFName.of("RT"))?.toString()).toBe("/R");
     expect(circle!.dict.get(PDFName.of("Shio"))).toBeUndefined();
   });
+
+  // Acrobat's Replace Text: a StrikeOut, and a Caret grouped to it by /IRT.
+  const replaceText = () =>
+    sourcePdf((doc) => {
+      const strike = annot(doc, "StrikeOut", [100, 600, 200, 614], {
+        QuadPoints: [100, 614, 200, 614, 100, 600, 200, 600],
+        C: [1, 0, 0],
+      });
+      const caret = annot(doc, "Caret", [198, 598, 206, 610], { IRT: strike, RT: "Group" });
+      return [strike, caret];
+    });
+
+  test("a kept Caret grouped to a StrikeOut follows the rebuilt StrikeOut", async () => {
+    const { bySubtype } = await exportedAnnots(await replaceText());
+    const strike = bySubtype("StrikeOut");
+    const caret = bySubtype("Caret");
+    expect(strike).toBeDefined();
+    expect(caret?.dict.get(PDFName.of("IRT"))).toBe(strike!.ref);
+    expect(caret?.dict.get(PDFName.of("RT"))?.toString()).toBe("/Group");
+    expect(caret?.dict.get(PDFName.of("Shio"))).toBeUndefined();
+  });
+
+  test("a kept Caret whose StrikeOut was deleted points at nothing", async () => {
+    const { bySubtype } = await exportedAnnots(await replaceText(), (overlays) =>
+      overlays.filter((o) => o.type !== "strikethrough"),
+    );
+    const caret = bySubtype("Caret");
+    expect(bySubtype("StrikeOut")).toBeUndefined();
+    expect(caret?.dict.get(PDFName.of("IRT"))).toBeUndefined();
+    expect(caret?.dict.get(PDFName.of("RT"))).toBeUndefined();
+  });
+
+  test("a flattened export leaves the kept Caret no dangling /IRT", async () => {
+    const { loaded, bySubtype } = await exportedAnnots(await replaceText(), undefined, "flatten");
+    const irt = bySubtype("Caret")?.dict.get(PDFName.of("IRT"));
+    if (irt) expect(loaded.context.lookup(irt)).toBeInstanceOf(PDFDict);
+  });
 });
