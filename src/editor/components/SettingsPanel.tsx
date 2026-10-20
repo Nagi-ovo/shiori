@@ -13,6 +13,7 @@ import {
 } from "./ui";
 import { useEscapeClose } from "./useEscapeClose";
 import { useFocusTrap } from "./useFocusTrap";
+import { useInertBackground } from "./useInertBackground";
 import {
   useAppStore,
   type PrefsColorMode,
@@ -76,6 +77,7 @@ function SettingsPanelView({
   const { t, i18n } = useTranslation();
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const backdropRef = useRef<HTMLDivElement | null>(null);
   const backdropPressRef = useRef(false);
   const restoreFocusRef = useRef<HTMLElement | null>(
     typeof document !== "undefined" && document.activeElement instanceof HTMLElement
@@ -104,6 +106,9 @@ function SettingsPanelView({
   // so one Escape dismisses the modal without also taking the panel.
   useEscapeClose(!showSponsor, onClose);
   useFocusTrap(panelRef, !showSponsor);
+  // As in Modal: the trap only catches Tab, so the browse cursor and touch
+  // swipe would otherwise walk out into the page behind the backdrop.
+  useInertBackground(backdropRef, !showSponsor);
 
   useEffect(() => {
     const restoreFocus = restoreFocusRef.current;
@@ -141,6 +146,7 @@ function SettingsPanelView({
   return (
     <>
     <div
+      ref={backdropRef}
       onPointerDown={(event) => {
         backdropPressRef.current = event.target === event.currentTarget;
       }}
