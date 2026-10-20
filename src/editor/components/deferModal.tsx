@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore, type ComponentType } from "react";
 import { LoadFailed, SlowLoadNotice } from "./deferModalNotices";
+import { useDeferredFocusReturn } from "./useDeferredFocusReturn";
 
 type Snapshot<P> =
   | { kind: "idle" }
@@ -15,9 +16,10 @@ type Snapshot<P> =
  * load (a cold network chunk on the web build — the desktop build reads a
  * local file) shows a small notice. A failed load renders an error modal with
  * a retry, closable through the same `onClose`, so the user is never left
- * with a trigger that silently does nothing. Focus restore is untouched: the
- * real modal captures the trigger as document.activeElement when it mounts,
- * exactly as it did when it was in the entry bundle.
+ * with a trigger that silently does nothing. The real modal still restores
+ * focus itself, but after a slow load it would capture the notice rather than
+ * the trigger, so the wrapper also returns focus to the trigger on close
+ * (useDeferredFocusReturn).
  *
  * This is deliberately not React.lazy: a rejected lazy import is cached as
  * a permanent error, which makes retry impossible without remounting the
@@ -52,6 +54,7 @@ export function deferModal<P extends { onClose: () => void }>(
   function DeferredModal(props: P) {
     const open = isOpen(props);
     const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+    useDeferredFocusReturn(open);
     useEffect(() => {
       if (open) ensureLoaded();
     }, [open]);
