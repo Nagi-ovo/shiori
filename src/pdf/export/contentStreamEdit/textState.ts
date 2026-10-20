@@ -21,6 +21,10 @@ type Matrix = [number, number, number, number, number, number];
 
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
 
+// Top of a glyph's core band, in em above the baseline: below the x-height
+// of common text faces, far below the next line's baseline.
+const CORE_TOP_EM = 0.4;
+
 function multiply(m: Matrix, n: Matrix): Matrix {
   // Apply m first, then n.
   return [
@@ -56,6 +60,12 @@ export type GlyphPlacement = {
   // origin+advance, top+advance, top. A degenerate box (zero advance) is
   // still emitted — the removal pass decides how to treat it.
   quad: [Point, Point, Point, Point];
+  // Same advance, but only from the baseline up to CORE_TOP_EM (or the
+  // ascent, if lower): the part of the glyph any cover built for its line
+  // contains. Editor covers come from ink bounds or a band normalized to one
+  // em, both shorter than many fonts' FontDescriptor box, so the removal
+  // pass tests this band, not `quad`, for "fully covered".
+  coreQuad: [Point, Point, Point, Point];
   // TJ number that reproduces this glyph's whole displacement (advance width
   // + char/word spacing) when the glyph bytes are removed: insert
   // -tjCompensation at the glyph's position. Units: thousandths of text
@@ -200,6 +210,13 @@ export function walkTextPlacements(
         apply(trm, { x: w0Em, y: font.ascentEm }),
         apply(trm, { x: 0, y: font.ascentEm }),
       ];
+      const coreTopEm = Math.min(CORE_TOP_EM, font.ascentEm);
+      const coreQuad: [Point, Point, Point, Point] = [
+        apply(trm, { x: 0, y: 0 }),
+        apply(trm, { x: w0Em, y: 0 }),
+        apply(trm, { x: w0Em, y: coreTopEm }),
+        apply(trm, { x: 0, y: coreTopEm }),
+      ];
       glyphs.push({
         opIndex,
         arrayItemIndex,
@@ -208,6 +225,7 @@ export function walkTextPlacements(
         code,
         fontName: gs.fontName,
         quad,
+        coreQuad,
         tjCompensation: 1000 * (w0Em + spacing / gs.fontSize),
       });
       const advance =

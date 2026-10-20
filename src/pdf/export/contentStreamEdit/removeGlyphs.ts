@@ -9,10 +9,14 @@
 // 2. Bytes outside the rewritten show ops are copied verbatim via the
 //    tokenizer's extents — no re-serialization of ops we didn't change.
 //
-// Hit policy is conservative: a glyph is removed only when its entire
-// advance-box quad lies inside one cover rect (small epsilon for float
-// noise). Partially covered glyphs stay — deleting a glyph the user can
-// still half-see is worse than leaving one they meant to cover.
+// Hit policy is conservative: a glyph is removed only when one cover rect
+// holds its whole advance, from the baseline up through its core band
+// (GlyphPlacement.coreQuad; small epsilon for float noise). The font-wide
+// ascent/descent box is not required: editor covers hug the ink or a band
+// normalized to one em, and many fonts declare a taller box. Partially
+// covered glyphs stay — deleting a glyph the user can still half-see is
+// worse than leaving one they meant to cover — and a rect is clean only when
+// no glyph left in the stream touches its full advance box.
 
 import type { PdfRect } from "../../model/types";
 import type { ContentOp, ContentOperand } from "./tokenizer";
@@ -193,9 +197,7 @@ function classifyGlyphCoverage(
   for (const glyph of glyphs) {
     let removeGlyph = false;
     for (let rectIndex = 0; rectIndex < coverRects.length; rectIndex += 1) {
-      const rect = coverRects[rectIndex]!;
-      if (!quadIntersectsRect(glyph.quad, rect)) continue;
-      if (quadInsideRect(glyph.quad, rect)) {
+      if (quadInsideRect(glyph.coreQuad, coverRects[rectIndex]!)) {
         removeGlyph = true;
         const attribution = rectFonts[rectIndex]!;
         if (attribution.kind === "none") {
@@ -206,11 +208,18 @@ function classifyGlyphCoverage(
         ) {
           rectFonts[rectIndex] = { kind: "mixed" };
         }
-      } else {
+      }
+    }
+    if (removeGlyph) {
+      hits.push(glyph);
+      continue;
+    }
+    // A glyph that stays is still drawn: any rect it touches needs its cover.
+    for (let rectIndex = 0; rectIndex < coverRects.length; rectIndex += 1) {
+      if (quadIntersectsRect(glyph.quad, coverRects[rectIndex]!)) {
         cleanRects[rectIndex] = false;
       }
     }
-    if (removeGlyph) hits.push(glyph);
   }
 
   return { hits, cleanRects, rectFonts };
