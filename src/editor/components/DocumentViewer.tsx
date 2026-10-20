@@ -13,6 +13,7 @@ import {
 import { useTranslation } from "react-i18next";
 import type { DocumentKind } from "../../documents/types";
 import { renderSafeHtml } from "../../documents/renderSafeHtml";
+import { documentLinkAction } from "../../documents/documentLinks";
 import { highlightCodeBlocksNearView } from "../../documents/highlightCodeBlocksNearView";
 import {
   previewSourceLine,
@@ -314,12 +315,11 @@ export function DocumentViewer({
   const openLink = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const target = event.target;
     if (!isElementTarget(target)) return;
-    const anchor = target.closest<HTMLAnchorElement>("a[href]");
-    if (!anchor) return;
-    const href = anchor.href;
-    if (!href) return;
+    const action = documentLinkAction(target);
+    if (!action) return;
     event.preventDefault();
-    void openExternalUrl(href).catch(() => {
+    if (action.kind !== "external") return;
+    void openExternalUrl(action.url).catch(() => {
       showLinkOpenFailed();
     });
   }, [showLinkOpenFailed]);
