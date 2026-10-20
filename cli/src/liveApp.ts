@@ -388,7 +388,9 @@ function requestJson(
           typeof contentType !== "string" ||
           !/^application\/json(?:\s*;|$)/i.test(contentType)
         ) {
-          response.resume();
+          // Hang up rather than drain: settling clears the hard deadline, and
+          // a peer that keeps streaming never trips the idle timeout.
+          response.destroy();
           finishReject(unavailable("Shiori live API did not return JSON"));
           return;
         }
