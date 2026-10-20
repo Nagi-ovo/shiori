@@ -10,6 +10,7 @@ import {
   type RadioOption,
 } from "./ui";
 import { ExportErrorNotice, LossyExportNotice } from "./ExportNotices";
+import { ExportPagesSection } from "./ExportPagesSection";
 import { useEditorStore } from "../store/store";
 import type {
   DocumentFilesPolicy,
@@ -328,23 +329,6 @@ export function ExportDialog({
     : sizePreviewState.request === previewRequest
       ? sizePreviewState.previews
       : deferredSizePreviews(quality);
-  const rangeOpts: RadioOption<RangeV>[] = [
-    {
-      v: "all",
-      label: t("export.range.all"),
-      hint: t("export.range.allHint", { count: pageCount }),
-    },
-    {
-      v: "current",
-      label: t("export.range.current"),
-      hint: t("export.range.currentHint", { page: currentIdx }),
-    },
-    {
-      v: "range",
-      label: t("export.range.custom"),
-      hint: customRange,
-    },
-  ];
   const annotOpts: RadioOption<ExportMode>[] = [
     {
       v: "annotations",
@@ -615,44 +599,14 @@ export function ExportDialog({
       title={t("export.title")}
       subtitle={opened.fileName}
     >
-      <Section label={t("export.sections.pages")}>
-        <Radio
-          label={t("export.sections.pages")}
-          options={rangeOpts}
-          value={range}
-          onChange={setRange}
-        />
-        {range === "range" ? (
-          <input
-            type="text"
-            value={customRange}
-            onChange={(e) => setCustomRange(e.target.value)}
-            placeholder={t("export.range.customPlaceholder")}
-            style={{
-              marginTop: 8,
-              width: "100%",
-              boxSizing: "border-box",
-              padding: "8px 12px",
-              borderRadius: 4,
-              border: `1px solid ${T.rule}`,
-              background: T.surface,
-              font: `500 13px/1 ${T.mono}`,
-              color: T.ink,
-            }}
-          />
-        ) : null}
-        {range !== "all" ? (
-          <div
-            style={{
-              marginTop: 8,
-              color: T.dim,
-              font: `12.5px/1.45 ${T.sans}`,
-            }}
-          >
-            {t("export.range.attachmentsOmitted")}
-          </div>
-        ) : null}
-      </Section>
+      <ExportPagesSection
+        range={range}
+        onRangeChange={setRange}
+        customRange={customRange}
+        onCustomRangeChange={setCustomRange}
+        pageCount={pageCount}
+        currentPage={currentIdx}
+      />
 
       <Section label={t("export.sections.annotations")}>
         <Radio
