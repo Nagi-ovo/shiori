@@ -43,8 +43,35 @@ on:
 permissions: {}
 
 jobs:
+  # cli/pack.ts names each archive from cli/package.json, and /api/cli reads
+  # the version from those names. A tag ahead of the package would publish
+  # the old version under the new tag and use the tag up, so a mismatch stops
+  # the run before any leg builds.
+  validate-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Match the tag to cli/package.json
+        env:
+          MANUAL_TAG: ${{ inputs.tag }}
+          PUSHED_REF: ${{ github.ref }}
+        run: |
+          set -eu
+          tag="${MANUAL_TAG:-${PUSHED_REF#refs/tags/}}"
+          version="$(jq -r .version cli/package.json)"
+          if [ "$tag" != "cli-v$version" ]; then
+            echo "Tag $tag does not match cli/package.json version $version (expected cli-v$version)"
+            exit 1
+          fi
+
   pack:
     name: ${{ matrix.target }}
+    needs: validate-version
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     # The macOS signing and notarization secrets live in this environment.
