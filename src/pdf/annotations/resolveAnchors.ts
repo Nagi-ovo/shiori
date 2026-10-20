@@ -6,11 +6,13 @@ import {
   compileSearchQuery,
   makeSearchSnippet,
   type CompiledSearchQuery,
-  type SearchIgnoredRange,
   type SearchSourceRange,
   type SearchTextIndex,
 } from "../../editor/search/findMatches";
-import { iterateLayoutSearchRanges } from "../../editor/search/layoutSearch";
+import {
+  buildLayoutSearchIndexes,
+  iterateLayoutSearchRanges,
+} from "../../editor/search/layoutSearch";
 import {
   buildSemanticTextLayerModel,
   SemanticTextLimitError,
@@ -125,40 +127,6 @@ export function iterateAnchorSearchRanges(
     page.index.hardBreaks,
     query,
   );
-}
-
-function buildLayoutSearchIndexes(
-  index: SemanticSearchIndex,
-  normal: SearchTextIndex,
-): SearchTextIndex[] {
-  if (index.layoutBreaks.length === 0) return [];
-  const joinedRanges: SearchIgnoredRange[] = index.layoutBreaks.map(
-    ({ start, end }) => ({ start, end }),
-  );
-  const dehyphenatedRanges: SearchIgnoredRange[] = index.layoutBreaks.map(
-    ({ start, end, dehyphenateStart }) => ({
-      start: dehyphenateStart ?? start,
-      end,
-    }),
-  );
-  const output: SearchTextIndex[] = [];
-  const add = (candidate: SearchTextIndex) => {
-    if (
-      candidate.folded !== normal.folded &&
-      !output.some((existing) => existing.folded === candidate.folded)
-    ) {
-      output.push(candidate);
-    }
-  };
-  add(buildSearchTextIndex(index.text, undefined, joinedRanges));
-  if (
-    dehyphenatedRanges.some(
-      (range, rangeIndex) => range.start !== joinedRanges[rangeIndex]!.start,
-    )
-  ) {
-    add(buildSearchTextIndex(index.text, undefined, dehyphenatedRanges));
-  }
-  return output;
 }
 
 /** Cheap pre-scan so anchor-free specs skip the page text pass entirely. */

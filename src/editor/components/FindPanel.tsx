@@ -102,7 +102,7 @@ export function FindPanel({ doc, pages, open, onClose }: Props) {
         });
         if (cancelled) return;
         // The same text and breaks CLI search and quote anchors match.
-        const { text, hardBreaks } = semanticUnitsToSearchIndex(
+        const { text, layoutBreaks, hardBreaks } = semanticUnitsToSearchIndex(
           buildSemanticTextLayerModel(content).units,
         );
         indexedCharacters += text.length;
@@ -115,6 +115,7 @@ export function FindPanel({ doc, pages, open, onClose }: Props) {
           pageId: page.id,
           pageNumber: i + 1,
           text,
+          layoutBreaks,
           hardBreaks,
         });
         setLoadedCount(i + 1);

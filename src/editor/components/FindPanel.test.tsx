@@ -215,6 +215,35 @@ describe("FindPanel navigation", () => {
     });
   });
 
+  test("finds a CJK phrase across a line wrap", async () => {
+    // "运行中" ends a filled line; "文档" continues the next one.
+    const view = render(
+      <FindPanel
+        doc={fakeDoc([
+          [
+            { str: "这是一个运行中", x: 72, y: 700, width: 70, hasEOL: true },
+            { str: "文档的内容", x: 72, y: 688, width: 50, hasEOL: false },
+          ],
+          "",
+          "",
+        ])}
+        pages={pages}
+        open
+        onClose={() => undefined}
+      />,
+    );
+    const input = await view.findByPlaceholderText("Find in document");
+    await userEvent.setup().type(input, "运行中文档");
+    // The highlight addresses the page text, wrap separator included.
+    await waitFor(() => {
+      expect(useEditorStore.getState().searchMatchHighlight).toEqual({
+        pageId: "p1",
+        charStart: 4,
+        charEnd: 10,
+      });
+    });
+  });
+
   test("fails closed instead of crashing on a pathological search map", async () => {
     const originalError = console.error;
     console.error = () => undefined;

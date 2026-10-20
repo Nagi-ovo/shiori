@@ -1,6 +1,8 @@
+import type { SemanticLayoutBreak } from "../textSelection/semanticText";
 import {
   MAX_DOCUMENT_SEARCH_MAPPING_EXCEPTIONS,
   MAX_SEARCH_MAPPING_EXCEPTIONS,
+  SearchTextLimitError,
   buildSearchTextIndex,
   findMatchesInSearchIndexes,
   iterateSearchRanges,
@@ -15,10 +17,12 @@ import {
 
 // Search over page text that knows its layout: the separators the semantic
 // text puts at paragraph and column ends (`hardBreaks`), which no match may
-// cross. App Find, CLI search and quote anchors all match through here, so
-// they agree on what a page contains.
+// cross, and those at soft line wraps (`layoutBreaks`), which a match may
+// skip, along with a wrap hyphen. App Find, CLI search and quote anchors all
+// match through here, so they agree on what a page contains.
 
 export type LayoutSearchPageText = SearchPageText & {
+  layoutBreaks?: readonly SemanticLayoutBreak[];
   hardBreaks?: readonly SearchIgnoredRange[];
 };
 
@@ -83,23 +87,82 @@ function rangeIntersectsSortedBreaks(
   return candidate !== undefined && candidate.start < range.end;
 }
 
+/** The page text with its soft wraps removed (and, where a wrap follows a
+ * hyphen, with the hyphen removed too), when that reads differently from
+ * `normal`. Ranges found in them still address the original text. With a
+ * `budget`, each index draws its normalization mappings from it. */
+export function buildLayoutSearchIndexes(
+  index: { text: string; layoutBreaks: readonly SemanticLayoutBreak[] },
+  normal: SearchTextIndex,
+  budget?: { remaining: number },
+): SearchTextIndex[] {
+  if (index.layoutBreaks.length === 0) return [];
+  const joinedRanges: SearchIgnoredRange[] = index.layoutBreaks.map(
+    ({ start, end }) => ({ start, end }),
+  );
+  const dehyphenatedRanges: SearchIgnoredRange[] = index.layoutBreaks.map(
+    ({ start, end, dehyphenateStart }) => ({
+      start: dehyphenateStart ?? start,
+      end,
+    }),
+  );
+  const output: SearchTextIndex[] = [];
+  const add = (ignoredRanges: SearchIgnoredRange[]) => {
+    const candidate = buildSearchTextIndex(
+      index.text,
+      budget ? Math.min(MAX_SEARCH_MAPPING_EXCEPTIONS, budget.remaining) : undefined,
+      ignoredRanges,
+    );
+    if (budget) budget.remaining -= candidate.mappingExceptions.length;
+    if (
+      candidate.folded !== normal.folded &&
+      !output.some((existing) => existing.folded === candidate.folded)
+    ) {
+      output.push(candidate);
+    }
+  };
+  add(joinedRanges);
+  if (
+    dehyphenatedRanges.some(
+      (range, rangeIndex) => range.start !== joinedRanges[rangeIndex]!.start,
+    )
+  ) {
+    add(dehyphenatedRanges);
+  }
+  return output;
+}
+
 /** indexSearchPages for layout-aware pages, under one document-wide
- * normalization mapping budget. */
+ * normalization mapping budget. The wrap-free projections draw from a
+ * budget of their own: once a long document spends it, later pages are
+ * searched without them rather than the whole index failing. */
 export function indexLayoutSearchPages(
   pages: readonly LayoutSearchPageText[],
 ): LayoutIndexedSearchPage[] {
   let remainingMappings = MAX_DOCUMENT_SEARCH_MAPPING_EXCEPTIONS;
+  const layoutBudget = { remaining: MAX_DOCUMENT_SEARCH_MAPPING_EXCEPTIONS };
   return pages.map((page) => {
     const index = buildSearchTextIndex(
       page.text,
       Math.min(MAX_SEARCH_MAPPING_EXCEPTIONS, remainingMappings),
     );
     remainingMappings -= index.mappingExceptions.length;
+    let alternateIndexes: SearchTextIndex[] = [];
+    try {
+      alternateIndexes = buildLayoutSearchIndexes(
+        { text: page.text, layoutBreaks: page.layoutBreaks ?? [] },
+        index,
+        layoutBudget,
+      );
+    } catch (error) {
+      if (!(error instanceof SearchTextLimitError)) throw error;
+      layoutBudget.remaining = 0;
+    }
     return {
       pageId: page.pageId,
       pageNumber: page.pageNumber,
       index,
-      alternateIndexes: [],
+      alternateIndexes,
       hardBreaks: page.hardBreaks ?? [],
     };
   });
