@@ -6,7 +6,7 @@
   "cli/test/annotate.test.ts": 37998,
   "cli/test/liveApp.test.ts": 38591,
   "crates/shiori-core/src/encryption.rs": 53963,
-  "crates/shiori-core/src/lib.rs": 54176,
+  "crates/shiori-core/src/lib.rs": 50415,
   "crates/shiori-core/src/pdf_syntax.rs": 23970,
   "crates/shiori-core/tests/core.rs": 40351,
   "site/src/content/legal.ts": 37781,

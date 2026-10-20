@@ -16,6 +16,7 @@
 pub mod encryption;
 mod fonts;
 mod geometry;
+mod open;
 pub mod pdf_syntax;
 mod xref;
 
@@ -26,34 +27,20 @@ pub use fonts::{
     GlyphOutline,
 };
 pub use geometry::PageGeometry;
+pub use open::Core;
 
 use std::fmt;
 use std::os::raw::c_int;
 #[cfg(not(target_arch = "wasm32"))]
 use std::os::raw::{c_ulong, c_void};
-use std::path::Path;
-use std::sync::{Mutex, OnceLock};
 
 use pdfium_render::prelude::{
-    Pdfium, PdfiumLibraryBindings, FPDF_BOOKMARK, FPDF_DEST, FPDF_DOCUMENT, FPDF_FONT,
-    FPDF_FORMFILLINFO, FPDF_FORMHANDLE, FPDF_LINK, FPDF_PAGE, FPDF_PAGEOBJECT, FPDF_PAGEOBJ_FORM,
-    FPDF_PAGEOBJ_TEXT, FPDF_TEXTPAGE, FS_MATRIX, FS_RECTF,
+    PdfiumLibraryBindings, FPDF_BOOKMARK, FPDF_DEST, FPDF_DOCUMENT, FPDF_FONT, FPDF_FORMFILLINFO,
+    FPDF_FORMHANDLE, FPDF_LINK, FPDF_PAGE, FPDF_PAGEOBJECT, FPDF_PAGEOBJ_FORM, FPDF_PAGEOBJ_TEXT,
+    FPDF_TEXTPAGE, FS_MATRIX, FS_RECTF,
 };
 
 pub(crate) type Lib = dyn PdfiumLibraryBindings;
-
-/// PDFium is initialised once per process and never torn down.
-static LIB: OnceLock<Box<Lib>> = OnceLock::new();
-static BIND: Mutex<()> = Mutex::new(());
-/// FPDF_GetLastError is process-wide: a load and the read of its error must
-/// not have another thread's load between them.
-static OPEN: Mutex<()> = Mutex::new(());
-
-// fpdfview.h
-const FPDF_ERR_FILE: u64 = 2;
-const FPDF_ERR_FORMAT: u64 = 3;
-const FPDF_ERR_PASSWORD: u64 = 4;
-const FPDF_ERR_SECURITY: u64 = 5;
 
 // fpdfview.h render flags, fpdf_annot.h annotation flag, bitmap format.
 const FPDF_ANNOT: i32 = 0x01;
@@ -252,79 +239,6 @@ pub struct TextChar {
     /// along the glyph's up direction (descent is negative).
     pub ascent: f32,
     pub descent: f32,
-}
-
-pub struct Core {
-    lib: &'static Lib,
-}
-
-impl Core {
-    /// Binds the PDFium dynamic library in `library_dir`. The first call in a
-    /// process loads and initialises it; later calls reuse that binding
-    /// whatever directory they name. On wasm32 PDFium is the Emscripten
-    /// module the host handed pdfium-render (`initialize_pdfium_render`), and
-    /// `library_dir` is not read.
-    pub fn bind(library_dir: &Path) -> Result<Core, CoreError> {
-        let _guard = BIND.lock().unwrap_or_else(|poison| poison.into_inner());
-        if let Some(lib) = LIB.get() {
-            return Ok(Core { lib: lib.as_ref() });
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        let lib =
-            Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(library_dir))
-                .map_err(|error| CoreError::Library(error.to_string()))?;
-        #[cfg(target_arch = "wasm32")]
-        let lib = {
-            let _ = library_dir;
-            Pdfium::bind_to_system_library()
-                .map_err(|error| CoreError::Library(error.to_string()))?
-        };
-        unsafe { lib.FPDF_InitLibrary() };
-        Ok(Core {
-            lib: LIB.get_or_init(|| lib).as_ref(),
-        })
-    }
-
-    /// Parses `bytes`, which the document keeps for as long as it is open.
-    pub fn open(&self, bytes: Vec<u8>, password: Option<&str>) -> Result<Document, CoreError> {
-        let _guard = OPEN.lock().unwrap_or_else(|poison| poison.into_inner());
-        let handle = unsafe { self.lib.FPDF_LoadMemDocument64(&bytes, password) };
-        if handle.is_null() {
-            // c_ulong is u64 here but u32 on Windows.
-            #[allow(clippy::useless_conversion)]
-            let code = u64::from(unsafe { self.lib.FPDF_GetLastError() });
-            return Err(match code {
-                FPDF_ERR_PASSWORD => CoreError::Password,
-                FPDF_ERR_SECURITY => CoreError::Pdfium("unsupported security handler".into()),
-                FPDF_ERR_FILE | FPDF_ERR_FORMAT => {
-                    CoreError::Damaged(format!("PDFium error {code}"))
-                }
-                _ => CoreError::Damaged(format!("PDFium error {code}")),
-            });
-        }
-        // Forms draw through their own environment (FPDF_FFLDraw), which
-        // also builds appearances for fields that lack them. PDFium keeps a
-        // pointer to the info block, so it lives as long as the document.
-        // An encrypted file's key, unlocked now so the password goes no
-        // further than this call. A handler the re-encryption cannot
-        // reproduce still opens; the export is refused instead.
-        let encryption = (unsafe { self.lib.FPDF_GetSecurityHandlerRevision(handle) } != -1)
-            .then(|| SourceEncryption::from_source(&bytes, password.unwrap_or("")));
-        let mut form_info: Box<FPDF_FORMFILLINFO> = Box::new(unsafe { std::mem::zeroed() });
-        form_info.version = 1;
-        let form = unsafe {
-            self.lib
-                .FPDFDOC_InitFormFillEnvironment(handle, form_info.as_mut())
-        };
-        Ok(Document {
-            lib: self.lib,
-            handle,
-            form,
-            _form_info: form_info,
-            _bytes: bytes,
-            encryption,
-        })
-    }
 }
 
 /// An open PDF. Dropping it closes the document.
