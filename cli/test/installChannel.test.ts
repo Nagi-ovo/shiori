@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { detectCliInstallTarget } from "../distribution";
 import { ensureCliBinary } from "../npm/install.mjs";
 
@@ -73,12 +73,21 @@ async function serveCliArchive(archive: Uint8Array, target: string) {
   return { server, sha256 };
 }
 
-function makeArchive(dir: string, executable: string): Uint8Array {
+function makeArchive(
+  dir: string,
+  executable: string,
+  files: Record<string, string> = {},
+): Uint8Array {
   const bin = join(dir, executable);
   writeFileSync(bin, "#!/bin/sh\necho shiori-ok\n");
   chmodSync(bin, 0o755);
+  for (const [path, body] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), body);
+  }
+  const entries = [executable, ...new Set(Object.keys(files).map((path) => path.split("/")[0]))];
   const archive = join(dir, "shiori-cli.tar.gz");
-  const packed = spawnSync("tar", ["-czf", archive, executable], {
+  const packed = spawnSync("tar", ["-czf", archive, ...entries], {
     cwd: dir,
     encoding: "utf8",
   });
@@ -196,38 +205,61 @@ describe("CLI install channel", () => {
   // two deadlock in the same process — on Windows that hung the whole test
   // step until the job's 30-minute timeout cancelled the release.
   test.skipIf(!powershell || process.platform !== "win32")(
-    "PowerShell installer extracts the archive and links shiori.exe",
+    "PowerShell installer puts shiori.exe on PATH beside its engine",
     async () => {
       if (!target) return;
       await withTempDir(async (dir) => {
-        const archive = makeArchive(dir, "shiori.exe");
+        const archive = makeArchive(dir, "shiori.exe", {
+          "native/shiori_core.node": "addon",
+          "assets/fonts/NotoSansSC-Regular.otf": "font",
+        });
         const { server } = await serveCliArchive(archive, target);
         servers.push(server);
         const home = join(dir, "home");
-        const proc = Bun.spawn(
-          [powershell!, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installPs1],
-          {
-            stdout: "pipe",
-            stderr: "pipe",
-            env: {
-              ...process.env,
-              SHIORI_CLI_HOME: home,
-              SHIORI_CLI_API: `http://127.0.0.1:${server.port}/api/cli`,
-              SHIORI_CLI_ALLOW_HTTP: "1",
-              // Never rewrite the runner's user PATH from a test.
-              SHIORI_CLI_SKIP_PATH: "1",
+        // What an earlier installer left: a hard link in bin\ that, run from
+        // PATH, looked for native\ in bin\ and never found it.
+        mkdirSync(join(home, "bin"), { recursive: true });
+        writeFileSync(join(home, "bin", "shiori.exe"), "stale");
+        const install = async () => {
+          const proc = Bun.spawn(
+            [powershell!, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installPs1],
+            {
+              stdout: "pipe",
+              stderr: "pipe",
+              env: {
+                ...process.env,
+                SHIORI_CLI_HOME: home,
+                SHIORI_CLI_API: `http://127.0.0.1:${server.port}/api/cli`,
+                SHIORI_CLI_ALLOW_HTTP: "1",
+                // Never rewrite the runner's user PATH from a test.
+                SHIORI_CLI_SKIP_PATH: "1",
+              },
             },
-          },
-        );
-        const [stderr, status] = await Promise.all([
-          new Response(proc.stderr).text(),
-          proc.exited,
-        ]);
-        expect(stderr).toBe("");
-        expect(status).toBe(0);
-        const linked = join(home, "bin", "shiori.exe");
+          );
+          const [stderr, status] = await Promise.all([
+            new Response(proc.stderr).text(),
+            proc.exited,
+            new Response(proc.stdout).text(),
+          ]);
+          expect(stderr).toBe("");
+          expect(status).toBe(0);
+        };
+        // Twice: the second run replaces the cli\current junction, which
+        // must not take the version directory behind it along.
+        await install();
+        await install();
+        // The CLI finds its engine and fonts beside the path it was started
+        // by (process.execPath), so they must sit beside the exe on PATH.
+        const onPath = join(home, "cli", "current", "shiori.exe");
         const source = join(home, "cli", "0.1.25", "shiori.exe");
-        expect(readFileSync(linked)).toEqual(readFileSync(source));
+        expect(readFileSync(onPath)).toEqual(readFileSync(source));
+        expect(readFileSync(join(dirname(onPath), "native", "shiori_core.node"), "utf8")).toBe(
+          "addon",
+        );
+        expect(
+          existsSync(join(dirname(onPath), "assets", "fonts", "NotoSansSC-Regular.otf")),
+        ).toBe(true);
+        expect(existsSync(join(home, "bin", "shiori.exe"))).toBe(false);
       });
     },
     60_000,
