@@ -73,7 +73,11 @@ export function textItemsAreVisuallyContiguous(
   const to = inBaselineFrame(dir, currentTransform);
   const baselineDelta = Math.abs(from.across - to.across);
   if (baselineDelta > height * 0.25) return false;
-  const gap = to.along - (from.along + previous.width);
+  // Right-to-left items advance leftward: the gap is before the previous one.
+  const gap =
+    previous.dir === "rtl" && current.dir === "rtl"
+      ? from.along - (to.along + current.width)
+      : to.along - (from.along + previous.width);
   return gap >= -height && gap <= height * 0.3;
 }
 

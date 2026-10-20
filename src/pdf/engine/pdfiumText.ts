@@ -71,6 +71,9 @@ type Run = {
   item: PdfTextItem | null;
   /** The drawn glyphs in `str`, in reading order. */
   glyphs: PdfItemGlyph[];
+  /** Grows leftward: each glyph ends where the run starts, so `origin`
+   * moves to it and `str` stays in reading order. */
+  rtl: boolean;
 };
 
 /** A drawn glyph of a text item: its UTF-16 range in `str`, and its advance
@@ -140,17 +143,19 @@ class PageTextBuilder {
     const origin = { x: glyph.origin[0], y: glyph.origin[1] };
     const end = { x: glyph.end[0], y: glyph.end[1] };
     let run = this.#run;
-    if (run && !continues(run, style, size, glyph.angle, origin)) {
+    let way = run ? continues(run, style, size, glyph, origin, end) : null;
+    if (run && !way) {
       this.#flush(false);
       run = null;
     }
     if (!run) {
       const resumed = this.#recent.find(
         (recent, i) =>
-          continues(recent, style, size, glyph.angle, origin) &&
+          continues(recent, style, size, glyph, origin, end) &&
           this.#recent.slice(0, i).every((between) => !sameBaseline(recent, between)),
       );
       if (resumed) {
+        way = continues(resumed, style, size, glyph, origin, end);
         this.#recent = this.#recent.filter((recent) => recent !== resumed);
         this.#looseSpace = null;
         run = resumed;
@@ -159,7 +164,8 @@ class PageTextBuilder {
     }
     if (!run) {
       if (this.#looseSpace) {
-        this.#items.push(spaceItem(this.#looseSpace.run, this.#looseSpace.at, origin));
+        const { run: before, at } = this.#looseSpace;
+        this.#items.push(before.rtl ? spaceItem(before, end, at) : spaceItem(before, at, origin));
         this.#looseSpace = null;
       }
       run = {
@@ -173,8 +179,14 @@ class PageTextBuilder {
         pendingSpace: false,
         item: null,
         glyphs: [],
+        rtl: false,
       };
       this.#run = run;
+    } else if (way === "leftward") {
+      // The run now starts at this glyph.
+      run.rtl = true;
+      run.width -= offsetAlong(run, origin);
+      run.origin = origin;
     }
     if (run.pendingSpace && !/\s$/u.test(run.str)) run.str += " ";
     run.pendingSpace = false;
@@ -214,7 +226,9 @@ class PageTextBuilder {
         this.#items.push(run.item);
       }
       this.#recent = [run, ...this.#recent].slice(0, RESUMABLE_RUNS);
-      if (!hasEOL && run.pendingSpace) this.#looseSpace = { at: along(run, run.width), run };
+      if (!hasEOL && run.pendingSpace) {
+        this.#looseSpace = { at: run.rtl ? run.origin : along(run, run.width), run };
+      }
     } else if (hasEOL) {
       const last = this.#items[this.#items.length - 1];
       if (last) last.hasEOL = true;
@@ -243,17 +257,39 @@ class PageTextBuilder {
   }
 }
 
-function continues(run: Run, style: string, size: number, angle: number, origin: PdfPoint): boolean {
+// Letters of the right-to-left scripts; a run turns right-to-left only on
+// two of them in a row, so a neutral or Latin glyph never flips it.
+const RTL_LETTER = /^[\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}]/u;
+
+function continues(
+  run: Run,
+  style: string,
+  size: number,
+  glyph: PdfiumGlyph,
+  origin: PdfPoint,
+  end: PdfPoint,
+): "forward" | "leftward" | null {
   const offset = offsetAlong(run, origin);
   const across = -(origin.x - run.origin.x) * run.dir.y + (origin.y - run.origin.y) * run.dir.x;
-  return (
-    run.style === style &&
-    Math.abs(run.fontSize - size) <= size * 1e-3 &&
-    Math.abs(run.angle - angle) <= ANGLE_EPSILON &&
-    Math.abs(across) <= BASELINE_EM * size &&
-    offset >= run.width - MAX_OVERLAP_EM * size &&
-    offset <= run.width + MAX_GAP_EM * size
-  );
+  if (
+    run.style !== style ||
+    Math.abs(run.fontSize - size) > size * 1e-3 ||
+    Math.abs(run.angle - glyph.angle) > ANGLE_EPSILON ||
+    Math.abs(across) > BASELINE_EM * size
+  ) {
+    return null;
+  }
+  if (!run.rtl && offset >= run.width - MAX_OVERLAP_EM * size && offset <= run.width + MAX_GAP_EM * size) {
+    return "forward";
+  }
+  // Right-to-left: the glyph's advance ends where the run starts.
+  const endOffset = offsetAlong(run, end);
+  const leftward =
+    offset < 0 &&
+    endOffset <= MAX_OVERLAP_EM * size &&
+    endOffset >= -MAX_GAP_EM * size &&
+    (run.rtl || (run.glyphs.length === 1 && RTL_LETTER.test(run.str) && RTL_LETTER.test(glyph.text)));
+  return leftward ? "leftward" : null;
 }
 
 function sameBaseline(run: Run, other: Run): boolean {
@@ -273,7 +309,7 @@ function itemOf(run: Run, hasEOL: boolean): PdfTextItem {
   const { fontSize: size, dir, origin } = run;
   return {
     str: run.str,
-    dir: "ltr",
+    dir: run.rtl ? "rtl" : "ltr",
     transform: [size * dir.x, size * dir.y, -size * dir.y, size * dir.x, origin.x, origin.y],
     width: run.width,
     height: size,
@@ -282,10 +318,11 @@ function itemOf(run: Run, hasEOL: boolean): PdfTextItem {
   };
 }
 
-/** A space spanning the gap between a run and the next, as pdf.js emits. */
-function spaceItem(before: Run, at: PdfPoint, next: PdfPoint): PdfTextItem {
-  const gap = (next.x - at.x) * before.dir.x + (next.y - at.y) * before.dir.y;
-  return itemOf({ ...before, origin: at, str: " ", width: Math.max(0, gap), item: null, glyphs: [] }, false);
+/** A space spanning the gap between a run and the next, as pdf.js emits:
+ * from `from` to `to` along the run's baseline. */
+function spaceItem(before: Run, from: PdfPoint, to: PdfPoint): PdfTextItem {
+  const gap = (to.x - from.x) * before.dir.x + (to.y - from.y) * before.dir.y;
+  return itemOf({ ...before, origin: from, str: " ", width: Math.max(0, gap), item: null, glyphs: [] }, false);
 }
 
 function cellOf(

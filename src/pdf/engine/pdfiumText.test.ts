@@ -23,6 +23,19 @@ function word(text: string, x: number, y: number, font = helvetica, angle = 0): 
   }));
 }
 
+// Right-to-left: PDFium reports glyphs in reading order, each one drawn to
+// the left of the one before, the first ending at `right`.
+function rtlWord(text: string, right: number, y: number, font = helvetica): PdfiumGlyph[] {
+  return [...text].map((ch, i) => ({
+    ...font,
+    text: ch,
+    origin: [right - 6 * (i + 1), y],
+    end: [right - 6 * i, y],
+    angle: 0,
+    generated: false,
+  }));
+}
+
 function generated(text: string, x: number, y: number): PdfiumGlyph {
   return {
     text,
@@ -127,6 +140,39 @@ describe("pageTextFromPdfiumGlyphs", () => {
       ["Next", false],
     ]);
     expect(items[0]!.width).toBe(60);
+  });
+
+  test("right-to-left words stay one item and read in order", () => {
+    // "שלום", PDFium's space, then "עולם" 3 pt further left.
+    const glyphs = [...rtlWord("שלום", 124, 700), generated(" ", 100, 700), ...rtlWord("עולם", 97, 700)];
+    const text = pageTextFromPdfiumGlyphs(glyphs, "he");
+    const items = text.content.items as PdfTextItem[];
+    expect(items.map((item) => [item.str, item.dir])).toEqual([["שלום עולם", "rtl"]]);
+    // From the leftmost glyph's origin to the first glyph's advance end.
+    expect([items[0]!.transform[4], items[0]!.width]).toEqual([73, 51]);
+    expect(semanticTextContentToString(text.content)).toBe("שלום עולם");
+    const mapped = mapTextContentGlyphs(text.content, text.glyphs!);
+    expect(mapped[0]?.map((glyph) => glyph.text).join("")).toBe("שלוםעולם");
+  });
+
+  test("a wide right-to-left gap gets a space item spanning it", () => {
+    // "שלום" starts at 100; "עולם" ends at 60, far past a space.
+    const glyphs = [...rtlWord("שלום", 124, 700), generated(" ", 100, 700), ...rtlWord("עולם", 60, 700)];
+    const items = textItems(glyphs);
+    expect(items.map((item) => item.str)).toEqual(["שלום", " ", "עולם"]);
+    const space = items[1]!;
+    expect([space.transform[4], space.width]).toEqual([60, 40]);
+  });
+
+  test("a right-to-left word split by a font change reads whole", () => {
+    const glyphs = [...rtlWord("של", 124, 700), ...rtlWord("ום", 112, 700, courier)];
+    const text = pageTextFromPdfiumGlyphs(glyphs, "he");
+    const items = text.content.items as PdfTextItem[];
+    expect(items.map((item) => [item.str, item.dir])).toEqual([
+      ["של", "rtl"],
+      ["ום", "rtl"],
+    ]);
+    expect(semanticTextContentToString(text.content)).toBe("שלום");
   });
 
   test("text in another font on the same baseline keeps its place", () => {
