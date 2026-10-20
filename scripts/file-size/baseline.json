@@ -46,7 +46,6 @@
   "src/editor/components/overlays/OverlayDom.tsx": 64664,
   "src/editor/components/overlays/overlaySvg.tsx": 20697,
   "src/editor/components/textHighlightGeometry.ts": 53308,
-  "src/editor/components/thumbnailCompositor.ts": 20832,
   "src/editor/components/ui.tsx": 60028,
   "src/editor/quotes.ts": 21089,
   "src/editor/store/store.test.ts": 57704,
