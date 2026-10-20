@@ -42,8 +42,9 @@ const REMOTE_RESOURCE_ATTRS = [
   { selector: "track[src]", attrs: ["src"], policy: "always-block" },
   // Legacy table/body background images, which DOMPurify keeps.
   { selector: "[background]", attrs: ["background"], policy: "image" },
+  // SVG <feImage> fetches its href like <image> does.
   {
-    selector: "image[href], image[xlink\\:href]",
+    selector: "image[href], image[xlink\\:href], feImage[href], feImage[xlink\\:href]",
     attrs: ["href", "xlink:href"],
     policy: "image",
   },

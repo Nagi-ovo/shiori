@@ -163,6 +163,25 @@ describe("document image resources", () => {
     expect(result.summary.blockedRemoteImages).toBe(6);
   });
 
+  // A filter primitive fetches its href like an <img>, and DOMPurify keeps it.
+  test("treats an SVG feImage href as a remote image", async () => {
+    const svg = [
+      '<svg xmlns:xlink="http://www.w3.org/1999/xlink"><filter id="f">',
+      '<feImage href="https://tracker.example/a.png"></feImage>',
+      '<feImage xlink:href="https://tracker.example/b.png"></feImage>',
+      '</filter><rect width="10" height="10" filter="url(#f)"></rect></svg>',
+    ].join("");
+
+    const blocked = await resolveDocumentImageResources(svg, { allowRemoteImages: false });
+    expect(blocked.html).not.toContain("tracker.example");
+    expect(blocked.summary.remoteImages).toBe(2);
+    expect(blocked.summary.blockedRemoteImages).toBe(2);
+
+    const allowed = await resolveDocumentImageResources(svg, { allowRemoteImages: true });
+    expect(allowed.html).toContain("https://tracker.example/a.png");
+    expect(allowed.summary.blockedRemoteImages).toBe(0);
+  });
+
   test("injects static document CSP with image policy", async () => {
     const blocked = await resolveDocumentImageResources(
       '<!doctype html><html><head><title>Doc</title></head><body></body></html>',
