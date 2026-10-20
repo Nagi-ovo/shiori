@@ -3,12 +3,13 @@
 // visibility/geometry requests that raced the creation. Desktop only.
 
 use tauri::{
-    webview::WebviewBuilder, AppHandle, LogicalPosition, LogicalSize, Manager, Runtime, Url,
-    WebviewUrl,
+    webview::{PageLoadEvent, WebviewBuilder},
+    AppHandle, LogicalPosition, LogicalSize, Manager, Runtime, Url, WebviewUrl,
 };
 
 use super::navigation::{
     emit_web_panel_nav, parse_web_url, record_web_navigation, route_non_web_panel_navigation,
+    web_panel_allows_navigation,
 };
 use super::{
     apply_web_panel_bounds, lock_web_panel, WebPanelBounds, WebPanelState, WEB_PANEL_LABEL,
@@ -28,19 +29,33 @@ pub(super) fn create_web_panel<R: Runtime>(
     let builder = WebviewBuilder::new(WEB_PANEL_LABEL, WebviewUrl::External(url))
         .user_agent(WEB_PANEL_USER_AGENT)
         .incognito(!persist_session)
-        .on_navigation(move |url| {
-            let committed = url.to_string();
-            if parse_web_url(&committed).is_err() {
-                route_non_web_panel_navigation(&committed);
+        // Policy only: this fires for subframes too, so it records nothing.
+        .on_navigation(|url| {
+            let target = url.as_str();
+            if !web_panel_allows_navigation(target) {
+                route_non_web_panel_navigation(target);
                 return false;
+            }
+            true
+        })
+        // History and the address bar follow main-frame commits only: page-load
+        // Started is WebKit's didCommitNavigation / WebKitGTK's Committed /
+        // WebView2's ContentLoading, all main frame and post-redirect. Recording
+        // in on_navigation put an iframe's URL (an embed, an ad) in the address
+        // bar and history.
+        .on_page_load(move |_webview, payload| {
+            if payload.event() != PageLoadEvent::Started
+                || parse_web_url(payload.url().as_str()).is_err()
+            {
+                return;
             }
             {
                 let state = nav_app.state::<WebPanelState>();
                 let mut inner = lock_web_panel(&state);
-                record_web_navigation(&mut inner, &committed);
+                record_web_navigation(&mut inner, payload.url().as_str());
             }
             // Emit nav-state OFF this callback's stack. On Windows this closure
-            // is the synchronous WebView2 `NavigationStarting` COM callback,
+            // is a synchronous WebView2 COM callback (`ContentLoading`),
             // running on the main UI thread inside the message pump.
             // `emit_web_panel_nav` -> `app.emit` -> webview `eval` goes through
             // wry's `send_user_message`, which INLINE-EXECUTES when called from
@@ -62,7 +77,6 @@ pub(super) fn create_web_panel<R: Runtime>(
             tauri::async_runtime::spawn(async move {
                 emit_web_panel_nav(&emit_app, false, None);
             });
-            true
         });
     let (position, size) = match &bounds {
         Some(b) => (

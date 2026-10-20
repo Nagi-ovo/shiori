@@ -39,6 +39,22 @@ pub(super) fn route_non_web_panel_navigation(raw: &str) {
     }
 }
 
+// The panel's navigation policy. WebKit (macOS WKWebView, Linux WebKitGTK)
+// asks it about every frame without saying which, so besides http(s) it lets
+// through the in-webview documents iframes load (about:blank, about:srcdoc,
+// a page's own blob: URLs); refusing those broke embeds. data: stays out: a
+// top-level data: page would sit under the previous address.
+pub(super) fn web_panel_allows_navigation(raw: &str) -> bool {
+    if parse_web_url(raw).is_ok() {
+        return true;
+    }
+    Url::parse(raw.trim()).is_ok_and(|url| match url.scheme() {
+        "about" => matches!(url.path(), "blank" | "srcdoc"),
+        "blob" => true,
+        _ => false,
+    })
+}
+
 // Which way the panel's own Back/Forward buttons asked the webview to go.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Traversal {
@@ -119,6 +135,35 @@ mod tests {
             "",
         ] {
             assert!(super::parse_web_url(bad).is_err(), "should reject {bad}");
+        }
+    }
+
+    // The policy sees every frame's navigations (WebKit on macOS and Linux
+    // does not say which frame), so it must let embeds load their own
+    // in-webview documents while still refusing anything that leaves the web.
+    #[test]
+    fn web_panel_policy_lets_subframe_documents_load() {
+        for ok in [
+            "https://www.youtube.com/embed/x",
+            "about:blank",
+            "about:srcdoc",
+            "blob:https://example.com/0d1c6b8e-9a43-4b1f-8f43-0c1e0a4b8b11",
+        ] {
+            assert!(super::web_panel_allows_navigation(ok), "should allow {ok}");
+        }
+        for bad in [
+            "mailto:a@b.com",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "data:text/html,<h1>x</h1>",
+            "tauri://localhost/index.html",
+            "shiori://open",
+            "about:settings",
+        ] {
+            assert!(
+                !super::web_panel_allows_navigation(bad),
+                "should refuse {bad}"
+            );
         }
     }
 
