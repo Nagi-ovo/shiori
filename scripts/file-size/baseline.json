@@ -29,7 +29,7 @@
   "src/editor/components/DocumentViewerHtml.tsx": 39479,
   "src/editor/components/DocxViewer.layout.test.tsx": 23824,
   "src/editor/components/DocxViewer.tsx": 30731,
-  "src/editor/components/ExportDialog.tsx": 32168,
+  "src/editor/components/ExportDialog.tsx": 30337,
   "src/editor/components/Landing.tsx": 46954,
   "src/editor/components/MarkdownAppearancePicker.tsx": 41334,
   "src/editor/components/MarkdownLiveEditorCore.ts": 40023,
