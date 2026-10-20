@@ -35,7 +35,6 @@
   "src/editor/components/MarkdownLiveEditorCore.ts": 40023,
   "src/editor/components/OverlayLayer.dragRender.test.tsx": 24284,
   "src/editor/components/OverlayLayer.tsx": 64814,
-  "src/editor/components/PageCanvas.tsx": 21908,
   "src/editor/components/RightRail.tsx": 59914,
   "src/editor/components/SettingsPanel.tsx": 34073,
   "src/editor/components/TabStrip.tsx": 40429,
