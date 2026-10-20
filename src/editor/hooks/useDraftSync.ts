@@ -396,6 +396,15 @@ export function useDraftSync(
     // Don't drain to disk while a restore decision is pending — that is
     // exactly the overwrite we are protecting the un-restored draft from.
     if (disabled || !dirtyRef.current) return;
+    // The IndexedDB write below is async and reads before it writes, so a
+    // page torn down on pagehide can lose it. Land the pending op-log tier
+    // synchronously first; a successful save clears it again.
+    if (operationLogTimerRef.current !== null) {
+      window.clearTimeout(operationLogTimerRef.current);
+      operationLogTimerRef.current = null;
+      const { hash: logHash, model: logModel } = latestRef.current;
+      if (logHash) writeOperationLog(logHash, logModel);
+    }
     setStatus("saving");
     try {
       await drainLatestSave();

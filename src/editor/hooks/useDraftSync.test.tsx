@@ -203,6 +203,38 @@ describe("useDraftSync disabled gate", () => {
     await drafts.remove(HASH);
   });
 
+  test("suspension writes the crash-recovery log before IndexedDB finishes", async () => {
+    // pagehide (a web tab closing) may tear the page down before the async
+    // IndexedDB put is issued, so the synchronous tier must already hold the
+    // edit made inside the 250 ms op-log debounce.
+    const { useEditorStore } = await import("../store/store");
+    const { default: drafts } = await import("../../storage/drafts");
+    const { useDraftSync } = await import("./useDraftSync");
+    const { clearOperationLog, readOperationLog } = await import(
+      "../../storage/operationLog"
+    );
+    await drafts.remove(HASH);
+    clearOperationLog(HASH);
+    const originalPut = drafts.put;
+    drafts.put = () => new Promise(() => {});
+
+    try {
+      openDirtyDoc(useEditorStore);
+      const view = renderHook(() => useDraftSync(HASH, false));
+      act(() => {
+        void view.result.current.flushNow();
+      });
+      expect(
+        readOperationLog(HASH)?.model.overlays.map((item) => item.id),
+      ).toEqual(["h1"]);
+      view.unmount();
+    } finally {
+      drafts.put = originalPut;
+      clearOperationLog(HASH);
+      await drafts.remove(HASH);
+    }
+  });
+
   test("strict flush rejects when the durable draft write fails", async () => {
     const { useEditorStore } = await import("../store/store");
     const { default: drafts } = await import("../../storage/drafts");
