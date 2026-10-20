@@ -5,6 +5,8 @@ import type {
   HighlightOverlay,
   InkOverlay,
   NoteOverlay,
+  Overlay,
+  OverlayType,
 } from "../../../pdf/model/types";
 import { describeOverlay } from "./describeOverlay";
 
@@ -117,4 +119,50 @@ describe("describeOverlay", () => {
     expect(name.length).toBeLessThan(120);
     expect(name.endsWith("…")).toBe(true);
   });
+
+  // Rectangles, images and edited original text were announced by their
+  // internal slugs ("rect", "image", "contentText") in every language,
+  // because the lookup fell back to the raw type when no label existed.
+  // A Record keyed by OverlayType makes the next new type fail to compile
+  // here until it has a sample, and so a name.
+  const rect = { x: 0, y: 0, w: 10, h: 10 };
+  const sampleOf: Record<OverlayType, Overlay> = {
+    highlight: { ...base, type: "highlight", rects: [rect], color: "#ff0", opacity: 0.4 },
+    underline: { ...base, type: "underline", rects: [rect], color: "#000", opacity: 1 },
+    strikethrough: { ...base, type: "strikethrough", rects: [rect], color: "#000", opacity: 1 },
+    ink: { ...base, type: "ink", paths: [[{ x: 0, y: 0 }]], color: "#000", width: 2 },
+    image: { ...base, type: "image", rect, dataUrl: "data:,", mimeType: "image/png" },
+    stamp: { ...base, type: "stamp", kind: "check", rect, color: "#000", strokeWidth: 2 },
+    rect: { ...base, type: "rect", rect, color: "#000", strokeWidth: 1, fill: null },
+    note: { ...base, type: "note", rect, color: "#ff0", text: "" },
+    text: { ...base, type: "text", rect, text: "" },
+    callout: { ...base, type: "callout", rect, text: "" },
+    contentText: { ...base, type: "contentText", rect, text: "", originalText: "" },
+  } as Record<OverlayType, Overlay>;
+  const kindOf = (overlay: Overlay) => describeOverlay(overlay, t).split(", ")[0];
+
+  test("rectangles, images and edited text are named in words", () => {
+    expect(kindOf(sampleOf.rect)).toBe("Rectangle");
+    expect(kindOf(sampleOf.image)).toBe("Image");
+    expect(kindOf(sampleOf.contentText)).toBe("Edited text");
+  });
+
+  test("a placed signature is named as a signature, not as an image or ink", () => {
+    expect(kindOf({ ...sampleOf.image, source: "signature" } as Overlay)).toBe("Signature");
+    expect(kindOf({ ...sampleOf.ink, source: "signature" } as Overlay)).toBe("Signature");
+  });
+
+  for (const lang of ["zh", "ja"] as const) {
+    test(`every annotation type has a ${lang} name rather than a code slug`, async () => {
+      await i18n.changeLanguage(lang);
+      try {
+        for (const overlay of Object.values(sampleOf)) {
+          // Every zh / ja type label is written in CJK script.
+          expect(kindOf(overlay)).not.toMatch(/^[\x20-\x7e]*$/);
+        }
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+  }
 });

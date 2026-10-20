@@ -442,6 +442,8 @@
       "signature": "签名",
       "stamp": "勾叉印章",
       "rectangle": "矩形",
+      "image": "图片",
+      "contentText": "已编辑原文",
       "note": "便签",
       "callout": "批注",
       "text": "文字",

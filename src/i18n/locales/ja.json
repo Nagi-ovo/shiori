@@ -442,6 +442,8 @@
       "signature": "署名",
       "stamp": "チェック印",
       "rectangle": "矩形",
+      "image": "画像",
+      "contentText": "編集済み本文",
       "note": "付箋",
       "callout": "注釈",
       "text": "テキスト",

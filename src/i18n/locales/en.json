@@ -448,6 +448,8 @@
       "signature": "Signature",
       "stamp": "Stamp",
       "rectangle": "Rectangle",
+      "image": "Image",
+      "contentText": "Edited text",
       "note": "Sticky note",
       "callout": "Comment",
       "text": "Text",
