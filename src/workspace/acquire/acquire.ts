@@ -78,6 +78,10 @@ export type AcquirePorts = {
   webHandles: {
     canUse: () => boolean;
     pickDocument: () => Promise<PickedFile | null>;
+    /** The Open picker: a multi-select, each unreadable file reported. */
+    pickDocuments: (
+      onError: (error: unknown, name?: string) => void,
+    ) => Promise<PickedFile[]>;
     pickPdf: () => Promise<PickedFile | null>;
     readDocument: (id: string) => Promise<PickedFile>;
     readPdf: (id: string) => Promise<PickedFile>;
@@ -190,11 +194,16 @@ export function createDocumentAcquisition(ports: AcquirePorts) {
     }
     if (webHandlesUsable()) {
       try {
-        const picked = await webHandles.pickDocument();
-        if (!picked) return;
-        const kind = acceptedKind(picked.name);
-        if (!kind) return;
-        await ports.open.document(pickedPayload(picked, kind));
+        const picked = await webHandles.pickDocuments((error, name) =>
+          ports.notify({ kind: "openFailed", error, name }),
+        );
+        const foregroundIntent = ports.store.getState().claimForegroundIntent();
+        for (const file of picked) {
+          const kind = acceptedKind(file.name);
+          if (kind) {
+            await ports.open.document(pickedPayload(file, kind), { foregroundIntent });
+          }
+        }
       } catch (error) {
         ports.notify({ kind: "openFailed", error });
       }

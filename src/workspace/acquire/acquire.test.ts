@@ -63,6 +63,7 @@ function setup(
     webHandles: {
       canUse: () => on === "web",
       pickDocument: async () => null,
+      pickDocuments: async () => [],
       pickPdf: async () => {
         pickers.push("webPdf");
         return null;
@@ -147,6 +148,32 @@ describe("picking documents", () => {
     await picking;
 
     expect(opened.map((entry) => entry.name)).toEqual(["a.pdf", "b.md", "c.pdf"]);
+    const intents = opened.map((entry) => entry.options?.foregroundIntent);
+    expect(intents[0]).toBeDefined();
+    expect(new Set(intents).size).toBe(1);
+  });
+
+  // Chromium's File System Access picker, like every other route, takes a
+  // multi-select; each file keeps its handle so its recent reopens it.
+  test("on the web, every file of a handle-picker multi-select opens, in order", async () => {
+    const { acquire, opened } = setup("web", {
+      webHandles: {
+        pickDocuments: async () => [
+          { name: "a.pdf", size: 1, bytes, webFileHandleId: "h-a" },
+          { name: "b.md", size: 1, bytes, webFileHandleId: "h-b" },
+        ],
+      },
+      open: {
+        document: async (loaded, options) => {
+          opened.push({ name: `${loaded.name}|${loaded.webFileHandleId}`, options });
+        },
+        pdf: async () => {},
+      },
+    });
+
+    await acquire.pick();
+
+    expect(opened.map((entry) => entry.name)).toEqual(["a.pdf|h-a", "b.md|h-b"]);
     const intents = opened.map((entry) => entry.options?.foregroundIntent);
     expect(intents[0]).toBeDefined();
     expect(new Set(intents).size).toBe(1);
