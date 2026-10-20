@@ -180,6 +180,30 @@ describe("page text redaction clean rect report", () => {
     expect(report.cleanRects).toEqual([false, true]);
   });
 
+  test("excises body text on a page whose footer font has no /Widths", async () => {
+    const page = await pageWithContent(
+      "BT /F1 12 Tf 100 700 Td (ABC) Tj ET BT /F2 9 Tf 280 40 Td (Page 1) Tj ET",
+    );
+    // A Standard-14 font as pdf-lib writes it: no /FirstChar or /Widths.
+    page.node.setFontDictionary(
+      PDFName.of("F2"),
+      page.doc.context.register(
+        page.doc.context.obj({
+          Type: "Font",
+          Subtype: "Type1",
+          BaseFont: "Helvetica",
+        }),
+      ),
+    );
+    const rect: PdfRect = { x: 99, y: 697, w: 20, h: 13 };
+
+    const report = redactCoveredTextOnPage(page, [rect]);
+
+    expect(report.removedCount).toBe(3);
+    // The footer's extent is unknown, so no rect can be proven clean.
+    expect(report.cleanRects).toEqual([false]);
+  });
+
   test("fails closed to dirty rects on walk failure", async () => {
     const page = await pageWithContent("BT BT");
     const rects: PdfRect[] = [

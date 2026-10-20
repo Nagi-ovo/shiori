@@ -240,7 +240,9 @@ export function redactCoveredTextOnPage(
     if (!walk.ok) return dirtyReport(coverRects);
 
     const result = removeCoveredGlyphs(source, ops, walk.glyphs, coverRects);
-    const cleanRects = [...result.cleanRects];
+    const cleanRects = walk.unplacedText
+      ? coverRects.map(() => false)
+      : [...result.cleanRects];
     applyXObjectDirtiness(
       cleanRects,
       coverRects,

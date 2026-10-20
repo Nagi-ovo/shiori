@@ -163,6 +163,25 @@ describe("text state walk", () => {
     }
   });
 
+  test("leaves text in an unsupported font unplaced instead of failing", () => {
+    const result = expectOk(
+      walk(
+        "BT /F2 9 Tf 280 40 Td (Page 1) Tj /F1 12 Tf (X) Tj 0 660 Td (A) Tj ET",
+        {
+          resolveFont: (name) =>
+            name === "F2"
+              ? { ok: false, reason: "simple font without /FirstChar + /Widths" }
+              : latinFont(),
+        },
+      ),
+    );
+    expect(result.unplacedText).toBe(true);
+    // (X) follows text of unknown width on the same line, so its position
+    // is unknown too; the next Td moves from the line start and is exact.
+    expect(result.glyphs.map((glyph) => glyph.code)).toEqual([0x41]);
+    expect(result.glyphs[0]!.quad[0]).toEqual({ x: 280, y: 697.6 });
+  });
+
   test("fails on odd byte count for 2-byte fonts and unknown fonts", () => {
     const cid = latinFont({ bytesPerCode: 2, appliesWordSpacing: false });
     const odd = walk("BT /F1 12 Tf <0041 42> Tj ET", {

@@ -5,11 +5,17 @@
 // that preserves the advance so following text does not shift).
 //
 // Fail-closed by design: any construct whose geometry we cannot model
-// EXACTLY (unknown fonts, vertical/CMap encodings via glyphWidths, clipping
-// text render modes, ExtGState font overrides, malformed operands — which
-// also catch token-boundary damage from raw /Contents coalescing) aborts the
-// whole walk with { ok: false }. The caller must then leave the page
-// untouched. Approximating here would silently delete the wrong glyphs.
+// EXACTLY (unresolvable fonts, clipping text render modes, ExtGState font
+// overrides, malformed operands — which also catch token-boundary damage
+// from /Contents coalescing) aborts the whole walk with { ok: false }. The
+// caller must then leave the page untouched. Approximating here would
+// silently delete the wrong glyphs.
+//
+// One exception keeps a single odd font from disabling the whole page: text
+// in a font glyphWidths cannot measure (a Standard-14 font without /Widths,
+// a vertical or CMap encoding) yields no placements and sets unplacedText,
+// so it is never removed. Its advance is unknown, so later shows on the same
+// line are unplaced too, until a line operator moves from the line start.
 
 import type { ContentOp, ContentOperand } from "./tokenizer";
 import type { ContentFontInfo, UnsupportedFont } from "./glyphWidths";
@@ -93,6 +99,9 @@ export type TextWalkResult =
       glyphs: GlyphPlacement[];
       xobjects: XObjectUse[];
       inlineImages: InlineImageUse[];
+      // Some text was shown where the walk cannot place it; no cover rect
+      // can be proven free of it.
+      unplacedText: boolean;
     }
   | { ok: false; reason: string };
 
@@ -112,7 +121,8 @@ type GraphicsState = {
 };
 
 export type TextWalkCallbacks = {
-  // Resolve a /Font resource name. Unsupported fonts abort the walk.
+  // Resolve a /Font resource name. Null (unresolvable) aborts the walk; an
+  // unsupported font leaves its text unplaced.
   resolveFont: (name: string) => ContentFontInfo | UnsupportedFont | null;
   // Whether an /ExtGState resource contains a /Font entry. Return null when
   // unknown — the walk then assumes it might and taints the current font.
@@ -152,6 +162,9 @@ export function walkTextPlacements(
   let tm: Matrix = IDENTITY;
   let tlm: Matrix = IDENTITY;
   let inTextObject = false;
+  // Set once a show of unknown advance moved tm by an unknown amount.
+  let tmUnknown = false;
+  let unplacedText = false;
   const fontCache = new Map<string, ContentFontInfo | UnsupportedFont | null>();
 
   const fail = (reason: string): TextWalkResult => ({ ok: false, reason });
@@ -170,6 +183,7 @@ export function walkTextPlacements(
   const nextLine = (tx: number, ty: number) => {
     tlm = multiply([1, 0, 0, 1, tx, ty], tlm);
     tm = tlm;
+    tmUnknown = false;
   };
 
   const show = (
@@ -187,7 +201,11 @@ export function walkTextPlacements(
     }
     const font = resolveFont(gs.fontName);
     if (font === null) return `unresolvable font /${gs.fontName}`;
-    if (!font.ok) return `unsupported font /${gs.fontName}: ${font.reason}`;
+    if (!font.ok || tmUnknown) {
+      unplacedText = true;
+      tmUnknown = true;
+      return null;
+    }
     if (gs.fontSize === 0) return "show-text at font size 0";
     if (font.bytesPerCode === 2 && bytes.length % 2 !== 0) {
       return "odd byte count in 2-byte-code show string";
@@ -280,6 +298,7 @@ export function walkTextPlacements(
         inTextObject = true;
         tm = IDENTITY;
         tlm = IDENTITY;
+        tmUnknown = false;
         break;
       case "ET":
         if (!inTextObject) return fail("ET without BT");
@@ -355,6 +374,7 @@ export function walkTextPlacements(
         if (!inTextObject) return fail("Tm outside BT/ET");
         tm = nums as Matrix;
         tlm = nums as Matrix;
+        tmUnknown = false;
         break;
       }
       case "T*":
@@ -437,5 +457,5 @@ export function walkTextPlacements(
     }
   }
   if (inTextObject) return fail("unterminated BT");
-  return { ok: true, glyphs, xobjects, inlineImages };
+  return { ok: true, glyphs, xobjects, inlineImages, unplacedText };
 }
