@@ -133,6 +133,9 @@ function hasValidTextStyle(value: Record<string, unknown>): boolean {
   );
 }
 
+// Widths may be 0: the importer keeps a PDF /BS << /W 0 >> border as-is
+// (a borderless filled box, a redaction mark), and rejecting it here would
+// drop every undo snapshot that carries such an overlay.
 function isOverlay(value: unknown): value is Overlay {
   if (!isRecord(value) || !hasValidOverlayCommon(value)) return false;
   if (
@@ -157,7 +160,7 @@ function isOverlay(value: unknown): value is Overlay {
       ) &&
       isHexColor(value.color) &&
       isFiniteNumber(value.width) &&
-      value.width > 0 &&
+      value.width >= 0 &&
       (value.source === undefined || value.source === "signature")
     );
   }
@@ -177,7 +180,7 @@ function isOverlay(value: unknown): value is Overlay {
       isPdfRect(value.rect) &&
       isHexColor(value.color) &&
       isFiniteNumber(value.strokeWidth) &&
-      value.strokeWidth > 0 &&
+      value.strokeWidth >= 0 &&
       hasValidAngle(value)
     );
   }
@@ -186,7 +189,7 @@ function isOverlay(value: unknown): value is Overlay {
       isPdfRect(value.rect) &&
       isHexColor(value.color) &&
       isFiniteNumber(value.strokeWidth) &&
-      value.strokeWidth > 0 &&
+      value.strokeWidth >= 0 &&
       (value.fill === null || isHexColor(value.fill)) &&
       hasValidAngle(value)
     );
