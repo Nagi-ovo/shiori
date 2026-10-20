@@ -39,6 +39,8 @@ const REMOTE_RESOURCE_ATTRS = [
   { selector: "video[src], video[poster]", attrs: ["src", "poster"], policy: "always-block" },
   { selector: "audio[src]", attrs: ["src"], policy: "always-block" },
   { selector: "track[src]", attrs: ["src"], policy: "always-block" },
+  // Legacy table/body background images, which DOMPurify keeps.
+  { selector: "[background]", attrs: ["background"], policy: "image" },
   {
     selector: "image[href], image[xlink\\:href]",
     attrs: ["href", "xlink:href"],
@@ -170,12 +172,25 @@ function injectStaticDocumentCsp(doc: Document, allowRemoteImages: boolean) {
   doc.head.prepend(csp);
 }
 
+// Classified the way the browser will load it, not by prefix: the URL parser
+// repairs "https:host/x" and "https:\host/x" to https://host/x, and reads
+// "\\host/x" or "/\host/x" as another host. Relative references resolve
+// against a fixed special-scheme base so every platform gets one answer
+// (macOS documents resolve against tauri://, where "\" is not a slash).
+const RELATIVE_URL_ORIGIN = "https://shiori-document.invalid";
+
 function getRemoteUrlKind(src: string): RemoteUrlKind | null {
   const trimmed = src.trim();
-  if (/^https:\/\//i.test(trimmed)) return "https";
-  if (/^http:\/\//i.test(trimmed)) return "http";
-  if (/^\/\//.test(trimmed)) return "protocol-relative";
-  return null;
+  try {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+      const { protocol } = new URL(trimmed);
+      return protocol === "https:" ? "https" : protocol === "http:" ? "http" : null;
+    }
+    const { origin } = new URL(trimmed, `${RELATIVE_URL_ORIGIN}/`);
+    return origin === RELATIVE_URL_ORIGIN ? null : "protocol-relative";
+  } catch {
+    return null;
+  }
 }
 
 function shouldBlockImageUrl(

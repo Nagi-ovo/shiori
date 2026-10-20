@@ -43,6 +43,36 @@ describe("document image resources", () => {
     expect(result.html.match(/data-shiori-blocked-remote-src/g)?.length).toBe(2);
   });
 
+  // Each of these resolves to a remote host from tauri://localhost or
+  // http://tauri.localhost (and the backslash forms from a web origin too).
+  test("counts and blocks remote URLs the browser repairs, and background images", async () => {
+    const result = await resolveDocumentImageResources(
+      [
+        '<img src="https:evil.example/pixel.png">',
+        '<img src="https:\\\\evil.example/slash.png">',
+        '<img src="\\\\evil.example/unc.png">',
+        '<img src="/\\evil.example/mixed.png">',
+        '<table background="https://evil.example/table.png"><tr><td background="//evil.example/cell.png">x</td></tr></table>',
+      ].join(""),
+      { allowRemoteImages: false },
+    );
+
+    expect(result.summary.remoteImages).toBe(6);
+    expect(result.summary.blockedRemoteImages).toBe(6);
+    expect(result.html).not.toContain("evil.example");
+  });
+
+  test("keeps a scheme-only https image when remote images are allowed", async () => {
+    const result = await resolveDocumentImageResources(
+      '<img src="https:example.com/image.png">',
+      { allowRemoteImages: true },
+    );
+
+    expect(result.summary.remoteImages).toBe(1);
+    expect(result.summary.blockedRemoteImages).toBe(0);
+    expect(result.html).toContain('src="https:example.com/image.png"');
+  });
+
   test("rewrites local relative images to data URLs", async () => {
     const result = await resolveDocumentImageResources(
       '<img src="./figures/chart.png">',
