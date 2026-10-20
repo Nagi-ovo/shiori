@@ -52,6 +52,8 @@ export function ExportPagesSection({
           type="text"
           value={customRange}
           onChange={(e) => onCustomRangeChange(e.target.value)}
+          // The placeholder is an example, not a name.
+          aria-label={t("export.range.custom")}
           placeholder={t("export.range.customPlaceholder")}
           style={{
             marginTop: 8,
