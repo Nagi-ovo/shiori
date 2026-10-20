@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  decodePDFRawStream,
   PDFArray,
   PDFDict,
   PDFDocument,
   PDFHexString,
   PDFName,
+  PDFRawStream,
   PDFString,
 } from "pdf-lib";
 import { exportPdf } from "./exportPdf";
@@ -110,5 +112,38 @@ describe("an imported annotation keeps its flags and note state", () => {
     expect(annot!.get(PDFName.of("Name"))?.toString()).toBe("/Note");
     expect(annot!.get(PDFName.of("Open"))?.toString()).toBe("false");
     expect(annot!.get(PDFName.of("State"))).toBeUndefined();
+  });
+});
+
+describe("a text box keeps its fill, border and opacity", () => {
+  const box = {
+    type: "text", id: "t", pageId: "p1", rect: { x: 72, y: 600, w: 200, h: 40 }, text: "Note",
+    fontSize: 12, color: "#1a1815", bold: false, align: "left", fontFamily: "sans",
+  };
+
+  function appearance(annot: PDFDict): string {
+    const ap = annot.lookup(PDFName.of("AP"), PDFDict);
+    const stream = ap.lookup(PDFName.of("N"), PDFRawStream);
+    return new TextDecoder().decode(decodePDFRawStream(stream).decode());
+  }
+
+  test("in the dictionary and in the appearance it draws", async () => {
+    const [annot] = await exportedAnnotations([
+      { ...box, fill: "#ffff99", borderWidth: 2, borderColor: "#ff0000", opacity: 0.6 } as unknown as Overlay,
+    ]);
+    expect(annot!.get(PDFName.of("C"))?.toString()).toBe("[ 1 1 0.6 ]");
+    expect(annot!.lookup(PDFName.of("BS"), PDFDict).get(PDFName.of("W"))?.toString()).toBe("2");
+    expect(annot!.get(PDFName.of("CA"))?.toString()).toBe("0.6");
+    const ops = appearance(annot!);
+    expect(ops).toContain("1 1 0.6 rg");
+    expect(ops).toContain("1 0 0 RG");
+    expect(ops).toMatch(/\/GS0 gs/);
+  });
+
+  test("a text box authored in Shiori stays unfilled and opaque", async () => {
+    const [annot] = await exportedAnnotations([box as unknown as Overlay]);
+    expect(annot!.get(PDFName.of("C"))).toBeUndefined();
+    expect(annot!.get(PDFName.of("BS"))).toBeUndefined();
+    expect(annot!.get(PDFName.of("CA"))).toBeUndefined();
   });
 });

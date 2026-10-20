@@ -6,6 +6,7 @@ import {
   LineJoinStyle,
   PDFHexString,
   PDFName,
+  PDFNumber,
   PDFString,
   beginText,
   clip,
@@ -13,6 +14,7 @@ import {
   drawText as drawTextOperators,
   endText,
   endPath,
+  fill,
   lineTo,
   moveTo,
   popGraphicsState,
@@ -21,6 +23,7 @@ import {
   rgb,
   setFillingColor,
   setFontAndSize,
+  setGraphicsState,
   setLineCap,
   setLineJoin,
   setLineWidth,
@@ -120,6 +123,12 @@ export function buildFreeText(
     F: 4,
     NM: shioriAnnotationName(o.id),
   });
+  if (o.fill) dict.set(PDFName.of("C"), ctx.obj(hexToRgbArr(o.fill)));
+  if (o.borderWidth !== undefined) {
+    dict.set(PDFName.of("BS"), ctx.obj({ W: o.borderWidth }));
+  }
+  const opacity = freeTextOpacity(o);
+  if (opacity !== undefined) dict.set(PDFName.of("CA"), PDFNumber.of(opacity));
   // Viewers that honor DS (rich-text default style) use it for bold
   // and family hints. Optional — Adobe ignores it when DA is present,
   // but Foxit and PDF Expert use it to recover family + weight when
@@ -155,6 +164,9 @@ function buildFreeTextAppearance(
   const color = hexToRgbArr(o.color);
   const lineHeight = o.fontSize * 1.2;
   const appearanceText = normalizeFreeTextAppearanceText(o.text ?? "");
+  const gsName = PDFName.of("GS0");
+  const alpha = freeTextOpacity(o);
+  const opacity = alpha !== undefined && alpha < 1;
   const lines = wrapText(
     appearanceText,
     font.font,
@@ -173,7 +185,9 @@ function buildFreeTextAppearance(
     setFontAndSize(font.name, o.fontSize),
     setFillingColor(rgb(color[0], color[1], color[2])),
     endText(),
+    ...freeTextBoxOperators(o, opacity ? gsName : null),
     pushGraphicsState(),
+    ...(opacity ? [setGraphicsState(gsName)] : []),
     rectangle(0, 0, o.rect.w, o.rect.h),
     clip(),
     endPath(),
@@ -224,12 +238,47 @@ function buildFreeTextAppearance(
   fontDict.set(font.name, font.font.ref);
   const resources = ctx.obj({});
   resources.set(PDFName.Font, fontDict);
+  if (opacity) {
+    const extGState = ctx.obj({});
+    extGState.set(gsName, ctx.obj({ Type: "ExtGState", ca: alpha, CA: alpha }));
+    resources.set(PDFName.ExtGState, extGState);
+  }
   const stream = ctx.formXObject(operators, {
     Resources: resources,
     BBox: ctx.obj([0, 0, o.rect.w, o.rect.h]),
     Matrix: ctx.obj([1, 0, 0, 1, 0, 0]),
   });
   return ctx.register(stream);
+}
+
+function freeTextOpacity(o: TextOverlay): number | undefined {
+  if (typeof o.opacity !== "number" || !Number.isFinite(o.opacity)) return undefined;
+  return Math.min(1, Math.max(0, o.opacity));
+}
+
+// An imported box's fill and frame, under the text. Kept inside q/Q: pdf.js
+// reads the FreeText style from the appearance's top-level operators only,
+// so these colours never pass for the text colour.
+function freeTextBoxOperators(o: TextOverlay, gsName: PDFName | null) {
+  const border = o.borderWidth ?? 0;
+  if (!o.fill && border <= 0) return [];
+  const operators = [pushGraphicsState(), ...(gsName ? [setGraphicsState(gsName)] : [])];
+  if (o.fill) {
+    const [r, g, b] = hexToRgbArr(o.fill);
+    operators.push(setFillingColor(rgb(r, g, b)), rectangle(0, 0, o.rect.w, o.rect.h), fill());
+  }
+  if (border > 0) {
+    const [r, g, b] = hexToRgbArr(o.borderColor ?? o.color);
+    const inset = border / 2;
+    operators.push(
+      setStrokingColor(rgb(r, g, b)),
+      setLineWidth(border),
+      rectangle(inset, inset, Math.max(0, o.rect.w - border), Math.max(0, o.rect.h - border)),
+      stroke(),
+    );
+  }
+  operators.push(popGraphicsState());
+  return operators;
 }
 
 function stampGlyph(kind: StampOverlay["kind"]): string {

@@ -218,6 +218,13 @@ export type TextOverlay = OverlayCommon & {
   fontFamily: FontFamily;
   // Free rotation about the rect center, degrees clockwise. Missing = 0.
   angle?: number;
+  // A text box imported from another reader may be filled (its /C), framed
+  // (/BS width, stroked in borderColor or else the text colour) and
+  // translucent (/CA, 0-1). Absent on text boxes made in Shiori.
+  fill?: string;
+  borderWidth?: number;
+  borderColor?: string;
+  opacity?: number;
 };
 
 /**
