@@ -2,15 +2,40 @@
 // drive the native webview: which URLs the panel may load, and the linear
 // history behind the address bar and back/forward enablement.
 
+use serde::Serialize;
 use tauri::Url;
+#[cfg(not(mobile))]
+use tauri::{AppHandle, Manager, Runtime};
 
 use super::WebPanelInner;
+#[cfg(not(mobile))]
+use super::{lock_web_panel, WebPanelState};
+#[cfg(not(mobile))]
+use crate::emit_to_main;
 
 pub(crate) fn parse_web_url(raw: &str) -> Result<Url, String> {
     let parsed = Url::parse(raw.trim()).map_err(|_| "web-panel-invalid-url".to_string())?;
     match parsed.scheme() {
         "http" | "https" => Ok(parsed),
         _ => Err("web-panel-unsupported-url".into()),
+    }
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct WebPanelNav {
+    url: Option<String>,
+    loading: bool,
+    can_go_back: bool,
+    can_go_forward: bool,
+    error: Option<String>,
+}
+
+#[cfg(not(mobile))]
+pub(super) fn route_non_web_panel_navigation(raw: &str) {
+    let lower = raw.trim().to_ascii_lowercase();
+    if lower.starts_with("mailto:") {
+        let _ = crate::system_open::open_external_url_impl(raw.to_string());
     }
 }
 
@@ -34,6 +59,34 @@ pub(super) fn record_web_navigation(inner: &mut WebPanelInner, url: &str) {
     }
     inner.history.push(url.to_string());
     inner.cursor = inner.history.len().saturating_sub(1);
+}
+
+#[cfg(not(mobile))]
+pub(super) fn emit_web_panel_nav<R: Runtime>(
+    app: &AppHandle<R>,
+    loading: bool,
+    error: Option<String>,
+) {
+    let (url, can_go_back, can_go_forward) = {
+        let state = app.state::<WebPanelState>();
+        let inner = lock_web_panel(&state);
+        (
+            inner.history.get(inner.cursor).cloned(),
+            inner.cursor > 0,
+            inner.cursor + 1 < inner.history.len(),
+        )
+    };
+    let _ = emit_to_main(
+        app,
+        "web-panel-nav",
+        WebPanelNav {
+            url,
+            loading,
+            can_go_back,
+            can_go_forward,
+            error,
+        },
+    );
 }
 
 #[cfg(test)]

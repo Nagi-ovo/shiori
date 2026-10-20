@@ -10,14 +10,12 @@ use tauri::Manager;
 use tauri::{webview::WebviewBuilder, LogicalPosition, LogicalSize, Url, WebviewUrl};
 use tauri::{AppHandle, Runtime, Webview};
 
-#[cfg(not(mobile))]
-use crate::emit_to_main;
 use crate::{enforce_main_webview, runtime_guard::enforce_runtime_guard};
 
 mod navigation;
 pub(crate) use navigation::parse_web_url;
 #[cfg(not(mobile))]
-use navigation::record_web_navigation;
+use navigation::{emit_web_panel_nav, record_web_navigation, route_non_web_panel_navigation};
 
 // Embedded Browser panel. Web content lives in a native child webview
 // (label `web-panel`) of the main window, created lazily on first open.
@@ -81,16 +79,6 @@ struct WebPanelInner {
     pending_hide: bool,
 }
 
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct WebPanelNav {
-    url: Option<String>,
-    loading: bool,
-    can_go_back: bool,
-    can_go_forward: bool,
-    error: Option<String>,
-}
-
 #[derive(Deserialize, Clone, Copy, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct WebPanelBounds {
@@ -106,40 +94,8 @@ pub(crate) struct WebPanelOpenRequest {
     pub(crate) url: String,
 }
 
-#[cfg(not(mobile))]
-fn route_non_web_panel_navigation(raw: &str) {
-    let lower = raw.trim().to_ascii_lowercase();
-    if lower.starts_with("mailto:") {
-        let _ = crate::system_open::open_external_url_impl(raw.to_string());
-    }
-}
-
 fn lock_web_panel(state: &WebPanelState) -> std::sync::MutexGuard<'_, WebPanelInner> {
     state.inner.lock().unwrap_or_else(|err| err.into_inner())
-}
-
-#[cfg(not(mobile))]
-fn emit_web_panel_nav<R: Runtime>(app: &AppHandle<R>, loading: bool, error: Option<String>) {
-    let (url, can_go_back, can_go_forward) = {
-        let state = app.state::<WebPanelState>();
-        let inner = lock_web_panel(&state);
-        (
-            inner.history.get(inner.cursor).cloned(),
-            inner.cursor > 0,
-            inner.cursor + 1 < inner.history.len(),
-        )
-    };
-    let _ = emit_to_main(
-        app,
-        "web-panel-nav",
-        WebPanelNav {
-            url,
-            loading,
-            can_go_back,
-            can_go_forward,
-            error,
-        },
-    );
 }
 
 #[cfg(not(mobile))]
