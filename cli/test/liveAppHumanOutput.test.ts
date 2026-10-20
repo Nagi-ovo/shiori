@@ -21,7 +21,6 @@ const CONTEXT: LiveAppContext = {
   sha256: SHA256,
   pageTopologyHash: PAGE_TOPOLOGY_HASH,
   pageCount: 1,
-  activePage: null,
   annotationCount: 0,
   dirty: false,
 };
