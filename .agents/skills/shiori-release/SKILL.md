@@ -193,8 +193,13 @@ collaborators with push access). The quota is metered in
 GB-hours per billing month: deleting every artifact stops the growth but
 refunds nothing, so uploads stay refused until the month resets. If a tag run still fails, fix the
 workflow on `main` and re-run with `workflow_dispatch` (`tag=vX.Y.Z`,
-`publish_to_release_repo=true`) rather than moving the tag: the app code is
-the tagged commit's, only `.github/` differs. A test APK for device checks
+`publish_to_release_repo=true`) rather than moving the tag. That run builds
+`main`, not the tag: release.yml's checkouts take no `ref`, and the version
+check compares only the tag to `tauri.conf.json`. So first confirm `main`
+carries no app change since the tag,
+`git diff --quiet vX.Y.Z main -- . ':(exclude).github'`; if it does, stop and
+ask the user, since Windows, Linux and Android would ship `main`'s code under
+a tag whose macOS build is the tag's. A test APK for device checks
 comes from a dispatch with `android_only=true`, `android_artifacts=apk`,
 publishing off; it lands in a `qa-android-<run>` draft.
 
