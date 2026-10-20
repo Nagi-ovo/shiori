@@ -235,8 +235,10 @@ export function PageTiles({
           (error: unknown) => {
             if (cancelled) return;
             console.warn("Failed to render a page tile", error);
+            // The entry stays, never ready and never attached, so the next
+            // scroll frame does not ask for the same region again: it is
+            // retried only once scrolled away and back, or at a new layer.
             runtime.releaseCanvasBackingStore(canvas);
-            layer.tiles.delete(cell.key);
           },
         );
       }

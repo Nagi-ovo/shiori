@@ -24,6 +24,7 @@ type TileRequest = {
   canvas: HTMLCanvasElement;
   cancelled: boolean;
   finish: () => void;
+  fail: () => void;
 };
 const tileRequests: TileRequest[] = [];
 /** What the fake window shows of the page, in device pixels. */
@@ -55,8 +56,10 @@ const runtime = {
       return { cancel: cancelRender, done: Promise.resolve() };
     }
     let finish = () => {};
-    const done = new Promise<void>((resolve) => {
+    let fail = () => {};
+    const done = new Promise<void>((resolve, reject) => {
       finish = resolve;
+      fail = () => reject(new Error("region rejected"));
     });
     const tile: TileRequest = {
       x: request.region.x,
@@ -69,6 +72,7 @@ const runtime = {
         canvas.height = request.region.height;
         finish();
       },
+      fail,
     };
     tileRequests.push(tile);
     return {
@@ -293,6 +297,35 @@ describe("PageCanvas lifecycle", () => {
       }
       const added = tileRequests.slice(25);
       expect(added.every((tile) => tile.y >= 5 * TILE)).toBe(true);
+    });
+
+    // A region the engine rejects would fail the same way again: asking for
+    // it on every scroll frame only floods the render queue.
+    test("a tile that failed to draw is not asked for again while scrolling", async () => {
+      setDpr(2);
+      visible = screen;
+      const warn = mock(() => undefined);
+      const originalWarn = console.warn;
+      console.warn = warn;
+      try {
+        render(<PageCanvas {...tiledPage(8)} />);
+        await waitFor(() => expect(tileRequests).toHaveLength(25));
+        act(() => {
+          for (const tile of tileRequests) tile.fail();
+        });
+        await pause(0);
+
+        for (let frame = 0; frame < 3; frame += 1) {
+          act(() => {
+            window.dispatchEvent(new Event("scroll"));
+          });
+          await pause(32);
+        }
+        expect(tileRequests.length).toBe(25);
+        expect(warn).toHaveBeenCalledTimes(25);
+      } finally {
+        console.warn = originalWarn;
+      }
     });
 
     test("a scale change cancels every tile still drawing", async () => {
