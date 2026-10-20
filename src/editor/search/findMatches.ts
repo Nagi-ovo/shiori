@@ -468,10 +468,33 @@ function requiresWholeClusterMapping(
   // Canonical normalization can reorder equal-length combining marks. Those
   // output offsets are not linearly related to the source UTF-16 positions,
   // so expose only the whole grapheme cluster rather than a wrong subrange.
+  // Emoji sequences and diacritics on alphabetic letters are one character
+  // to a reader, so a query never lands inside them either. Indic vowel signs
+  // and viramas stay addressable: a word's prefix must still find the word,
+  // and mapping every such cluster would exhaust the budget on long texts.
   return (
     Array.from(sourceCluster).length > 1 &&
-    sourceCluster.normalize("NFKD") !== sourceCluster
+    (sourceCluster.normalize("NFKD") !== sourceCluster ||
+      isAtomicCluster(sourceCluster))
   );
+}
+
+function isAtomicCluster(cluster: string): boolean {
+  for (const character of cluster) {
+    const codePoint = character.codePointAt(0)!;
+    if (
+      codePoint === 0x200d ||
+      codePoint === 0x20e3 ||
+      (codePoint >= 0xfe00 && codePoint <= 0xfe0f) ||
+      (codePoint >= 0x1f1e6 && codePoint <= 0x1f1ff) ||
+      (codePoint >= 0x1f3fb && codePoint <= 0x1f3ff) ||
+      (codePoint >= 0xe0020 && codePoint <= 0xe007f) ||
+      (codePoint >= 0xe0100 && codePoint <= 0xe01ef)
+    ) {
+      return true;
+    }
+  }
+  return /^[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}]\p{M}/u.test(cluster);
 }
 
 function isValidFoldedBoundary(index: SearchTextIndex, offset: number): boolean {
