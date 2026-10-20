@@ -35,11 +35,45 @@ type PageContext = {
 /** How far outside a highlight rect a glyph's middle may sit and still count. */
 const QUOTE_EPSILON_PT = 0.5;
 
-/** pdf-lib could not read the file's annotations: unknown, which is not "none". */
-export class AnnotationsUnavailableError extends Error {
-  constructor(message: string) {
+/** Extraction failed as the CLI reports it: `code`, `summary` its message, `message` the detail. */
+export class ExtractError extends Error {
+  code: "ERR_ANNOTATIONS_UNAVAILABLE" | "ERR_TEXT_UNAVAILABLE";
+  summary: string;
+
+  constructor(code: ExtractError["code"], summary: string, message: string) {
     super(message);
+    this.code = code;
+    this.summary = summary;
+  }
+}
+
+/** pdf-lib could not read the file's annotations: unknown, which is not "none". */
+export class AnnotationsUnavailableError extends ExtractError {
+  constructor(message: string) {
+    super("ERR_ANNOTATIONS_UNAVAILABLE", "The PDF's annotations could not be read", message);
     this.name = "AnnotationsUnavailableError";
+  }
+}
+
+/**
+ * Glyph visits one extract may spend finding quotes. A markup's rects are
+ * looked up in a y-sorted index, so a real page costs about the lines it
+ * covers; the cap stops a hostile page (one line of a million glyphs under
+ * thousands of highlights) from hanging the command.
+ */
+export const MAX_QUOTE_GLYPH_VISITS = 100_000_000;
+
+/** What is left of the glyph visits quoting may still spend; shared by every page. */
+export type QuoteBudget = { visits: number };
+
+export class QuoteWorkLimitError extends ExtractError {
+  constructor() {
+    super(
+      "ERR_TEXT_UNAVAILABLE",
+      "Annotation quotes exceed Shiori's safety limits",
+      `quoting markup annotations took more than ${MAX_QUOTE_GLYPH_VISITS} glyph visits; use --pages to read fewer pages at once`,
+    );
+    this.name = "QuoteWorkLimitError";
   }
 }
 
@@ -136,15 +170,16 @@ export function corePageModel(core: CoreDocument, pageNumber: number): PageModel
 }
 
 function corePageContexts(core: CoreDocument, pageNumbers: number[]): PageContext[] {
+  const budget: QuoteBudget = { visits: MAX_QUOTE_GLYPH_VISITS };
   return pageNumbers.map((pageNumber) => {
     const model = corePageModel(core, pageNumber);
-    let glyphs: CoreGlyph[] | null = null;
+    let quote: ((rects: PdfRect[]) => string) | null = null;
     return {
       model,
       pageNumber,
       quote: (rects) => {
-        glyphs ??= core.glyphs(pageNumber - 1);
-        return quoteFromGlyphs(glyphs, rects, model);
+        quote ??= pageQuoter(core.glyphs(pageNumber - 1), model, budget);
+        return quote(rects);
       },
     };
   });
@@ -162,31 +197,76 @@ export function quoteFromGlyphs(
   rects: PdfRect[],
   page: Pick<PageModel, "originXPt" | "originYPt">,
 ): string {
+  return pageQuoter(glyphs, page, { visits: Infinity })(rects);
+}
+
+/**
+ * `quoteFromGlyphs` for many markups on one page: the glyphs are indexed by
+ * the height of their middle once, and each rect visits only the glyphs in
+ * its own band, each visit charged to `budget`.
+ */
+export function pageQuoter(
+  glyphs: CoreGlyph[],
+  page: Pick<PageModel, "originXPt" | "originYPt">,
+  budget: QuoteBudget,
+): (rects: PdfRect[]) => string {
   const ox = page.originXPt ?? 0;
   const oy = page.originYPt ?? 0;
-  const inside = (glyph: CoreGlyph) => {
-    const x = (glyph.origin[0] + glyph.end[0]) / 2 - ox;
-    const y = (glyph.loose[1] + glyph.loose[3]) / 2 - oy;
-    return rects.some(
-      (rect) =>
-        x >= rect.x - QUOTE_EPSILON_PT &&
-        x <= rect.x + rect.w + QUOTE_EPSILON_PT &&
-        y >= rect.y - QUOTE_EPSILON_PT &&
-        y <= rect.y + rect.h + QUOTE_EPSILON_PT,
-    );
+  const xs: number[] = [];
+  const ys: number[] = [];
+  // Inserted breaks have no box of their own; they only separate words, so
+  // they are never taken and stay out of the index.
+  const byY: number[] = [];
+  glyphs.forEach((glyph, index) => {
+    xs.push((glyph.origin[0] + glyph.end[0]) / 2 - ox);
+    ys.push((glyph.loose[1] + glyph.loose[3]) / 2 - oy);
+    if (!glyph.generated) byY.push(index);
+  });
+  byY.sort((a, b) => ys[a]! - ys[b]!);
+
+  return (rects) => {
+    const taken = new Set<number>();
+    for (const rect of rects) {
+      const top = rect.y + rect.h + QUOTE_EPSILON_PT;
+      const left = rect.x - QUOTE_EPSILON_PT;
+      const right = rect.x + rect.w + QUOTE_EPSILON_PT;
+      for (let i = firstAtOrAbove(byY, ys, rect.y - QUOTE_EPSILON_PT); i < byY.length; i += 1) {
+        const index = byY[i]!;
+        if (!(ys[index]! <= top)) break;
+        budget.visits -= 1;
+        if (budget.visits < 0) throw new QuoteWorkLimitError();
+        if (xs[index]! >= left && xs[index]! <= right) taken.add(index);
+      }
+    }
+    return quoteText(glyphs, [...taken].sort((a, b) => a - b));
   };
+}
+
+/** The first position in `byY` whose glyph's middle is at or above `y`. */
+function firstAtOrAbove(byY: number[], ys: number[], y: number): number {
+  let lo = 0;
+  let hi = byY.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (ys[byY[mid]!]! < y) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** The quote of the glyphs at `taken` (ascending indices); every other glyph was skipped. */
+function quoteText(glyphs: CoreGlyph[], taken: number[]): string {
   let quote = "";
   // A space is owed before the next glyph taken: something was skipped or a
   // break was inserted since the last one.
   let gap = false;
   // The last glyph taken ended a line with a hyphenation hyphen.
   let hyphenated = false;
-  for (const glyph of glyphs) {
-    // Inserted breaks have no box of their own; they only separate words.
-    if (glyph.generated || !inside(glyph)) {
-      if (quote && !hyphenated) gap = true;
-      continue;
-    }
+  let previous = -1;
+  for (const index of taken) {
+    if (index > previous + 1 && quote && !hyphenated) gap = true;
+    previous = index;
+    const glyph = glyphs[index]!;
     if (glyph.hyphen) {
       hyphenated = true;
       continue;

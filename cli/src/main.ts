@@ -23,7 +23,7 @@ import {
 } from "./annotate";
 import { openCoreDocument, type CoreDocument, type CoreMetadata } from "./coreEngine";
 import {
-  AnnotationsUnavailableError,
+  ExtractError,
   corePageModel,
   extractResultAsSpec,
   extractAnnotationsFromCore,
@@ -1291,12 +1291,8 @@ async function extractPdfAnnotations(
     try {
       return await extractAnnotationsFromCore(pdf.core, file.path, pageNumbers, bytes);
     } catch (error) {
-      if (error instanceof AnnotationsUnavailableError) {
-        throw new CliError(
-          "ERR_ANNOTATIONS_UNAVAILABLE",
-          "The PDF's annotations could not be read",
-          error.message,
-        );
+      if (error instanceof ExtractError) {
+        throw new CliError(error.code, error.summary, error.message);
       }
       throw error;
     }
