@@ -23,3 +23,5 @@ scripts/pdfium/*-LICENSE.txt -text
 *.ps1 text eol=lf
 # Git hooks run under sh on every platform, Git for Windows included.
 .githooks/* text eol=lf
+# The pre-commit hook rewrites it with LF; a CRLF checkout would look edited.
+scripts/file-size/baseline.json text eol=lf

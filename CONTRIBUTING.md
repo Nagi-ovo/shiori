@@ -27,7 +27,9 @@ A bug fix should come with a test or an end-to-end run that fails without it.
 
 `bun install` also installs a pre-commit hook (`.githooks/`) that refuses a
 code file over 5,000 tokens (bytes / 4); its message explains how to split
-the file. Rules and exclusions live in `scripts/file-size/policy.ts`.
+the file. Files that were already bigger are listed in
+`scripts/file-size/baseline.json` and may stay as they are or shrink, never
+grow. Rules and exclusions live in `scripts/file-size/policy.ts`.
 
 ## License of contributions
 

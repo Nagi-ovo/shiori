@@ -3,7 +3,7 @@
 //
 //   bun scripts/file-size/check.ts --staged   # the hooks; exits 1 on a violation
 //   bun scripts/file-size/check.ts --init     # write the first baseline from the index
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { BASELINE_PATH, LIMIT_BYTES, evaluate, inScope, parseBaseline, report, tokens, type Change } from "./policy.ts";
 
@@ -43,8 +43,10 @@ function blobSizes(ids: string[]): number[] {
 
 // `--raw -z`: ":oldmode newmode oldid newid status\0path\0[newpath\0]".
 // T (symlink <-> file) is measured like a modification; gitlinks are not files.
+// -B splits a full rewrite so a move-out pairs as a copy; B in the filter keeps
+// the rewritten source, which git lists as "M100".
 function stagedChanges(): Change[] {
-  const fields = git(["diff", "--cached", "--raw", "-z", "-M", "--diff-filter=ACMRTD"]).split("\0");
+  const fields = git(["diff", "--cached", "--raw", "-z", "-B", "-M", "--diff-filter=ACMRTDB"]).split("\0");
   const raw: { status: string; mode: string; id: string; oldPath?: string; path: string }[] = [];
   for (let i = 0; i < fields.length - 1; ) {
     const [, mode, , id, status] = fields[i++]!.split(" ") as [string, string, string, string, string];
@@ -106,8 +108,10 @@ if (process.argv.includes("--init")) {
           `\`git add <paths>\` and run \`git commit\` without paths.`,
       );
     }
-    const worktree = existsSync(baselineFile) ? readFileSync(baselineFile, "utf8") : null;
-    if (worktree !== null && worktree !== stagedText) {
+    // Ask git, not a string compare: a CRLF checkout (core.autocrlf) differs
+    // byte for byte from the LF blob without being an edit.
+    const unstaged = Bun.spawnSync(["git", "diff", "--quiet", "--", BASELINE_PATH]).exitCode !== 0;
+    if (unstaged) {
       fail(
         `file-size: ${BASELINE_PATH} has unstaged edits, and this commit needs to update it.\n` +
           `Stage them (\`git add ${BASELINE_PATH}\`) or discard them, then commit again.`,

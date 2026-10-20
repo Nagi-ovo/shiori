@@ -166,4 +166,28 @@ describe("pre-commit hook", () => {
     expect(git(dir, "commit", "-q", "-m", "trim").code).not.toBe(0);
     expect(readFileSync(join(dir, BASELINE_PATH), "utf8")).toBe(mine);
   });
+
+  test("accepts a split that moves the file and leaves a re-export at the old path", () => {
+    const dir = scratchRepo({ "src/store.ts": 30_000 });
+    mkdirSync(join(dir, "src/store"));
+    expect(git(dir, "mv", "src/store.ts", "src/store/core.ts").code).toBe(0);
+    writeFileSync(join(dir, "src/store.ts"), 'export * from "./store/core.ts";\n');
+    git(dir, "add", "-A");
+    const r = git(dir, "commit", "-q", "-m", "split store");
+    expect(r.err).not.toContain("failed");
+    expect(r.code).toBe(0);
+    expect(JSON.parse(committed(dir, BASELINE_PATH))).toEqual({ "src/store/core.ts": 30_000 });
+  });
+
+  test("a CRLF checkout of the baseline (core.autocrlf) is not mistaken for unstaged edits", () => {
+    const dir = scratchRepo({ "src/store.ts": 30_000 });
+    git(dir, "config", "core.autocrlf", "true");
+    const lf = readFileSync(join(dir, BASELINE_PATH), "utf8");
+    writeFileSync(join(dir, BASELINE_PATH), lf.replaceAll("\n", "\r\n"));
+    write(dir, "src/store.ts", 25_000);
+    git(dir, "add", "src/store.ts");
+    const r = git(dir, "commit", "-q", "-m", "trim");
+    expect(r.code).toBe(0);
+    expect(JSON.parse(committed(dir, BASELINE_PATH))).toEqual({ "src/store.ts": 25_000 });
+  });
 });

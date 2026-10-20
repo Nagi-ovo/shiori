@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { LIMIT_BYTES, evaluate, inScope, parseBaseline, type Change } from "./policy.ts";
+import { LIMIT_BYTES, evaluate, inScope, parseBaseline, report, type Change } from "./policy.ts";
 
 // Ways the size gate can fail, written before the code:
 // - off by one at the limit (5,000 tokens = 20,000 bytes is allowed);
@@ -12,7 +12,9 @@ import { LIMIT_BYTES, evaluate, inScope, parseBaseline, type Change } from "./po
 // - someone raises or adds a baseline entry instead of splitting;
 // - a malformed baseline value (a string, NaN) silently allows anything;
 // - a file whose type changed (symlink -> file) is never measured;
-// - retrying a rename commit that was aborted after the hook ran is refused.
+// - retrying a rename commit that was aborted after the hook ran is refused;
+// - the result depends on the order git lists renames in (a swap, a chain,
+//   a move that leaves a thin re-export at the old path).
 // Index-vs-worktree reads and the real `git commit` path are in check.test.ts.
 
 const big = LIMIT_BYTES + 1;
@@ -69,6 +71,7 @@ describe("scope", () => {
     "site/public/cli.sh",
     "site/public/cli.ps1",
     "src/platform/bindings.ts",
+    "src-tauri/gen/android/app/src/main/java/fun/nagi/shiori/generated/Ipc.kt",
     "src/pdf/export/__fixtures__/forms.ts",
     "crates/shiori-core/tests/fixtures/fonts/big.rs",
     "vendor/tools/wasm-bindgen.js",
@@ -152,6 +155,49 @@ describe("renames and copies", () => {
     expect(r.baseline).toEqual({ "src/new.ts": 30_000 });
   });
 
+  test.each([false, true])("a swap of two grandfathered files keeps each allowance (reversed: %s)", (reversed) => {
+    const both = { "src/a.ts": 50_000, "src/b.ts": 30_000 };
+    const changes: Change[] = [
+      { status: "R", oldPath: "src/a.ts", path: "src/b.ts", bytes: 50_000 },
+      { status: "R", oldPath: "src/b.ts", path: "src/a.ts", bytes: 35_000 },
+    ];
+    const r = ok(reversed ? changes.reverse() : changes, both);
+    expect(r.violations).toEqual([{ path: "src/a.ts", bytes: 35_000, allowed: 30_000, reason: "grew" }]);
+    expect(r.baseline).toEqual({ "src/a.ts": 30_000, "src/b.ts": 50_000 });
+  });
+
+  test.each([false, true])("moving a file out and leaving a thin re-export works in either order (reversed: %s)", (reversed) => {
+    const changes: Change[] = [
+      { status: "R", oldPath: "src/old.ts", path: "src/old/impl.ts", bytes: 29_000 },
+      { status: "A", path: "src/old.ts", bytes: 200 },
+    ];
+    const r = ok(reversed ? changes.reverse() : changes, head);
+    expect(r.violations).toEqual([]);
+    expect(r.baseline).toEqual({ "src/old/impl.ts": 29_000 });
+  });
+
+  test.each([false, true])("a move reported as a copy plus a rewrite of the source carries the allowance (reversed: %s)", (reversed) => {
+    // `git diff -B -M` lists a file moved out with a re-export left behind as C + M.
+    const changes: Change[] = [
+      { status: "M", path: "src/old.ts", bytes: 200 },
+      { status: "C", oldPath: "src/old.ts", path: "src/old/impl.ts", bytes: 30_000 },
+    ];
+    const r = ok(reversed ? changes.reverse() : changes, head);
+    expect(r.violations).toEqual([]);
+    expect(r.baseline).toEqual({ "src/old/impl.ts": 30_000 });
+  });
+
+  test("a copy does not carry the allowance while the source stays big", () => {
+    const r = ok(
+      [
+        { status: "M", path: "src/old.ts", bytes: 29_000 },
+        { status: "C", oldPath: "src/old.ts", path: "src/old/impl.ts", bytes: 30_000 },
+      ],
+      head,
+    );
+    expect(r.violations.map((v) => v.path)).toEqual(["src/old/impl.ts"]);
+  });
+
   test("renaming into an excluded path drops the entry", () => {
     const r = ok(
       [{ status: "R", oldPath: "src/old.ts", path: "src/pdf/export/__fixtures__/old.ts", bytes: 30_000 }],
@@ -165,9 +211,9 @@ describe("renames and copies", () => {
 describe("the baseline itself", () => {
   const head = { "src/a.ts": 30_000 };
 
-  test("raising an entry is refused", () => {
+  test("raising an entry is refused and names the entry", () => {
     const r = ok([{ status: "M", path: "src/a.ts", bytes: 31_000 }], head, { "src/a.ts": 31_000 });
-    expect(r.violations.map((v) => v.reason)).toContain("baseline-raised");
+    expect(r.violations).toContainEqual({ path: "src/a.ts", bytes: 31_000, allowed: 30_000, reason: "baseline-raised" });
     expect(r.violations.map((v) => v.reason)).toContain("grew");
     expect(r.baseline).toEqual(head);
   });
@@ -202,4 +248,12 @@ describe("parsing the baseline", () => {
       expect(() => parseBaseline(text)).toThrow();
     },
   );
+});
+
+describe("the failure message", () => {
+  test("shows bytes when two sizes round to the same token count", () => {
+    const text = report([{ path: "src/a.ts", bytes: 75_599, allowed: 75_598, reason: "grew" }]);
+    expect(text).toContain("75,599 bytes");
+    expect(text).toContain("75,598 bytes");
+  });
 });

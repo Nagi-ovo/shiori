@@ -17,9 +17,9 @@ const CODE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|rs|kt|kts|java|swift|m|mm|c|h|py|
 // Paths whose size someone else decides. Each needs a reason.
 const EXCLUDED: { test: (path: string) => boolean; reason: string }[] = [
   {
-    // Tauri's `android init` / `ios init` scaffolding. MainActivity.kt is the
-    // one file there we write ourselves, so it stays in scope.
-    test: (p) => p.startsWith("src-tauri/gen/") && !p.startsWith("src-tauri/gen/android/app/src/main/java/"),
+    // Tauri's `android init` / `ios init` scaffolding and the Kotlin it
+    // regenerates. MainActivity.kt is the one file there we write ourselves.
+    test: (p) => p.startsWith("src-tauri/gen/") && p !== "src-tauri/gen/android/app/src/main/java/fun/nagi/shiori/MainActivity.kt",
     reason: "Tauri mobile scaffolding",
   },
   { test: (p) => p.startsWith("src-tauri/patches/"), reason: "upstream crates with local patches" },
@@ -88,51 +88,65 @@ export function evaluate(input: {
     const key = !(path in head) && source !== undefined && source in head ? source : path;
     const was = head[key];
     if (was === undefined || bytes > was) {
-      violations.push({ path: BASELINE_PATH, bytes, allowed: was ?? LIMIT_BYTES, reason: "baseline-raised" });
+      violations.push({ path, bytes, allowed: was ?? LIMIT_BYTES, reason: "baseline-raised" });
       if (was !== undefined) allowance[key] = was;
       continue;
     }
     allowance[key] = Math.min(bytes, allowance[key] ?? bytes);
   }
 
+  // Every lookup reads the allowances as they stood before this commit, so the
+  // order git lists renames in cannot change the result: a swap, a chain, or a
+  // move that leaves a thin re-export at the old path.
+  const before = allowance;
+  const after: Baseline = { ...before };
+  const renamedAway = new Set<string>();
+  const copies = new Map<string, number>();
+  for (const c of input.changes) {
+    if (c.status === "R") renamedAway.add(c.oldPath);
+    if (c.status === "C") copies.set(c.oldPath, (copies.get(c.oldPath) ?? 0) + 1);
+    if (c.status === "R" || c.status === "D") delete after[c.status === "R" ? c.oldPath : c.path];
+  }
+  // A file moved out with a thin re-export left behind shows up (git -B -M) as
+  // a copy plus a rewrite of the source. The allowance follows the content
+  // when the source drops under the limit and there is only the one copy.
+  const movedOut = (source: string) =>
+    copies.get(source) === 1 &&
+    input.changes.some((c) => c.path === source && c.status !== "D" && c.status !== "R" && c.status !== "C" && c.bytes <= LIMIT_BYTES);
+
   const tightened: Tightened[] = [];
   for (const change of input.changes) {
-    if (change.status === "D") {
-      delete allowance[change.path];
-      continue;
-    }
-    // A rename keeps its allowance; a copy is a new file.
-    let allowed = allowance[change.path];
-    if (change.status === "R") {
-      allowed = allowance[change.oldPath];
-      delete allowance[change.oldPath];
-    }
-    if (!inScope(change.path)) {
-      delete allowance[change.path];
-      continue;
-    }
+    if (change.status === "D") continue;
+    // A rename keeps its allowance; a copy, or a new file at a path renamed
+    // away in this commit, starts from the limit.
+    const allowed =
+      change.status === "R" || (change.status === "C" && movedOut(change.oldPath))
+        ? before[change.oldPath]
+        : renamedAway.has(change.path)
+          ? undefined
+          : before[change.path];
+    delete after[change.path];
+    if (!inScope(change.path)) continue;
     if (allowed === undefined || allowed <= LIMIT_BYTES) {
-      delete allowance[change.path];
       if (change.bytes > LIMIT_BYTES) {
         violations.push({ path: change.path, bytes: change.bytes, allowed: LIMIT_BYTES, reason: "over-limit" });
       }
       continue;
     }
     if (change.bytes > allowed) {
-      allowance[change.path] = allowed;
+      after[change.path] = allowed;
       violations.push({ path: change.path, bytes: change.bytes, allowed, reason: "grew" });
       continue;
     }
     if (change.bytes <= LIMIT_BYTES) {
-      delete allowance[change.path];
       tightened.push({ path: change.path, from: allowed, to: null });
     } else {
-      allowance[change.path] = change.bytes;
+      after[change.path] = change.bytes;
       if (change.bytes < allowed) tightened.push({ path: change.path, from: allowed, to: change.bytes });
     }
   }
 
-  const baseline = Object.fromEntries(Object.entries(allowance).sort(([a], [b]) => (a < b ? -1 : 1)));
+  const baseline = Object.fromEntries(Object.entries(after).sort(([a], [b]) => (a < b ? -1 : 1)));
   return { violations, baseline, tightened };
 }
 
@@ -141,14 +155,19 @@ const fmt = (n: number) => n.toLocaleString("en-US");
 export function report(violations: Violation[]): string {
   const lines = [`File size check failed: tokens are bytes / 4, and the limit is ${fmt(TOKEN_LIMIT)} per file.`, ""];
   for (const v of violations) {
-    const now = `${fmt(tokens(v.bytes))} tokens`;
-    if (v.reason === "over-limit") lines.push(`  ${v.path}: ${now}, limit ${fmt(TOKEN_LIMIT)}`);
+    const now = `${fmt(tokens(v.bytes))} tokens (${fmt(v.bytes)} bytes)`;
+    const allowed = `${fmt(tokens(v.allowed))} tokens (${fmt(v.allowed)} bytes)`;
+    if (v.reason === "over-limit") lines.push(`  ${v.path}: ${now}, limit ${fmt(TOKEN_LIMIT)} tokens`);
     else if (v.reason === "grew")
       lines.push(
-        `  ${v.path}: ${now}, allowed ${fmt(tokens(v.allowed))}. It was already over the limit when this check` +
+        `  ${v.path}: ${now}, allowed ${allowed}. It was already over the limit when this check` +
           ` arrived, so it may stay the same size or shrink, never grow.`,
       );
-    else lines.push(`  ${v.path}: entries may only go down or be removed; split the file instead.`);
+    else
+      lines.push(
+        `  ${BASELINE_PATH}: the entry for ${v.path} was raised or added (${fmt(v.bytes)} bytes, allowed` +
+          ` ${fmt(v.allowed)}). Entries may be lowered or removed, never raised or added; split the file instead.`,
+      );
   }
   lines.push(
     "",
@@ -166,8 +185,8 @@ export function report(violations: Violation[]): string {
     "  5. Run `bun run verify`, then stage the new files together with the smaller original and commit again.",
     "",
     "Do not minify, join lines, delete comments or move code into strings to get under the limit, and do not",
-    `edit ${BASELINE_PATH} by hand. If the file is generated or vendored, add its path to EXCLUDED in`,
-    "scripts/file-size/policy.ts with a one-line reason.",
+    `raise or add entries in ${BASELINE_PATH}. If the file is generated or vendored, add its path to EXCLUDED`,
+    "in scripts/file-size/policy.ts with a one-line reason.",
   );
   return lines.join("\n");
 }

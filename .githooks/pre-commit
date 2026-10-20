@@ -2,8 +2,15 @@
 # Blocks commits that add, or grow, a hand-written code file past 5,000 tokens
 # (bytes / 4). Rules, exclusions and the grandfathered list: scripts/file-size/.
 # Installed by `bun install` (package.json "prepare" sets core.hooksPath).
-if ! command -v bun >/dev/null 2>&1; then
-  echo "pre-commit: bun is not on PATH, so the file size check cannot run. Install bun (https://bun.sh)." >&2
+# GUI git clients often run hooks without the shell profile, so look where
+# the bun installer puts it before giving up.
+BUN=$(command -v bun 2>/dev/null || true)
+for candidate in "$HOME/.bun/bin/bun" "$HOME/.bun/bin/bun.exe"; do
+  [ -z "$BUN" ] && [ -x "$candidate" ] && BUN=$candidate
+done
+if [ -z "$BUN" ]; then
+  echo "pre-commit: cannot find bun (not on PATH, not in ~/.bun/bin), so the file size check cannot run." >&2
+  echo "Install bun (https://bun.sh), or add it to the PATH your git client uses." >&2
   exit 1
 fi
-exec bun "$(git rev-parse --show-toplevel)/scripts/file-size/check.ts" --staged
+exec "$BUN" "$(git rev-parse --show-toplevel)/scripts/file-size/check.ts" --staged
