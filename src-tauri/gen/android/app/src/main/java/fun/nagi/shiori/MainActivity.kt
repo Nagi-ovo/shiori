@@ -50,7 +50,12 @@ class MainActivity : TauriActivity() {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     applySystemBarInsets()
-    enqueueDocumentIntent(intent)
+    // A recreated activity (process death) or a relaunch from Recents gets
+    // the task's original VIEW/SEND intent back; its URI grant is usually
+    // gone, so opening it again only reports an error or duplicates a tab.
+    val replayed = savedInstanceState != null ||
+      (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+    if (!replayed) enqueueDocumentIntent(intent)
     // The export share chooser's only reliable feedback is the
     // "user picked a target" broadcast (dismissal emits nothing) — the
     // frontend marks an export as shared only after this fires.
