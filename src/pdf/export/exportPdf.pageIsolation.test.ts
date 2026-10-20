@@ -183,6 +183,25 @@ describe("page export isolation", () => {
   });
 });
 
+test("an original-pages export of a page whose /Resources is malformed still works", async () => {
+  // The copier carries a malformed entry through as is; the isolation pass
+  // must tolerate it the same way rather than refuse the whole export.
+  const { doc, pages } = await makeTextPages(2);
+  pages[0]!.node.set(PDFName.of("Resources"), PDFName.of("Broken"));
+  const source = await doc.save();
+
+  const out = await PDFDocument.load(
+    (
+      await exportPdf(source, modelForPages([0]), {
+        mode: "none",
+        documentFiles: "omit",
+      })
+    ).bytes,
+  );
+
+  expect(out.getPageCount()).toBe(1);
+});
+
 async function makeTextPages(count: number): Promise<{ doc: PDFDocument; pages: PDFPage[] }> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);

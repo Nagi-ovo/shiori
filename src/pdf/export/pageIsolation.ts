@@ -127,8 +127,10 @@ export function isolatePageReferences(
     for (const [key, value] of page.node.entries()) {
       if (key !== PARENT_KEY) consider(page.node, key, value);
     }
-    // The copier also folds inherited /Resources into the copied page.
-    enqueue(page.node.Resources());
+    // The copier also folds inherited /Resources into the copied page. Read
+    // it raw: Resources() throws on a non-dictionary, which the copier never
+    // would.
+    enqueue(page.node.getInheritableAttribute(PDFName.of("Resources")));
   }
   while (pending.length > 0) {
     const container = pending.pop()!;
