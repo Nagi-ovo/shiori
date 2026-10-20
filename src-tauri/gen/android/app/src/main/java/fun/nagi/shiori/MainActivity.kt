@@ -173,7 +173,11 @@ class MainActivity : TauriActivity() {
       else -> emptyList()
     }
     // Resolve payloads (contentResolver query) before taking the lock.
-    val documentUris = uris.filter { uri -> uri.scheme == "content" || uri.scheme == "file" }
+    // content:// only, never our own provider: the fs plugin opens file:// and
+    // our provider's URIs as Shiori, outside the fs scope, so a sender could
+    // make Shiori load its private files.
+    val ownProvider = "$packageName.fileprovider"
+    val documentUris = uris.filter { uri -> uri.scheme == "content" && uri.authority != ownProvider }
     // A link or text selection: no stream, only EXTRA_TEXT (SharedText.kt).
     val sharedText = if (intent.action == Intent.ACTION_SEND && documentUris.isEmpty()) {
       sharedTextDocumentUri(intent)
@@ -285,13 +289,6 @@ class MainActivity : TauriActivity() {
     if (uri.scheme.isNullOrBlank()) {
       return DocumentInfo(
         name = uri.path?.substringAfterLast('/')?.takeIf { it.isNotBlank() },
-        size = null,
-      )
-    }
-
-    if (uri.scheme == "file") {
-      return DocumentInfo(
-        name = fallbackName,
         size = null,
       )
     }
