@@ -388,24 +388,6 @@ describe("insertPdfPages", () => {
     expect(loaded.getForm().getTextField("reader").getText()).toBe("Shiori");
   });
 
-  test("fails closed for incoming forms instead of copying broken widgets", async () => {
-    const base = await onePagePdf(500);
-    const incoming = await onePagePdf(200);
-    incoming.catalog.set(
-      PDFName.of("AcroForm"),
-      incoming.context.obj({ Fields: [] }),
-    );
-
-    const error = await insertPdfPages(
-      await base.save(),
-      await incoming.save(),
-      1,
-    ).catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(PdfPageInsertError);
-    expect((error as PdfPageInsertError).code).toBe("interactive");
-  });
-
   test("preserves ordinary web links but rejects executable actions", async () => {
     const base = await onePagePdf(500);
     const linked = await onePagePdf(200);

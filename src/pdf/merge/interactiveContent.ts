@@ -29,7 +29,7 @@ const SAFE_URI_SCHEME = /^(?:https?|mailto):/i;
  */
 export function hasUnsupportedInteractiveContent(document: PDFDocument): boolean {
   if (
-    document.catalog.get(PDFName.of("AcroForm")) ||
+    hasFormStructures(document) ||
     document.catalog.get(PDFName.of("Perms"))
   ) {
     return true;
@@ -74,4 +74,21 @@ export function hasUnsupportedInteractiveContent(document: PDFDocument): boolean
     }
   }
   return false;
+}
+
+/**
+ * An /AcroForm with no fields, no XFA and no signature flags holds nothing a
+ * copied page could depend on (flattened forms and some generators leave one
+ * behind). Widgets on the pages are still caught by the annotation check.
+ */
+function hasFormStructures(document: PDFDocument): boolean {
+  const raw = document.catalog.get(PDFName.of("AcroForm"));
+  if (!raw) return false;
+  const form = lookupDict(document, raw);
+  if (!form) return true;
+  if (form.get(PDFName.of("XFA")) || form.get(PDFName.of("SigFlags"))) {
+    return true;
+  }
+  const fields = lookupArray(document, form.get(PDFName.of("Fields")));
+  return !fields || fields.size() > 0;
 }

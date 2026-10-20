@@ -67,7 +67,7 @@
   "src/pdf/import/annotations.test.ts": 32625,
   "src/pdf/import/annotations.ts": 52793,
   "src/pdf/import/sourceAnnotations.ts": 29229,
-  "src/pdf/merge/insertPdf.test.ts": 26053,
+  "src/pdf/merge/insertPdf.test.ts": 25496,
   "src/storage/drafts.test.ts": 29978,
   "src/storage/drafts.ts": 38738,
   "src/storage/workspace.test.ts": 27080,
