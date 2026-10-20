@@ -454,10 +454,8 @@ function readRawCallouts(
         // filled rectangle imported as outline-only and the fill was gone from
         // the file for good after the next export.
         if (subtype === "Square" || subtype === "Circle") {
-          const id =
-            rawObject instanceof PDFRef ? pdfjsIdForRef(rawObject) : null;
           const fill = interiorColorHex(dict);
-          if (id && fill) pageInteriorColors.set(id, fill);
+          if (fill) pageInteriorColors.set(annotationId, fill);
         }
 
         if (subtype === "Link") {

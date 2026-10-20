@@ -178,3 +178,13 @@ describe("the file annotation reader", () => {
     expect(reported.map((annotation) => annotation.subtype)).toEqual(["FreeText", "FreeText", "FreeText", "FreeText"]);
   });
 });
+
+describe("what other tools wrote, kept as written", () => {
+  test("a direct /Annots square keeps its /IC fill", async () => {
+    const bytes = await onePage((_pdf, add) => {
+      add({ Subtype: "Square", Rect: [20, 20, 120, 100], C: [1, 0, 0], IC: [0, 0, 1] }, true);
+    });
+    const { overlays } = await importFile(bytes);
+    expect(overlays).toMatchObject([{ type: "rect", id: "pdf-annotation-0-annot_p0_1", fill: "#0000ff" }]);
+  });
+});
