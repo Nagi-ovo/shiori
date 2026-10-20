@@ -59,6 +59,30 @@ export function useCanvasKeyboard({
   // True while an arrow key is held for nudging, so the auto-repeat stream
   // collapses into the single history step pushed on the first keydown.
   const arrowNudgeHeldRef = useRef(false);
+  // The control that last took focus from a pointer press rather than the
+  // keyboard. Chromium focuses a button on click (macOS WebKit does not);
+  // such a button leaves Space and Enter to the canvas (resolveCanvasKey).
+  const pointerFocusedRef = useRef<EventTarget | null>(null);
+  useEffect(() => {
+    let lastInputWasPointer = false;
+    const onPointerDown = () => {
+      lastInputWasPointer = true;
+    };
+    const onKeyDown = () => {
+      lastInputWasPointer = false;
+    };
+    const onFocusIn = (e: FocusEvent) => {
+      pointerFocusedRef.current = lastInputWasPointer ? e.target : null;
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("focusin", onFocusIn, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("focusin", onFocusIn, true);
+    };
+  }, []);
 
   // Place the armed tool at the centre of the active page, without a pointer.
   // A zero-extent drag is deliberate: finishCreationDrag routes anything below
@@ -267,6 +291,10 @@ export function useCanvasKeyboard({
       // a letter switched the tool behind it, J turned the page and Delete
       // removed the selected annotation.
       if (document.querySelector('[aria-modal="true"], [data-shiori-modal-open]')) return;
+      // A focused widget that handled the key has claimed it: the thumbnail
+      // rail pages on arrows, the tab strip walks its tabs, the navigator's
+      // resize handle resizes. Acting on it too nudged the selection.
+      if (e.defaultPrevented) return;
       const command = resolveCanvasKey({
         key: e.key,
         code: e.code,
@@ -275,6 +303,7 @@ export function useCanvasKeyboard({
         shiftKey: e.shiftKey,
         repeat: e.repeat,
         target: e.target instanceof HTMLElement ? e.target : null,
+        targetFocusedByPointer: e.target === pointerFocusedRef.current,
       });
       if (command && run(command)) e.preventDefault();
     };
