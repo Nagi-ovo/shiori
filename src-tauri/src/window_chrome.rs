@@ -164,7 +164,12 @@ pub(crate) fn build_app_menu<R: tauri::Runtime>(
     let mut app_items: Vec<Box<dyn IsMenuItem<R>>> = vec![
         Box::new(PredefinedMenuItem::about(
             app,
-            Some("About Shiori"),
+            Some(menu_label(
+                lang,
+                "About Shiori",
+                "关于 Shiori",
+                "Shiori について",
+            )),
             Some(about),
         )?),
         Box::new(PredefinedMenuItem::separator(app)?),
