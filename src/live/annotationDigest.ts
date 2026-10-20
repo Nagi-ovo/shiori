@@ -127,7 +127,12 @@ function digestEntry(
     ? clamp(overlay.anchor.quote, MAX_QUOTE_CHARACTERS)
     : { value: "", truncated: false };
   let truncated = textResult.truncated || quoteResult.truncated;
-  const turns = overlay.type === "callout" ? overlay.thread ?? [] : [];
+  // A blank turn (an imported reply whose /Contents was cleared) says
+  // nothing, and the CLI discards the WHOLE context over one empty turn
+  // text. Dropped before the window is taken, so it never evicts a real one.
+  const turns = (overlay.type === "callout" ? overlay.thread ?? [] : []).filter(
+    (turn) => turn.text.trim().length > 0,
+  );
   if (turns.length > MAX_THREAD_TURNS) truncated = true;
   const thread =
     turns.length > 0
