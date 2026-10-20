@@ -3,6 +3,7 @@
 // history behind the address bar and back/forward enablement.
 
 use serde::Serialize;
+use std::time::Instant;
 use tauri::Url;
 #[cfg(not(mobile))]
 use tauri::{AppHandle, Manager, Runtime};
@@ -31,12 +32,36 @@ struct WebPanelNav {
     error: Option<String>,
 }
 
+// A mailto: link in the panel opens the mail client. Any page can also
+// navigate to one from script, as often as it likes and without a click, and
+// this runs inside the navigation policy callback on the UI thread: a
+// `setInterval(() => location = "mailto:...", 200)` opened a compose window
+// per tick and stalled Shiori on every `open`. So the hand-off waits on the
+// blocking pool, and attempts arriving in a burst open the client once.
 #[cfg(not(mobile))]
 pub(super) fn route_non_web_panel_navigation(raw: &str) {
+    static LAST_ATTEMPT: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
     let lower = raw.trim().to_ascii_lowercase();
-    if lower.starts_with("mailto:") {
-        let _ = crate::system_open::open_external_url_impl(raw.to_string());
+    if !lower.starts_with("mailto:") {
+        return;
     }
+    let mut last_attempt = LAST_ATTEMPT.lock().unwrap_or_else(|err| err.into_inner());
+    if !external_open_allowed(&mut last_attempt, Instant::now()) {
+        return;
+    }
+    let url = raw.to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = crate::system_open::open_external_url_impl(url);
+    });
+}
+
+// Every attempt restarts the quiet period, so a loop keeps being refused for
+// as long as it runs, while a click after a pause goes through.
+#[cfg_attr(mobile, allow(dead_code))]
+fn external_open_allowed(last_attempt: &mut Option<Instant>, now: Instant) -> bool {
+    const QUIET: std::time::Duration = std::time::Duration::from_secs(2);
+    let previous = last_attempt.replace(now);
+    previous.is_none_or(|previous| now.saturating_duration_since(previous) >= QUIET)
 }
 
 // The panel's navigation policy. WebKit (macOS WKWebView, Linux WebKitGTK)
@@ -165,6 +190,24 @@ mod tests {
                 "should refuse {bad}"
             );
         }
+    }
+
+    // A page script looping `location = "mailto:..."` must not open a mail
+    // window per iteration; a user clicking a mailto link again later must.
+    #[test]
+    fn web_panel_mailto_flood_opens_the_mail_client_once() {
+        use std::time::{Duration, Instant};
+        let start = Instant::now();
+        let mut last = None;
+        let opened = (0..50)
+            .filter(|i| {
+                let now = start + Duration::from_millis(200 * i);
+                super::external_open_allowed(&mut last, now)
+            })
+            .count();
+        assert_eq!(opened, 1, "a 200 ms loop opens the mail client once");
+        let later = start + Duration::from_millis(200 * 49 + 5_000);
+        assert!(super::external_open_allowed(&mut last, later));
     }
 
     // The address bar's back/forward enablement and target are driven
