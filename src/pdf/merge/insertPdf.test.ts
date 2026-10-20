@@ -272,7 +272,7 @@ describe("insertPdfPages", () => {
     const error = await insertPdfPages(
       await base.save(),
       await incoming.save(),
-      1,
+      0,
     ).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(PdfPageInsertError);
@@ -515,7 +515,7 @@ describe("insertPdfPages", () => {
       const error = await insertPdfPages(
         await base.save(),
         await incoming.save(),
-        1,
+        0,
       ).catch((caught: unknown) => caught);
       expect(error).toBeInstanceOf(PdfPageInsertError);
       expect((error as PdfPageInsertError).code).toBe("navigation");

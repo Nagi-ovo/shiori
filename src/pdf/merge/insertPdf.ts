@@ -185,12 +185,16 @@ async function insertPlainPdfPages(
 
   const baseDocumentFiles = inspectDocumentFiles(base);
   const basePageNodes = base.getPages().map((page) => page.node);
-  shiftBasePositionalStructures(
-    base,
-    basePageNodes,
-    insertionIndex,
-    insertedPageCount,
-  );
+  // Appending moves no base page, so its navigation needs no remap; walking
+  // it anyway would refuse files whose stale links stay as they were.
+  if (insertionIndex < basePageNodes.length) {
+    shiftBasePositionalStructures(
+      base,
+      basePageNodes,
+      insertionIndex,
+      insertedPageCount,
+    );
+  }
   const detachedLinks = detachDirectLinkDestinations(incoming);
   const sourcePages = incoming.getPages();
   const copiedPages = await base.copyPages(
