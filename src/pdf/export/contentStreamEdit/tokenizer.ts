@@ -475,8 +475,9 @@ export function tokenizeContentStream(bytes: Uint8Array): ContentOp[] {
 }
 
 // Coalesces a page's /Contents parts for parsing, with one space between
-// parts (PDFium's separator: a newline would also end a trailing comment). The spec splits parts only between tokens, and PDFium (which draws
-// both the source and the export) reads each boundary as whitespace, so a
+// parts (PDFium's separator: a newline would also end a trailing comment).
+// The spec splits parts only between tokens, and PDFium (which draws both
+// the source and the export) reads each boundary as whitespace, so a
 // writer that ends a part on "300" and starts the next with "500 l" means
 // "300 500 l". Joining raw would fuse them into "300500 l", which no arity
 // check catches for path operators, and the rewrite would write the fused
