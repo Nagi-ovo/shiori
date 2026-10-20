@@ -158,7 +158,7 @@ function applySourceProvenance(page: PDFPage, o: Overlay, ref: PDFRef): void {
   const dict = page.doc.context.lookupMaybe(ref, PDFDict);
   if (!dict) return;
   if (o.sourceAuthor) {
-    dict.set(PDFName.of("T"), PDFString.of(o.sourceAuthor));
+    dict.set(PDFName.of("T"), PDFHexString.fromText(o.sourceAuthor));
   }
   if (typeof o.sourceCreatedAt === "number") {
     const value = formatPdfDate(o.sourceCreatedAt);

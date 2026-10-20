@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { PDFArray, PDFDict, PDFDocument, PDFName } from "pdf-lib";
+import {
+  PDFArray,
+  PDFDict,
+  PDFDocument,
+  PDFHexString,
+  PDFName,
+  PDFString,
+} from "pdf-lib";
 import { exportPdf } from "./exportPdf";
 import type { DocumentModel } from "../model/types";
 
@@ -29,6 +36,10 @@ describe("review provenance survives a round trip", () => {
     return { loaded, annots: out };
   }
 
+  function author(dict: PDFDict): string | undefined {
+    return dict.lookupMaybe(PDFName.of("T"), PDFString, PDFHexString)?.decodeText();
+  }
+
   test("author and dates from the source file are written back", async () => {
     const original = await PDFDocument.create().then(async (doc) => {
       doc.addPage([612, 792]);
@@ -54,11 +65,29 @@ describe("review provenance survives a round trip", () => {
     const target = annots.find((d) => d.get(PDFName.of("T")));
     if (!target) throw new Error("expected an annotation carrying /T");
 
-    expect(String(target.get(PDFName.of("T")))).toContain("Jane Chen");
+    expect(author(target)).toBe("Jane Chen");
     expect(String(target.get(PDFName.of("CreationDate")))).toContain(
       "D:20260314093000Z",
     );
     expect(String(target.get(PDFName.of("M")))).toContain("D:20260314103000Z");
+  });
+
+  test("an author outside Latin-1, or with PDF string syntax, is written intact", async () => {
+    const original = await PDFDocument.create().then(async (doc) => {
+      doc.addPage([612, 792]);
+      return doc.save();
+    });
+    const names = ["张三", "Łukasz O\u2019Brien", "Q\\A (draft"];
+    const model = {
+      pages: [
+        { id: "p1", sourceIndex: 0, rotation: 0, widthPt: 612, heightPt: 792 },
+      ],
+      overlays: names.map((name, i) => note(`n${i}`, { sourceAuthor: name })),
+    } as unknown as DocumentModel;
+
+    const { bytes } = await exportPdf(original, model);
+    const { annots } = await annotationsOnFirstPage(bytes);
+    expect(annots.map(author)).toEqual(names);
   });
 
   test("an overlay the user authored gets no invented author or date", async () => {
@@ -111,7 +140,7 @@ describe("review provenance survives a round trip", () => {
     const irt = child.get(PDFName.of("IRT"));
     const parentDict = loaded.context.lookupMaybe(irt, PDFDict);
     expect(parentDict).toBeDefined();
-    expect(String(parentDict!.get(PDFName.of("T")))).toContain("Jane Chen");
+    expect(author(parentDict!)).toBe("Jane Chen");
   });
 
   test("a popup is removed with the annotation it belonged to", async () => {
