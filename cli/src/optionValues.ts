@@ -21,7 +21,16 @@ export function optionValue(
   }
   const value = argv[currentIndex + 1];
   if (value == null || value === "--" || value.startsWith("-")) {
-    throw new CliError("ERR_USAGE", `${name} requires a value`);
+    // A following "-3 dB" reads as a missing value, so only the inline form
+    // can carry it; short options have none, and -o points at --output. The
+    // value is never echoed: it may be a password.
+    throw new CliError(
+      "ERR_USAGE",
+      `${name} requires a value`,
+      value?.startsWith("-") && value !== "--"
+        ? `A value beginning with '-' must be written inline: ${name === "-o" ? "--output" : name}=<value>`
+        : undefined,
+    );
   }
   return { value, index: currentIndex + 1 };
 }

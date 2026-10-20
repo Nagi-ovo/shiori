@@ -146,6 +146,33 @@ describe("shiori cli", () => {
     );
   });
 
+  test("a value beginning with '-' points at the inline --name=value form", async () => {
+    const pdf = "site/public/welcome.pdf";
+    await expect(
+      main(["annotate", pdf, "--highlight", "-3 dB roll-off", "-o", "out.pdf"]),
+    ).rejects.toMatchObject({
+      code: "ERR_USAGE",
+      message: "--highlight requires a value",
+      detail: "A value beginning with '-' must be written inline: --highlight=<value>",
+    });
+    // -o has no inline form; the hint names the long option. The value
+    // itself (it may be a password) is never echoed.
+    await expect(main(["render", pdf, "--page", "1", "-o", "-p1.png"])).rejects.toMatchObject({
+      detail: "A value beginning with '-' must be written inline: --output=<value>",
+    });
+    await expect(main(["inspect", pdf, "--password", "-s3cret"])).rejects.toMatchObject({
+      detail: expect.not.stringContaining("s3cret"),
+    });
+    const help = await captureCli(["--help"]);
+    expect(help.stdout).toContain("must be written inline: --option=value");
+    const agentHelp = JSON.parse((await captureCli(["--help", "--agent"])).stdout) as {
+      rules: string[];
+    };
+    expect(agentHelp.rules).toContain(
+      "an option value beginning with '-' must be written inline: --option=value",
+    );
+  });
+
   test("direct-entry matching canonicalizes path aliases and symlinks", async () => {
     const base = process.platform === "darwin" ? "/tmp" : tmpdir();
     const dir = await mkdtemp(join(base, "shiori-cli-entry-"));

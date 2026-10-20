@@ -35,6 +35,7 @@ Global options (may precede the command):
 
 Rules:
   Options are command-specific; unknown options and extra arguments are errors.
+  An option value beginning with '-' must be written inline: --option=value.
   PDF page ranges are strict and 1-based (for example 1,3-5).
   --max-chars limits total extracted text (default/max ${MAX_EXTRACTED_TEXT_CHARACTERS} characters).
   JSON failures use stdout; a short diagnostic is also written to stderr.
@@ -228,6 +229,7 @@ export function helpPayload(target: CommandName | null): unknown {
       "versioned coordinate annotation specs",
       "no HTML script execution",
       "unknown options and extra positional arguments fail with ERR_USAGE",
+      "an option value beginning with '-' must be written inline: --option=value",
       "--max-chars is a total extracted-text budget",
       "portable file commands never replace existing outputs",
       "live app requests use authenticated 127.0.0.1 only",
