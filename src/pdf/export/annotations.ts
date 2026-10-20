@@ -32,6 +32,11 @@ import {
 import { buildCallout, buildCalloutReply } from "./calloutAnnotations";
 import { buildFreeText, buildStampFreeText } from "./freeTextAnnotations";
 import {
+  markKeptAnnotationLinks,
+  takeKeptAnnotationLinks,
+  type RemovedAnnotation,
+} from "./keptAnnotationLinks";
+import {
   buildHighlight,
   buildInk,
   buildSquare,
@@ -63,10 +68,16 @@ export function stripAllAnnotationsFromPages(pages: PDFPage[]): boolean {
   return removed;
 }
 
+// `pages` is the source document's page list, so an index is a sourceIndex.
 export function stripReplaceableAnnotationsFromPages(pages: PDFPage[]): boolean {
   let removedAny = false;
-  for (const page of pages) {
-    removedAny = stripReplaceableAnnotationsFromPage(page) || removedAny;
+  const removed = new Map<string, RemovedAnnotation>();
+  pages.forEach((page, sourceIndex) => {
+    removedAny = stripReplaceableAnnotationsFromPage(page, sourceIndex, removed) || removedAny;
+  });
+  // After every page: a link may cross pages.
+  if (removed.size > 0) {
+    pages.forEach((page, sourceIndex) => markKeptAnnotationLinks(page, sourceIndex, removed));
   }
   return removedAny;
 }
@@ -81,6 +92,8 @@ export function attachAnnotationsToPage(
   overlays: Overlay[],
   fonts: AnnotationFonts,
 ): void {
+  // Before the early return: strip's marks must leave every copied page.
+  const kept = takeKeptAnnotationLinks(page);
   const pageOverlays = overlays.filter((o) => o.pageId === model.id);
   if (pageOverlays.length === 0) return;
 
@@ -138,7 +151,7 @@ export function attachAnnotationsToPage(
   // /IRT has to wait until every annotation on the page has a ref, because a
   // reply may be built before the comment it answers. Threads that span pages
   // are not rebuilt: /IRT is defined within a page's annotation list.
-  linkReplyThreads(page, pageOverlays, refsByOverlayId);
+  linkReplyThreads(page, pageOverlays, refsByOverlayId, kept.parents);
   // Callout conversation turns become native /IRT Text replies, appended in
   // thread order so a round trip reads them back in the same order.
   for (const o of pageOverlays) {
@@ -170,14 +183,18 @@ function applySourceProvenance(page: PDFPage, o: Overlay, ref: PDFRef): void {
   }
 }
 
+// A reply's parent is either rebuilt here too or a kept annotation Shiori
+// does not import (keptParents, see ./keptAnnotationLinks).
 function linkReplyThreads(
   page: PDFPage,
   overlays: Overlay[],
   refsByOverlayId: Map<string, PDFRef>,
+  keptParents: Map<string, PDFRef>,
 ): void {
   for (const o of overlays) {
     if (!o.sourceInReplyToId) continue;
-    const parentRef = refsByOverlayId.get(o.sourceInReplyToId);
+    const parentRef =
+      refsByOverlayId.get(o.sourceInReplyToId) ?? keptParents.get(o.sourceInReplyToId);
     if (!parentRef) continue;
     const ownRef = refsByOverlayId.get(o.id);
     if (!ownRef) continue;
@@ -225,7 +242,11 @@ function buildAnnotRef(
   return null;
 }
 
-function stripReplaceableAnnotationsFromPage(page: PDFPage): boolean {
+function stripReplaceableAnnotationsFromPage(
+  page: PDFPage,
+  sourceIndex: number,
+  removed: Map<string, RemovedAnnotation>,
+): boolean {
   const annots = page.node.Annots();
   if (!annots) return false;
 
@@ -240,6 +261,8 @@ function stripReplaceableAnnotationsFromPage(page: PDFPage): boolean {
     removedAny = true;
     if (raw instanceof PDFRef) {
       removedRefs.add(raw.toString());
+      const irt = dict.get(PDFName.of("IRT"));
+      removed.set(raw.toString(), { sourceIndex, inReplyTo: irt instanceof PDFRef ? irt : null });
       page.doc.context.delete(raw);
     }
   }

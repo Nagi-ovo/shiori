@@ -5,10 +5,12 @@ import {
   PDFDocument,
   PDFHexString,
   PDFName,
+  PDFRef,
   PDFString,
 } from "pdf-lib";
-import { exportPdf } from "./exportPdf";
-import type { DocumentModel } from "../model/types";
+import { exportPdf, type ExportMode } from "./exportPdf";
+import { importFileAnnotations } from "../import/annotations";
+import type { DocumentModel, Overlay } from "../model/types";
 
 describe("review provenance survives a round trip", () => {
   function note(id: string, extra: Record<string, unknown> = {}) {
@@ -178,5 +180,64 @@ describe("review provenance survives a round trip", () => {
     // The source Text was replaced by the overlay's own annotation; its popup
     // must not survive pointing at an object that no longer exists.
     expect(subtypes).not.toContain("/Popup");
+  });
+});
+
+// Shiori rebuilds the annotations it imported and leaves every other one
+// (Circle, Line, Stamp, Caret, ...) in the file as it was. A reply link
+// between the two kinds has to survive the rebuild in both directions.
+describe("reply links between rebuilt and kept annotations", () => {
+  const page = { id: "p1", sourceIndex: 0, rotation: 0, widthPt: 612, heightPt: 792 };
+
+  function annot(doc: PDFDocument, subtype: string, rect: number[], extra: Record<string, unknown> = {}) {
+    return doc.context.register(
+      doc.context.obj({ Type: "Annot", Subtype: subtype, Rect: rect, F: 4, ...extra }),
+    );
+  }
+
+  async function sourcePdf(build: (doc: PDFDocument) => PDFRef[]): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    const pdfPage = doc.addPage([612, 792]);
+    pdfPage.node.set(PDFName.of("Annots"), doc.context.obj(build(doc)));
+    return doc.save();
+  }
+
+  async function exportedAnnots(
+    bytes: Uint8Array,
+    edit: (overlays: Overlay[]) => Overlay[] = (overlays) => overlays,
+    mode?: ExportMode,
+  ) {
+    const overlays = edit(await importFileAnnotations([page], bytes));
+    const model = { pages: [page], overlays } as unknown as DocumentModel;
+    const out = await exportPdf(bytes, model, mode ? { mode } : {});
+    const loaded = await PDFDocument.load(out.bytes);
+    const annots = loaded.getPage(0).node.lookup(PDFName.of("Annots"), PDFArray);
+    const entries = annots.asArray().map((ref) => ({
+      ref: ref as PDFRef,
+      dict: loaded.context.lookup(ref, PDFDict),
+    }));
+    const bySubtype = (subtype: string) =>
+      entries.find((e) => e.dict.get(PDFName.of("Subtype"))?.toString() === `/${subtype}`);
+    return { loaded, entries, bySubtype };
+  }
+
+  test("a reply to a kept Circle still points at the Circle", async () => {
+    const bytes = await sourcePdf((doc) => {
+      const circle = annot(doc, "Circle", [100, 600, 200, 700]);
+      const reply = annot(doc, "Text", [210, 680, 230, 700], {
+        Contents: PDFHexString.fromText("Why circle this?"),
+        IRT: circle,
+        RT: "R",
+      });
+      return [circle, reply];
+    });
+
+    const { bySubtype } = await exportedAnnots(bytes);
+    const circle = bySubtype("Circle");
+    const reply = bySubtype("Text");
+    expect(circle).toBeDefined();
+    expect(reply?.dict.get(PDFName.of("IRT"))).toBe(circle!.ref);
+    expect(reply?.dict.get(PDFName.of("RT"))?.toString()).toBe("/R");
+    expect(circle!.dict.get(PDFName.of("Shio"))).toBeUndefined();
   });
 });
