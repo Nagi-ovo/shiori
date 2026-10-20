@@ -70,7 +70,7 @@
   "src/pdf/merge/insertPdf.test.ts": 26053,
   "src/pdf/merge/insertPdf.ts": 39958,
   "src/storage/drafts.test.ts": 29978,
-  "src/storage/drafts.ts": 38738,
+  "src/storage/drafts.ts": 29207,
   "src/storage/workspace.test.ts": 27080,
   "src/storage/workspace.ts": 23108,
   "src/workspace/merge/pageMerge.encrypted.test.tsx": 23002
