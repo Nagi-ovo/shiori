@@ -6,6 +6,10 @@ import {
   saveWorkspaceState,
   type WorkspaceTabMeta,
 } from "../../storage/workspace";
+import {
+  releaseWorkspaceSource,
+  reservedWorkspaceSourceIds,
+} from "../../storage/workspaceSourceReservations";
 
 interface WorkspacePersistenceParams<T> {
   tabs: T[];
@@ -104,6 +108,12 @@ export function useWorkspacePersistence<T>({
       const protectedCacheIds = new Set(currentTabs.flatMap(cacheIdsForTab));
       for (const entry of getRecent()) {
         if (entry.cacheId) protectedCacheIds.add(entry.cacheId);
+      }
+      // A still-opening document's row is protected by its reservation until
+      // a tab or recent references it; from then on those protect it.
+      for (const id of reservedWorkspaceSourceIds()) {
+        if (protectedCacheIds.has(id)) releaseWorkspaceSource(id);
+        else protectedCacheIds.add(id);
       }
       void cleanupWorkspaceSources(protectedCacheIds);
     }, 1000);

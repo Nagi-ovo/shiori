@@ -1,9 +1,19 @@
 import "../../test/setupDom";
 import { act, render } from "@testing-library/react";
 import { beforeEach, describe, expect, test } from "bun:test";
+import Dexie from "dexie";
+import {
+  IDBKeyRange as FakeIDBKeyRange,
+  indexedDB as fakeIndexedDB,
+} from "fake-indexeddb";
 import { useEffect, useRef, useState } from "react";
-import { loadWorkspaceState, type WorkspaceTabMeta } from "../../storage/workspace";
-import { useWorkspacePersistence } from "./useWorkspacePersistence";
+import type { WorkspaceTabMeta } from "../../storage/workspace";
+
+Dexie.dependencies.indexedDB = fakeIndexedDB as unknown as IDBFactory;
+Dexie.dependencies.IDBKeyRange = FakeIDBKeyRange as unknown as typeof IDBKeyRange;
+// Loaded after the fake is wired: Dexie binds its IndexedDB at construction.
+const { loadWorkspaceState } = await import("../../storage/workspace");
+const { useWorkspacePersistence } = await import("./useWorkspacePersistence");
 
 const baseTab: WorkspaceTabMeta = {
   id: "tab-a",
@@ -13,6 +23,10 @@ const baseTab: WorkspaceTabMeta = {
   source: { type: "path", path: "/tmp/notes.md" },
   updatedAt: 1,
 };
+
+function cacheIdsOf(tab: WorkspaceTabMeta): string[] {
+  return tab.source.type === "cache" ? [tab.source.id] : [];
+}
 
 function Harness({ tabs }: { tabs: WorkspaceTabMeta[] }) {
   const ref = useRef(tabs);
@@ -25,7 +39,7 @@ function Harness({ tabs }: { tabs: WorkspaceTabMeta[] }) {
     activeTabId: tabs[0]?.id ?? null,
     getTabs,
     toMeta: (tab) => tab,
-    cacheIdsForTab: () => [],
+    cacheIdsForTab: cacheIdsOf,
     folderPaths: [],
   });
   return null;
@@ -48,5 +62,38 @@ describe("workspace persistence scheduling", () => {
     const view = render(<Harness tabs={[{ ...baseTab, updatedAt: 9 }]} />);
     view.unmount();
     expect(loadWorkspaceState().tabs[0]?.updatedAt).toBe(9);
+  });
+
+  test("keeps the cache row of a document still opening when another tab arms the sweep", async () => {
+    // A dropped or mobile-picked PDF gets its cache row before parsing; its
+    // tab appears only once the open finishes (or a password is entered).
+    const { getWorkspaceSource } = await import("../../storage/workspace");
+    const { ensureWorkspaceSource } = await import("../workspaceStorage");
+    const opening = await ensureWorkspaceSource({
+      kind: "pdf",
+      name: "second.pdf",
+      size: 4,
+      bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+    });
+    const cacheId = opening.cacheId!;
+    const view = render(<Harness tabs={[baseTab]} />);
+    await act(() => Bun.sleep(1100));
+    expect(await getWorkspaceSource(cacheId)).toBeDefined();
+
+    // Once the finished tab references the row, the reservation is spent:
+    // closing that tab lets the next sweep reclaim it.
+    const opened: WorkspaceTabMeta = {
+      ...baseTab,
+      id: "tab-b",
+      kind: "pdf",
+      title: "second.pdf",
+      source: { type: "cache", id: cacheId },
+    };
+    view.rerender(<Harness tabs={[baseTab, opened]} />);
+    await act(() => Bun.sleep(1100));
+    view.rerender(<Harness tabs={[baseTab]} />);
+    await act(() => Bun.sleep(1100));
+    expect(await getWorkspaceSource(cacheId)).toBeUndefined();
+    view.unmount();
   });
 });

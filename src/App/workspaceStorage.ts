@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import type { LoadedDocumentPayload } from "../documents/types";
 import { getRecent, type RecentEntry } from "../editor/recentDocs";
 import { repairRuntimeSessions } from "../storage/runtimeSessions";
@@ -6,6 +7,11 @@ import {
   removeWorkspaceSource,
   saveWorkspaceState,
 } from "../storage/workspace";
+import {
+  releaseWorkspaceSource,
+  reserveWorkspaceSource,
+  reservedWorkspaceSourceIds,
+} from "../storage/workspaceSourceReservations";
 import { metaFromRuntimeTab, workspaceStore } from "../workspace/appWorkspace";
 import { workspaceCacheIdsForTab } from "../workspace/tabSources";
 import type { WorkspaceRuntimeTab } from "../workspace/types";
@@ -39,15 +45,16 @@ export function removeWorkspaceSourceIfUnreferenced(
   cacheId: string,
   tabsSnapshot: WorkspaceRuntimeTab[] = workspaceStore().getState().tabs,
 ): Promise<void> {
+  releaseWorkspaceSource(cacheId);
   if (cacheSourceIsReferenced(cacheId, tabsSnapshot)) return Promise.resolve();
   return removeWorkspaceSource(cacheId);
 }
 
-/** Cache rows a tab or a recents entry still points at. */
+/** Cache rows a tab, a recents entry or a still-opening document points at. */
 export function protectedWorkspaceCacheIds(
   tabsSnapshot: WorkspaceRuntimeTab[] = workspaceStore().getState().tabs,
 ): Set<string> {
-  const ids = new Set<string>();
+  const ids = new Set<string>(reservedWorkspaceSourceIds());
   for (const tab of tabsSnapshot) {
     for (const cacheId of workspaceCacheIdsForTab(tab)) ids.add(cacheId);
   }
@@ -57,22 +64,41 @@ export function protectedWorkspaceCacheIds(
   return ids;
 }
 
-/** Gives a document with no origin (a drop, a paste) a cache copy to reopen from. */
+/**
+ * Writes a cache row nothing references yet. It is reserved before the write
+ * so the orphan sweep and quota eviction leave it alone until a tab or recent
+ * owns it or its writer gives it up (removeWorkspaceSourceIfUnreferenced).
+ */
+export async function putReservedWorkspaceSource(
+  source: Parameters<typeof putWorkspaceSource>[0],
+): Promise<string> {
+  const id = source.id ?? nanoid();
+  reserveWorkspaceSource(id);
+  try {
+    return await putWorkspaceSource({ ...source, id }, protectedWorkspaceCacheIds());
+  } catch (error) {
+    releaseWorkspaceSource(id);
+    throw error;
+  }
+}
+
+/**
+ * Gives a document with no origin (a drop, a paste) a cache copy to reopen
+ * from. Reserved, because the open parses (or waits on a password) before any
+ * tab references the row.
+ */
 export async function ensureWorkspaceSource(
   payload: LoadedDocumentPayload,
 ): Promise<LoadedDocumentPayload> {
   if (payload.path || payload.webFileHandleId || payload.cacheId) {
     return payload;
   }
-  const cacheId = await putWorkspaceSource(
-    {
-      kind: payload.kind,
-      name: payload.name,
-      size: payload.size,
-      bytes: payload.bytes,
-    },
-    protectedWorkspaceCacheIds(),
-  );
+  const cacheId = await putReservedWorkspaceSource({
+    kind: payload.kind,
+    name: payload.name,
+    size: payload.size,
+    bytes: payload.bytes,
+  });
   return { ...payload, cacheId };
 }
 
