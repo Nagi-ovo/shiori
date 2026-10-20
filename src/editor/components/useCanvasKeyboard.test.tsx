@@ -13,7 +13,10 @@ import { useCanvasKeyboard } from "./useCanvasKeyboard";
 //   on it as well, nudging the selected annotation;
 // - a button the reader tabbed to loses Enter and Space to the canvas, so
 //   Enter places the armed tool instead of pressing the button;
-// - a button a click focused takes Space away from panning.
+// - a button a click focused takes Space away from panning;
+// - an arrow on a selection that cannot move (locked, or a contentText edit
+//   pinned to its glyphs) records an undo step, clears redo and swallows
+//   the key, so the page does not scroll either.
 
 const page: PageModel = { id: "p1", sourceIndex: -1, blank: true, rotation: 0, widthPt: 612, heightPt: 792 };
 const rect: Overlay = {
@@ -64,7 +67,7 @@ function attach<T extends HTMLElement>(element: T): T {
 }
 
 const rectOf = (store: PdfEditorStoreApi) =>
-  (store.getState().model.overlays.find((o) => o.id === rect.id) as Extract<Overlay, { type: "rect" }>).rect;
+  (store.getState().model.overlays.find((o) => o.id === rect.id) as Extract<Overlay, { rect: unknown }>).rect;
 
 beforeAll(async () => {
   await i18n.changeLanguage("en");
@@ -102,6 +105,37 @@ describe("canvas keyboard", () => {
     expect(enter.defaultPrevented).toBe(false);
     expect(space.defaultPrevented).toBe(false);
     expect(spacePan).toEqual([]);
+  });
+
+  test("arrows on a selection that cannot move leave history and scrolling alone", () => {
+    const contentText: Overlay = {
+      type: "contentText",
+      id: rect.id,
+      pageId: page.id,
+      rect: rect.rect,
+      coverRects: [rect.rect],
+      originalText: "old",
+      text: "new",
+      fontSize: 12,
+      color: "#000000",
+      bold: false,
+      align: "left",
+      fontFamily: "sans",
+    };
+    for (const pinned of [{ ...rect, locked: true }, contentText]) {
+      cleanup();
+      const { store } = mount([pinned]);
+      store.getState().addOverlay({ ...rect, id: "undone" });
+      store.getState().undo();
+      store.getState().setSelected([rect.id]);
+
+      const arrow = keydown(window, "ArrowDown");
+
+      expect(arrow.defaultPrevented).toBe(false);
+      expect(rectOf(store)).toEqual(rect.rect);
+      expect(store.getState().undoStack).toHaveLength(0);
+      expect(store.getState().redoStack).toHaveLength(1);
+    }
   });
 
   test("a button focused by a click still leaves Space to pan", () => {

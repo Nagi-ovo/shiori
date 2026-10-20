@@ -24,11 +24,12 @@ export function selectedOverlayActions(
     removeSelected: () => {
       const { selectedIds, model } = get();
       if (selectedIds.length === 0) return;
-      get().commit({
-        overlays: model.overlays.filter(
-          (o) => !selectedIds.includes(o.id) || o.locked,
-        ),
-      });
+      const overlays = model.overlays.filter(
+        (o) => !selectedIds.includes(o.id) || o.locked,
+      );
+      // Locked overlays stay. With nothing removed there is no edit, and an
+      // undo step for it would also have cleared redo.
+      if (overlays.length < model.overlays.length) get().commit({ overlays });
       set({ selectedIds: [], editingOverlayId: null });
     },
 

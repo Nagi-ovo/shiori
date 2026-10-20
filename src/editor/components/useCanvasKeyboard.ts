@@ -15,6 +15,7 @@ import {
 } from "./overlays/overlayConstants";
 import { requestPrint } from "../viewport/requestPrint";
 import { zoomStepDown, zoomStepUp } from "../viewport/zoomCommands";
+import { nudgeOverlays } from "../overlays/nudge";
 import {
   arrowDelta,
   resolveCanvasKey,
@@ -229,8 +230,21 @@ export function useCanvasKeyboard({
         case "actualSize":
           setScale(1);
           return true;
-        case "nudge":
-          if (state.selectedIds.length === 0) return false;
+        case "nudge": {
+          const { selectedIds, model } = state;
+          // Locked overlays and contentText edits do not move. A selection
+          // of only those must not record an undo step (which clears redo)
+          // or swallow the arrow the page would scroll with.
+          const moved = nudgeOverlays(
+            model.overlays,
+            selectedIds,
+            model.pages,
+            command.dx,
+            command.dy,
+          );
+          if (moved.every((overlay, i) => overlay === model.overlays[i])) {
+            return false;
+          }
           // One history step per key HOLD, not per auto-repeat, mirroring how
           // a pointer drag is a single undo step for the whole gesture. The
           // latch is cleared on keyup below.
@@ -240,6 +254,7 @@ export function useCanvasKeyboard({
           }
           nudgeSelectedNoHistory(command.dx, command.dy);
           return true;
+        }
         case "delete": {
           const { selectedIds, model } = state;
           const count = model.overlays.filter(
