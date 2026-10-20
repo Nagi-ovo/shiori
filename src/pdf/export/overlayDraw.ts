@@ -6,6 +6,7 @@ import {
   LineJoinStyle,
   appendBezierCurve,
   clip,
+  concatTransformationMatrix,
   endPath,
   lineTo,
   moveTo,
@@ -63,6 +64,7 @@ export async function drawOverlaysForPage(
   }
   for (const o of pageOverlays) {
     if (o.type === "contentText") continue;
+    const turned = beginFreeRotation(out, o);
     if (o.type === "highlight") drawHighlight(out, o);
     else if (o.type === "underline") drawUnderline(out, o);
     else if (o.type === "strikethrough") drawStrikeOut(out, o);
@@ -73,8 +75,45 @@ export async function drawOverlaysForPage(
     else if (o.type === "note") lostChars += drawNote(out, o, fonts);
     else if (o.type === "text") lostChars += drawText(out, o, fonts);
     else if (o.type === "callout") lostChars += drawCallout(out, o, fonts);
+    if (turned) out.pushOperators(popGraphicsState());
   }
   return lostChars;
+}
+
+// Box overlays carry a free rotation: degrees clockwise as seen, about the
+// rect center, on top of the page's /Rotate (OverlayDom's boxPlacement).
+// PDF user space is y-up, so clockwise is the negative angle here. Original-
+// text edits have no rotate handle and stay pinned to the glyphs they cover.
+// Returns whether a graphics state was pushed and must be popped.
+function beginFreeRotation(out: PDFPage, o: Overlay): boolean {
+  if (
+    o.type !== "rect" &&
+    o.type !== "stamp" &&
+    o.type !== "image" &&
+    o.type !== "note" &&
+    o.type !== "text"
+  ) {
+    return false;
+  }
+  const angle = o.angle ?? 0;
+  if (!Number.isFinite(angle) || angle % 360 === 0) return false;
+  const rad = (angle * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const cx = o.rect.x + o.rect.w / 2;
+  const cy = o.rect.y + o.rect.h / 2;
+  out.pushOperators(
+    pushGraphicsState(),
+    concatTransformationMatrix(
+      cos,
+      -sin,
+      sin,
+      cos,
+      cx - cos * cx - sin * cy,
+      cy + sin * cx - cos * cy,
+    ),
+  );
+  return true;
 }
 
 export async function drawImageOverlaysForPage(
@@ -84,7 +123,9 @@ export async function drawImageOverlaysForPage(
 ): Promise<void> {
   for (const overlay of pageOverlays) {
     if (overlay.type === "image") {
+      const turned = beginFreeRotation(out, overlay);
       await drawImageOverlay(out, overlay, embeddedImages);
+      if (turned) out.pushOperators(popGraphicsState());
     }
   }
 }
