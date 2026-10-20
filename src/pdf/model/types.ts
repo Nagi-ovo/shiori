@@ -68,6 +68,9 @@ type OverlayCommon = {
   sourceInReplyToId?: string;
   // /RT: "R" for a reply, "Group" for grouped annotations.
   sourceReplyType?: "R" | "Group";
+  // The source annotation's /F flags (Locked, NoPrint, ReadOnly, ...).
+  // Export writes Print (4) when this is absent.
+  sourceFlags?: number;
   // Text-anchor provenance captured at creation (anchored CLI/Live specs).
   // Meaningful for highlight/underline/strikethrough/note/callout; carried in
   // OverlayCommon because it must survive generic clone/round-trip paths.
@@ -184,6 +187,14 @@ export type NoteOverlay = OverlayCommon & {
   updatedAt?: number;
   // Free rotation about the rect center, degrees clockwise. Missing = 0.
   angle?: number;
+  // Carried from an imported Text annotation, like OverlayCommon's source*
+  // fields: its icon (/Name), whether its pop-up opens (/Open), and a review
+  // state (/State, /StateModel). Export writes Note, closed, no state
+  // when these are absent.
+  sourceIcon?: string;
+  sourceOpen?: boolean;
+  sourceState?: string;
+  sourceStateModel?: string;
 };
 
 export type FontFamily =

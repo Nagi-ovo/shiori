@@ -222,12 +222,16 @@ export function buildStickyNote(page: PDFPage, o: NoteOverlay): PDFRef {
     Subtype: "Text",
     Rect: [x, y, x + ICON, y + ICON],
     Contents: PDFHexString.fromText(o.text ?? ""),
-    Name: "Note",
+    Name: o.sourceIcon || "Note",
     C: color,
     F: 4,
-    Open: false,
+    Open: o.sourceOpen ?? false,
     NM: shioriAnnotationName(o.id),
   });
+  if (o.sourceState && o.sourceStateModel) {
+    dict.set(PDFName.of("State"), PDFHexString.fromText(o.sourceState));
+    dict.set(PDFName.of("StateModel"), PDFHexString.fromText(o.sourceStateModel));
+  }
   setShioAnchor(page, dict, o);
   return ctx.register(dict);
 }

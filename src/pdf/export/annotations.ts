@@ -9,6 +9,7 @@ import {
   PDFDict,
   PDFHexString,
   PDFName,
+  PDFNumber,
   PDFRef,
   PDFString,
   type PDFFont,
@@ -174,6 +175,12 @@ function applySourceProvenance(page: PDFPage, o: Overlay, ref: PDFRef): void {
   if (!dict) return;
   if (o.sourceAuthor) {
     dict.set(PDFName.of("T"), PDFHexString.fromText(o.sourceAuthor));
+  }
+  // Every builder writes Print; a source annotation that was hidden, locked
+  // or never printed keeps what it was.
+  const flags = o.sourceFlags;
+  if (typeof flags === "number" && Number.isInteger(flags) && flags >= 0) {
+    dict.set(PDFName.of("F"), PDFNumber.of(flags));
   }
   if (typeof o.sourceCreatedAt === "number") {
     const value = formatPdfDate(o.sourceCreatedAt);
