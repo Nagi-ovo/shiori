@@ -134,6 +134,22 @@ describe("glyph removal rewrite", () => {
     expect(text.endsWith(" ET Q")).toBe(true);
   });
 
+  test("drops the alternate text of marked content around removed glyphs", () => {
+    // /ActualText, /Alt and /E would hand the removed word to any extractor
+    // that honours them; a span with no removed glyph keeps its own.
+    const source =
+      "/Figure <</Alt (pic)>> BDC /Span <</ActualText (Bee) /MCID 0>> BDC " +
+      "BT /F1 12 Tf 106 700 Td (B) Tj ET EMC EMC " +
+      "/Span <</ActualText (Sea)>> BDC BT /F1 12 Tf 300 700 Td (C) Tj ET EMC";
+    const { result } = run(source, [B_RECT]);
+    if (!result.changed) throw new Error("expected a rewrite");
+    expect(dec.decode(result.bytes)).toBe(
+      "/Figure << >> BDC /Span <<  /MCID 0>> BDC " +
+        "BT /F1 12 Tf 106 700 Td [-500] TJ ET EMC EMC " +
+        "/Span <</ActualText (Sea)>> BDC BT /F1 12 Tf 300 700 Td (C) Tj ET EMC",
+    );
+  });
+
   test("no covered glyphs → no rewrite", () => {
     const far: PdfRect = { x: 400, y: 400, w: 50, h: 50 };
     const { result } = run("BT /F1 12 Tf 100 700 Td (ABC) Tj ET", [far]);

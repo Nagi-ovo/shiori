@@ -7,7 +7,10 @@
 //    displacement (advance width + char/word spacing) is re-inserted as a TJ
 //    adjustment, so following glyphs in the same text object do not shift.
 // 2. Bytes outside the rewritten show ops are copied verbatim via the
-//    tokenizer's extents — no re-serialization of ops we didn't change.
+//    tokenizer's extents — no re-serialization of ops we didn't change. The
+//    one other edit: a BDC property list enclosing a removed glyph loses its
+//    /ActualText, /Alt and /E entries, which would otherwise still hand the
+//    removed text to extractors that honour them.
 //
 // Hit policy is conservative: a glyph is removed only when one cover rect
 // holds its whole advance, from the baseline up through its core band
@@ -340,6 +343,40 @@ function rebuildShowOp(op: ContentOp, removed: GlyphPlacement[]): string {
   }
 }
 
+// Property-list keys that carry a text equivalent of the marked content.
+const ALT_TEXT_KEYS = new Set(["ActualText", "Alt", "E"]);
+
+// The BDC op with its alternate-text entries blanked out, or null when its
+// inline property list has none (a named /Properties resource is not edited).
+function stripAltText(source: Uint8Array, op: ContentOp): Uint8Array | null {
+  const properties = op.operands[op.operands.length - 1];
+  if (op.operator !== "BDC" || properties?.kind !== "dict") return null;
+  const drop = properties.entries.filter((entry) => ALT_TEXT_KEYS.has(entry.key));
+  if (drop.length === 0) return null;
+  const chunks: Uint8Array[] = [];
+  let cursor = op.start;
+  for (const entry of drop) {
+    chunks.push(source.subarray(cursor, entry.start), SPACE);
+    cursor = entry.end;
+  }
+  chunks.push(source.subarray(cursor, op.end));
+  return concatBytes(chunks);
+}
+
+const SPACE = new Uint8Array([0x20]);
+
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+  let total = 0;
+  for (const chunk of chunks) total += chunk.length;
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return out;
+}
+
 export function removeCoveredGlyphs(
   source: Uint8Array,
   ops: ContentOp[],
@@ -362,29 +399,33 @@ export function removeCoveredGlyphs(
   }
 
   const encoder = new TextEncoder();
+  const replacements = new Map<number, Uint8Array>();
+  for (const [opIndex, removed] of byOp) {
+    replacements.set(
+      opIndex,
+      encoder.encode(rebuildShowOp(ops[opIndex]!, removed)),
+    );
+  }
+  for (const opIndex of new Set(hits.flatMap((hit) => hit.markedContent))) {
+    const stripped = stripAltText(source, ops[opIndex]!);
+    if (stripped) replacements.set(opIndex, stripped);
+  }
+
   const chunks: Uint8Array[] = [];
   let cursor = 0;
-  for (const [opIndex, removed] of [...byOp.entries()].sort(
+  for (const [opIndex, bytes] of [...replacements.entries()].sort(
     (a, b) => a[0] - b[0],
   )) {
     const op = ops[opIndex]!;
     chunks.push(source.subarray(cursor, op.start));
-    chunks.push(encoder.encode(rebuildShowOp(op, removed)));
+    chunks.push(bytes);
     cursor = op.end;
   }
   chunks.push(source.subarray(cursor));
 
-  let total = 0;
-  for (const chunk of chunks) total += chunk.length;
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.length;
-  }
   return {
     changed: true,
-    bytes: out,
+    bytes: concatBytes(chunks),
     removedCount: hits.length,
     cleanRects,
     rectFonts,

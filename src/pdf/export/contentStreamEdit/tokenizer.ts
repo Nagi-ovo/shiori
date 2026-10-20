@@ -9,8 +9,8 @@
 //
 // Scope is deliberately narrow. Operands the removal pass must understand —
 // numbers, names, strings, arrays, booleans/null — are parsed; dictionary
-// operands (gs/BDC/DP property lists) are scanned for extent only and never
-// inspected. An inline image (BI…ID…EI) becomes a single opaque op. Anything
+// operands (BDC/DP property lists) record only each entry's key and byte
+// extent, so a rewrite can drop one entry verbatim. An inline image (BI…ID…EI) becomes a single opaque op. Anything
 // outside this grammar throws ContentStreamParseError, and callers must treat
 // that as "leave the whole page untouched" — a partial parse is never a
 // usable result.
@@ -22,7 +22,11 @@ export type ContentOperand =
   | { kind: "array"; items: ContentOperand[] }
   | { kind: "boolean"; value: boolean }
   | { kind: "null" }
-  | { kind: "dict" };
+  | { kind: "dict"; entries: DictEntryExtent[] };
+
+// One key/value pair of a dictionary operand: the key name and the byte
+// extent [start, end) from the key's slash through the end of its value.
+export type DictEntryExtent = { key: string; start: number; end: number };
 
 export type ContentOp = {
   operator: string;
@@ -300,8 +304,7 @@ function parseOperand(s: Scanner, terminator: "]" | ">>" | null): ContentOperand
   if (b === 0x3c /* < */) {
     if (s.peek(1) === 0x3c) {
       s.pos += 2;
-      skipDictBody(s);
-      return { kind: "dict" };
+      return { kind: "dict", entries: scanDictBody(s) };
     }
     s.pos += 1;
     return { kind: "string", bytes: s.readHexString() };
@@ -337,19 +340,28 @@ function parseOperand(s: Scanner, terminator: "]" | ">>" | null): ContentOperand
 }
 
 // Scans (does not model) a dictionary body up to and including the closing
-// '>>'. Values are parsed with the same operand grammar, which keeps strings
-// containing ">>" from desyncing the scan.
-function skipDictBody(s: Scanner): void {
-  while (true) {
+// '>>', returning the extent of each entry whose key is a name. Values are
+// parsed with the same operand grammar, which keeps strings containing ">>"
+// from desyncing the scan.
+function scanDictBody(s: Scanner): DictEntryExtent[] {
+  const entries: DictEntryExtent[] = [];
+  let key: { name: string; start: number } | null = null;
+  for (let index = 0; ; index += 1) {
+    s.skipWhitespaceAndComments();
+    const start = s.pos;
     const operand = parseOperand(s, ">>");
     if (operand === null) {
-      s.skipWhitespaceAndComments();
       if (s.peek() === 0x3e && s.peek(1) === 0x3e) {
         s.pos += 2;
-        return;
+        return entries;
       }
       // parseOperand returned null on an operator keyword — invalid in a dict.
       s.fail("unexpected token in dictionary");
+    }
+    if (index % 2 === 0) {
+      key = operand.kind === "name" ? { name: operand.value, start } : null;
+    } else if (key !== null) {
+      entries.push({ key: key.name, start: key.start, end: s.pos });
     }
   }
 }

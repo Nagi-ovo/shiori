@@ -72,6 +72,9 @@ export type GlyphPlacement = {
   // em, both shorter than many fonts' FontDescriptor box, so the removal
   // pass tests this band, not `quad`, for "fully covered".
   coreQuad: [Point, Point, Point, Point];
+  // Op indices of the BMC/BDC operators whose marked-content spans enclose
+  // the glyph, outermost first — where its /ActualText or /Alt would live.
+  markedContent: readonly number[];
   // TJ number that reproduces this glyph's whole displacement (advance width
   // + char/word spacing) when the glyph bytes are removed: insert
   // -tjCompensation at the glyph's position. Units: thousandths of text
@@ -165,6 +168,8 @@ export function walkTextPlacements(
   // Set once a show of unknown advance moved tm by an unknown amount.
   let tmUnknown = false;
   let unplacedText = false;
+  // Replaced, never mutated, so glyphs can share it.
+  let markedContent: readonly number[] = [];
   const fontCache = new Map<string, ContentFontInfo | UnsupportedFont | null>();
 
   const fail = (reason: string): TextWalkResult => ({ ok: false, reason });
@@ -256,6 +261,7 @@ export function walkTextPlacements(
         fontName: gs.fontName,
         quad,
         coreQuad,
+        markedContent,
         tjCompensation: 1000 * (w0Em + spacing / gs.fontSize),
       });
       const advance =
@@ -450,9 +456,17 @@ export function walkTextPlacements(
       case "BI":
         inlineImages.push({ opIndex, ctm: [...gs.ctm] });
         break;
+      case "BMC":
+      case "BDC":
+        markedContent = [...markedContent, opIndex];
+        break;
+      case "EMC":
+        // An unbalanced EMC changes nothing PDFium draws; ignore it.
+        markedContent = markedContent.slice(0, -1);
+        break;
       default:
-        // Painting, color, path, and marked-content operators do not affect
-        // text geometry. Their bytes pass through the rewrite verbatim.
+        // Painting, color, path, and marked-content point operators do not
+        // affect text geometry. Their bytes pass through the rewrite verbatim.
         break;
     }
   }
