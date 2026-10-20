@@ -14,10 +14,7 @@ import {
   drawThumbnailOverlays,
   loadThumbnailOverlayFonts,
 } from "../components/thumbnailCompositor";
-import {
-  loadThumbnailOverlayImages,
-  type ThumbnailImages,
-} from "../components/thumbnailImages";
+import { loadThumbnailOverlayImages } from "../components/thumbnailImages";
 import type { ExportMode } from "../../pdf/export/exportPdf";
 
 const COMPACT_TARGET_DPI = 120;
@@ -42,10 +39,8 @@ export async function exportCompactRasterPdf(
 ): Promise<Uint8Array> {
   const out = await PDFDocument.create();
   const includeOverlays = options.mode !== "none";
-  let images: ThumbnailImages = new Map();
   if (includeOverlays) {
     await loadThumbnailOverlayFonts(model.overlays);
-    images = await loadThumbnailOverlayImages(model.overlays);
   }
 
   for (const pageModel of model.pages) {
@@ -85,10 +80,16 @@ export async function exportCompactRasterPdf(
       }
 
       if (includeOverlays) {
+        const overlays = model.overlays.filter(
+          (overlay) => overlay.pageId === pageModel.id,
+        );
+        // One page's images at a time: a photo on every page of a long
+        // document would otherwise stay decoded until the whole export ends.
+        const images = await loadThumbnailOverlayImages(overlays);
         drawThumbnailOverlays(
           ctx,
           pageModel,
-          model.overlays.filter((overlay) => overlay.pageId === pageModel.id),
+          overlays,
           {
             width: widthPx,
             height: heightPx,
