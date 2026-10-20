@@ -155,10 +155,13 @@ export function extractMarkdownFrontMatter(text: string): {
         ? trimmed === "---" || trimmed === "..."
         : trimmed === "+++";
     if (closed) {
-      return {
-        body: lines.slice(index + 1).join("\n"),
-        metadata: parseFrontMatter(rawLines.join("\n"), delimiter),
-      };
+      const metadata = parseFrontMatter(rawLines.join("\n"), delimiter);
+      // Content with no metadata in it is a section between horizontal
+      // rules, not front matter; the live editor shows it as source too.
+      if (metadata.length === 0 && rawLines.some((raw) => raw.trim())) {
+        return { body: text, metadata: [] };
+      }
+      return { body: lines.slice(index + 1).join("\n"), metadata };
     }
     rawLines.push(line);
   }

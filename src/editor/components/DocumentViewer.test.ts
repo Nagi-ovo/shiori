@@ -164,4 +164,17 @@ describe("DocumentViewer safe rendering", () => {
     expect(html).not.toContain("<hr");
     expect(html).not.toContain("<img src=x");
   });
+
+  // The live editor shows such a block as source; the preview dropped it.
+  test("keeps a first section between horizontal rules that holds no metadata", async () => {
+    const html = await renderSafeHtml(
+      "markdown",
+      "---\n\n# Chapter 1\n\nThe whole first chapter.\n\n---\n\n# Chapter 2\n",
+    );
+
+    expect(html).toMatch(/<h1 data-source-line="3">Chapter 1<\/h1>/);
+    expect(html).toContain("The whole first chapter.");
+    expect(html).toMatch(/<h1[^>]*>Chapter 2<\/h1>/);
+    expect(html).not.toContain("shioriDocumentMetadata");
+  });
 });
