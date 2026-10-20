@@ -238,7 +238,6 @@ type State = {
   pageJump: PageJump | null;
   outlineSelection: { pageId: string; pdfTop: number } | null;
   searchMatchHighlight: { pageId: string; charStart: number; charEnd: number } | null;
-  overlayClipboard: Overlay[];
   editingOverlayId: string | null;
   // Per-document presentation only. Collapsing a note or a callout must never
   // dirty the PDF, enter Undo history, or affect exports.
@@ -300,6 +299,8 @@ type AppState = {
   // hold their fire until it flips back to false. Never persisted.
   chromeResizing: boolean;
   activeSignature: SavedSignature | null;
+  // App-wide: one tab pastes the annotations another copied.
+  overlayClipboard: Overlay[];
   annotDefaults: AnnotationDefaults;
   showRail: boolean;
   railTab: RailTab;
@@ -476,7 +477,6 @@ export type PdfEditorSessionState = {
   activePageId: string | null;
   outlineSelection: State["outlineSelection"];
   searchMatchHighlight: State["searchMatchHighlight"];
-  overlayClipboard: Overlay[];
   editingOverlayId: string | null;
   collapsedNoteIds: string[];
   collapsedCalloutIds: string[];
@@ -972,7 +972,6 @@ const EDITOR_INIT_STATE: State = {
   pageJump: null,
   outlineSelection: null,
   searchMatchHighlight: null,
-  overlayClipboard: [],
   editingOverlayId: null,
   collapsedNoteIds: [],
   collapsedCalloutIds: [],
@@ -1007,6 +1006,7 @@ const EDITOR_INIT_STATE: State = {
 const APP_INIT_STATE: AppState = {
   chromeResizing: false,
   activeSignature: null,
+  overlayClipboard: [],
   annotDefaults: loadAnnotDefaults(),
   showRail: false,
   railTab: "outline",
@@ -1693,13 +1693,15 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
 
   copySelected: () => {
     const { selectedIds, model } = get();
-    set({ overlayClipboard: copySelectedOverlays(model.overlays, selectedIds) });
+    const overlayClipboard = copySelectedOverlays(model.overlays, selectedIds);
+    useAppStore.setState({ overlayClipboard });
   },
 
   pasteClipboard: (pageId) => {
     if (!pageId) return;
-    const { overlayClipboard, model } = get();
+    const { overlayClipboard } = useAppStore.getState();
     if (overlayClipboard.length === 0) return;
+    const { model } = get();
     const pasted = pasteOverlays(overlayClipboard, pageId, nanoid);
     get().commit({ overlays: [...model.overlays, ...pasted] });
     set({ selectedIds: pasted.map((o) => o.id) });
@@ -1993,7 +1995,6 @@ export function capturePdfEditorSession(options?: {
     searchMatchHighlight: state.searchMatchHighlight
       ? { ...state.searchMatchHighlight }
       : null,
-    overlayClipboard: cloneOverlays(state.overlayClipboard),
     editingOverlayId: state.editingOverlayId,
     collapsedNoteIds: options?.preserveUnmatchedCollapsedNoteIds
       ? normalizeCollapsedNoteIds(state.collapsedNoteIds)
@@ -2043,7 +2044,6 @@ export function restorePdfEditorSession(
     searchMatchHighlight: session.searchMatchHighlight
       ? { ...session.searchMatchHighlight }
       : null,
-    overlayClipboard: cloneOverlays(session.overlayClipboard),
     editingOverlayId: session.editingOverlayId,
     collapsedNoteIds: options?.preserveUnmatchedCollapsedNoteIds
       ? normalizeCollapsedNoteIds(session.collapsedNoteIds ?? [])

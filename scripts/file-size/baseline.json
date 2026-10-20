@@ -50,7 +50,7 @@
   "src/editor/components/ui.tsx": 60028,
   "src/editor/quotes.ts": 21089,
   "src/editor/store/store.test.ts": 57704,
-  "src/editor/store/store.ts": 72017,
+  "src/editor/store/store.ts": 72009,
   "src/editor/textSelection/highlightRects.test.ts": 22741,
   "src/editor/textSelection/highlightRects.ts": 22802,
   "src/editor/textSelection/semanticText.ts": 26211,

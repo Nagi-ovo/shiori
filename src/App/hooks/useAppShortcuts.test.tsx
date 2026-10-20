@@ -1,7 +1,11 @@
 import "../../test/setupDom";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { useEditorStore } from "../../editor/store/store";
+import {
+  createPdfEditorStore,
+  useAppStore,
+  useEditorStore,
+} from "../../editor/store/store";
 import i18n from "../../i18n";
 import { useAppShortcuts } from "./useAppShortcuts";
 
@@ -25,9 +29,9 @@ describe("pasting an image binds its target before awaiting", () => {
     useEditorStore.setState({
       opened: null,
       model: { pages: [], overlays: [] },
-      overlayClipboard: [],
       activePageId: null,
     } as never);
+    useAppStore.setState({ overlayClipboard: [] });
   });
 
   function imagePasteEvent(onArrayBuffer: () => void): Event {
@@ -97,9 +101,9 @@ describe("pasting an image binds its target before awaiting", () => {
     useEditorStore.setState({
       opened: { doc: {}, bytes: new Uint8Array() },
       model: { pages: [page], overlays: [annotation] },
-      overlayClipboard: [annotation],
       activePageId: page.id,
     } as never);
+    useAppStore.setState({ overlayClipboard: [annotation] });
     let imageBinderCalls = 0;
     renderHook(() =>
       useAppShortcuts({
@@ -119,9 +123,51 @@ describe("pasting an image binds its target before awaiting", () => {
     expect(imageBinderCalls).toBe(0);
   });
 
+  // macOS routes Cmd+V through this paste event, not keydown, so this is the
+  // desktop path for pasting into another tab.
+  test("DOM paste brings in annotations copied in another tab", () => {
+    const source = createPdfEditorStore();
+    const annotation = {
+      type: "rect" as const,
+      id: "rect-a",
+      pageId: "paper-a-page",
+      rect: { x: 10, y: 20, w: 30, h: 40 },
+      color: "#000000",
+      fill: null,
+      strokeWidth: 1,
+    };
+    source.setState({
+      model: {
+        pages: [{ id: "paper-a-page", sourceIndex: 0, rotation: 0, widthPt: 612, heightPt: 792 }],
+        overlays: [annotation],
+      },
+      selectedIds: [annotation.id],
+    });
+    source.getState().copySelected();
+    const page = { id: "paper-b-page", sourceIndex: 0, rotation: 0 as const, widthPt: 612, heightPt: 792 };
+    useEditorStore.setState({
+      opened: { doc: {}, bytes: new Uint8Array() },
+      model: { pages: [page], overlays: [] },
+      activePageId: page.id,
+    } as never);
+    renderHook(() => useAppShortcuts({ beginPageMerge: () => async () => false }));
+    const event = new Event("paste", { bubbles: true, cancelable: true });
+    Object.assign(event, { clipboardData: { items: [] } });
+
+    act(() => window.dispatchEvent(event));
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(useEditorStore.getState().model.overlays).toMatchObject([
+      { type: "rect", pageId: page.id },
+    ]);
+  });
+
   test("editable targets keep native paste even with annotation clipboard state", () => {
     useEditorStore.setState({
       opened: { doc: {}, bytes: new Uint8Array() },
+      activePageId: "page-1",
+    } as never);
+    useAppStore.setState({
       overlayClipboard: [
         {
           type: "rect",
@@ -133,8 +179,7 @@ describe("pasting an image binds its target before awaiting", () => {
           strokeWidth: 1,
         },
       ],
-      activePageId: "page-1",
-    } as never);
+    });
     renderHook(() => useAppShortcuts({ beginPageMerge: () => async () => false }));
     const input = document.createElement("input");
     document.body.appendChild(input);

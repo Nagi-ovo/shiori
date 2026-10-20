@@ -180,7 +180,8 @@ export function useCanvasKeyboard({
           return true;
         }
         case "paste": {
-          const { activePageId: pageId, overlayClipboard, model } = state;
+          const { activePageId: pageId, model } = state;
+          const { overlayClipboard } = useAppStore.getState();
           if (overlayClipboard.length === 0 || !pageId) return false;
           pasteClipboard(pageId);
           const pageNumber = model.pages.findIndex((p) => p.id === pageId) + 1;

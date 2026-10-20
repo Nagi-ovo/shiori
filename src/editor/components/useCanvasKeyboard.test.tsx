@@ -4,7 +4,12 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import type { ReactNode } from "react";
 import i18n from "../../i18n";
 import type { Overlay, PageModel } from "../../pdf/model/types";
-import { createPdfEditorStore, EditorStoreContext, type PdfEditorStoreApi } from "../store/store";
+import {
+  createPdfEditorStore,
+  EditorStoreContext,
+  useAppStore,
+  type PdfEditorStoreApi,
+} from "../store/store";
 import { useCanvasKeyboard } from "./useCanvasKeyboard";
 
 // What can go wrong between a key on the window and the canvas command:
@@ -14,6 +19,7 @@ import { useCanvasKeyboard } from "./useCanvasKeyboard";
 // - a button the reader tabbed to loses Enter and Space to the canvas, so
 //   Enter places the armed tool instead of pressing the button;
 // - a button a click focused takes Space away from panning;
+// - Cmd+V in one tab ignores what Cmd+C copied in another;
 // - an arrow on a selection that cannot move (locked, or a contentText edit
 //   pinned to its glyphs) records an undo step, clears redo and swallows
 //   the key, so the page does not scroll either.
@@ -76,6 +82,7 @@ beforeAll(async () => {
 afterEach(() => {
   cleanup();
   document.body.replaceChildren();
+  useAppStore.setState({ overlayClipboard: [] });
 });
 
 describe("canvas keyboard", () => {
@@ -136,6 +143,21 @@ describe("canvas keyboard", () => {
       expect(store.getState().undoStack).toHaveLength(0);
       expect(store.getState().redoStack).toHaveLength(1);
     }
+  });
+
+  test("Cmd+V pastes the annotations another tab copied", () => {
+    const other = createPdfEditorStore();
+    other.setState({
+      model: { pages: [{ ...page, id: "other-page" }], overlays: [{ ...rect, pageId: "other-page" }] },
+      selectedIds: [rect.id],
+    });
+    other.getState().copySelected();
+    const { store } = mount([]);
+
+    const paste = keydown(window, "v", { metaKey: true });
+
+    expect(paste.defaultPrevented).toBe(true);
+    expect(store.getState().model.overlays).toMatchObject([{ type: "rect", pageId: page.id }]);
   });
 
   test("a button focused by a click still leaves Space to pan", () => {

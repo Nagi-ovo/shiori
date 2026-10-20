@@ -154,7 +154,6 @@ describe("suspended PDF runtime sessions", () => {
       activePageId: page.id,
       outlineSelection: { pageId: page.id, pdfTop: 42 },
       searchMatchHighlight: { pageId: page.id, charStart: 3, charEnd: 8 },
-      overlayClipboard: [ink],
       editingOverlayId: "ink-a",
       collapsedNoteIds: ["note-a"],
       collapsedCalloutIds: ["callout-a"],
@@ -217,7 +216,6 @@ describe("suspended PDF runtime sessions", () => {
       charStart: 3,
       charEnd: 8,
     });
-    expect(state.overlayClipboard).toEqual([ink]);
     expect(state.editingOverlayId).toBe("ink-a");
     expect(state.collapsedNoteIds).toEqual(["note-a"]);
     expect(state.collapsedCalloutIds).toEqual(["callout-a"]);

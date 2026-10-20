@@ -24,7 +24,6 @@
 
 import type {
   DocumentModel,
-  Overlay,
   PageModel,
   ToolId,
 } from "../pdf/model/types";
@@ -54,7 +53,8 @@ export type SuspendedPdfSnapshot = {
   activePageId: string | null;
   outlineSelection: Store["outlineSelection"];
   searchMatchHighlight: Store["searchMatchHighlight"];
-  overlayClipboard: Overlay[];
+  // No overlayClipboard: the clipboard is app-wide now. Snapshots stored
+  // before that still carry one; it is ignored.
   editingOverlayId: string | null;
   collapsedNoteIds: string[];
   collapsedCalloutIds: string[];
@@ -108,7 +108,6 @@ export function captureSuspendedPdfSnapshot(
     searchMatchHighlight: state.searchMatchHighlight
       ? { ...state.searchMatchHighlight }
       : null,
-    overlayClipboard: state.overlayClipboard,
     editingOverlayId: state.editingOverlayId,
     collapsedNoteIds: [...state.collapsedNoteIds],
     collapsedCalloutIds: [...state.collapsedCalloutIds],
@@ -152,7 +151,6 @@ export function restoreSuspendedPdfSnapshot(
     searchMatchHighlight: snapshot.searchMatchHighlight
       ? { ...snapshot.searchMatchHighlight }
       : null,
-    overlayClipboard: snapshot.overlayClipboard,
     editingOverlayId: snapshot.editingOverlayId,
     collapsedNoteIds: [...snapshot.collapsedNoteIds],
     collapsedCalloutIds: [...snapshot.collapsedCalloutIds],
@@ -400,7 +398,6 @@ function isSuspendedPdfSnapshot(value: unknown): value is SuspendedPdfSnapshot {
     Array.isArray(snapshot.sourcePages) &&
     typeof snapshot.model === "object" &&
     Array.isArray(snapshot.selectedIds) &&
-    Array.isArray(snapshot.overlayClipboard) &&
     Array.isArray(snapshot.collapsedNoteIds) &&
     Array.isArray(snapshot.collapsedCalloutIds) &&
     Array.isArray(snapshot.collapsedThreadIds) &&
