@@ -173,8 +173,14 @@ class MainActivity : TauriActivity() {
       else -> emptyList()
     }
     // Resolve payloads (contentResolver query) before taking the lock.
-    val payloads = uris
-      .filter { uri -> uri.scheme == "content" || uri.scheme == "file" }
+    val documentUris = uris.filter { uri -> uri.scheme == "content" || uri.scheme == "file" }
+    // A link or text selection: no stream, only EXTRA_TEXT (SharedText.kt).
+    val sharedText = if (intent.action == Intent.ACTION_SEND && documentUris.isEmpty()) {
+      sharedTextDocumentUri(intent)
+    } else {
+      null
+    }
+    val payloads = (documentUris + listOfNotNull(sharedText))
       .map { uri -> documentOpenPayload(uri) }
       .distinct()
     synchronized(pendingDocumentOpens) {
