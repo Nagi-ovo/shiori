@@ -474,22 +474,25 @@ export function tokenizeContentStream(bytes: Uint8Array): ContentOp[] {
   }
 }
 
-// Coalesces a page's /Contents parts for parsing. Real-world files split the
-// array in the middle of a lexical token (the exact pitfall qpdf's
-// coalesceContentStreams documents), so parts are joined RAW — inserting a
-// separator would break a split token. The residual risk (a spec-compliant
-// writer splitting between tokens with no trailing whitespace, merging "1"
-// and "0 w" into "10 w") is caught downstream: the tokenizer or the text
-// state machine's operand arity checks fail and the page is left untouched.
+// Coalesces a page's /Contents parts for parsing, with one space between
+// parts (PDFium's separator: a newline would also end a trailing comment). The spec splits parts only between tokens, and PDFium (which draws
+// both the source and the export) reads each boundary as whitespace, so a
+// writer that ends a part on "300" and starts the next with "500 l" means
+// "300 500 l". Joining raw would fuse them into "300500 l", which no arity
+// check catches for path operators, and the rewrite would write the fused
+// stream back. A file that splits inside a token is read split here too, as
+// PDFium reads it; that usually fails the tokenizer or the text walk's
+// arity checks and the page is left untouched.
 export function coalesceContentStreams(parts: Uint8Array[]): Uint8Array {
   if (parts.length === 1) return parts[0]!;
-  let total = 0;
+  let total = parts.length - 1;
   for (const part of parts) total += part.length;
   const out = new Uint8Array(total);
   let offset = 0;
-  for (const part of parts) {
+  parts.forEach((part, index) => {
+    if (index > 0) out[offset++] = 0x20;
     out.set(part, offset);
     offset += part.length;
-  }
+  });
   return out;
 }

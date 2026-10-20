@@ -156,13 +156,34 @@ describe("content stream tokenizer", () => {
     expect(() => ops("{ 0 1 add }")).toThrow(ContentStreamParseError);
   });
 
-  test("coalesces split /Contents parts raw so mid-token splits reassemble", () => {
-    const partA = enc.encode("BT /F1 12 Tf 100 7");
-    const partB = enc.encode("00 Td (Hi) Tj ET");
-    const parsed = tokenizeContentStream(
-      coalesceContentStreams([partA, partB]),
+  test("coalesces /Contents parts with a token break between them, as PDFium reads them", () => {
+    // A writer may end one part without trailing whitespace; the next
+    // part's first number is a separate operand, not a continuation.
+    const path = tokenizeContentStream(
+      coalesceContentStreams([
+        enc.encode("q 4 w 300 100 m 300"),
+        enc.encode("500 l S Q"),
+      ]),
     );
-    const td = parsed.find((op) => op.operator === "Td")!;
-    expect(opSummary(td)).toEqual(["Td", 100, 700]);
+    expect(opSummary(path.find((op) => op.operator === "l")!)).toEqual([
+      "l",
+      300,
+      500,
+    ]);
+
+    // A split inside a token stays split, so the text walk's arity check
+    // rejects the page instead of rewriting it differently from PDFium.
+    const text = tokenizeContentStream(
+      coalesceContentStreams([
+        enc.encode("BT /F1 12 Tf 100 7"),
+        enc.encode("00 Td (Hi) Tj ET"),
+      ]),
+    );
+    expect(opSummary(text.find((op) => op.operator === "Td")!)).toEqual([
+      "Td",
+      100,
+      7,
+      0,
+    ]);
   });
 });
