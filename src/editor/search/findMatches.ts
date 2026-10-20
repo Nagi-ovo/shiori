@@ -108,16 +108,19 @@ export function indexSearchPages(
   });
 }
 
-export function findMatchesInSearchIndexes(
-  pages: IndexedSearchPage[],
+/** `ranges` lists a page's matches; the default searches `page.index`. */
+export function findMatchesInSearchIndexes<Page extends IndexedSearchPage>(
+  pages: readonly Page[],
   rawQuery: string,
+  ranges: (page: Page, query: CompiledSearchQuery) => Iterable<SearchSourceRange> = (page, query) =>
+    iterateSearchRanges(page.index, query),
 ): FindMatchesResult {
   const query = compileSearchQuery(rawQuery);
   if (!query.folded) return { matches: [], truncated: false };
 
   const matches: SearchMatch[] = [];
   for (const page of pages) {
-    for (const range of iterateSearchRanges(page.index, query)) {
+    for (const range of ranges(page, query)) {
       if (matches.length >= MAX_FIND_MATCHES) {
         return { matches, truncated: true };
       }
