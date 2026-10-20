@@ -69,7 +69,22 @@ type Run = {
   pendingSpace: boolean;
   /** The run's text item once it has been emitted; a resumed run updates it. */
   item: PdfTextItem | null;
+  /** The drawn glyphs in `str`, in reading order. */
+  glyphs: PdfItemGlyph[];
 };
+
+/** A drawn glyph of a text item: its UTF-16 range in `str`, and its advance
+ * from origin to end in PDF user space. */
+export type PdfItemGlyph = { start: number; endOffset: number; origin: PdfPoint; end: PdfPoint };
+
+// Keyed by the item object, so it reaches every reader of this page text
+// (anchors, CLI search, Live API) without widening the pdf.js item shape.
+const itemGlyphs = new WeakMap<PdfTextItem, readonly PdfItemGlyph[]>();
+
+/** The glyphs PDFium drew for an item built here; undefined for any other item. */
+export function pdfiumItemGlyphs(item: PdfTextItem): readonly PdfItemGlyph[] | undefined {
+  return itemGlyphs.get(item);
+}
 
 // PDFium orders a page's characters by line and can put text that crosses a
 // line (a diagonal watermark) in the middle of it, splitting a word in two
@@ -157,11 +172,13 @@ class PageTextBuilder {
         width: 0,
         pendingSpace: false,
         item: null,
+        glyphs: [],
       };
       this.#run = run;
     }
     if (run.pendingSpace && !/\s$/u.test(run.str)) run.str += " ";
     run.pendingSpace = false;
+    run.glyphs.push({ start: run.str.length, endOffset: run.str.length + glyph.text.length, origin, end });
     run.str += glyph.text;
     run.width = Math.max(run.width, offsetAlong(run, origin), offsetAlong(run, end));
     this.#cells.push(cellOf(glyph, style, origin, end, run.dir, size));
@@ -193,6 +210,7 @@ class PageTextBuilder {
         Object.assign(run.item, itemOf(run, hasEOL));
       } else {
         run.item = itemOf(run, hasEOL);
+        itemGlyphs.set(run.item, run.glyphs);
         this.#items.push(run.item);
       }
       this.#recent = [run, ...this.#recent].slice(0, RESUMABLE_RUNS);
@@ -267,7 +285,7 @@ function itemOf(run: Run, hasEOL: boolean): PdfTextItem {
 /** A space spanning the gap between a run and the next, as pdf.js emits. */
 function spaceItem(before: Run, at: PdfPoint, next: PdfPoint): PdfTextItem {
   const gap = (next.x - at.x) * before.dir.x + (next.y - at.y) * before.dir.y;
-  return itemOf({ ...before, origin: at, str: " ", width: Math.max(0, gap), item: null }, false);
+  return itemOf({ ...before, origin: at, str: " ", width: Math.max(0, gap), item: null, glyphs: [] }, false);
 }
 
 function cellOf(
