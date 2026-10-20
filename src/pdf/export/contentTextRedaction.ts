@@ -86,3 +86,13 @@ export function redactContentTextCoverRects(
   }
   return redactionByOverlay;
 }
+
+// Edits with at least one cover rect the pass could not prove clean: some of
+// their source glyphs are still in the page content, merely painted over.
+export function unexcisedEditCount(redaction: ContentTextRedaction): number {
+  let count = 0;
+  for (const { cleanRects } of redaction.values()) {
+    if (cleanRects.some((clean) => !clean)) count += 1;
+  }
+  return count;
+}

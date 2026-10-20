@@ -77,6 +77,11 @@ export type ExportOptions = {
 export type ExportResult = {
   bytes: Uint8Array;
   lostChars: number;
+  // Original-text edits whose source glyphs could not all be removed from
+  // the page content: the old text is painted over but still in the file,
+  // so search and copy return it. Absent means none (a rasterized page
+  // carries no source text).
+  unexcisedEdits?: number;
 };
 
 /**
@@ -133,8 +138,12 @@ export async function exportPdf(
 ): Promise<ExportResult> {
   const encryption = options.sourceEncryption;
   if (!encryption) {
-    const { bytes, lostChars } = await rebuildPdf(originalBytes, model, options);
-    return { bytes, lostChars };
+    const { bytes, lostChars, unexcisedEdits } = await rebuildPdf(
+      originalBytes,
+      model,
+      options,
+    );
+    return { bytes, lostChars, unexcisedEdits };
   }
   // Every rebuild of an encrypted source starts from its plaintext, so the
   // permissions are checked before any work and the plaintext export goes
@@ -149,11 +158,16 @@ export async function exportPdf(
     },
   );
   if (rebuilt.unchanged) {
-    return { bytes: new Uint8Array(originalBytes), lostChars: 0 };
+    return {
+      bytes: new Uint8Array(originalBytes),
+      lostChars: 0,
+      unexcisedEdits: 0,
+    };
   }
   return {
     bytes: await encryption.encrypt(rebuilt.bytes, rebuilt.pageCount),
     lostChars: rebuilt.lostChars,
+    unexcisedEdits: rebuilt.unexcisedEdits,
   };
 }
 

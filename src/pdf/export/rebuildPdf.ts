@@ -27,6 +27,7 @@ import {
 } from "./annotations";
 import {
   redactContentTextCoverRects,
+  unexcisedEditCount,
   type ContentTextRedaction,
 } from "./contentTextRedaction";
 import { ExportEncryptedSourceError } from "./encryptedSource";
@@ -64,6 +65,7 @@ import {
 import { annotationTextLostChars } from "./textDraw";
 
 export type RebuildResult = ExportResult & {
+  unexcisedEdits: number;
   /** Nothing to write: `bytes` are the input's, returned as is. */
   unchanged: boolean;
   pageCount: number;
@@ -151,6 +153,7 @@ export async function rebuildPdf(
     return {
       bytes: new Uint8Array(originalBytes),
       lostChars: 0,
+      unexcisedEdits: 0,
       unchanged: true,
       pageCount: sourcePages.length,
     };
@@ -189,6 +192,7 @@ export async function rebuildPdf(
   const fonts = await loadExportFonts(out, exportedOverlays, mode, options);
 
   let totalLostChars = 0;
+  let unexcisedEdits = 0;
   const embeddedImages: EmbeddedImageCache = new Map();
 
   // One batched copyPages call for every non-blank model page (repeats
@@ -257,6 +261,7 @@ export async function rebuildPdf(
         inserted,
         pageOverlays,
       );
+      unexcisedEdits += unexcisedEditCount(contentTextRedaction);
     }
     if (mode === "flatten") {
       totalLostChars += await drawOverlaysForPage(
@@ -315,6 +320,7 @@ export async function rebuildPdf(
   return {
     bytes,
     lostChars: totalLostChars,
+    unexcisedEdits,
     unchanged: false,
     pageCount: out.getPageCount(),
   };
