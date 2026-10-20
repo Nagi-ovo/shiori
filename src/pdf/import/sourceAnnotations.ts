@@ -149,7 +149,11 @@ function readAnnotation(
       data.opacity = opacityOrOne(dict);
       data.inkLists = inkLists(dict);
       break;
+    // pdf.js reads /CA only for Ink and Highlight; Shiori draws underlines
+    // and strikeouts with it too, so they keep it.
     case "Highlight":
+    case "Underline":
+    case "StrikeOut":
       data.opacity = opacityOrOne(dict);
       break;
   }

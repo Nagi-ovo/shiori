@@ -220,4 +220,13 @@ describe("what other tools wrote, kept as written", () => {
     expect(overlays).toMatchObject([{ type: "highlight", pageId: "p1" }, { type: "rect", pageId: "p2", fill: "#0000ff" }]);
     expect(claimed).toEqual([1, 2]);
   });
+
+  test("an underline or strikeout keeps its /CA", async () => {
+    const bytes = await onePage((_pdf, add) => {
+      add({ Subtype: "Underline", Rect: [18, 18, 122, 42], CA: 0.5, QuadPoints: [20, 40, 120, 40, 20, 20, 120, 20] });
+      add({ Subtype: "StrikeOut", Rect: [18, 58, 122, 82], CA: 0.25, QuadPoints: [20, 80, 120, 80, 20, 60, 120, 60] });
+    });
+    const { overlays } = await importFile(bytes);
+    expect(overlays).toMatchObject([{ type: "underline", opacity: 0.5 }, { type: "strikethrough", opacity: 0.25 }]);
+  });
 });
