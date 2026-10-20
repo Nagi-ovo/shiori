@@ -126,7 +126,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: stable
+          toolchain: 1.95.0
           targets: wasm32-unknown-unknown
 
       - name: Cache wasm-bindgen CLI
@@ -202,7 +202,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: stable
+          toolchain: 1.95.0
           targets: wasm32-unknown-unknown
 
       # scripts/pdfium/build-wasm.ts (run by `bun run build`) installs the
@@ -401,7 +401,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: stable
+          toolchain: 1.95.0
           targets: wasm32-unknown-unknown
 
       # scripts/pdfium/build-wasm.ts (run by `bun run build`) installs the
@@ -584,7 +584,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: stable
+          toolchain: 1.95.0
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,wasm32-unknown-unknown
 
       # scripts/pdfium/build-wasm.ts (run by `bun run build`) installs the
