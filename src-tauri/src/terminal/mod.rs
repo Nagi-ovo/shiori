@@ -5,6 +5,8 @@
 
 #[cfg(not(mobile))]
 mod open_routing;
+#[cfg(all(test, unix, not(mobile)))]
+mod pty_tests;
 #[cfg(not(mobile))]
 mod reaper;
 
@@ -20,7 +22,7 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc, Mutex,
+        mpsc, Arc, Mutex,
     },
     thread,
 };
@@ -53,8 +55,47 @@ pub(crate) struct TerminalState;
 struct TerminalSession {
     child: Box<dyn portable_pty::Child + Send + Sync>,
     master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
-    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    input: mpsc::Sender<Vec<u8>>,
     size: Arc<Mutex<TerminalDimensions>>,
+}
+
+#[cfg(not(mobile))]
+impl TerminalSession {
+    fn new(
+        child: Box<dyn portable_pty::Child + Send + Sync>,
+        master: Box<dyn MasterPty + Send>,
+        writer: Box<dyn Write + Send>,
+        size: TerminalDimensions,
+    ) -> Self {
+        Self {
+            child,
+            master: Arc::new(Mutex::new(master)),
+            input: spawn_input_writer(writer),
+            size: Arc::new(Mutex::new(size)),
+        }
+    }
+}
+
+// The PTY write blocks once the tty input queue is full and the program in
+// the terminal is not reading it, so it runs on this per-session thread, never
+// on the caller. terminal_write stays sync on purpose: sync commands run on
+// the main thread in IPC arrival order, which keeps keystrokes in order. The
+// writer drops here too (its Drop writes EOF to the PTY).
+#[cfg(not(mobile))]
+fn spawn_input_writer(mut writer: Box<dyn Write + Send>) -> mpsc::Sender<Vec<u8>> {
+    let (input, chunks) = mpsc::channel::<Vec<u8>>();
+    thread::spawn(move || {
+        for chunk in chunks {
+            if writer
+                .write_all(&chunk)
+                .and_then(|()| writer.flush())
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+    input
 }
 
 #[cfg(not(mobile))]
@@ -150,19 +191,13 @@ fn write_terminal_bytes(
     session_id: &str,
     data: &[u8],
 ) -> Result<(), String> {
-    let writer = {
-        let sessions = state.sessions.lock().map_err(|_| "terminal-unavailable")?;
-        sessions
-            .get(session_id)
-            .map(|session| session.writer.clone())
-            .ok_or_else(|| "terminal-session-missing".to_string())?
-    };
-    let mut writer = writer.lock().map_err(|_| "terminal-unavailable")?;
-    writer
-        .write_all(data)
-        .map_err(|_| "terminal-unavailable".to_string())?;
-    writer
-        .flush()
+    let sessions = state.sessions.lock().map_err(|_| "terminal-unavailable")?;
+    let session = sessions
+        .get(session_id)
+        .ok_or_else(|| "terminal-session-missing".to_string())?;
+    session
+        .input
+        .send(data.to_vec())
         .map_err(|_| "terminal-unavailable".to_string())
 }
 
@@ -351,12 +386,7 @@ fn spawn_terminal_session<R: Runtime>(
         }
         sessions.insert(
             session_id.clone(),
-            TerminalSession {
-                child,
-                master: Arc::new(Mutex::new(pair.master)),
-                writer: Arc::new(Mutex::new(writer)),
-                size: Arc::new(Mutex::new(initial_size)),
-            },
+            TerminalSession::new(child, pair.master, writer, initial_size),
         );
     }
 
