@@ -229,4 +229,13 @@ describe("what other tools wrote, kept as written", () => {
     const { overlays } = await importFile(bytes);
     expect(overlays).toMatchObject([{ type: "underline", opacity: 0.5 }, { type: "strikethrough", opacity: 0.25 }]);
   });
+
+  // The listing hands colours over as bytes, so a channel of 1 is 1/255.
+  test("a colour channel that comes to 1 of 255 stays dark", async () => {
+    const bytes = await onePage((_pdf, add) => {
+      add({ Subtype: "Underline", Rect: [18, 18, 122, 42], C: [1 / 255, 50 / 255, 100 / 255], QuadPoints: [20, 40, 120, 40, 20, 20, 120, 20] });
+    });
+    const { overlays } = await importFile(bytes);
+    expect(overlays).toMatchObject([{ type: "underline", color: "#013264" }]);
+  });
 });

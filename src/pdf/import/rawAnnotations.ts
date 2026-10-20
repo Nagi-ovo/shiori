@@ -277,6 +277,12 @@ function anchorFromShioDict(dict: PDFDict): OverlayTextAnchor | undefined {
   return { quote, page: page! };
 }
 
+// The raw pass reads colour components as the file stores them, 0–1;
+// colorToHex takes the listing's bytes.
+function pdfColorHex(components: number[], fallback: string): string {
+  return colorToHex(components.map((component) => component * 255), fallback);
+}
+
 // /IC is an array of 0, 1, 3 or 4 numbers (transparent, gray, RGB, CMYK).
 // Only the shapes Shiori can represent as a hex fill are honoured.
 function interiorColorHex(dict: PDFDict): string | null {
@@ -285,12 +291,12 @@ function interiorColorHex(dict: PDFDict): string | null {
   const numbers = pdfArrayNumbers(array, 4);
   if (numbers.length === 1) {
     const gray = numbers[0]!;
-    return colorToHex([gray, gray, gray], "#000000");
+    return pdfColorHex([gray, gray, gray], "#000000");
   }
-  if (numbers.length === 3) return colorToHex(numbers, "#000000");
+  if (numbers.length === 3) return pdfColorHex(numbers, "#000000");
   if (numbers.length === 4) {
     const [c, m, y, k] = numbers as [number, number, number, number];
-    return colorToHex(
+    return pdfColorHex(
       [(1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k)],
       "#000000",
     );
@@ -368,7 +374,7 @@ function rawCalloutFromDict(
     text: decodePdfText(
       dict.lookupMaybe(PDFName.of("Contents"), PDFString, PDFHexString),
     ).slice(0, MAX_IMPORTED_ANNOTATION_TEXT_CHARACTERS),
-    color: colorToHex(
+    color: pdfColorHex(
       pdfArrayNumbers(dict.lookupMaybe(PDFName.of("C"), PDFArray), 4),
       CALLOUT_DEFAULT_COLOR,
     ),

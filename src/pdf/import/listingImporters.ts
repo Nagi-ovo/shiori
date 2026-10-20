@@ -365,13 +365,17 @@ function quadPointsToRects(points: number[]) {
   return rects;
 }
 
+/**
+ * A listed colour as #rrggbb. The listing holds colours as pdf.js does, RGB
+ * bytes 0–255 (./pdfjsValues.ts), so a channel of 1 is 1/255, not full.
+ */
 export function colorToHex(value: unknown, fallback: string): string {
   const parts = toNumberArray(value);
   if (parts.length < 3) return fallback;
   const hex = parts
     .slice(0, 3)
     .map((part) => {
-      const channel = part <= 1 ? Math.round(part * 255) : Math.round(part);
+      const channel = Math.round(part);
       return Math.max(0, Math.min(255, channel)).toString(16).padStart(2, "0");
     })
     .join("");
