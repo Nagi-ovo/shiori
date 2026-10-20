@@ -1250,15 +1250,14 @@ async function liveAppAnnotate(
     }),
   );
   if (options.format === "human") {
-    if (result.data.dryRun) {
-      console.log(
-        `Dry run: ${result.data.added} annotations ready for ${result.context.name}.`,
-      );
-    } else {
-      console.log(
-        `Applied ${result.data.added} annotations to ${result.context.name}.`,
-      );
-    }
+    const { added, dryRun } = result.data;
+    console.log(
+      sanitizeTerminalText(
+        dryRun
+          ? `Dry run: ${added} annotations ready for ${result.context.name}.`
+          : `Applied ${added} annotations to ${result.context.name}.`,
+      ),
+    );
   }
   return result.data;
 }
