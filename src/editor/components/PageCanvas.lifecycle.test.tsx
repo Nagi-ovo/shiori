@@ -14,6 +14,8 @@ import type { PdfDocument as PDFDocumentProxy } from "../../pdf/engine/types";
 
 const cancelRender = mock(() => undefined);
 const rasteredScales: number[] = [];
+/** Each backdrop's bitmap width, in device pixels. */
+const rasteredWidths: number[] = [];
 
 type TileRequest = {
   x: number;
@@ -47,6 +49,7 @@ const runtime = {
     // The full-page backdrop: drawn at once.
     if (request.priority === "backdrop") {
       rasteredScales.push(request.scale);
+      rasteredWidths.push(request.region.width);
       canvas.width = request.region.width;
       canvas.height = request.region.height;
       return { cancel: cancelRender, done: Promise.resolve() };
@@ -87,6 +90,35 @@ function setDpr(dpr: number) {
   });
 }
 
+/**
+ * A screen whose pixel ratio can change under a mounted page (the window
+ * moved to another monitor): `(resolution: …)` queries report the change.
+ */
+function watchResolutionQueries() {
+  const listeners = new Set<EventListener>();
+  const original = window.matchMedia;
+  window.matchMedia = ((media: string) => ({
+    matches: true,
+    media,
+    onchange: null,
+    addEventListener: (_type: string, listener: EventListener) => listeners.add(listener),
+    removeEventListener: (_type: string, listener: EventListener) => listeners.delete(listener),
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => true,
+  })) as unknown as typeof window.matchMedia;
+  restoreMatchMedia = () => {
+    window.matchMedia = original;
+  };
+  return (dpr: number) => {
+    setDpr(dpr);
+    act(() => {
+      for (const listener of [...listeners]) listener(new Event("change"));
+    });
+  };
+}
+let restoreMatchMedia = () => {};
+
 const pause = (ms: number) =>
   new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -116,7 +148,10 @@ describe("PageCanvas lifecycle", () => {
     document.body.replaceChildren();
     cancelRender.mockClear();
     rasteredScales.length = 0;
+    rasteredWidths.length = 0;
     tileRequests.length = 0;
+    restoreMatchMedia();
+    restoreMatchMedia = () => {};
     visible = null;
     setDpr(1);
   });
@@ -184,6 +219,16 @@ describe("PageCanvas lifecycle", () => {
     expect(rasteredScales).toEqual([1, 1.5, 1.6]);
     await pause(200);
     expect(rasteredScales).toEqual([1, 1.5, 1.6, 1.7]);
+  });
+
+  test("re-rasters at the new pixel ratio when the window changes screens", async () => {
+    const moveToScreen = watchResolutionQueries();
+    render(<PageCanvas {...tiledPage(1)} />);
+    await waitFor(() => expect(rasteredWidths).toEqual([612]));
+
+    // Same zoom, same CSS size: only the screen got sharper.
+    moveToScreen(2);
+    await waitFor(() => expect(rasteredWidths).toEqual([612, 1224]));
   });
 
   // Stage 1.4 of docs/PLAN-RUST-PDF-CORE-2026-09.md: only what is on screen,
@@ -262,6 +307,19 @@ describe("PageCanvas lifecycle", () => {
         expect(tileRequests.some((tile) => tile.scale === 7)).toBe(true),
       );
       expect(atEight.every((tile) => tile.cancelled)).toBe(true);
+    });
+
+    test("a sharper screen at the same zoom brings tiles in", async () => {
+      const moveToScreen = watchResolutionQueries();
+      visible = screen;
+      // Letter at 3x: 4.4 MP at dpr 1, inside the budget; 17 MP at dpr 2.
+      render(<PageCanvas {...tiledPage(3)} />);
+      await waitFor(() => expect(rasteredScales).toEqual([3]));
+      await pause(20);
+      expect(tileRequests.length).toBe(0);
+
+      moveToScreen(2);
+      await waitFor(() => expect(tileRequests).toHaveLength(25));
     });
 
     test("unmounting frees every tile bitmap", async () => {

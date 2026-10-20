@@ -22,6 +22,7 @@ import {
   renderPageBackdrop,
 } from "../../pdf/render/tiles";
 import { PageTiles, type PageTilesRuntime } from "./PageTiles";
+import { useDevicePixelRatio } from "./useDevicePixelRatio";
 import { buildTimestamp } from "../../runtime/expiry";
 import { zoomDebugTap } from "./zoomDebugTap";
 import { appVersion } from "../../runtime/version";
@@ -77,6 +78,7 @@ type RenderedSurface = {
   sourceIndex: number;
   rotation: Rotation;
   scale: number;
+  dpr: number;
 };
 
 // Dev-only render diagnostics: the first render failure in a session shows a
@@ -106,6 +108,9 @@ function PageCanvasImpl({
   const { t } = useTranslation();
   const [diag, setDiag] = useState<DiagPayload | null>(null);
   const [rendered, setRendered] = useState<RenderedSurface | null>(null);
+  // A new screen (another monitor, browser zoom) needs a new raster even at
+  // the same zoom: the CSS size, and so every other trigger, stays put.
+  const dpr = useDevicePixelRatio();
 
   // The old bitmap is only a valid stand-in while it depicts the same page
   // face; across a page/rotation/document change it would show the wrong
@@ -119,16 +124,12 @@ function PageCanvasImpl({
 
   // Past the backdrop budget the full-page raster stays a small backdrop and
   // tiles carry the sharpness (src/pdf/render/tiles.ts says why).
-  const tiling = pageNeedsTiles(
-    widthPt,
-    heightPt,
-    scale,
-    window.devicePixelRatio || 1,
-  );
+  const tiling = pageNeedsTiles(widthPt, heightPt, scale, dpr);
+  const sharp = sameSurface && rendered.scale === scale && rendered.dpr === dpr;
 
   const lastScaleChangeAtRef = useRef(0);
   useEffect(() => {
-    if (sameSurface && rendered.scale === scale) return;
+    if (sharp) return;
     let cancelled = false;
     let handle: { cancel: () => void; done: Promise<void> } | null = null;
     let settleTimer: number | null = null;
@@ -158,7 +159,7 @@ function PageCanvasImpl({
           scale,
           widthPt,
           heightPt,
-          dpr: window.devicePixelRatio || 1,
+          dpr,
           maxPixels: tiling ? TILED_BACKDROP_MAX_PIXELS : MAX_CANVAS_PIXELS,
         },
         canvas,
@@ -169,13 +170,13 @@ function PageCanvasImpl({
       // hides. `rendered` moving to the new scale drops the CSS stretch
       // in the same commit.
       setFront(back);
-      setRendered({ doc, sourceIndex, rotation, scale });
+      setRendered({ doc, sourceIndex, rotation, scale, dpr });
       zoomDebugTap("rasterDone", {
         page: sourceIndex,
         scale,
         w: canvas.width,
         h: canvas.height,
-        dpr: window.devicePixelRatio || 1,
+        dpr,
       });
       if (!renderDiagnosticsEnabled()) return;
       const ctx = canvas.getContext("2d");
@@ -305,7 +306,7 @@ function PageCanvasImpl({
     // reads them only to decide immediate-vs-settled, and the completion
     // setState re-satisfies the guard at the top on the follow-up run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, sourceIndex, rotation, scale, widthPt, heightPt, tiling, front, runtime]);
+  }, [doc, sourceIndex, rotation, scale, dpr, widthPt, heightPt, tiling, front, runtime]);
 
   // Free the hidden canvas after a swap: its bitmap was just replaced, and
   // keeping it allocated would double per-page canvas memory at high zoom.
@@ -436,10 +437,11 @@ function PageCanvasImpl({
           sourceIndex={sourceIndex}
           rotation={rotation}
           scale={scale}
+          dpr={dpr}
           widthPt={widthPt}
           heightPt={heightPt}
           tiling={tiling}
-          backdropSharp={sameSurface && rendered.scale === scale}
+          backdropSharp={sharp}
           runtime={runtime}
         />
       </div>
