@@ -97,20 +97,18 @@ fn collect_process_metrics() -> Result<ProcessMetrics, String> {
             .with_memory(),
     );
 
-    let mut process_tree = std::collections::HashSet::from([root_pid]);
-    let mut changed = true;
-    while changed {
-        changed = false;
-        for (pid, process) in system.processes() {
-            if process
-                .parent()
-                .is_some_and(|parent_pid| process_tree.contains(&parent_pid))
-                && process_tree.insert(*pid)
-            {
-                changed = true;
-            }
-        }
-    }
+    #[cfg(target_os = "macos")]
+    let extra_roots = macos_webkit_services_of(root_pid, system);
+    #[cfg(not(target_os = "macos"))]
+    let extra_roots = Vec::new();
+    let process_tree = app_process_tree(
+        root_pid,
+        extra_roots,
+        system
+            .processes()
+            .iter()
+            .map(|(pid, process)| (*pid, process.parent())),
+    );
 
     let mut cpu_usage = 0.0_f64;
     let mut memory_bytes = 0_u64;
@@ -143,6 +141,76 @@ fn collect_process_metrics() -> Result<ProcessMetrics, String> {
     // spaced sample; the panel's existing 3 s refresh supplies that interval.
     sampler.previous = Some((std::time::Instant::now(), metrics.clone()));
     Ok(metrics)
+}
+
+// The app's process tree: the host, any extra roots, and everything reachable
+// from them through parent links. Extra roots exist because the parent walk
+// alone misses macOS WebKit: WKWebView's WebContent, GPU and Networking
+// processes are XPC services whose parent is launchd, so the page's memory and
+// CPU (most of the app's) went uncounted, while WebView2 and WebKitGTK helpers
+// are ordinary children and were counted on Windows and Linux.
+#[cfg(all(
+    not(mobile),
+    any(target_os = "macos", target_os = "linux", target_os = "windows")
+))]
+fn app_process_tree<P: Copy + Eq + std::hash::Hash>(
+    root: P,
+    extra_roots: impl IntoIterator<Item = P>,
+    processes: impl Iterator<Item = (P, Option<P>)>,
+) -> std::collections::HashSet<P> {
+    let processes: Vec<(P, Option<P>)> = processes.collect();
+    let mut tree = std::collections::HashSet::from([root]);
+    tree.extend(extra_roots);
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (pid, parent) in &processes {
+            if parent.is_some_and(|parent| tree.contains(&parent)) && tree.insert(*pid) {
+                changed = true;
+            }
+        }
+    }
+    tree
+}
+
+// WebKit XPC services this app is responsible for. launchd records the
+// "responsible" process of every XPC service it spawns (what Activity Monitor
+// and the TCC prompts attribute it to); for WKWebView's services that is the
+// host app, also when it was started from a terminal. The lookup is libsystem
+// SPI, so resolve it at run time and count nothing extra if it is missing.
+#[cfg(all(not(mobile), target_os = "macos"))]
+fn macos_webkit_services_of(root: sysinfo::Pid, system: &sysinfo::System) -> Vec<sysinfo::Pid> {
+    type ResponsibleFor = unsafe extern "C" fn(libc::pid_t) -> libc::pid_t;
+    static LOOKUP: OnceLock<Option<ResponsibleFor>> = OnceLock::new();
+    let lookup = LOOKUP.get_or_init(|| {
+        // SAFETY: dlsym with RTLD_DEFAULT and a NUL-terminated name only reads.
+        let symbol = unsafe {
+            libc::dlsym(
+                libc::RTLD_DEFAULT,
+                c"responsibility_get_pid_responsible_for_pid".as_ptr(),
+            )
+        };
+        // SAFETY: the libsystem symbol has this signature (pid in, pid out).
+        (!symbol.is_null())
+            .then(|| unsafe { std::mem::transmute::<*mut libc::c_void, ResponsibleFor>(symbol) })
+    });
+    let Some(responsible_for) = *lookup else {
+        return Vec::new();
+    };
+    let root = root.as_u32() as libc::pid_t;
+    system
+        .processes()
+        .iter()
+        .filter(|(_, process)| {
+            process
+                .name()
+                .to_string_lossy()
+                .starts_with("com.apple.WebKit.")
+        })
+        // SAFETY: a plain pid query; an unknown pid yields -1.
+        .filter(|(pid, _)| unsafe { responsible_for(pid.as_u32() as libc::pid_t) } == root)
+        .map(|(pid, _)| *pid)
+        .collect()
 }
 
 // iOS: read the app's own task via Mach. One MACH_TASK_BASIC_INFO sample yields
@@ -368,5 +436,27 @@ mod tests {
         let second = super::collect_process_metrics().unwrap();
         assert_eq!(second.cpu_percent, first.cpu_percent);
         assert_eq!(second.memory_bytes, first.memory_bytes);
+    }
+
+    // macOS WebKit services are launchd's children (ppid 1), not the host's,
+    // so they reach the tree only as extra roots; their own children follow.
+    #[test]
+    #[cfg(all(
+        not(mobile),
+        any(target_os = "macos", target_os = "linux", target_os = "windows")
+    ))]
+    fn process_tree_counts_services_the_app_is_responsible_for() {
+        let processes = [
+            (1, None),
+            (100, Some(1)),   // Shiori
+            (101, Some(100)), // a shell it spawned
+            (200, Some(1)),   // its WebContent service
+            (201, Some(200)), // a helper of that service
+            (300, Some(1)),   // another app's WebContent service
+        ];
+        let tree = super::app_process_tree(100, [200], processes.into_iter());
+        let mut tree: Vec<_> = tree.into_iter().collect();
+        tree.sort();
+        assert_eq!(tree, vec![100, 101, 200, 201]);
     }
 }
