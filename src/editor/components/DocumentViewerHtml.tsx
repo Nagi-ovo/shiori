@@ -19,6 +19,7 @@ import {
   type RemoteDependencyKind,
 } from "../../documents/runnableHtml";
 import { T } from "../../design/tokens";
+import { followDocumentLink } from "../../documents/documentLinks";
 import { openExternalUrl } from "../../platform";
 import { Ic } from "./icons";
 import { IconBtn } from "./ui";
@@ -30,7 +31,6 @@ import {
 import {
   eventClientPoint,
   gestureScale,
-  isElementTarget,
   scrollerCenter,
   useDebouncedScrollTopChange,
   useScrollableZoomGestures,
@@ -136,14 +136,10 @@ function HtmlDocumentFrame({
     timerIds.push(window.setTimeout(syncScroll, 0));
     timerIds.push(window.setTimeout(syncScroll, 50));
 
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target;
-      if (!isElementTarget(target)) return;
-      const anchor = target.closest<HTMLAnchorElement>("a[href]");
-      if (!anchor?.href) return;
-      event.preventDefault();
-      void openExternalUrl(anchor.href).catch(onLinkOpenFailed);
-    };
+    const handleClick = (event: MouseEvent) =>
+      followDocumentLink(event, doc, (url) => {
+        void openExternalUrl(url).catch(onLinkOpenFailed);
+      });
     doc.addEventListener("click", handleClick);
     win.addEventListener("scroll", handleFrameScroll, { passive: true });
 

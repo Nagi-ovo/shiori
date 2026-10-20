@@ -65,4 +65,59 @@ describe("DocumentViewer link clicks", () => {
     expect(fireEvent.click(text)).toBe(false);
     expect(opened).toEqual(["https://evil.example/svg"]);
   });
+
+  test("scrolls a Markdown fragment link to its target instead of opening it", async () => {
+    const view = renderMarkdown(
+      '<p><a href="#ch%202">Go to chapter 2</a></p><h2 id="ch 2">Chapter 2</h2>',
+    );
+    const link = await view.findByText("Go to chapter 2");
+    const heading = view.getByText("Chapter 2");
+    let scrolled = 0;
+    heading.scrollIntoView = () => {
+      scrolled += 1;
+    };
+
+    expect(fireEvent.click(link)).toBe(false);
+    expect(opened).toEqual([]);
+    expect(scrolled).toBe(1);
+  });
+
+  test("scrolls an HTML fragment link inside the document frame", async () => {
+    const view = render(
+      <DocumentViewer
+        kind="html"
+        title="toc.html"
+        text="<a href='#ch2'>Chapter 2</a>"
+        scrollTop={0}
+        onScrollTopChange={() => undefined}
+        renderHtml={async () =>
+          '<!doctype html><html><body><a href="#ch2">Go</a><a name="ch2">Chapter 2</a><a href="https://example.com/x">Out</a></body></html>'
+        }
+      />,
+    );
+    const iframe = (await view.findByTitle("toc.html")) as HTMLIFrameElement;
+    fireEvent.load(iframe);
+    const doc = iframe.contentDocument!;
+    const [toc, target, out] = Array.from(doc.querySelectorAll("a"));
+    let scrolled = 0;
+    target!.scrollIntoView = () => {
+      scrolled += 1;
+    };
+    const click = () =>
+      new (doc.defaultView as unknown as typeof window).MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+      });
+
+    const tocClick = click();
+    toc!.dispatchEvent(tocClick);
+    expect(tocClick.defaultPrevented).toBe(true);
+    expect(scrolled).toBe(1);
+    expect(opened).toEqual([]);
+
+    const outClick = click();
+    out!.dispatchEvent(outClick);
+    expect(outClick.defaultPrevented).toBe(true);
+    expect(opened).toEqual(["https://example.com/x"]);
+  });
 });

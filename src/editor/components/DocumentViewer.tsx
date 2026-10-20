@@ -13,7 +13,7 @@ import {
 import { useTranslation } from "react-i18next";
 import type { DocumentKind } from "../../documents/types";
 import { renderSafeHtml } from "../../documents/renderSafeHtml";
-import { documentLinkAction } from "../../documents/documentLinks";
+import { followDocumentLink } from "../../documents/documentLinks";
 import { highlightCodeBlocksNearView } from "../../documents/highlightCodeBlocksNearView";
 import {
   previewSourceLine,
@@ -43,7 +43,6 @@ import {
 } from "./DocumentViewerParts";
 import { HtmlDocumentView } from "./DocumentViewerHtml";
 import {
-  isElementTarget,
   useDebouncedScrollTopChange,
   useScrollableZoomGestures,
 } from "./documentViewerGestures";
@@ -312,15 +311,11 @@ export function DocumentViewer({
     }
   }, [html, markdownMode, scrollTop]);
 
-  const openLink = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-    const target = event.target;
-    if (!isElementTarget(target)) return;
-    const action = documentLinkAction(target);
-    if (!action) return;
-    event.preventDefault();
-    if (action.kind !== "external") return;
-    void openExternalUrl(action.url).catch(() => {
-      showLinkOpenFailed();
+  const openLink = useCallback((event: ReactMouseEvent<HTMLElement>) => {
+    followDocumentLink(event, event.currentTarget, (url) => {
+      void openExternalUrl(url).catch(() => {
+        showLinkOpenFailed();
+      });
     });
   }, [showLinkOpenFailed]);
 
