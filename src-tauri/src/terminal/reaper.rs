@@ -5,8 +5,10 @@ use super::{TerminalSession, TerminalState};
 
 // Reap a terminal session's ENTIRE process tree, not just the shell PID. The
 // shell is spawned as a setsid session leader (portable-pty), so on Unix its
-// PID == PGID and killpg() reaches every foreground/background child (claude,
-// codex, node, running builds). On Windows `taskkill /T` walks the child tree.
+// PID is the session id. An interactive shell runs each job (claude, codex,
+// node, running builds) in a process group of its own, so killpg(shell) alone
+// misses them: every group in the session is signalled instead. On Windows
+// `taskkill /T` walks the child tree.
 // Killing only the shell handle would reparent those grandchildren and leave
 // them running — the Task Manager residue users saw accumulate across
 // open/close/quit cycles.
@@ -19,17 +21,13 @@ pub(super) fn kill_session_tree(session: &mut TerminalSession) {
 
     #[cfg(unix)]
     if let Some(pid) = pid {
-        // pgid == pid for the session leader; never signal pgid 0/1.
+        // sid == pid for the session leader; never signal pgid 0/1.
         if pid > 1 {
             // SIGHUP first (lets shells run traps / agents flush), a short
-            // grace, then SIGKILL the group as a guarantee.
-            unsafe {
-                libc::killpg(pid as libc::pid_t, libc::SIGHUP);
-            }
+            // grace, then SIGKILL every group as a guarantee.
+            signal_session(pid as libc::pid_t, libc::SIGHUP);
             std::thread::sleep(std::time::Duration::from_millis(80));
-            unsafe {
-                libc::killpg(pid as libc::pid_t, libc::SIGKILL);
-            }
+            signal_session(pid as libc::pid_t, libc::SIGKILL);
         }
     }
 
@@ -51,6 +49,35 @@ pub(super) fn kill_session_tree(session: &mut TerminalSession) {
         match session.child.try_wait() {
             Ok(Some(_)) | Err(_) => break,
             Ok(None) => std::thread::sleep(std::time::Duration::from_millis(10)),
+        }
+    }
+}
+
+// Signals every process group in session `sid`: the leader's own group plus
+// each job's group, found by scanning the process table. The scan runs again
+// for each signal, so a job started during the SIGHUP grace is caught too. The
+// leader is not reaped yet, so its pid (the sid) cannot have been reused.
+#[cfg(unix)]
+fn signal_session(sid: libc::pid_t, signal: libc::c_int) {
+    let mut groups = std::collections::BTreeSet::from([sid]);
+    let mut system = sysinfo::System::new();
+    system.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::All,
+        true,
+        sysinfo::ProcessRefreshKind::nothing(),
+    );
+    for pid in system.processes().keys() {
+        let pid = pid.as_u32() as libc::pid_t;
+        if unsafe { libc::getsid(pid) } == sid {
+            groups.insert(unsafe { libc::getpgid(pid) });
+        }
+    }
+    let own_group = unsafe { libc::getpgrp() };
+    for group in groups {
+        if group > 1 && group != own_group {
+            unsafe {
+                libc::killpg(group, signal);
+            }
         }
     }
 }

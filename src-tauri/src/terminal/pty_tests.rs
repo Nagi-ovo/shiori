@@ -107,3 +107,52 @@ fn small_writes_reach_the_pty_in_the_order_they_were_sent() {
     kill_session(&state);
     assert_eq!(String::from_utf8_lossy(&echoed), expected);
 }
+
+fn process_exists(pid: libc::pid_t) -> bool {
+    unsafe { libc::kill(pid, 0) == 0 }
+}
+
+// B085: an interactive shell runs every job in its own process group, so
+// signalling only the shell's group misses a job that ignores SIGHUP.
+#[test]
+fn closing_a_terminal_kills_a_job_in_another_process_group() {
+    let state = TerminalState::default();
+    let master = spawn_sh(
+        &state,
+        "set -m; (trap '' HUP; exec sleep 60) & echo \"job=$!\"; wait",
+    );
+    let mut reader = master.lock().unwrap().try_clone_reader().unwrap();
+    let mut output = Vec::new();
+    let mut buffer = [0_u8; 256];
+    let job = loop {
+        let n = std::io::Read::read(&mut reader, &mut buffer).unwrap();
+        assert!(n > 0, "shell exited before printing the job pid");
+        output.extend_from_slice(&buffer[..n]);
+        let text = String::from_utf8_lossy(&output);
+        let digits = text.split("job=").nth(1).map(|rest| {
+            rest.chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>()
+        });
+        if let Some(pid) = digits.filter(|_| text.contains('\n')) {
+            break pid.parse::<libc::pid_t>().unwrap();
+        }
+    };
+    let shell = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions[SESSION_ID].child.process_id().unwrap() as libc::pid_t
+    };
+    // Without its own group the old killpg(shell) would reach it anyway.
+    assert_ne!(unsafe { libc::getpgid(job) }, shell);
+
+    kill_session(&state);
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while process_exists(job) && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(20));
+    }
+    let survived = process_exists(job);
+    if survived {
+        unsafe { libc::kill(job, libc::SIGKILL) };
+    }
+    assert!(!survived, "job {job} outlived its terminal");
+}
