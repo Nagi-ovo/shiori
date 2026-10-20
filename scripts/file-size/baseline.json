@@ -26,7 +26,7 @@
   "src/editor/components/ContextualToolbar.tsx": 70158,
   "src/editor/components/DocumentTree.tsx": 21180,
   "src/editor/components/DocumentViewer.render.test.tsx": 20417,
-  "src/editor/components/DocumentViewerHtml.tsx": 39479,
+  "src/editor/components/DocumentViewerHtml.tsx": 32597,
   "src/editor/components/DocxViewer.layout.test.tsx": 23824,
   "src/editor/components/DocxViewer.tsx": 30731,
   "src/editor/components/ExportDialog.tsx": 32168,
