@@ -4,10 +4,8 @@
 #[cfg(windows)]
 use super::{find_executable, ExternalTerminalApp, ExternalTerminalId, LaunchSpec};
 #[cfg(windows)]
-use std::{
-    ffi::OsString,
-    path::{Path, PathBuf},
-};
+use std::path::PathBuf;
+use std::{ffi::OsString, path::Path};
 
 #[cfg(windows)]
 fn windows_extra_candidate(relative: &str, env_key: &str) -> Option<PathBuf> {
@@ -82,6 +80,28 @@ pub(super) fn installed_windows_external_terminals() -> Vec<ExternalTerminalApp>
     apps
 }
 
+// wt.exe parses its own command line and starts a new subcommand at every
+// ';' not preceded by '\', even inside one quoted argument; argv quoting
+// cannot stop that. Escape each ';' in the folder as '\;', which wt turns
+// back into ';'.
+fn windows_terminal_args(cwd: &Path) -> Result<Vec<OsString>, String> {
+    let directory = if cwd.as_os_str().as_encoded_bytes().contains(&b';') {
+        let text = cwd
+            .to_str()
+            .ok_or_else(|| "external-terminal-cwd-unsupported".to_string())?;
+        OsString::from(text.replace(';', r"\;"))
+    } else {
+        cwd.into()
+    };
+    Ok(vec![
+        OsString::from("-w"),
+        OsString::from("-1"),
+        OsString::from("new-tab"),
+        OsString::from("-d"),
+        directory,
+    ])
+}
+
 #[cfg(windows)]
 pub(super) fn windows_launch_spec(
     id: ExternalTerminalId,
@@ -91,13 +111,7 @@ pub(super) fn windows_launch_spec(
         ExternalTerminalId::WindowsTerminal => Ok(LaunchSpec::new(
             windows_terminal_binary()
                 .ok_or_else(|| "external-terminal-not-installed".to_string())?,
-            [
-                OsString::from("-w"),
-                OsString::from("-1"),
-                OsString::from("new-tab"),
-                OsString::from("-d"),
-                cwd.into(),
-            ],
+            windows_terminal_args(cwd)?,
             cwd,
         )),
         ExternalTerminalId::Wezterm => Ok(LaunchSpec::new(
@@ -122,5 +136,30 @@ pub(super) fn windows_launch_spec(
             .with_new_console())
         }
         _ => Err("external-terminal-not-supported".into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn directory_arg(cwd: &str) -> OsString {
+        windows_terminal_args(Path::new(cwd)).unwrap().remove(4)
+    }
+
+    // B020: wt.exe starts a new subcommand at every ';' not preceded by '\',
+    // even inside one quoted argv element, so `C:\papers\x;calc` would open
+    // a tab in C:\papers\x and then run `calc`.
+    #[test]
+    fn windows_terminal_keeps_a_semicolon_in_the_folder_as_data() {
+        assert_eq!(
+            windows_terminal_args(Path::new(r"C:\papers\x;calc")).unwrap(),
+            ["-w", "-1", "new-tab", "-d", r"C:\papers\x\;calc"].map(OsString::from),
+        );
+        assert_eq!(directory_arg(r"C:\a;;b"), r"C:\a\;\;b");
+        // A folder named ";b": wt removes only the escape it reads.
+        assert_eq!(directory_arg(r"C:\a\;b"), r"C:\a\\;b");
+        // Without a ';' the folder passes through untouched.
+        assert_eq!(directory_arg(r"C:\项目 folder "), r"C:\项目 folder ");
     }
 }
