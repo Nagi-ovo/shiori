@@ -7,6 +7,7 @@ import {
   type RemoteDependencyKind,
 } from "../../documents/runnableHtml";
 import { T } from "../../design/tokens";
+import { IS_TAURI } from "../../platform";
 
 const REMOTE_DEPENDENCY_KIND_KEYS: Record<RemoteDependencyKind, string> = {
   script: "documents.runDepsKindScript",
@@ -18,6 +19,19 @@ const REMOTE_DEPENDENCY_KIND_KEYS: Record<RemoteDependencyKind, string> = {
   connect: "documents.runDepsKindConnect",
   other: "documents.runDepsKindOther",
 };
+
+// Run frames are blob: documents, which inherit the CSP of the app page that
+// made them; the frame's own meta policy can only narrow it. The Tauri app's
+// CSP (src-tauri/tauri.conf.json) admits remote https: images and no remote
+// script, style or media source, so approving those could never take effect.
+// The web build serves no CSP of its own.
+function canApprove(dependency: RemoteDependency, inheritsAppCsp: boolean) {
+  if (!isApprovableDependencyKind(dependency.kind)) return false;
+  return (
+    !inheritsAppCsp ||
+    (dependency.kind === "image" && dependency.url.startsWith("https:"))
+  );
+}
 
 // Slim disclosure bar above the run frame: run mode is offline by design, so
 // every remote dependency the document references is blocked — this explains
@@ -31,6 +45,7 @@ export function RunDependencyNotice({
   selectionDirty,
   onToggle,
   onApply,
+  inheritsAppCsp = IS_TAURI,
 }: {
   dependencies: RemoteDependency[];
   appliedKeys: ReadonlySet<string>;
@@ -38,6 +53,7 @@ export function RunDependencyNotice({
   selectionDirty: boolean;
   onToggle: (dependencyKey: string) => void;
   onApply: () => void;
+  inheritsAppCsp?: boolean;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -45,7 +61,12 @@ export function RunDependencyNotice({
     (dependency) => !appliedKeys.has(remoteDependencyKey(dependency)),
   ).length;
   const hasApprovable = dependencies.some((dependency) =>
-    isApprovableDependencyKind(dependency.kind),
+    canApprove(dependency, inheritsAppCsp),
+  );
+  const appBlocksSome = dependencies.some(
+    (dependency) =>
+      isApprovableDependencyKind(dependency.kind) &&
+      !canApprove(dependency, inheritsAppCsp),
   );
   return (
     <div
@@ -109,7 +130,7 @@ export function RunDependencyNotice({
           >
             {dependencies.map((dependency) => {
               const dependencyKey = remoteDependencyKey(dependency);
-              const approvable = isApprovableDependencyKind(dependency.kind);
+              const approvable = canApprove(dependency, inheritsAppCsp);
               const details = (
                 <>
                   <span
@@ -187,6 +208,11 @@ export function RunDependencyNotice({
               );
             })}
           </ul>
+          {appBlocksSome ? (
+            <span style={{ color: T.dim, font: `500 11px/1.4 ${T.sans}` }}>
+              {t("documents.runDepsAppImagesOnly")}
+            </span>
+          ) : null}
           {hasApprovable ? (
             <div
               style={{
