@@ -1031,7 +1031,7 @@ const APP_INIT_STATE: AppState = {
 
 function cloneModel(m: DocumentModel): DocumentModel {
   return {
-    pages: m.pages.map((p) => ({ ...p })),
+    pages: m.pages, // immutable; shared
     overlays: m.overlays.map((o) => ({
       ...o,
       ...("rect" in o ? { rect: { ...o.rect } } : null),
