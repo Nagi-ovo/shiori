@@ -77,10 +77,9 @@ export function stripReplaceableAnnotationsFromPages(pages: PDFPage[]): boolean 
   pages.forEach((page, sourceIndex) => {
     removedAny = stripReplaceableAnnotationsFromPage(page, sourceIndex, removed) || removedAny;
   });
-  // After every page: a link may cross pages.
-  if (removed.size > 0) {
-    pages.forEach((page, sourceIndex) => markKeptAnnotationLinks(page, sourceIndex, removed));
-  }
+  // After every page, since a link may cross pages; and on every page, since
+  // marking also clears stale marks.
+  pages.forEach((page, sourceIndex) => markKeptAnnotationLinks(page, sourceIndex, removed));
   return removedAny;
 }
 

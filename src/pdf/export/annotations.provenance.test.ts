@@ -275,6 +275,30 @@ describe("reply links between rebuilt and kept annotations", () => {
   test("a flattened export leaves the kept Caret no dangling /IRT", async () => {
     const { loaded, bySubtype } = await exportedAnnots(await replaceText(), undefined, "flatten");
     const irt = bySubtype("Caret")?.dict.get(PDFName.of("IRT"));
-    if (irt) expect(loaded.context.lookup(irt)).toBeInstanceOf(PDFDict);
+    expect(irt === undefined || loaded.context.lookup(irt) instanceof PDFDict).toBe(true);
+  });
+
+  test("a mark left by an earlier flattened export links nothing", async () => {
+    // The flattened file's Caret still carries its mark, naming an object
+    // number from the file it came from; here that number is a Highlight.
+    const bytes = await sourcePdf((doc) => {
+      const highlight = annot(doc, "Highlight", [100, 600, 200, 614], {
+        QuadPoints: [100, 614, 200, 614, 100, 600, 200, 600],
+      });
+      const stale = doc.context.obj({
+        IRT: PDFString.of(`pdf-annotation-0-${highlight.objectNumber}R`),
+        RT: PDFName.of("Group"),
+      });
+      const caret = annot(doc, "Caret", [198, 598, 206, 610], {
+        Shio: doc.context.obj({ V: 1, Rebuild: stale }),
+      });
+      return [highlight, caret];
+    });
+
+    const { bySubtype } = await exportedAnnots(bytes);
+    const caret = bySubtype("Caret");
+    expect(bySubtype("Highlight")).toBeDefined();
+    expect(caret?.dict.get(PDFName.of("IRT"))).toBeUndefined();
+    expect(caret?.dict.get(PDFName.of("Shio"))).toBeUndefined();
   });
 });

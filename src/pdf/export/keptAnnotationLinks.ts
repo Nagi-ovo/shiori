@@ -36,7 +36,11 @@ function overlayIdOf(sourceIndex: number, ref: PDFRef): string {
   return `pdf-annotation-${sourceIndex}-${pdfjsRefId(ref)}`;
 }
 
-/** Strip side: `removed` maps each deleted annotation's ref (as a string) to where it was. */
+/**
+ * Strip side: `removed` maps each deleted annotation's ref (as a string) to
+ * where it was. Clears every mark already on the page first: one left by an
+ * earlier flattened export names object numbers from a different file.
+ */
 export function markKeptAnnotationLinks(
   page: PDFPage,
   sourceIndex: number,
@@ -53,6 +57,7 @@ export function markKeptAnnotationLinks(
     const raw = annots.get(i);
     const dict = annots.lookupMaybe(i, PDFDict);
     if (!dict) continue;
+    clearMark(dict);
     const mark = ctx.obj({});
     if (raw instanceof PDFRef && repliedTo.has(raw.toString())) {
       mark.set(ID, PDFString.of(overlayIdOf(sourceIndex, raw)));
@@ -98,10 +103,16 @@ export function takeKeptAnnotationLinks(page: PDFPage): KeptAnnotationLinks {
     if (id && raw instanceof PDFRef) links.parents.set(id, raw);
     const target = mark.lookupMaybe(IRT, PDFString)?.decodeText();
     if (target) links.replies.push({ dict, target, type: mark.get(RT) });
-    shio.delete(MARK);
-    if (shio.keys().every((key) => key === PDFName.of("V"))) dict.delete(SHIO);
+    clearMark(dict);
   }
   return links;
+}
+
+function clearMark(dict: PDFDict): void {
+  const shio = dict.lookupMaybe(SHIO, PDFDict);
+  if (!shio?.has(MARK)) return;
+  shio.delete(MARK);
+  if (shio.keys().every((key) => key === PDFName.of("V"))) dict.delete(SHIO);
 }
 
 /** Points each kept reply at its rebuilt parent; one whose parent is gone stays unlinked. */
