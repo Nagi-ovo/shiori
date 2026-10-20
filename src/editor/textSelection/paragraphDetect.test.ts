@@ -76,6 +76,26 @@ describe("paragraph detection", () => {
       const xs = new Set(block.lines.map((line) => Math.round(line.x)));
       expect(xs.size).toBe(1);
     }
+    // ...and each column still chains into its own paragraph.
+    expect(blocks.map((block) => block.lines.length)).toEqual([4, 4]);
+  });
+
+  test("side-by-side columns on shared baselines become one block each", () => {
+    // Two-column papers set both columns on the same baseline grid.
+    const left = bodyParagraph(50, 100, 200);
+    const right = bodyParagraph(300, 100, 200);
+    const blocks = detectParagraphs([...left, ...right], 1);
+    expect(
+      blocks.map((block) => ({
+        x: block.rect.x,
+        w: block.rect.w,
+        lines: block.lines.length,
+        confidence: block.confidence,
+      })),
+    ).toEqual([
+      { x: 50, w: 200, lines: 4, confidence: "high" },
+      { x: 300, w: 200, lines: 4, confidence: "high" },
+    ]);
   });
 
   test("detects justified text (straight edges, short last line)", () => {
