@@ -43,10 +43,15 @@ describe("shiori-core in wasm", () => {
     const native = openCoreDocument(FIXTURE);
     try {
       expect(fromWasm.pageCount()).toBe(native.pageCount());
+      let hyphens = 0;
       for (let index = 0; index < native.pageCount(); index += 1) {
-        const glyphs = JSON.parse(fromWasm.pageText(index)).glyphs as Array<{ text: string; origin: number[]; end: number[] }>;
+        const glyphs = JSON.parse(fromWasm.pageText(index)).glyphs as Array<{ text: string; origin: number[]; end: number[]; hyphen?: boolean }>;
         const expected = native.glyphs(index);
         expect(glyphs.map((g) => g.text)).toEqual(expected.map((g) => g.text));
+        // The reading layer ends a line at a hyphen PDFium flags, which is
+        // how find and anchors rejoin a word hyphenated across lines.
+        expect(glyphs.map((g) => g.hyphen)).toEqual(expected.map((g) => g.hyphen));
+        hyphens += expected.filter((g) => g.hyphen).length;
         glyphs.forEach((g, i) => {
           for (const k of [0, 1]) {
             expect(Math.abs(g.origin[k]! - expected[i]!.origin[k]!)).toBeLessThan(1e-3);
@@ -54,6 +59,7 @@ describe("shiori-core in wasm", () => {
           }
         });
       }
+      expect(hyphens).toBeGreaterThan(0);
       expect(JSON.parse(fromWasm.outline())).toHaveLength(2);
     } finally {
       fromWasm.free();

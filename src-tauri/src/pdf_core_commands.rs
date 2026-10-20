@@ -581,6 +581,8 @@ struct PdfCoreGlyph {
     /// Page units at this glyph's size; descent is negative.
     ascent: f32,
     descent: f32,
+    /// A line-end hyphen PDFium recognised as hyphenation.
+    hyphen: bool,
 }
 
 #[derive(Debug, Serialize, specta::Type)]
@@ -620,6 +622,7 @@ pub(crate) async fn pdf_core_page_text<R: Runtime>(
                     font_flags: ch.font_flags,
                     ascent: ch.ascent,
                     descent: ch.descent,
+                    hyphen: ch.hyphen,
                 })
                 .collect(),
             lang: document.language(),

@@ -45,6 +45,8 @@ struct Glyph {
     font_flags: i32,
     ascent: f32,
     descent: f32,
+    /// A line-end hyphen PDFium recognised as hyphenation.
+    hyphen: bool,
 }
 
 #[derive(Serialize)]
@@ -172,6 +174,7 @@ impl CoreDocument {
                     font_flags: ch.font_flags,
                     ascent: ch.ascent,
                     descent: ch.descent,
+                    hyphen: ch.hyphen,
                 })
                 .collect(),
             lang: self.inner.language(),
