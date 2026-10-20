@@ -53,7 +53,6 @@
   "src/editor/store/store.ts": 75598,
   "src/editor/textSelection/highlightRects.test.ts": 22741,
   "src/editor/textSelection/highlightRects.ts": 22802,
-  "src/editor/textSelection/semanticText.ts": 26211,
   "src/editor/viewport/viewportController.test.ts": 20316,
   "src/live/annotationDigest.test.ts": 26023,
   "src/live/liveApiBridge.test.ts": 48677,
