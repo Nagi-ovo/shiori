@@ -90,9 +90,6 @@ jobs:
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
 
-      - name: Test CLI contracts
-        run: bun test cli/test
-
       # Ad-hoc is the floor arm64 macOS needs to execute at all; it carries no
       # identity, so a browser-downloaded archive (which gets quarantined)
       # still trips "Apple cannot check it for malicious software". This puts
@@ -134,6 +131,11 @@ jobs:
         env:
           SHIORI_CLI_SIGN_IDENTITY: ${{ matrix.target == 'darwin-arm64' && secrets.MACOS_SIGN_IDENTITY || '' }}
         run: bun run cli:build
+
+      # After the build: tests that open PDFs (cli/test/core) read through
+      # the shiori-core addon it compiled and the PDFium it fetched.
+      - name: Test CLI contracts
+        run: bun test cli/test
 
       - name: Verify the signature
         if: matrix.target == 'darwin-arm64' && env.MACOS_CERT_P12 != ''
