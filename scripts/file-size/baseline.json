@@ -21,7 +21,6 @@
   "src/app.css": 28526,
   "src/brand/InkDripStage.tsx": 20754,
   "src/brand/fluid/simulation.ts": 32386,
-  "src/documents/runnableHtml.ts": 21743,
   "src/editor/components/Canvas.tsx": 59632,
   "src/editor/components/ContextualToolbar.tsx": 70158,
   "src/editor/components/DocumentTree.tsx": 21180,
