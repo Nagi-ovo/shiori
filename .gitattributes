@@ -21,3 +21,5 @@ scripts/pdfium/*-LICENSE.txt -text
 # every Unix that matters.
 *.sh text eol=lf
 *.ps1 text eol=lf
+# Git hooks run under sh on every platform, Git for Windows included.
+.githooks/* text eol=lf

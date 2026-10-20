@@ -1,0 +1,4 @@
+#!/bin/sh
+# A clean `git merge` skips pre-commit and runs this instead; apply the same
+# file size check to the merged result.
+exec "$(dirname "$0")/pre-commit"

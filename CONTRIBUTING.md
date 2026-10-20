@@ -25,8 +25,9 @@ Tests should fail when user-visible behavior breaks and survive harmless
 refactors; the "Tests" section of `AGENTS.md` describes what that means here.
 A bug fix should come with a test or an end-to-end run that fails without it.
 
-The maintainer uses jj, but you do not need it; plain git and normal pull
-requests are fine.
+`bun install` also installs a pre-commit hook (`.githooks/`) that refuses a
+code file over 5,000 tokens (bytes / 4); its message explains how to split
+the file. Rules and exclusions live in `scripts/file-size/policy.ts`.
 
 ## License of contributions
 

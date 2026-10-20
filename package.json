@@ -5,6 +5,7 @@
   "version": "26.10.20",
   "type": "module",
   "scripts": {
+    "prepare": "bun scripts/file-size/install-hook.ts",
     "dev": "vite",
     "shiori": "bun cli/src/main.ts",
     "cli:installer-demo": "SHIORI_INSTALLER_FORCE_ANIMATION=1 sh cli/installer/demo.sh",
