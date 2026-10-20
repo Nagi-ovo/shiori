@@ -65,7 +65,6 @@
   "src/pdf/export/exportPdf.ts": 56633,
   "src/pdf/export/navigation.ts": 52558,
   "src/pdf/import/annotations.test.ts": 32625,
-  "src/pdf/import/sourceAnnotations.ts": 27007,
   "src/pdf/merge/insertPdf.test.ts": 26053,
   "src/pdf/merge/insertPdf.ts": 39958,
   "src/storage/drafts.test.ts": 29978,
