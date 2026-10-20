@@ -1,7 +1,7 @@
 // Fail-closed checks every rebuilt export passes before it is handed back,
 // and the errors that refuse an export instead of writing a broken or
 // misleading file.
-import { PDFDocument } from "pdf-lib";
+import { PDFDict, PDFDocument, PDFName } from "pdf-lib";
 import {
   documentFileInventoryMatches,
   hasPhysicalDocumentFiles,
@@ -75,5 +75,21 @@ export async function assertExportIntegrity(
     throw new ExportIntegrityError(
       `page-geometry-invalid: ${err instanceof Error ? err.message : String(err)}`,
     );
+  }
+}
+
+// Every page object in the output must be a page of the output. One outside
+// the page tree is invisible in a viewer but still readable in the file, so
+// a partial export that carries one has leaked a page the user left out.
+export function assertNoStrayPages(doc: PDFDocument) {
+  const pages = new Set(doc.getPages().map((page) => page.ref.toString()));
+  for (const [ref, object] of doc.context.enumerateIndirectObjects()) {
+    if (
+      object instanceof PDFDict &&
+      object.get(PDFName.of("Type")) === PDFName.of("Page") &&
+      !pages.has(ref.toString())
+    ) {
+      throw new ExportIntegrityError(`stray-page-object: ${ref.toString()}`);
+    }
   }
 }

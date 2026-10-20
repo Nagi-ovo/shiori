@@ -35,6 +35,7 @@ import {
   ExportSignedSourceError,
   assertDocumentFilesIntegrity,
   assertExportIntegrity,
+  assertNoStrayPages,
 } from "./exportIntegrity";
 import type {
   DocumentFilesPolicy,
@@ -53,6 +54,7 @@ import {
   stripPageDocumentFiles,
   stripUnexportedPageDocumentFiles,
 } from "./navigation";
+import { isolatePageReferences } from "./pageIsolation";
 import {
   drawContentTextEditsForPage,
   drawImageOverlaysForPage,
@@ -197,7 +199,11 @@ export async function rebuildPdf(
   // a 40 MB export. One call shares one cache; shared resources are copied
   // exactly once. Page leafs are still cloned per entry, so duplicated
   // model pages keep getting distinct page objects.
+  // Page references are cut first so the copier cannot follow one into a
+  // page outside the selection (see pageIsolation.ts).
+  const pageIsolation = isolatePageReferences(source, sourceIndices);
   const copiedPages = await out.copyPages(source, sourceIndices);
+  pageIsolation.restoreSource();
   const duplicatedSourceIndices = new Set(
     sourceIndices.filter(
       (index, position) => sourceIndices.indexOf(index) !== position,
@@ -279,6 +285,7 @@ export async function rebuildPdf(
     // mode === "none": no overlays written.
   }
 
+  pageIsolation.resolve(out, copiedPageRefMap);
   reattachLinkDestinations(
     out,
     exportedPageNodes,
@@ -298,6 +305,7 @@ export async function rebuildPdf(
     new Set(sourceIndices),
   );
   assertDocumentFilesIntegrity(expectedDocumentFiles, out, documentFiles);
+  assertNoStrayPages(out);
 
   const bytes = await out.save({ useObjectStreams: quality !== "original" });
   // Round-trip guard: never hand back bytes pdf-lib can't re-parse or that

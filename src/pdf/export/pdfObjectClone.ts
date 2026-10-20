@@ -201,10 +201,20 @@ function cloneRef(
   if (cached) return cached;
   const dereferenced = source.context.lookup(ref);
   if (!dereferenced) return dest.context.obj(null);
+  // A page object outside the source page tree (a stray copy left by some
+  // earlier writer) is not a page of this export either.
+  if (dereferenced instanceof PDFDict && isPageNode(dereferenced)) {
+    return dest.context.obj(null);
+  }
   const clonedRef = dest.context.nextRef();
   state.clonedRefs.set(tag, clonedRef);
   const clonedObject = cloneObject(source, dest, state, dereferenced);
   if (!clonedObject) return dest.context.obj(null);
   dest.context.assign(clonedRef, clonedObject);
   return clonedRef;
+}
+
+function isPageNode(dict: PDFDict): boolean {
+  const type = dict.get(PDFName.of("Type"));
+  return type === PDFName.of("Page") || type === PDFName.of("Pages");
 }
