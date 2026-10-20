@@ -15,7 +15,9 @@ export function LossyExportNotice({ lostChars }: { lostChars: number }) {
         borderRadius: 4,
         background: "#fff2cf",
         border: `1px solid #d9b65f`,
-        color: T.ink,
+        // A fixed dark amber, not T.ink: the background does not follow the
+        // theme, and dark themes' near-white ink vanished on it (~1.05:1).
+        color: "#5a4210",
         font: `13px/1.45 ${T.sans}`,
         marginBottom: 10,
       }}
