@@ -65,18 +65,49 @@ export function textItemsAreVisuallyContiguous(
   const currentHeight = semanticItemHeight(current);
   const height = Math.max(previousHeight, currentHeight);
   if (!(height > 0)) return undefined;
-  const baselineDelta = Math.abs(previousTransform[5]! - currentTransform[5]!);
+  // Measured along and across the previous item's baseline, so text drawn
+  // under a rotated matrix joins exactly as it would upright.
+  const dir = baselineDirection(previousTransform);
+  if (!sameDirection(dir, baselineDirection(currentTransform))) return undefined;
+  const from = inBaselineFrame(dir, previousTransform);
+  const to = inBaselineFrame(dir, currentTransform);
+  const baselineDelta = Math.abs(from.across - to.across);
   if (baselineDelta > height * 0.25) return false;
-  const gap = currentTransform[4]! - (previousTransform[4]! + previous.width);
+  const gap = to.along - (from.along + previous.width);
   return gap >= -height && gap <= height * 0.3;
+}
+
+type BaselineDirection = { x: number; y: number };
+
+/** The unit advance direction of an item's text matrix; +x when degenerate. */
+function baselineDirection(transform: number[]): BaselineDirection {
+  const length = Math.hypot(transform[0]!, transform[1]!);
+  return length > 0 ? { x: transform[0]! / length, y: transform[1]! / length } : { x: 1, y: 0 };
+}
+
+function sameDirection(a: BaselineDirection, b: BaselineDirection): boolean {
+  return Math.abs(a.x * b.y - a.y * b.x) <= 1e-3 && a.x * b.x + a.y * b.y > 0;
+}
+
+/** An item's origin as distance along `dir` and across it (the baseline). */
+function inBaselineFrame(
+  dir: BaselineDirection,
+  transform: number[],
+): { along: number; across: number } {
+  const x = transform[4]!;
+  const y = transform[5]!;
+  return { along: x * dir.x + y * dir.y, across: -x * dir.y + y * dir.x };
 }
 
 type VisualTextLine = {
   first: RuntimeTextItem;
   last: RuntimeTextItem;
+  /** Along the first item's baseline direction `dir`. */
   left: number;
   right: number;
+  /** Across that baseline. */
   baselineY: number;
+  dir: BaselineDirection;
   height: number;
   text: string;
 };
@@ -118,6 +149,7 @@ export function classifySoftLineContinuationStarts(
     const current = lines[index]!;
     if (!previous || !current) continue;
     if (!previous.last.hasEOL || previous.last.dir !== current.first.dir) continue;
+    if (!sameDirection(previous.dir, current.dir)) continue;
     const height = Math.max(previous.height, current.height);
     if (!(height > 0)) continue;
     const baselineDelta = Math.abs(previous.baselineY - current.baselineY);
@@ -167,9 +199,14 @@ function textItemsShareVisualLine(
     semanticItemHeight(previous),
     semanticItemHeight(current),
   );
+  const dir = baselineDirection(previousTransform);
   return (
     height > 0 &&
-    Math.abs(previousTransform[5]! - currentTransform[5]!) <= height * 0.25
+    sameDirection(dir, baselineDirection(currentTransform)) &&
+    Math.abs(
+      inBaselineFrame(dir, previousTransform).across -
+        inBaselineFrame(dir, currentTransform).across,
+    ) <= height * 0.25
   );
 }
 
@@ -178,6 +215,7 @@ function visualTextLine(items: RuntimeTextItem[]): VisualTextLine | null {
   let right = Number.NEGATIVE_INFINITY;
   let height = 0;
   let baselineY: number | null = null;
+  let dir: BaselineDirection | null = null;
   for (const item of items) {
     const transform = item.transform;
     if (
@@ -188,17 +226,20 @@ function visualTextLine(items: RuntimeTextItem[]): VisualTextLine | null {
     ) {
       return null;
     }
-    const x = transform[4]!;
+    dir ??= baselineDirection(transform);
+    const origin = inBaselineFrame(dir, transform);
+    const x = origin.along;
     const itemRight = x + item.width;
     left = Math.min(left, x, itemRight);
     right = Math.max(right, x, itemRight);
-    baselineY ??= transform[5]!;
+    baselineY ??= origin.across;
     height = Math.max(height, semanticItemHeight(item));
   }
   if (
     !Number.isFinite(left) ||
     !Number.isFinite(right) ||
     baselineY === null ||
+    dir === null ||
     !(right > left) ||
     !(height > 0)
   ) {
@@ -210,6 +251,7 @@ function visualTextLine(items: RuntimeTextItem[]): VisualTextLine | null {
     left,
     right,
     baselineY,
+    dir,
     height,
     text: items.map(preferredText).join(""),
   };

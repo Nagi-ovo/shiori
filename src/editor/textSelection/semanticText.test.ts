@@ -422,6 +422,42 @@ describe("semantic text extraction", () => {
     });
   });
 
+  test("reads text drawn at 90 degrees the way it reads upright", () => {
+    const item = (str: string, x: number, y: number, width: number, hasEOL: boolean) => ({
+      str,
+      dir: "ltr",
+      width,
+      height: 10,
+      transform: [10, 0, 0, 10, x, y],
+      fontName: "f1",
+      hasEOL,
+    });
+    const upright = [
+      // A font change mid-word splits "Hello" into two items.
+      item("Hel", 72, 700, 18, false),
+      item("lo there", 90, 700, 48, true),
+      item("keeps running", 72, 688, 60, true),
+      item("paragraph", 72, 660, 60, false),
+    ];
+    // The same page content under a 90° counter-clockwise text matrix, as
+    // PDFium reports a landscape table or a pdflscape page in user space.
+    const rotated = upright.map((source) => {
+      const [a, b, c, d, e, f] = source.transform as [number, number, number, number, number, number];
+      return { ...source, transform: [-b, a, -d, c, -f, e] };
+    });
+    const read = (items: unknown[]) =>
+      semanticUnitsToSearchIndex(
+        buildSemanticTextLayerModel({ items, styles: {}, lang: null } as unknown as TextContent).units,
+      );
+    const expected = {
+      text: "Hello there keeps running paragraph",
+      layoutBreaks: [{ start: 11, end: 12 }],
+      hardBreaks: [{ start: 25, end: 26 }],
+    };
+    expect(read(upright)).toMatchObject(expected);
+    expect(read(rotated)).toMatchObject(expected);
+  });
+
   test("uses the complete previous visual line for wrap classification", () => {
     const item = (
       str: string,
