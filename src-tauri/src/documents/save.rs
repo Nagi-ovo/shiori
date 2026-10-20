@@ -142,6 +142,9 @@ fn write_file_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         file.sync_all()?;
         Ok(())
     })();
+    // Close the temp before chmod and rename, as when the closure owned it:
+    // Windows may refuse to remove or rename a file that is still open.
+    drop(file);
 
     if let Err(err) = write_result {
         let _ = fs::remove_file(&temp_path);
