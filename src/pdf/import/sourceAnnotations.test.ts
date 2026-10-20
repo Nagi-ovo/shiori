@@ -201,4 +201,23 @@ describe("what other tools wrote, kept as written", () => {
       { type: "text", text: "Flipped", rect: { x: 20, y: 20, w: 100, h: 40 }, angle: 180 },
     ]);
   });
+
+  // PDFium counts a page tree leaf without /Type /Page; pdf-lib's getPages()
+  // drops it, which shifted every later page's annotations up by one.
+  test("a page without /Type keeps its place in the page order", async () => {
+    const pdf = await PDFDocument.create();
+    const pages = [0, 1, 2].map(() => pdf.addPage([300, 400]));
+    pages[0]!.node.delete(PDFName.of("Type"));
+    const annotate = (index: number, entries: Record<string, unknown>) =>
+      pages[index]!.node.set(PDFName.of("Annots"), pdf.context.obj([pdf.context.register(pdf.context.obj({ Type: "Annot", ...entries } as never))]));
+    annotate(1, { Subtype: "Highlight", Rect: [20, 20, 120, 40], QuadPoints: [20, 40, 120, 40, 20, 20, 120, 20] });
+    annotate(2, { Subtype: "Square", Rect: [20, 20, 120, 100], IC: [0, 0, 1] });
+    const models = [0, 1, 2].map((sourceIndex) => ({ ...page, id: `p${sourceIndex}`, sourceIndex }));
+    const claimed: number[] = [];
+    const overlays = await importFileAnnotations(models, await pdf.save({ useObjectStreams: false }), NOW, {
+      onSuppress: (sourceIndex) => claimed.push(sourceIndex),
+    });
+    expect(overlays).toMatchObject([{ type: "highlight", pageId: "p1" }, { type: "rect", pageId: "p2", fill: "#0000ff" }]);
+    expect(claimed).toEqual([1, 2]);
+  });
 });

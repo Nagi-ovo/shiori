@@ -24,6 +24,7 @@ import {
   colorToHex,
 } from "./listingImporters";
 import { pdfjsRefId } from "./sourceAnnotations";
+import { sourcePageDicts } from "./sourcePages";
 
 export type RawCallout = {
   pdfjsId: string | null;
@@ -112,12 +113,12 @@ export function readRawCallouts(
   const anchors = new Map<number, Map<string, OverlayTextAnchor>>();
   const replies = new Map<number, Map<string, RawReplyMeta>>();
   const rects = new Map<number, Map<string, [number, number, number, number]>>();
-  const pdfPages = pdf.getPages();
+  const pdfPages = sourcePageDicts(pdf);
   for (let pageIndex = 0; pageIndex < pdfPages.length; pageIndex += 1) {
     if (!selected.has(pageIndex)) continue;
     let annots: PDFArray | undefined;
     try {
-      annots = pdfPages[pageIndex]!.node.Annots();
+      annots = pdfPages[pageIndex]?.lookupMaybe(PDFName.of("Annots"), PDFArray);
     } catch {
       continue;
     }

@@ -12,6 +12,7 @@ import {
 import { freeTextAppearance } from "./appearanceStream";
 import { latin1, lookup, rgbColor } from "./pdfjsValues";
 import { richTextRoot } from "./richText";
+import { sourcePageDicts } from "./sourcePages";
 
 /**
  * A page's annotations read straight from the file with pdf-lib, in the shape
@@ -58,14 +59,14 @@ export function readSourceAnnotations(
   strict = false,
 ): SourceAnnotation[] | null {
   if (pdf.isEncrypted) return null;
-  const page = pdf.getPages()[pageIndex];
+  const page = sourcePageDicts(pdf)[pageIndex];
   if (!page) {
     if (strict) throw new Error(`pdf-lib finds no page ${pageIndex + 1} in the page tree`);
     return [];
   }
   let annots: PDFArray | undefined;
   try {
-    annots = page.node.Annots();
+    annots = page.lookupMaybe(PDFName.of("Annots"), PDFArray);
   } catch (error) {
     if (strict) {
       const detail = error instanceof Error ? error.message : String(error);
