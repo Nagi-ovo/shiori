@@ -366,6 +366,7 @@
     "lastEdited": "{{rel}}编辑",
     "uses": "占用 {{size}}",
     "delete": "删除",
+    "deleteNamed": "删除 {{name}}",
     "clearAll": "清空所有草稿",
     "openManager": "管理本地缓存和草稿",
     "usedOfQuota": "已用 {{used}} / {{quota}}",

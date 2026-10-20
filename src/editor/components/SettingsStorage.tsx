@@ -248,7 +248,7 @@ export function StorageControls() {
   );
 }
 
-function StorageRow({
+export function StorageRow({
   name,
   size,
   editedRel,
@@ -299,7 +299,7 @@ function StorageRow({
           {t("storage.uses", { size: formatBytes(storageBytes) })}
         </div>
       </div>
-      <MiniIconBtn title={t("storage.delete")} onClick={onDelete}>
+      <MiniIconBtn title={t("storage.deleteNamed", { name })} onClick={onDelete}>
         <Ic.trash />
       </MiniIconBtn>
     </div>

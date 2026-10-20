@@ -372,6 +372,7 @@
     "lastEdited": "edited {{rel}}",
     "uses": "{{size}} stored",
     "delete": "Delete",
+    "deleteNamed": "Delete {{name}}",
     "clearAll": "Clear all drafts",
     "openManager": "Manage local cache and drafts",
     "usedOfQuota": "{{used}} / {{quota}} used",
