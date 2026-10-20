@@ -200,7 +200,8 @@ fn start_open_routing_reader<R: Runtime>(app: AppHandle<R>, request_path: PathBu
     thread::spawn(move || run_open_file_reader(app, request_path));
 }
 
-#[cfg(all(not(mobile), windows))]
+// Also compiled for tests so the argv it builds is checked on every host.
+#[cfg(all(not(mobile), any(windows, test)))]
 fn configure_windows_open_routing(command: &mut CommandBuilder, routing: &OpenRouting) {
     let program = command
         .get_argv()
@@ -210,14 +211,10 @@ fn configure_windows_open_routing(command: &mut CommandBuilder, routing: &OpenRo
         .unwrap_or_default()
         .to_ascii_lowercase();
     if program == "cmd.exe" || program == "cmd" {
+        // No quotes of our own: portable-pty adds one pair when the path has
+        // spaces, which is the form cmd's /K accepts.
         command.arg("/K");
-        command.arg(format!(
-            "\"{}\"",
-            routing
-                .shim_dir
-                .join("shiori-cmd-init.cmd")
-                .to_string_lossy()
-        ));
+        command.arg(routing.shim_dir.join("shiori-cmd-init.cmd"));
         return;
     }
     if program == "powershell.exe"
@@ -472,4 +469,30 @@ function global:Start-Process {
 Set-Alias -Name start -Value Start-Process -Scope Global -Force
 "#,
     )
+}
+
+#[cfg(all(test, not(mobile)))]
+mod tests {
+    use super::*;
+
+    // B087: portable-pty quotes Windows arguments by CRT rules, so a quote
+    // inside one becomes \", which cmd's /K parser does not decode. The init
+    // script must go in as one bare argument (quoted once if it has spaces).
+    #[test]
+    fn cmd_exe_receives_its_init_script_as_one_unquoted_argument() {
+        let shim_dir = PathBuf::from("C:/Users/Jo Doe/AppData/Local/shiori/bin");
+        let routing = OpenRouting {
+            shim_dir: shim_dir.clone(),
+            request_path: PathBuf::from("open.log"),
+        };
+        let mut command = CommandBuilder::new("cmd.exe");
+        configure_windows_open_routing(&mut command, &routing);
+        let argv = command.get_argv();
+        assert_eq!(argv.len(), 3);
+        assert_eq!(argv[1], "/K");
+        assert_eq!(
+            argv[2],
+            shim_dir.join("shiori-cmd-init.cmd").into_os_string()
+        );
+    }
 }
