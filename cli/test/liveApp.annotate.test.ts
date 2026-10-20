@@ -1,5 +1,10 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +17,7 @@ import {
   hostCacheFixture,
   json,
   requestBody,
+  withFixture,
   writeDescriptor,
 } from "./liveAppHarness";
 
@@ -31,10 +37,10 @@ async function close(server: Server): Promise<void> {
 }
 
 /** Plays a Shiori that applies whatever it is sent and reports `result`. */
-function appServer(
-  result: (operationId: string) => Record<string, unknown>,
-): Server {
-  return createServer((request, response) => {
+function appHandler(
+  result: () => Record<string, unknown>,
+): (request: IncomingMessage, response: ServerResponse) => void {
+  return (request, response) => {
     if (request.url === "/v1/context") {
       json(response, contextEnvelope());
       return;
@@ -51,11 +57,11 @@ function appServer(
           operationId,
           dryRun: false,
           annotationCount: CONTEXT.annotationCount,
-          ...result(operationId),
+          ...result(),
         },
       });
     });
-  });
+  };
 }
 
 describe("app annotate", () => {
@@ -67,7 +73,9 @@ describe("app annotate", () => {
     const root = await mkdtemp(join(tmpdir(), "shiori-live-annotate-pid-"));
     const { cacheDir, options } = hostCacheFixture(root);
     await mkdir(cacheDir, { recursive: true });
-    const server = appServer(() => ({ added: 0, annotationIds: [] }));
+    const server = createServer(
+      appHandler(() => ({ added: 0, annotationIds: [] })),
+    );
     const deadServer = createServer(() => undefined);
     try {
       const livePort = await listen(server);
@@ -92,5 +100,48 @@ describe("app annotate", () => {
       await close(server);
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  test("accepts several replies to one callout, and their retry", async () => {
+    // A reply spec's ids are the callouts it replied to, while `added` counts
+    // the turns (src/live/liveApiBridge.ts): two replies to c1 come back as
+    // added 2 with one id. Checking that against "one id per spec entry"
+    // reported an outcome-unknown write that had landed, and the prescribed
+    // retry (added 0, still one id) failed the same way forever.
+    const spec = {
+      annotations: [
+        { type: "calloutReply", replyTo: "c1", text: "part 1" },
+        { type: "calloutReply", replyTo: "c1", text: "part 2" },
+        { type: "calloutReply", replyTo: "c2", text: "and this" },
+      ],
+    };
+    let result: Record<string, unknown> = {};
+    await withFixture(
+      appHandler(() => result),
+      async ({ descriptorPath }) => {
+        result = { added: 3, annotationIds: ["c1", "c2"] };
+        await expect(
+          annotateLiveApp(null, { descriptorPath, spec }),
+        ).resolves.toMatchObject({ data: { added: 3 } });
+
+        result = { added: 0, annotationIds: ["c1", "c2"] };
+        await expect(
+          annotateLiveApp(null, { descriptorPath, spec }),
+        ).resolves.toMatchObject({ data: { added: 0 } });
+
+        // Still checked: the ids must be exactly the callouts replied to,
+        // and no more turns than the spec asked for.
+        for (const wrong of [
+          { added: 3, annotationIds: ["c2", "c1"] },
+          { added: 3, annotationIds: ["c1"] },
+          { added: 4, annotationIds: ["c1", "c2"] },
+        ]) {
+          result = wrong;
+          await expect(
+            annotateLiveApp(null, { descriptorPath, spec }),
+          ).rejects.toMatchObject({ code: "ERR_APP_OUTCOME_UNKNOWN" });
+        }
+      },
+    );
   });
 });

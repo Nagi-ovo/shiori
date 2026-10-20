@@ -271,7 +271,6 @@ export function parseAnnotationResult(value: unknown): LiveAnnotationResult {
     !SHA256_PATTERN.test(pageTopologyHash) ||
     !isNonNegativeInteger(added) ||
     !Array.isArray(annotationIds) ||
-    Number(added) > annotationIds.length ||
     annotationIds.length > MAX_ANNOTATIONS_PER_SPEC ||
     annotationIds.some((id) => !isBoundedString(id, 512)) ||
     new Set(annotationIds).size !== annotationIds.length ||

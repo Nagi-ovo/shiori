@@ -184,12 +184,9 @@ export async function annotateLiveApp(
     if (error instanceof LiveAppError) throw outcomeUnknown(target, operationId);
     throw error;
   }
-  const operationAnnotationCount = Array.isArray(spec.annotations)
-    ? spec.annotations.length
-    : null;
   if (
-    operationAnnotationCount == null ||
-    data.annotationIds.length !== operationAnnotationCount
+    !Array.isArray(spec.annotations) ||
+    !resultAccountsForSpec(data, spec.annotations)
   ) {
     throw outcomeUnknown(target, operationId);
   }
@@ -205,6 +202,32 @@ export async function annotateLiveApp(
     throw outcomeUnknown(target, operationId);
   }
   return { context, data };
+}
+
+/**
+ * Whether a result accounts for exactly what the spec asked for. An overlay
+ * spec gets one id per entry and adds at most that many. A calloutReply spec
+ * appends turns to existing callouts instead (src/live/liveApiBridge.ts): its
+ * ids are the distinct callouts replied to, in spec order, while `added`
+ * counts turns, so two replies to one callout are added 2 with a single id.
+ */
+function resultAccountsForSpec(
+  data: LiveAnnotationResult,
+  annotations: unknown[],
+): boolean {
+  if (data.added > annotations.length) return false;
+  const replies = annotations.filter(
+    (entry): entry is Record<string, unknown> =>
+      isObject(entry) && entry.type === "calloutReply",
+  );
+  if (replies.length !== annotations.length) {
+    return data.annotationIds.length === annotations.length;
+  }
+  const callouts = [...new Set(replies.map((reply) => reply.replyTo))];
+  return (
+    callouts.length === data.annotationIds.length &&
+    callouts.every((id, index) => data.annotationIds[index] === id)
+  );
 }
 
 export function liveOperationId(
