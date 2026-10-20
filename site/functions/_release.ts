@@ -276,6 +276,13 @@ export function countInstallerDownloads(releases: Release[]): DownloadTotals {
   return { total, byPlatform };
 }
 
+// The list also carries the CLI's cli-v* releases and, to tokens that can
+// see drafts, play-aab-* / qa-android-* ones. Only v<digit> tags are app
+// releases.
+export function isAppRelease(release: Release): boolean {
+  return /^v\d/.test(release.tag_name);
+}
+
 export function findAsset(
   release: Release,
   platform: Platform,
@@ -287,7 +294,7 @@ export async function findLatestAssetForPlatform(
   ctx: ReleaseContext,
   platform: Platform,
 ): Promise<{ release: Release; asset: ReleaseAsset } | null> {
-  const releases = await getRecentReleases(ctx);
+  const releases = (await getRecentReleases(ctx)).filter(isAppRelease);
   for (const release of releases) {
     const asset = findAsset(release, platform);
     if (asset) return { release, asset };
@@ -406,12 +413,13 @@ function legacyApkDownloadUrl(url: string): string {
 // Pure: the /api/release payload for a recent-releases window, newest
 // first. Each platform resolves to its newest release that actually
 // carries an asset for it, because mobile and desktop artifacts can be
-// published from separate CI runs. Null when the window is empty, which
-// only happens when the upstream fetch failed.
+// published from separate CI runs. Null when the window holds no app
+// release, which in practice means the upstream fetch failed.
 export function buildReleaseInfo(
-  releases: Release[],
+  recent: Release[],
   { legacyApkPath = true }: { legacyApkPath?: boolean } = {},
 ): ReleaseInfo | null {
+  const releases = recent.filter(isAppRelease);
   const release = releases[0];
   if (!release) return null;
 
