@@ -4,6 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:te
 import i18n from "../../i18n";
 import { subscribe, toast, type ToastItem } from "../toast";
 import { ToastHost } from "./ToastHost";
+import { Modal } from "./ui";
 
 function visibleToasts(): ToastItem[] {
   let latest: ToastItem[] = [];
@@ -72,5 +73,41 @@ describe("ToastHost dismissal", () => {
     });
 
     expect(view.getAllByRole("button", { name: "Close" })).toHaveLength(2);
+  });
+});
+
+function insideInert(node: Element): boolean {
+  for (let el: Element | null = node; el; el = el.parentElement) {
+    if ((el as HTMLElement).inert) return true;
+  }
+  return false;
+}
+
+describe("ToastHost above an open dialog", () => {
+  // Modal marks everything outside itself inert, and the toast host renders
+  // beside the dialogs. A toast fired while the Shortcuts sheet or Export is
+  // open painted above the backdrop but was silent to screen readers and
+  // ignored clicks on its close and action buttons.
+  test("stays announced and clickable while a Modal is open", () => {
+    const view = render(
+      <>
+        <Modal title="Export" onClose={() => undefined}>
+          body
+        </Modal>
+        <ToastHost />
+      </>,
+    );
+    act(() => {
+      toast.show("3 annotations added");
+    });
+
+    const status = view.getByRole("status");
+    expect(status.textContent).toContain("3 annotations added");
+    expect(insideInert(status)).toBe(false);
+    const close = view
+      .getAllByRole("button", { name: "Close" })
+      .find((button) => !button.closest("[role=dialog]"));
+    expect(close).toBeTruthy();
+    expect(insideInert(close!)).toBe(false);
   });
 });

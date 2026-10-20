@@ -17,6 +17,10 @@ import { useEffect, type RefObject } from "react";
 // stacked dialogs unwind correctly: the second dialog marks the first, and
 // releasing the second restores it without disturbing what the first had
 // already marked underneath.
+//
+// A sibling carrying `data-shiori-stays-live` is left alone: the toast host
+// paints above every dialog, and inerting it silenced its live regions and
+// disarmed its buttons while it was still on screen.
 export function useInertBackground(
   ref: RefObject<HTMLElement | null>,
   enabled: boolean,
@@ -35,7 +39,8 @@ export function useInertBackground(
         if (
           sibling !== current &&
           sibling instanceof HTMLElement &&
-          !sibling.inert
+          !sibling.inert &&
+          !sibling.hasAttribute("data-shiori-stays-live")
         ) {
           sibling.inert = true;
           marked.push(sibling);
