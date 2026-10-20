@@ -1,6 +1,6 @@
 # Handoff
 
-Current state and next steps only. History lives in `jj log`, `CHANGELOG.md`
+Current state and next steps only. History lives in `git log`, `CHANGELOG.md`
 and `docs/POSTMORTEMS.md` — when an item here is done, delete it rather than
 marking it done.
 

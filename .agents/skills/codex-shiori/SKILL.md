@@ -2,7 +2,7 @@
 name: codex-shiori
 description: >-
   Delegate work to the Codex CLI with Shiori's gates and conventions (bun +
-  cargo, the jj commit flow); prefer it over the generic `codex` skill in this
+  cargo, the git commit flow); prefer it over the generic `codex` skill in this
   repo. Use for bounded, well-specified changes Codex can grind through (a bug
   with a reproduction, a mechanical refactor, a multi-file sweep), for an
   independent review of a diff, or to map unfamiliar code. Triggers on
@@ -114,7 +114,7 @@ the entire original prompt:
 1. What changed since the previous turn (commits, files, user decisions).
 2. The new evidence or review finding being answered.
 3. The exact next action and acceptance condition.
-4. A freshly computed file boundary from `jj --no-pager st`.
+4. A freshly computed file boundary from `git status --short`.
 5. The gates, no-commit rule, and report format if they still apply.
 
 ## What every prompt must contain
@@ -124,7 +124,7 @@ them; leave one out and expect the corresponding failure.
 
 1. **File boundary.** Which files are Codex's, and which are off limits
    because Claude is editing them right now. Compute the off-limits list from
-   the working copy — `jj --no-pager st` lists exactly what Claude has touched
+   the working copy — `git status --short` lists exactly what Claude has touched
    — and name those paths explicitly: *"Do NOT change `src/…`; another agent
    is editing it."* Two agents writing one file in one checkout is how the
    working tree gets corrupted.
@@ -138,8 +138,8 @@ them; leave one out and expect the corresponding failure.
    `. "$HOME/.cargo/env" && cargo check --manifest-path src-tauri/Cargo.toml`
    when it touches `src-tauri/`.
 4. **No commits.** *"Leave the working tree dirty and report what you
-   changed."* Sealing is Claude's job — one fix per change, with a message
-   that explains the why (see the `jj` skill).
+   changed."* Sealing is Claude's job — one fix per commit, with a message
+   that explains the why (see "Version control" in AGENTS.md).
 5. **Report format.** Mechanism → fix → files touched → how it was verified.
    Ask for the mechanism in one paragraph so its reasoning can be checked
    rather than trusted.
@@ -173,7 +173,7 @@ Checking in by hand mid-run:
 ```bash
 wc -c < "$LOG"          # tens of KB within 30s means it is working
 tail -20 "$LOG"         # its plan and current step
-jj --no-pager st        # which files it has actually touched
+git status --short      # which files it has actually touched
 ```
 
 A run that is genuinely stuck shows: no growth in the log, no new file
@@ -184,8 +184,10 @@ Kill with `pkill -f "codex.*exec"`.
 
 When Codex reports done, Claude does all of this before anything is sealed:
 
-1. **Read the diff, not the report.** `jj --no-pager diff --git` over the
-   files it owned. The report describes intent; the diff is what shipped.
+1. **Read the diff, not the report.** `git diff HEAD` over the files it
+   owned (staged and unstaged), plus every new file `git status --short`
+   lists as `??`, which no diff shows. The report describes intent; the diff
+   is what shipped.
 2. **Re-run every gate.** Do not take "all tests pass" on trust — and note
    the two timing-sensitive UI tests AGENTS.md names, which flake under CPU
    contention: re-run a lone failure in its own file before believing it.
@@ -206,5 +208,5 @@ When Codex reports done, Claude does all of this before anything is sealed:
   over a clean boundary.
 - **Work whose acceptance test is "does it feel right".** That needs the
   user's eye, and a round-trip through Codex only adds latency.
-- **Version control.** Under this delegation Codex never runs `jj` or `git`;
+- **Version control.** Under this delegation Codex never runs `git`;
   Claude seals. (Codex driven directly by the user may still `git commit`.)

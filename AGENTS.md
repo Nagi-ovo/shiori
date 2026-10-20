@@ -195,23 +195,23 @@ restate the code and passes by construction, so the order below matters.
   property the old App.tsx regex tests policed is now tested is recorded in
   `docs/PLAN-APP-ARCHITECTURE-2026-09.md`.
 
-## Version control: jj (colocated)
+## Version control: git
 
-The repo is jj-colocated (`.jj/` beside `.git`). The working copy is a commit
-(`@`), snapshotted on every jj command, so there is no staging area and
-parallel edits are always captured. The `jj` skill holds the workflow, house
-rules and parallel-agent workspaces; load it before any jj or git command.
+Plain git on `main` (the repo used jj until 2026-10-20; old notes may still
+say "change" or "bookmark").
 
 - Seal as you go: when a fix is done and its gates are green, commit it (one
-  fix per change) and keep working. Pushing, and rewriting sealed history,
-  wait for the user's explicit go.
-- Bookmarks do not advance on their own. Before pushing:
-  `jj bookmark set main -r @-`, then `jj git push --bookmark main`.
-- Tags, releases and fork-PR pushes stay plain git (jj cannot push tags);
-  releases go through the `shiori-release` skill.
-- Codex run directly by the user may commit with plain `git commit`; jj
-  imports it on its next command. Raw `git checkout` / `git branch` mutations
-  fight jj's snapshot.
+  fix per commit) and keep working. Stage the fix's files by name
+  (`git add <paths>`), never `git add -A` over someone else's edits. Pushing,
+  and rewriting committed history (`--amend`, rebase, force-push), wait for
+  the user's explicit go.
+- `bun install` points `core.hooksPath` at `.githooks/`. The pre-commit hook
+  refuses a staged code file over 5,000 tokens (bytes / 4), and lets the files
+  listed in `scripts/file-size/baseline.json` stay as they are or shrink, never
+  grow. When it fires, split the file as its message says; do not bypass it
+  with `--no-verify` or raise the baseline. Rules and exclusions:
+  `scripts/file-size/policy.ts`.
+- Tags and releases go through the `shiori-release` skill.
 - Project skills live in `.agents/skills/` (Codex reads them there);
   `.claude/skills/` is gitignored and holds symlinks into it, so re-create
   them in a fresh workspace.
