@@ -20,6 +20,7 @@ export type TextSourceNotice =
   | { kind: "savedAs"; path: string }
   | { kind: "saveOriginMissing"; title: string }
   | { kind: "savePermissionDenied"; title: string }
+  | { kind: "saveEncodingUnsupported"; title: string }
   | { kind: "saveFailed"; title: string; error: unknown };
 
 export type TextSourcePorts = {
@@ -226,6 +227,11 @@ export function createTextSources(ports: TextSourcePorts) {
       if (text == null) return Promise.resolve();
       if (!tab.textDirty) {
         ports.notify({ kind: "savedNoChanges" });
+        return Promise.resolve();
+      }
+      if (tab.textLossy) {
+        // Not UTF-8: the text holds U+FFFD where the file has real bytes.
+        ports.notify({ kind: "saveEncodingUnsupported", title: tab.title });
         return Promise.resolve();
       }
       const mime = tab.kind === "html" ? "text/html" : "text/markdown";

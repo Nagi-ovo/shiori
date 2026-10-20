@@ -203,6 +203,18 @@ describe("saving to the source file", () => {
     expect(store.getState().tabs[0]).toMatchObject({ text: "two", textDirty: false });
   });
 
+  test("a document that was not UTF-8 is never written over its file", async () => {
+    const { sources, writes, tabNow, notices } = setup(
+      markdown({ text: "\uFFFD\uFFFD edited", textDirty: true, textLossy: true }),
+    );
+
+    await sources.saveToSource("md");
+
+    expect(writes).toEqual([]);
+    expect(tabNow().textDirty).toBe(true);
+    expect(notices).toEqual([{ kind: "saveEncodingUnsupported", title: "notes.md" }]);
+  });
+
   test("a clean document is not written", async () => {
     const { sources, writes, notices } = setup(markdown({ textDirty: false }));
 

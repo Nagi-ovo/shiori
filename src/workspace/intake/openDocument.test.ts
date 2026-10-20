@@ -238,6 +238,25 @@ describe("openDocument", () => {
     expect(log.recents).toEqual(["notes.md"]);
   });
 
+  test("a Markdown file that is not UTF-8 opens marked lossy, so it is never saved over", async () => {
+    const store = workspace();
+    const { ports } = fakePorts(store);
+    // "中文" in GBK: not valid UTF-8, so the decoded text is U+FFFD mojibake.
+    const gbk = bytes(0x23, 0x20, 0xd6, 0xd0, 0xce, 0xc4);
+
+    await openDocument({ kind: "markdown", name: "gbk.md", size: gbk.length, bytes: gbk, path: "/n/gbk.md" }, {}, ports);
+    await openDocument(
+      { kind: "markdown", name: "utf8.md", size: 8, bytes: new TextEncoder().encode("# 中文"), path: "/n/utf8.md" },
+      {},
+      ports,
+    );
+
+    const [lossy, clean] = store.getState().tabs;
+    expect(lossy).toMatchObject({ title: "gbk.md", textLossy: true });
+    expect(clean?.title).toBe("utf8.md");
+    expect(clean?.textLossy).toBeUndefined();
+  });
+
   test("a rejected document restore marks its tab unavailable", async () => {
     const tab = { id: "t", kind: "docx", title: "a.docx", status: "loading", source: { type: "path", path: "/a.docx" } } as WorkspaceRuntimeTab;
     const store = workspace([tab], "t");

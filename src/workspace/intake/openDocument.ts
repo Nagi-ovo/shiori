@@ -13,6 +13,7 @@ import { replaceOrAppendWorkspaceTab } from "../../editor/workspaceTabs";
 import { sha256Hex } from "../../storage/hash";
 import { patchWorkspaceTextView } from "../../storage/workspace";
 import { textReopenCacheId } from "../tabSources";
+import { decodeTextDocument } from "../textSources/textEncoding";
 import type { WorkspaceRuntimeTab } from "../types";
 import { openPdf } from "./openPdf";
 import { abandonOpen, findExistingTab, openClaim } from "./shared";
@@ -141,6 +142,7 @@ export async function openNonPdf(
   // A .docx is a zip, not text: decoding it would produce mojibake that the
   // Markdown/HTML path would happily render. Binary kinds keep their bytes.
   const isBinary = payload.kind === "docx";
+  const decoded = isBinary ? null : decodeTextDocument(sourcePayload.bytes);
   const nextTab: WorkspaceRuntimeTab = {
     id: tabId,
     kind: payload.kind,
@@ -149,9 +151,8 @@ export async function openNonPdf(
     source: tabSource,
     workingCopyCacheId,
     hash: contentHash,
-    text: isBinary
-      ? undefined
-      : new TextDecoder("utf-8", { fatal: false }).decode(sourcePayload.bytes),
+    text: decoded?.text,
+    ...(decoded?.lossy ? { textLossy: true } : {}),
     bytes: isBinary ? sourcePayload.bytes : undefined,
     textView: options.textView ?? patchWorkspaceTextView(undefined, {}),
     status: "loaded",

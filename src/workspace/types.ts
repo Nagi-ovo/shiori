@@ -40,6 +40,12 @@ export type WorkspaceRuntimeTab = WorkspaceTabMeta & {
   status: "loaded" | "unloaded" | "loading" | "suspended" | "unavailable";
   text?: string;
   /**
+   * The file was not valid UTF-8, so `text` is a lossy reading of it
+   * (src/workspace/textSources/textEncoding.ts). Shown read-only and never
+   * written back. Runtime only: it is re-derived from the bytes on every open.
+   */
+  textLossy?: boolean;
+  /**
    * Binary non-PDF documents (`docx`) live here instead of `text`. There is no
    * working copy and no save-back path for them yet, so these bytes are read
    * only — the viewer renders them and nothing writes them.

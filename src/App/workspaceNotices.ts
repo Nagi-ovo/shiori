@@ -43,6 +43,9 @@ export function showTextSourceNotice(notice: TextSourceNotice, t: Translate): vo
     case "savePermissionDenied":
       toast.error(t("documents.savePermissionDenied"), notice.title);
       break;
+    case "saveEncodingUnsupported":
+      toast.error(t("documents.saveEncodingUnsupported"), notice.title);
+      break;
     case "saveFailed":
       toast.error(
         t("documents.saveFailed", { message: String(notice.error) }),
