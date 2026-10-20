@@ -1067,6 +1067,8 @@
       "android-update-url-not-allowed": "The update URL is not trusted. Download the update from the Shiori website instead.",
       "android-direct-updater-disabled": "This build does not support direct APK updates. Update Shiori through the store you installed it from.",
       "android-install-launch-failed": "Android could not open the APK installer.",
+      "android-install-cancelled": "The update was cancelled before it was installed.",
+      "android-install-failed": "Android refused to install the update. Please try again.",
       "android-update-failed": "The update could not be installed. Please try again.",
       "android-update-request-failed": "Shiori could not start the update. Please try again.",
       "android-update-request-invalid": "The update request was rejected as invalid.",

@@ -224,6 +224,8 @@ function humanUpdateError(
     "android-update-url-not-allowed",
     "android-direct-updater-disabled",
     "android-install-launch-failed",
+    "android-install-cancelled",
+    "android-install-failed",
     // Thrown by platform/updater.ts and MainActivity.kt but never listed here,
     // so the modal showed the raw slug next to a translated prefix. This whole
     // path is dark in a google-play build (AGENTS.md fact 9), so it would

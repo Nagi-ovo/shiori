@@ -1,11 +1,16 @@
 package `fun`.nagi.shiori
 
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageInfo
+import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -151,29 +156,111 @@ private fun MainActivity.requestApkInstall(id: String, apk: File) {
     throw IllegalStateException("android-install-permission-required")
   }
 
-  val apkUri = FileProvider.getUriForFile(
-    this,
-    "$packageName.fileprovider",
-    apk,
-  )
-  val installIntent = Intent(Intent.ACTION_VIEW).apply {
-    setDataAndType(apkUri, "application/vnd.android.package-archive")
-    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-  }
-  runOnUiThread {
-    try {
-      startActivity(installIntent)
-      emitAndroidUpdateEvent(AndroidUpdateEvent(id = id, status = "complete"))
-    } catch (error: Exception) {
-      emitAndroidUpdateEvent(
-        AndroidUpdateEvent(
-          id = id,
-          status = "error",
-          message = error.message ?: "android-install-launch-failed",
-        ),
-      )
+  // A PackageInstaller session rather than ACTION_VIEW on the APK: the
+  // session reports how the install ended, so a refusal (signature conflict,
+  // Play Protect) or a tap on Cancel reaches the update modal. ACTION_VIEW
+  // gave no result, and "complete" on launch closed the modal over the old
+  // version. The status receiver below emits complete or error.
+  val installer = packageManager.packageInstaller
+  val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+  params.setAppPackageName(packageName)
+  val sessionId = installer.createSession(params)
+  var receiver: BroadcastReceiver? = null
+  try {
+    installer.openSession(sessionId).use { session ->
+      session.openWrite("shiori.apk", 0, apk.length()).use { output ->
+        apk.inputStream().use { input -> input.copyTo(output) }
+        session.fsync(output)
+      }
+      val action = "$packageName.APK_INSTALL_STATUS.$sessionId"
+      receiver = registerApkInstallStatusReceiver(id, sessionId, action)
+      // Mutable: the installer fills in EXTRA_STATUS. Explicit (setPackage),
+      // as Android 14 requires of a mutable PendingIntent.
+      val statusIntent = Intent(action).setPackage(packageName)
+      val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+        (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
+      val pending = PendingIntent.getBroadcast(this, sessionId, statusIntent, flags)
+      session.commit(pending.intentSender)
     }
+  } catch (error: Exception) {
+    receiver?.let { unregisterApkInstallStatusReceiver(it) }
+    try {
+      installer.abandonSession(sessionId)
+    } catch (_: Exception) {
+      // Already committed or gone; nothing left to clean up.
+    }
+    // A slug, not error.message: the modal translates slugs and would show
+    // raw Java exception text otherwise.
+    throw IllegalStateException("android-install-launch-failed", error)
+  }
+}
+
+private fun MainActivity.registerApkInstallStatusReceiver(
+  id: String,
+  sessionId: Int,
+  action: String,
+): BroadcastReceiver {
+  val activity = this
+  val receiver = object : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+      val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+      if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+        // The system confirmation dialog. Its outcome arrives as a second
+        // broadcast to this receiver (Cancel and Back report ABORTED).
+        val confirm = pendingUserActionIntent(intent)
+        try {
+          if (confirm == null) throw IllegalStateException("no confirmation intent")
+          activity.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+          return
+        } catch (_: Exception) {
+          try {
+            activity.packageManager.packageInstaller.abandonSession(sessionId)
+          } catch (_: Exception) {
+            // Already gone.
+          }
+          activity.unregisterApkInstallStatusReceiver(this)
+          activity.emitAndroidUpdateEvent(
+            AndroidUpdateEvent(id = id, status = "error", message = "android-install-launch-failed"),
+          )
+          return
+        }
+      }
+      activity.unregisterApkInstallStatusReceiver(this)
+      // On success Android usually replaces this process before the event
+      // reaches the page; the new version then launches on its own.
+      val event = when (status) {
+        PackageInstaller.STATUS_SUCCESS -> AndroidUpdateEvent(id = id, status = "complete")
+        PackageInstaller.STATUS_FAILURE_ABORTED ->
+          AndroidUpdateEvent(id = id, status = "error", message = "android-install-cancelled")
+        else -> AndroidUpdateEvent(id = id, status = "error", message = "android-install-failed")
+      }
+      activity.emitAndroidUpdateEvent(event)
+    }
+  }
+  // The application context outlives an activity recreation mid-install.
+  ContextCompat.registerReceiver(
+    applicationContext,
+    receiver,
+    IntentFilter(action),
+    ContextCompat.RECEIVER_NOT_EXPORTED,
+  )
+  return receiver
+}
+
+private fun MainActivity.unregisterApkInstallStatusReceiver(receiver: BroadcastReceiver) {
+  try {
+    applicationContext.unregisterReceiver(receiver)
+  } catch (_: IllegalArgumentException) {
+    // Already unregistered.
+  }
+}
+
+private fun pendingUserActionIntent(intent: Intent): Intent? {
+  return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
+  } else {
+    @Suppress("DEPRECATION")
+    intent.getParcelableExtra(Intent.EXTRA_INTENT) as? Intent
   }
 }
 

@@ -1056,6 +1056,8 @@
       "android-update-url-not-allowed": "这个更新链接不可信。请改从 Shiori 官网下载更新。",
       "android-direct-updater-disabled": "当前构建不支持 APK 直装更新。请通过安装来源的应用商店更新 Shiori。",
       "android-install-launch-failed": "Android 无法打开 APK 安装器。",
+      "android-install-cancelled": "更新在安装完成前被取消了。",
+      "android-install-failed": "Android 拒绝安装此更新，请重试。",
       "android-update-failed": "更新安装失败，请重试。",
       "android-update-request-failed": "无法启动更新，请重试。",
       "android-update-request-invalid": "更新请求无效，已被拒绝。",
