@@ -48,7 +48,17 @@ internal fun MainActivity.installDirectApkInBackground(request: AndroidApkUpdate
 
 private fun MainActivity.validateOfficialApkUrl(urlValue: String) {
   val uri = Uri.parse(urlValue)
-  if (uri.scheme != "https" || uri.host != "github.com") {
+  // Uri does not normalise the path the way the TS URL check does, so
+  // refuse what it would have rewritten: dot segments (decoded, so %2e%2e
+  // counts) and encoded separators that would escape the prefix once the
+  // request is sent, plus a port, credentials, query or fragment.
+  val unsafeSegment = uri.pathSegments.any { segment ->
+    segment == "." || segment == ".." || segment.contains('/') || segment.contains('\\')
+  }
+  if (
+    uri.scheme != "https" || uri.host != "github.com" || uri.port != -1 ||
+    uri.userInfo != null || uri.query != null || uri.fragment != null || unsafeSegment
+  ) {
     throw IllegalArgumentException("android-update-url-not-allowed")
   }
   val path = uri.path ?: ""
