@@ -96,4 +96,48 @@ describe("workspace persistence scheduling", () => {
     expect(await getWorkspaceSource(cacheId)).toBeUndefined();
     view.unmount();
   });
+
+  test("never evicts the draft of a document open in a tab", async () => {
+    // A tab that stays resident has no suspended-session copy: its draft is
+    // the only durable record of its annotations across a restart.
+    const { default: drafts, __draftsTest } = await import("../../storage/drafts");
+    await __draftsTest.reset();
+    const draft = (id: string, lastTouched: number) => ({
+      id,
+      fileName: `${id}.pdf`,
+      fileSize: 1000,
+      pdfBytes: new Uint8Array(1000),
+      model: { pages: [], overlays: [] },
+      lastTouched,
+    });
+    const openTab: WorkspaceTabMeta = {
+      ...baseTab,
+      id: "tab-pinned",
+      kind: "pdf",
+      title: "pinned.pdf",
+      source: { type: "path", path: "/tmp/pinned.pdf" },
+      hash: "pinned",
+      pinned: true,
+    };
+    const view = render(<Harness tabs={[openTab]} />);
+    __draftsTest.setQuotaCapBytes(3500);
+    try {
+      await drafts.put(draft("pinned", 1));
+      await drafts.put(draft("other-a", 2));
+      await drafts.put(draft("other-b", 3));
+      expect((await drafts.list()).map((row) => row.id).sort()).toEqual([
+        "other-b",
+        "pinned",
+      ]);
+
+      // The startup sweep runs beside the restore; it must honour open tabs too.
+      __draftsTest.setQuotaCapBytes(2000);
+      await drafts.cleanup();
+      expect((await drafts.list()).map((row) => row.id)).toEqual(["pinned"]);
+    } finally {
+      __draftsTest.setQuotaCapBytes(undefined);
+      view.unmount();
+      await __draftsTest.reset();
+    }
+  });
 });

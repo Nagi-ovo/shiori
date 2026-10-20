@@ -17,6 +17,7 @@ import {
   storageErrorMessage,
 } from "./errors";
 import { sanitizeHistory } from "./draftValidation";
+import { isDraftProtected } from "./draftProtection";
 
 export {
   LIVE_OPERATION_LEDGER_MAX_BYTES,
@@ -745,9 +746,8 @@ async function evictAfterQuotaFailure(
   return enforceQuota(protectId, target);
 }
 
-// Evict oldest drafts until total bytes <= CAP_BYTES. If `protectId` is
-// provided, that draft is kept even if it would otherwise be evicted
-// (but may still trigger eviction of others).
+// Evict oldest drafts until total bytes <= targetBytes, never the one being
+// written (`protectId`) nor one an open tab holds.
 async function enforceQuota(
   protectId?: string,
   targetBytes: number = quotaCapBytes(),
@@ -764,7 +764,7 @@ async function enforceQuota(
   const evictedNames: string[] = [];
   for (const r of rows) {
     if (total <= targetBytes) break;
-    if (r.id === protectId) continue;
+    if (r.id === protectId || isDraftProtected(r.id)) continue;
     // Delete the legacy v1 row too: the v2 upgrade keeps it as a safety copy
     // and get() falls back to it, so dropping only the v2 tables would let an
     // evicted draft be resurrected (and make the eviction notice a lie).
@@ -783,8 +783,8 @@ async function enforceQuota(
   // for a local-first tool. The notice waits in localStorage until the user
   // next opens Settings → Storage.
   if (evictedNames.length > 0) recordEvictions(evictedNames, Date.now());
-  // If still over (single protected draft bigger than cap), we accept it:
-  // keeping the active user's work beats silently dropping the only draft.
+  // Still over when protected drafts alone pass the target: keeping work the
+  // reader has open beats silently dropping it.
   return evictedNames.length > 0;
 }
 

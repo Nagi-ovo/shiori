@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { getRecent } from "../../editor/recentDocs";
+import { protectOpenDrafts } from "../../storage/draftProtection";
 import {
   cleanupWorkspaceSources,
   saveWorkspaceState,
@@ -96,6 +97,16 @@ export function useWorkspacePersistence<T>({
       flush();
     };
   }, []);
+
+  // Draft LRU eviction keeps the drafts of every open tab. A layout effect,
+  // so the provider is in place before App's startup draft cleanup runs.
+  useLayoutEffect(
+    () =>
+      protectOpenDrafts(() =>
+        getTabs().flatMap((tab) => toMeta(tab).hash ?? []),
+      ),
+    [getTabs, toMeta],
+  );
 
   const protectedWorkspaceCacheKey = useMemo(
     () => tabs.flatMap(cacheIdsForTab).sort().join("\0"),
