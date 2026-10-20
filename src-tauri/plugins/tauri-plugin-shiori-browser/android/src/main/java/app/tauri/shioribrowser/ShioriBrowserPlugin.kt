@@ -23,6 +23,9 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import androidx.webkit.ProfileStore
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -56,6 +59,8 @@ class SetBoundsArgs {
     lateinit var bounds: BoundsArg
 }
 
+private const val TEMP_PROFILE = "shiori-browser-temporary"
+
 @TauriPlugin
 class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
     private var webView: WebView? = null
@@ -77,6 +82,19 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
         this.tauriWebView = webView
     }
 
+    // Empties the temporary session's profile. deleteProfile is not an
+    // option: it refuses a profile this process has loaded.
+    private fun clearTempProfile() {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) return
+        try {
+            val profile = ProfileStore.getInstance().getOrCreateProfile(TEMP_PROFILE)
+            profile.cookieManager.removeAllCookies(null)
+            profile.webStorage.deleteAllData()
+        } catch (_: Exception) {
+            // Best effort; the next temporary session clears it again.
+        }
+    }
+
     private fun host(): ViewGroup? {
         (tauriWebView?.parent as? ViewGroup)?.let { return it }
         return activity.findViewById(android.R.id.content)
@@ -91,22 +109,34 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
         existing?.let {
             (it.parent as? ViewGroup)?.removeView(it)
             it.destroy()
+            if (!currentPersist) clearTempProfile()
         }
         val wv = WebView(activity)
+        // A temporary session gets its own WebView profile: cookies, site
+        // storage and cache apart from the persistent one, emptied when the
+        // session starts and ends. CookieManager.getInstance() is
+        // process-global, so the old approach (refuse and delete every
+        // cookie) erased the persistent logins, blocked all sign-ins, and
+        // left localStorage/IndexedDB shared. setProfile must precede any
+        // other use of the view. Without MULTI_PROFILE (old WebView) the
+        // panel falls back to the shared default profile rather than
+        // destroying it.
+        val isolated = !persist && WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)
+        if (isolated) {
+            clearTempProfile()
+            WebViewCompat.setProfile(wv, TEMP_PROFILE)
+        }
         wv.settings.javaScriptEnabled = true
         wv.settings.domStorageEnabled = true
         userAgent?.let { wv.settings.userAgentString = it }
         wv.webViewClient = navClient
         wv.webChromeClient = WebChromeClient()
-        if (!persist) {
-            // Android WebView has no true incognito; best effort — stop
-            // persisting cookies and clear existing cookies/cache for this view.
-            CookieManager.getInstance().setAcceptCookie(false)
-            CookieManager.getInstance().removeAllCookies(null)
+        if (isolated) {
             wv.clearCache(true)
-        } else {
-            CookieManager.getInstance().setAcceptCookie(true)
         }
+        // Earlier builds switched cookies off process-wide for a temporary
+        // session; make sure they are on.
+        CookieManager.getInstance().setAcceptCookie(true)
         host()?.addView(wv, FrameLayout.LayoutParams(1, 1))
         webView = wv
         currentPersist = persist
@@ -195,6 +225,7 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
                 (it.parent as? ViewGroup)?.removeView(it)
                 it.stopLoading()
                 it.destroy()
+                if (!currentPersist) clearTempProfile()
             }
             webView = null
         }
