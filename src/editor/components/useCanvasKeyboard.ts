@@ -331,10 +331,18 @@ export function useCanvasKeyboard({
       panRef.current = null;
     };
     window.addEventListener("keydown", onKey);
+    // An arrow held while the window loses focus (Cmd+Tab) sends its keyup
+    // elsewhere. Left set, the latch skipped the history step of every
+    // later nudge, which kept a stale redo entry that Redo swapped in.
+    const onBlur = () => {
+      arrowNudgeHeldRef.current = false;
+    };
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
     };
   }, [
     editorStore,

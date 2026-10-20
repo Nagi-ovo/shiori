@@ -20,6 +20,9 @@ import { useCanvasKeyboard } from "./useCanvasKeyboard";
 //   Enter places the armed tool instead of pressing the button;
 // - a button a click focused takes Space away from panning;
 // - Cmd+V in one tab ignores what Cmd+C copied in another;
+// - an arrow held while the window loses focus never sends its keyup, so
+//   the one-step-per-hold latch stays set and every later nudge lands
+//   with no undo step while redo keeps the state from before it;
 // - an arrow on a selection that cannot move (locked, or a contentText edit
 //   pinned to its glyphs) records an undo step, clears redo and swallows
 //   the key, so the page does not scroll either.
@@ -158,6 +161,24 @@ describe("canvas keyboard", () => {
 
     expect(paste.defaultPrevented).toBe(true);
     expect(store.getState().model.overlays).toMatchObject([{ type: "rect", pageId: page.id }]);
+  });
+
+  test("a nudge after the window lost focus mid-hold is its own undo step", () => {
+    const { store } = mount();
+    keydown(window, "ArrowDown");
+    // Cmd+Tab away with the key down: the keyup goes to another app.
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    act(() => store.getState().undo());
+    expect(store.getState().redoStack).toHaveLength(1);
+
+    keydown(window, "ArrowRight");
+
+    expect(rectOf(store)).toEqual({ ...rect.rect, x: rect.rect.x + 1 });
+    expect(store.getState().redoStack).toHaveLength(0);
+    act(() => store.getState().undo());
+    expect(rectOf(store)).toEqual(rect.rect);
   });
 
   test("a button focused by a click still leaves Space to pan", () => {
