@@ -357,11 +357,21 @@ fn decode(dict: &Dict, raw: &[u8]) -> Result<Vec<u8>, &'static str> {
 
 /// Undoes PNG row filters, one byte per pixel.
 fn unpredict_png(data: &[u8], columns: usize) -> Result<Vec<u8>, &'static str> {
+    let partial = "a cross-reference stream with a partial row";
+    if data.is_empty() {
+        return Ok(Vec::new());
+    }
+    // A row is a filter byte and `columns` bytes. One the data cannot hold
+    // is refused before a buffer is sized for it: /Columns comes from the file.
+    let width = columns
+        .checked_add(1)
+        .filter(|&width| width <= data.len())
+        .ok_or(partial)?;
     let mut out: Vec<u8> = Vec::with_capacity(data.len());
     let mut previous = vec![0u8; columns];
-    for line in data.chunks(columns + 1) {
-        if line.len() != columns + 1 {
-            return Err("a cross-reference stream with a partial row");
+    for line in data.chunks(width) {
+        if line.len() != width {
+            return Err(partial);
         }
         let mut row = line[1..].to_vec();
         for i in 0..columns {

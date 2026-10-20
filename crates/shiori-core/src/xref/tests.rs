@@ -314,3 +314,22 @@ fn the_header_and_keywords_are_whole_tokens() {
     bytes.extend_from_slice(b"% notstartxref\n");
     assert!(CrossReference::read(&bytes).is_ok());
 }
+
+#[test]
+fn a_predictor_row_longer_than_the_stream_is_refused_not_allocated() {
+    // An exabyte of /Columns, and on 32 bits the one that overflows a row's
+    // filter byte, over a stream that holds one 6-byte row.
+    for columns in ["9223372036854775807", "4294967295", "7"] {
+        let mut file = File::new();
+        let at = file.at();
+        file.stream(
+            1,
+            &format!(
+                "/Type /XRef /Size 1 /W [1 4 1] /Filter /FlateDecode \
+                 /DecodeParms << /Predictor 12 /Columns {columns} >>"
+            ),
+            &png_up(&[row(1, 9, 0)]),
+        );
+        assert!(CrossReference::read(&file.end(at)).is_err(), "{columns}");
+    }
+}
