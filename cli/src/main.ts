@@ -163,7 +163,7 @@ type FileInfo = {
   path: string;
   name: string;
   sizeBytes: number;
-  kind: DocumentKind;
+  kind: Exclude<DocumentKind, "docx">;
 };
 
 type PdfPageInfo = {
@@ -1319,7 +1319,8 @@ async function readFileInfo(inputPath: string): Promise<FileInfo> {
   }
   const name = basename(path);
   const kind = detectDocumentKind(name);
-  if (!kind) {
+  // The app opens Word files; the CLI has no reader for them.
+  if (!kind || kind === "docx") {
     throw new CliError(
       "ERR_UNSUPPORTED_DOCUMENT",
       "Supported files are PDF, Markdown, and HTML",
@@ -1610,9 +1611,7 @@ async function readTextDocument(file: FileInfo): Promise<string> {
     }
     throw new CliError("ERR_FILE_UNAVAILABLE", "Could not read file", file.path);
   }
-  if (file.kind === "markdown") return raw;
-  if (file.kind === "html") return stripHtmlToText(raw);
-  throw new CliError("ERR_TEXT_UNAVAILABLE", "Text extraction is unavailable");
+  return file.kind === "html" ? stripHtmlToText(raw) : raw;
 }
 
 function selectedPageNumbers(selection: string | undefined, total: number): number[] {

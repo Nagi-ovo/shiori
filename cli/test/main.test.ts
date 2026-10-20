@@ -302,6 +302,24 @@ describe("shiori cli", () => {
     });
   });
 
+  test("rejects Word files as unsupported before reading them", async () => {
+    await withTempDir(async (dir) => {
+      const docx = join(dir, "report.docx");
+      await writeFile(docx, "PK\u0003\u0004 not text");
+      for (const args of [["inspect", docx], ["text", docx], ["search", docx, "x"]]) {
+        await expect(main(args)).rejects.toMatchObject({
+          code: "ERR_UNSUPPORTED_DOCUMENT",
+          message: "Supported files are PDF, Markdown, and HTML",
+        });
+      }
+      // Past the Markdown read limit: the kind decides, not a size error.
+      await truncate(docx, 20 * 1024 * 1024 + 1);
+      await expect(main(["text", docx])).rejects.toMatchObject({
+        code: "ERR_UNSUPPORTED_DOCUMENT",
+      });
+    });
+  });
+
   test("reports version and documents strict CLI behavior", async () => {
     const human = await captureCli(["--version"]);
     expect(human.stdout).toMatch(/^shiori \d+\.\d+\.\d+$/);
