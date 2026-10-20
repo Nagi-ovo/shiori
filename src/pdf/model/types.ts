@@ -92,7 +92,15 @@ export function isBlankPage(page: PageModel): boolean {
   return page.blank === true || page.sourceIndex < 0;
 }
 
-export type HighlightOverlay = OverlayCommon & {
+// The comment a reviewer attached to a markup, shape or ink annotation in
+// another reader (its /Contents: Zotero, Preview and Acrobat keep a
+// highlight's note there). Carried so export writes it back instead of
+// blanking it; notes, text and callouts hold their body in `text`.
+type SourceComment = {
+  comment?: string;
+};
+
+export type HighlightOverlay = OverlayCommon & SourceComment & {
   type: "highlight";
   id: string;
   pageId: string;
@@ -101,7 +109,7 @@ export type HighlightOverlay = OverlayCommon & {
   opacity: number;
 };
 
-export type UnderlineOverlay = OverlayCommon & {
+export type UnderlineOverlay = OverlayCommon & SourceComment & {
   type: "underline";
   id: string;
   pageId: string;
@@ -110,7 +118,7 @@ export type UnderlineOverlay = OverlayCommon & {
   opacity: number;
 };
 
-export type StrikeOutOverlay = OverlayCommon & {
+export type StrikeOutOverlay = OverlayCommon & SourceComment & {
   type: "strikethrough";
   id: string;
   pageId: string;
@@ -119,7 +127,7 @@ export type StrikeOutOverlay = OverlayCommon & {
   opacity: number;
 };
 
-export type InkOverlay = OverlayCommon & {
+export type InkOverlay = OverlayCommon & SourceComment & {
   type: "ink";
   id: string;
   pageId: string;
@@ -153,7 +161,7 @@ export type StampOverlay = OverlayCommon & {
   angle?: number;
 };
 
-export type RectOverlay = OverlayCommon & {
+export type RectOverlay = OverlayCommon & SourceComment & {
   type: "rect";
   id: string;
   pageId: string;

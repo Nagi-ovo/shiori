@@ -63,12 +63,19 @@ export function buildHighlight(page: PDFPage, o: HighlightOverlay): PDFRef {
     CA: o.opacity,
     AP: ctx.obj({ N: appearanceRef }),
     F: 4,
-    Contents: PDFString.of(""),
+    Contents: commentContents(o),
     Subj: PDFString.of("Highlight"),
     NM: shioriAnnotationName(o.id),
   });
   setShioAnchor(page, dict, o);
   return ctx.register(dict);
+}
+
+// The comment imported with the annotation, as a text string (UTF-16BE, so
+// a CJK note survives). Markup always carried an empty /Contents; that stays
+// when there is nothing to write.
+function commentContents(o: { comment?: string }): PDFString | PDFHexString {
+  return o.comment ? PDFHexString.fromText(o.comment) : PDFString.of("");
 }
 
 export function buildUnderline(page: PDFPage, o: UnderlineOverlay): PDFRef {
@@ -98,7 +105,7 @@ function buildTextLineMarkup(
     CA: o.opacity,
     AP: ctx.obj({ N: appearanceRef }),
     F: 4,
-    Contents: PDFString.of(""),
+    Contents: commentContents(o),
     Subj: PDFString.of(subtype),
     NM: shioriAnnotationName(o.id),
   });
@@ -240,6 +247,7 @@ export function buildSquare(page: PDFPage, o: RectOverlay): PDFRef {
   if (o.fill) {
     dict.set(PDFName.of("IC"), ctx.obj(hexToRgbArr(o.fill)));
   }
+  if (o.comment) dict.set(PDFName.of("Contents"), commentContents(o));
   return ctx.register(dict);
 }
 
@@ -284,6 +292,7 @@ export function buildInk(page: PDFPage, o: InkOverlay): PDFRef {
     F: 4,
     NM: shioriAnnotationName(o.id),
   });
+  if (o.comment) dict.set(PDFName.of("Contents"), commentContents(o));
   return ctx.register(dict);
 }
 
