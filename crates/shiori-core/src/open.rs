@@ -54,6 +54,12 @@ impl Core {
 
     /// Parses `bytes`, which the document keeps for as long as it is open.
     pub fn open(&self, bytes: Vec<u8>, password: Option<&str>) -> Result<Document, CoreError> {
+        // PDFium takes the password as a C string, which cannot hold a NUL:
+        // pdfium-render's native bindings panic on one (an abort in a release
+        // build), and a prefix of what was typed must not open the file.
+        if password.is_some_and(|password| password.contains('\0')) {
+            return Err(CoreError::Password);
+        }
         let _guard = OPEN.lock().unwrap_or_else(|poison| poison.into_inner());
         let handle = unsafe { self.lib.FPDF_LoadMemDocument64(&bytes, password) };
         if handle.is_null() {
