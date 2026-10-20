@@ -31,6 +31,7 @@ import {
   shiftBasePositionalStructures,
 } from "./insertNavigation";
 import { mergeReferencedNamedDestinations } from "./namedDestinations";
+import { dropStructureParents } from "./structureParents";
 
 export { PdfPageInsertError, type PdfPageInsertErrorCode } from "./insertErrors";
 
@@ -205,6 +206,7 @@ async function insertPlainPdfPages(
   const insertedNodes: { sourceIndex: number; node: PDFDict }[] = [];
   copiedPages.forEach((page, sourceIndex) => {
     base.insertPage(insertionIndex + sourceIndex, page);
+    dropStructureParents(base, page.node);
     const sourcePage = sourcePages[sourceIndex];
     if (!sourcePage) {
       throw new PdfPageInsertError(
