@@ -4,7 +4,7 @@
   "cli/src/liveApp.ts": 36375,
   "cli/src/main.ts": 87917,
   "cli/test/annotate.test.ts": 37998,
-  "cli/test/liveApp.test.ts": 38591,
+  "cli/test/liveApp.test.ts": 33462,
   "crates/shiori-core/src/encryption.rs": 53963,
   "crates/shiori-core/src/lib.rs": 63976,
   "crates/shiori-core/src/pdf_syntax.rs": 23970,
