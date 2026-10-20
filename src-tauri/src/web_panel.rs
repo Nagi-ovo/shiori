@@ -44,14 +44,15 @@ pub(crate) struct WebPanelState {
 
 // A linear history of committed URLs plus a cursor. Tracked purely to
 // drive the address bar and back/forward enablement — actual traversal
-// uses the webview's own history via `history.back()/forward()`. We infer
-// pushes vs. traversals by matching the navigated URL against the
-// neighbours of the cursor, which is robust regardless of whether
-// `on_navigation` fires for reloads.
+// uses the webview's own history via `history.back()/forward()`. A commit
+// is a traversal only when the panel's own Back/Forward asked for one
+// (`pending_traversal`) and the URL is that neighbour; anything else, a
+// link back to the previous page included, is a new entry.
 #[derive(Default)]
 struct WebPanelInner {
     history: Vec<String>,
     cursor: usize,
+    pending_traversal: Option<navigation::Traversal>,
     persist_session: Option<bool>,
     // Whether the child webview is currently shown. Lets set_bounds skip a
     // redundant show() every frame: on Windows WebView2, Show() forces a
@@ -358,6 +359,8 @@ pub(crate) fn web_panel_back<R: Runtime>(
 ) -> Result<(), String> {
     enforce_main_webview(&caller)?;
     if let Some(webview) = app.get_webview(WEB_PANEL_LABEL) {
+        lock_web_panel(&app.state::<WebPanelState>()).pending_traversal =
+            Some(navigation::Traversal::Back);
         webview
             .eval("history.back()")
             .map_err(|err| err.to_string())?;
@@ -386,6 +389,8 @@ pub(crate) fn web_panel_forward<R: Runtime>(
 ) -> Result<(), String> {
     enforce_main_webview(&caller)?;
     if let Some(webview) = app.get_webview(WEB_PANEL_LABEL) {
+        lock_web_panel(&app.state::<WebPanelState>()).pending_traversal =
+            Some(navigation::Traversal::Forward);
         webview
             .eval("history.forward()")
             .map_err(|err| err.to_string())?;

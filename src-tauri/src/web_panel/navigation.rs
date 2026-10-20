@@ -39,20 +39,34 @@ pub(super) fn route_non_web_panel_navigation(raw: &str) {
     }
 }
 
-// Classify a committed navigation against the cursor's neighbours so the
-// history stays consistent for reloads, link clicks, and back/forward.
+// Which way the panel's own Back/Forward buttons asked the webview to go.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Traversal {
+    Back,
+    Forward,
+}
+
+// Classify a committed navigation. Only the URL reaches us, so moving the
+// cursor on a match with a neighbour alone turned a link back to the
+// previous page (A -> B -> A) into a Back and disabled the Back button; the
+// match counts only when Back/Forward was asked for.
 pub(super) fn record_web_navigation(inner: &mut WebPanelInner, url: &str) {
+    let traversal = inner.pending_traversal.take();
     let current = inner.history.get(inner.cursor).map(String::as_str);
     if current == Some(url) {
         return; // reload / re-entrant fire of the same page
     }
-    if inner.cursor > 0 && inner.history.get(inner.cursor - 1).map(String::as_str) == Some(url) {
-        inner.cursor -= 1; // went back
-        return;
-    }
-    if inner.history.get(inner.cursor + 1).map(String::as_str) == Some(url) {
-        inner.cursor += 1; // went forward
-        return;
+    let neighbour = |index: usize| inner.history.get(index).map(String::as_str) == Some(url);
+    match traversal {
+        Some(Traversal::Back) if inner.cursor > 0 && neighbour(inner.cursor - 1) => {
+            inner.cursor -= 1;
+            return;
+        }
+        Some(Traversal::Forward) if neighbour(inner.cursor + 1) => {
+            inner.cursor += 1;
+            return;
+        }
+        _ => {}
     }
     if !inner.history.is_empty() {
         inner.history.truncate(inner.cursor + 1);
@@ -129,23 +143,41 @@ mod tests {
         assert_eq!(inner.cursor, 2);
         assert_eq!(inner.history.len(), 3);
 
-        // Back: navigating to the previous neighbour moves the cursor back
-        // without growing history.
+        // Back: the Back button, then the previous neighbour commits; the
+        // cursor moves back without growing history.
+        inner.pending_traversal = Some(super::Traversal::Back);
         super::record_web_navigation(&mut inner, "https://b.com");
         assert_eq!(inner.cursor, 1);
         assert_eq!(inner.history.len(), 3);
 
-        // Forward: navigating to the next neighbour advances the cursor.
+        // Forward: the Forward button, then the next neighbour commits.
+        inner.pending_traversal = Some(super::Traversal::Forward);
         super::record_web_navigation(&mut inner, "https://c.com");
         assert_eq!(inner.cursor, 2);
 
         // Go back, then a brand-new navigation truncates the forward entry.
+        inner.pending_traversal = Some(super::Traversal::Back);
         super::record_web_navigation(&mut inner, "https://b.com");
         super::record_web_navigation(&mut inner, "https://d.com");
         assert_eq!(inner.cursor, 2);
         assert_eq!(
             inner.history,
             vec!["https://a.com", "https://b.com", "https://d.com"]
+        );
+    }
+
+    // Following links A -> B -> A is three pages deep, not a Back: the
+    // webview can still go back, so the Back button must stay enabled.
+    #[test]
+    fn web_navigation_link_to_the_previous_page_is_a_new_entry() {
+        let mut inner = super::WebPanelInner::default();
+        for url in ["https://a.com", "https://b.com", "https://a.com"] {
+            super::record_web_navigation(&mut inner, url);
+        }
+        assert_eq!(inner.cursor, 2, "Back must stay enabled");
+        assert_eq!(
+            inner.history,
+            vec!["https://a.com", "https://b.com", "https://a.com"]
         );
     }
 }
