@@ -9,6 +9,8 @@ const { exportCompactRasterPdf } = await import("./compactRasterPdf");
 const originalCreateElement = document.createElement.bind(document);
 let latestCanvas: HTMLCanvasElement;
 let blobFailure = false;
+/** Every 2D call the export made, in order: what lands in the page's JPEG. */
+let drawCalls: Array<{ name: string; args: unknown[] }> = [];
 const doc = {} as PdfDocument;
 
 type RenderRequest = Parameters<PdfEngine["renderRegion"]>[1];
@@ -26,6 +28,7 @@ function engine(done: Promise<void> = Promise.resolve()) {
 describe("compact raster export canvas lifecycle", () => {
   beforeEach(() => {
     blobFailure = false;
+    drawCalls = [];
     document.createElement = ((tagName: string) => {
       if (tagName !== "canvas") return originalCreateElement(tagName);
       latestCanvas = makeCanvas();
@@ -83,7 +86,52 @@ describe("compact raster export canvas lifecycle", () => {
       [2, 90, { x: 0, y: 0, width: 120, height: 120 }, true],
     ]);
   });
+
+  // A placed signature is an image overlay; the raster usually wins on size,
+  // so a signature missing here is missing from the exported file.
+  test("paints image overlays, signatures included, where they sit on the page", async () => {
+    const model = modelForPage({ sourceIndex: 0 });
+    model.overlays = [signature()];
+    await exportCompactRasterPdf(doc, model, { mode: "annotations" }, engine().engine);
+
+    const drawn = drawCalls.filter((call) => call.name === "drawImage");
+    expect(drawn).toHaveLength(1);
+    expect((drawn[0]!.args[0] as HTMLImageElement).src).toBe(signature().dataUrl);
+    // 36 × 24 pt at 120 dpi, centered on the rect's center (30, 30) pt.
+    expect(drawn[0]!.args.slice(1)).toEqual([-30, -20, 60, 40]);
+    const center = drawCalls.find((call) => call.name === "translate");
+    expect(center?.args).toEqual([50, 70]);
+  });
+
+  // The dialog falls back to the standard copy when the raster fails, and
+  // that copy embeds the image itself: better than a raster without it.
+  test("fails instead of exporting without an image it cannot decode", async () => {
+    const decode = HTMLImageElement.prototype.decode;
+    HTMLImageElement.prototype.decode = () => Promise.reject(new Error("bad image"));
+    try {
+      const model = modelForPage({ sourceIndex: 0 });
+      model.overlays = [signature()];
+      await expect(
+        exportCompactRasterPdf(doc, model, { mode: "annotations" }, engine().engine),
+      ).rejects.toThrow("bad image");
+    } finally {
+      HTMLImageElement.prototype.decode = decode;
+    }
+  });
 });
+
+function signature(): DocumentModel["overlays"][number] {
+  return {
+    type: "image",
+    id: "signature-1",
+    pageId: "page-1",
+    rect: { x: 12, y: 18, w: 36, h: 24 },
+    dataUrl:
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    mimeType: "image/png",
+    source: "signature",
+  };
+}
 
 function modelForPage(
   overrides: Partial<DocumentModel["pages"][number]>,
@@ -104,11 +152,21 @@ function modelForPage(
 }
 
 function makeCanvas(): HTMLCanvasElement {
-  const context = {
-    fillStyle: "",
-    fillRect: () => undefined,
-  } as unknown as CanvasRenderingContext2D;
-  return {
+  const state: Record<string | symbol, unknown> = {};
+  // Properties are kept, every method call is recorded.
+  const context = new Proxy(state, {
+    get: (target, key) =>
+      key in target
+        ? target[key]
+        : (...args: unknown[]) => {
+            drawCalls.push({ name: String(key), args });
+          },
+    set: (target, key, value) => {
+      target[key] = value;
+      return true;
+    },
+  }) as unknown as CanvasRenderingContext2D;
+  const canvas = {
     width: 0,
     height: 0,
     getContext: () => context,
@@ -116,6 +174,8 @@ function makeCanvas(): HTMLCanvasElement {
       callback(blobFailure ? null : new Blob([tinyWhiteJpeg()]));
     },
   } as unknown as HTMLCanvasElement;
+  state.canvas = canvas;
+  return canvas;
 }
 
 function tinyWhiteJpeg(): Uint8Array {

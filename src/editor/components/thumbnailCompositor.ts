@@ -2,6 +2,7 @@ import type {
   CalloutOverlay,
   ContentTextOverlay,
   HighlightOverlay,
+  ImageOverlay,
   InkOverlay,
   NoteOverlay,
   Overlay,
@@ -26,6 +27,7 @@ import {
 } from "../../pdf/geometry/coords";
 import { baseTextDirection } from "../../pdf/export/textScripts";
 import { canvasFontShorthand, wrapThumbnailText } from "./thumbnailText";
+import type { ThumbnailImages } from "./thumbnailImages";
 import {
   MAX_THUMBNAIL_CANVAS_PIXELS,
   isCanvasWithinPixelBudget,
@@ -149,6 +151,8 @@ export function drawThumbnailOverlays(
   page: PageModel,
   overlays: Overlay[],
   viewport: ThumbnailViewport,
+  /** From loadThumbnailOverlayImages; an image missing here is skipped. */
+  images: ThumbnailImages = new Map(),
 ): void {
   if (overlays.length === 0) return;
   withCssPixels(ctx, viewport, () => {
@@ -171,6 +175,7 @@ export function drawThumbnailOverlays(
       else if (overlay.type === "text") drawText(ctx, page, overlay, viewport.scale);
       else if (overlay.type === "note") drawNote(ctx, page, overlay, viewport.scale);
       else if (overlay.type === "callout") drawCallout(ctx, page, overlay, viewport.scale);
+      else if (overlay.type === "image") drawImage(ctx, page, overlay, viewport.scale, images);
     }
   });
 }
@@ -336,6 +341,25 @@ function drawInk(
     });
     ctx.stroke();
   }
+  ctx.restore();
+}
+
+// Turned with the page and by the overlay's own angle, about its center, as
+// the editor shows it (overlaySvg.tsx boxSvgPlacement).
+function drawImage(
+  ctx: CanvasRenderingContext2D,
+  page: PageModel,
+  overlay: ImageOverlay,
+  scale: number,
+  images: ThumbnailImages,
+): void {
+  const image = images.get(overlay.dataUrl);
+  if (!image) return;
+  const p = thumbnailRotatedBoxPlacement(page, overlay.rect, scale);
+  ctx.save();
+  ctx.translate(p.centerX, p.centerY);
+  ctx.rotate(p.radians + ((overlay.angle ?? 0) * Math.PI) / 180);
+  ctx.drawImage(image, -p.width / 2, -p.height / 2, p.width, p.height);
   ctx.restore();
 }
 
