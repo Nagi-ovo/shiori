@@ -60,7 +60,6 @@
   "src/live/liveApiBridge.ts": 36430,
   "src/pdf/annotations/resolveAnchors.test.ts": 25613,
   "src/pdf/annotations/resolveAnchors.ts": 25205,
-  "src/pdf/export/annotations.ts": 46157,
   "src/pdf/export/exportPdf.test.ts": 133009,
   "src/pdf/export/exportPdf.ts": 56633,
   "src/pdf/export/navigation.ts": 52558,
