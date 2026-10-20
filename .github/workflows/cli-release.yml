@@ -80,11 +80,13 @@ jobs:
     environment: release
     permissions:
       contents: read
-    # Mapped to job env because a step `if:` cannot read `secrets` directly.
-    # A fork, or this repo before the certificate is configured, still builds —
-    # it just gets the ad-hoc signature instead.
+    # A step `if:` cannot read `secrets` directly, so the job env carries
+    # only whether the certificate exists; the p12 itself reaches the import
+    # step alone, not every leg's install, build scripts and actions. A fork,
+    # or this repo before the certificate is configured, still builds — it
+    # just gets the ad-hoc signature instead.
     env:
-      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      HAS_MACOS_CERT: ${{ secrets.MACOS_CERT_P12 != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -122,8 +124,9 @@ jobs:
       # still trips "Apple cannot check it for malicious software". This puts
       # the real Developer ID on it when the certificate is available.
       - name: Import the Developer ID certificate
-        if: matrix.target == 'darwin-arm64' && env.MACOS_CERT_P12 != ''
+        if: matrix.target == 'darwin-arm64' && env.HAS_MACOS_CERT == 'true'
         env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
@@ -165,7 +168,7 @@ jobs:
         run: bun test cli/test
 
       - name: Verify the signature
-        if: matrix.target == 'darwin-arm64' && env.MACOS_CERT_P12 != ''
+        if: matrix.target == 'darwin-arm64' && env.HAS_MACOS_CERT == 'true'
         run: |
           set -eu
           codesign --verify --strict --verbose=2 cli/dist/darwin-arm64/shiori
@@ -186,7 +189,7 @@ jobs:
       # online; that is enough for the browser-download path, and the curl and
       # PowerShell installers never set quarantine in the first place.
       - name: Notarize the macOS executable
-        if: matrix.target == 'darwin-arm64' && env.MACOS_CERT_P12 != ''
+        if: matrix.target == 'darwin-arm64' && env.HAS_MACOS_CERT == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
