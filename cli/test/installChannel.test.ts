@@ -262,7 +262,8 @@ describe("CLI install channel", () => {
         expect(existsSync(join(home, "bin", "shiori.exe"))).toBe(false);
       });
     },
-    60_000,
+    // Two cold PowerShell starts; the arm64 runner is slow to start one.
+    120_000,
   );
 
   // An interrupted or failed extraction must not become the cache: the
@@ -290,6 +291,27 @@ describe("CLI install channel", () => {
       const binary = await ensureCliBinary({
         api: `http://127.0.0.1:${good.server.port}/api/cli`,
         env,
+        target,
+      });
+      expect(readFileSync(binary, "utf8")).toContain("shiori-ok");
+    });
+  });
+
+  // What an interrupted run of the old in-place runner left on disk: the
+  // executable without the rest of the package. It has to be replaced, not
+  // launched.
+  test("npm runner replaces a half-extracted version directory", async () => {
+    if (!target) return;
+    await withTempDir(async (dir) => {
+      const executable = target.startsWith("win32") ? "shiori.exe" : "shiori";
+      const home = join(dir, ".shiori");
+      mkdirSync(join(home, "cli", "0.1.25"), { recursive: true });
+      writeFileSync(join(home, "cli", "0.1.25", executable), "#!/bin/sh\necho shiori-partial\n");
+      const { server } = await serveCliArchive(makeArchive(dir, executable), target);
+      servers.push(server);
+      const binary = await ensureCliBinary({
+        api: `http://127.0.0.1:${server.port}/api/cli`,
+        env: { SHIORI_CLI_HOME: home, SHIORI_CLI_ALLOW_HTTP: "1" },
         target,
       });
       expect(readFileSync(binary, "utf8")).toContain("shiori-ok");

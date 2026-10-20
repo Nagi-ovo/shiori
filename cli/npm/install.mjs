@@ -88,7 +88,6 @@ function publishInstall(staging, dest, target) {
   } catch (error) {
     // Another run got there first, or an older runner left a partial tree.
     if (isCompleteInstall(dest, target)) return;
-    if (!existsSync(dest)) throw error;
   }
   rmSync(dest, { recursive: true, force: true });
   try {
