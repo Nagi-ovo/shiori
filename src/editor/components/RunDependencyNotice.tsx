@@ -24,7 +24,7 @@ const REMOTE_DEPENDENCY_KIND_KEYS: Record<RemoteDependencyKind, string> = {
 // made them; the frame's own meta policy can only narrow it. The Tauri app's
 // CSP (src-tauri/tauri.conf.json) admits remote https: images and no remote
 // script, style or media source, so approving those could never take effect.
-// The web build serves no CSP of its own.
+// The web app's CSP (public/_headers) sets only frame-src.
 function canApprove(dependency: RemoteDependency, inheritsAppCsp: boolean) {
   if (!isApprovableDependencyKind(dependency.kind)) return false;
   return (
