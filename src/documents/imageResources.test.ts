@@ -96,6 +96,27 @@ describe("document image resources", () => {
     expect(result.html).toContain('src="data:image/png;base64,abc"');
   });
 
+  // The desktop reader percent-decodes the src itself (text_images.rs), so a
+  // second decode here turned 100%25.png into an invalid "100%.png" and
+  // a%2520b.png into "a b.png".
+  test("hands the local image src to the reader still percent-encoded", async () => {
+    const seen: string[] = [];
+    const result = await resolveDocumentImageResources(
+      '<img src="100%25.png?v=1"><img src="a%2520b.png#x"><img src="my%20chart.png">',
+      {
+        allowRemoteImages: false,
+        documentPath: "/tmp/notes/doc.md",
+        readLocalImage: async (_documentPath, imageSrc) => {
+          seen.push(imageSrc);
+          return { dataUrl: "data:image/png;base64,abc", mime: "image/png", size: 3 };
+        },
+      },
+    );
+
+    expect(seen).toEqual(["100%25.png", "a%2520b.png", "my%20chart.png"]);
+    expect(result.summary.localImages).toBe(3);
+  });
+
   test("leaves data images alone", async () => {
     const result = await resolveDocumentImageResources(
       '<img src="data:image/png;base64,abc">',

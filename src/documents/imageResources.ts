@@ -13,6 +13,7 @@ export type LocalImageData = {
   size: number;
 };
 
+// imageSrc is the URL path as written, percent-encoded, without ?query/#hash.
 export type ReadLocalImage = (
   documentPath: string,
   imageSrc: string,
@@ -84,7 +85,7 @@ export async function resolveDocumentImageResources(
 
     if (!isLocalRelativeImageSrc(rawSrc)) continue;
 
-    const imageSrc = decodeLocalImageSrc(rawSrc);
+    const imageSrc = localImageSrcPath(rawSrc);
     if (!imageSrc || !options.documentPath || !options.readLocalImage) {
       blockImage(img, "local");
       summary.failedLocalImages += 1;
@@ -208,15 +209,12 @@ function isLocalRelativeImageSrc(src: string): boolean {
   return true;
 }
 
-function decodeLocalImageSrc(src: string): string | null {
+// Still percent-encoded: the reader decodes it once (text_images.rs), and a
+// second decode here would misread a file whose name contains "%".
+function localImageSrcPath(src: string): string | null {
   const withoutHash = src.split("#", 1)[0] ?? "";
   const withoutQuery = withoutHash.split("?", 1)[0]?.trim() ?? "";
-  if (!withoutQuery) return null;
-  try {
-    return decodeURIComponent(withoutQuery);
-  } catch {
-    return withoutQuery;
-  }
+  return withoutQuery || null;
 }
 
 function scrubRemoteResourceAttributes(
