@@ -289,10 +289,20 @@ shiori_installer_run_with_progress() {
 
   if ! shiori_installer_is_animated_terminal; then
     printf '%s...\n' "$shiori_ui_title"
-    if "$@"; then
-      shiori_ui_status=0
-    else
-      shiori_ui_status=$?
+    # Not `if "$@"`: a command run as an if/||/&& condition has set -e
+    # switched off for its whole body, subshells included, so a failed tar
+    # would carry on to link the binary and report success. The subshell runs
+    # outside any condition with set -e of its own, the way the animated path
+    # below runs it in the background.
+    case $- in
+      *e*) shiori_ui_errexit=1 ;;
+      *) shiori_ui_errexit=0 ;;
+    esac
+    set +e
+    (set -e; "$@")
+    shiori_ui_status=$?
+    if [ "$shiori_ui_errexit" = 1 ]; then
+      set -e
     fi
     if [ "$shiori_ui_status" -eq 0 ]; then
       printf 'ok  %s complete\n' "$shiori_ui_title"

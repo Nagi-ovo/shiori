@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -84,6 +85,39 @@ function makeArchive(dir: string, executable: string): Uint8Array {
   return new Uint8Array(readFileSync(archive));
 }
 
+// An archive cut off mid-stream whose digest is still the one the release
+// API serves: the executable is the first entry and extracts whole, then tar
+// fails on the native addon behind it. That is the state a full disk or an
+// I/O error during extraction leaves, and it has to read as a failed install.
+function makeTruncatedArchive(dir: string, executable: string): Uint8Array {
+  writeFileSync(join(dir, executable), "#!/bin/sh\necho shiori-partial\n");
+  chmodSync(join(dir, executable), 0o755);
+  mkdirSync(join(dir, "native"), { recursive: true });
+  writeFileSync(join(dir, "native", "shiori_core.node"), randomBytes(512 * 1024));
+  const archive = join(dir, "shiori-cli-truncated.tar.gz");
+  const packed = spawnSync("tar", ["-czf", archive, executable, "native"], {
+    cwd: dir,
+    encoding: "utf8",
+  });
+  expect(packed.status).toBe(0);
+  const whole = readFileSync(archive);
+  return new Uint8Array(whole.subarray(0, Math.floor(whole.byteLength / 2)));
+}
+
+function curlInstallerEnv(dir: string, port: number | undefined) {
+  const home = join(dir, "home");
+  return {
+    ...process.env,
+    HOME: home,
+    SHIORI_CLI_HOME: join(home, ".shiori"),
+    SHIORI_CLI_BIN_DIR: join(dir, "bin"),
+    SHIORI_CLI_API: `http://127.0.0.1:${port}/api/cli`,
+    SHIORI_CLI_ALLOW_HTTP: "1",
+    SHIORI_INSTALLER_NO_SLEEP: "1",
+    TERM: "dumb",
+  };
+}
+
 describe("CLI install channel", () => {
   const target = detectCliInstallTarget(process.platform, process.arch);
   const servers: Array<{ stop: () => void }> = [];
@@ -125,6 +159,31 @@ describe("CLI install channel", () => {
       const linked = spawnSync(join(binDir, "shiori"), [], { encoding: "utf8" });
       expect(linked.status).toBe(0);
       expect(linked.stdout).toContain("shiori-ok");
+    });
+  });
+
+  // Piped stdout is how agents and CI run `curl ... | sh`, and it takes the
+  // installer's non-animated path. A failed extraction there once linked the
+  // half-extracted binary and printed "complete" with exit status 0.
+  test("curl installer fails when the archive does not extract", async () => {
+    if (!target || process.platform === "win32") return;
+    await withTempDir(async (dir) => {
+      const archive = makeTruncatedArchive(dir, "shiori");
+      const { server } = await serveCliArchive(archive, target);
+      servers.push(server);
+      const proc = Bun.spawn(["sh", installSh], {
+        stdout: "pipe",
+        stderr: "pipe",
+        env: curlInstallerEnv(dir, server.port),
+      });
+      const [stdout, status] = await Promise.all([
+        new Response(proc.stdout).text(),
+        proc.exited,
+        new Response(proc.stderr).text(),
+      ]);
+      expect(status).not.toBe(0);
+      expect(stdout).not.toContain("complete");
+      expect(existsSync(join(dir, "bin", "shiori"))).toBe(false);
     });
   });
 
