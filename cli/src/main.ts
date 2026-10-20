@@ -95,8 +95,8 @@ import {
   annotateLiveApp,
   getLiveAppContextDetails,
   type LiveAppContext,
-  type LiveAppErrorCode,
 } from "./liveApp";
+import { CliError, type CliErrorCode } from "./cliError";
 
 type OutputFormat = "human" | "json";
 type CommandName =
@@ -129,35 +129,6 @@ type GlobalOptions = {
   inPlace: boolean;
   dryRun: boolean;
 };
-
-type CliErrorCode =
-  | "ERR_USAGE"
-  | "ERR_UNSUPPORTED_DOCUMENT"
-  | "ERR_FILE_UNAVAILABLE"
-  | "ERR_FILE_TOO_LARGE"
-  | "ERR_SPEC_INVALID"
-  | "ERR_ANCHOR_UNRESOLVED"
-  | "ERR_TEXT_UNAVAILABLE"
-  | "ERR_ANNOTATIONS_UNAVAILABLE"
-  | "ERR_OUTPUT_EXISTS"
-  | "ERR_OUTPUT_CONFLICT"
-  | "ERR_OUTPUT_OUTCOME_UNKNOWN"
-  | "ERR_NATIVE_ATOMIC_REPLACE_REQUIRED"
-  | "ERR_WRITE_FAILED"
-  | LiveAppErrorCode
-  | ReturnType<typeof diagnosticCode>;
-
-class CliError extends Error {
-  code: CliErrorCode;
-  detail?: string;
-
-  constructor(code: CliErrorCode, message: string, detail?: string) {
-    super(message);
-    this.name = "CliError";
-    this.code = code;
-    this.detail = detail;
-  }
-}
 
 type FileInfo = {
   path: string;
