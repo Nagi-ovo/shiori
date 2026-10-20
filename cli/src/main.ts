@@ -97,6 +97,12 @@ import {
   type LiveAppContext,
 } from "./liveApp";
 import { CliError, type CliErrorCode } from "./cliError";
+import {
+  optionValue,
+  positiveIntegerOption,
+  rejectInlineOptionValue,
+  splitOption,
+} from "./optionValues";
 
 type OutputFormat = "human" | "json";
 type CommandName =
@@ -2096,44 +2102,6 @@ function parseArgs(argv: string[]): ParsedArgs {
 function parseCommand(value: string): ParsedCommand {
   if (value === "help" || value === "version" || isCommandName(value)) return value;
   throw new CliError("ERR_USAGE", `Unknown command: ${value}`);
-}
-
-function splitOption(arg: string): { name: string; inlineValue?: string } {
-  if (!arg.startsWith("--")) return { name: arg };
-  const equals = arg.indexOf("=");
-  if (equals < 0) return { name: arg };
-  return { name: arg.slice(0, equals), inlineValue: arg.slice(equals + 1) };
-}
-
-function optionValue(
-  argv: string[],
-  currentIndex: number,
-  name: string,
-  inlineValue: string | undefined,
-): { value: string; index: number } {
-  if (inlineValue != null) {
-    if (!inlineValue) throw new CliError("ERR_USAGE", `${name} requires a value`);
-    return { value: inlineValue, index: currentIndex };
-  }
-  const value = argv[currentIndex + 1];
-  if (value == null || value === "--" || value.startsWith("-")) {
-    throw new CliError("ERR_USAGE", `${name} requires a value`);
-  }
-  return { value, index: currentIndex + 1 };
-}
-
-function rejectInlineOptionValue(name: string, value: string | undefined): void {
-  if (value != null) {
-    throw new CliError("ERR_USAGE", `${name} does not accept a value`, value);
-  }
-}
-
-function positiveIntegerOption(name: string, raw: string): number {
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value < 1) {
-    throw new CliError("ERR_USAGE", `${name} must be a positive integer`, raw);
-  }
-  return value;
 }
 
 function validateParsedArgs(parsed: ParsedArgs): void {
