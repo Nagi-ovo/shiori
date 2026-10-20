@@ -1,7 +1,15 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const CLI_RELEASE_API = "https://shiori.nagi.fun/api/cli";
@@ -59,6 +67,37 @@ export function cachedBinaryPath(home, version, target) {
   return join(home, "cli", version, executableName(target));
 }
 
+// Written into the staging directory last, so a version directory carrying
+// it was extracted whole before it was renamed into place.
+const INSTALL_COMPLETE_MARKER = ".shiori-install-complete";
+
+function isCompleteInstall(dir, target) {
+  if (!existsSync(join(dir, executableName(target)))) return false;
+  // The curl and PowerShell installers extract into the same directory
+  // without the marker; theirs is complete once the engine addon is there.
+  return (
+    existsSync(join(dir, INSTALL_COMPLETE_MARKER)) ||
+    existsSync(join(dir, "native", "shiori_core.node"))
+  );
+}
+
+function publishInstall(staging, dest, target) {
+  try {
+    renameSync(staging, dest);
+    return;
+  } catch (error) {
+    // Another run got there first, or an older runner left a partial tree.
+    if (isCompleteInstall(dest, target)) return;
+    if (!existsSync(dest)) throw error;
+  }
+  rmSync(dest, { recursive: true, force: true });
+  try {
+    renameSync(staging, dest);
+  } catch (error) {
+    if (!isCompleteInstall(dest, target)) throw error;
+  }
+}
+
 export async function fetchCliManifest(api = CLI_RELEASE_API) {
   const response = await fetch(api, {
     headers: { Accept: "application/json" },
@@ -96,31 +135,38 @@ export async function ensureCliBinary(options = {}) {
   }
   const home = resolveInstallHome(options.env);
   const binary = cachedBinaryPath(home, manifest.version, target);
-  if (existsSync(binary)) return binary;
-
   const dest = join(home, "cli", manifest.version);
-  mkdirSync(dest, { recursive: true });
-  const archive = join(
-    tmpdir(),
-    `shiori-cli-${manifest.version}-${target}.tar.gz`,
-  );
+  if (isCompleteInstall(dest, target)) return binary;
+
   const bytes = Buffer.from(await (await fetch(asset.url)).arrayBuffer());
   const digest = createHash("sha256").update(bytes).digest("hex");
   if (digest !== asset.sha256) {
     throw new Error("Archive digest mismatch");
   }
-  writeFileSync(archive, bytes);
-  const extracted = spawnSync("tar", ["-xzf", archive, "-C", dest], {
-    encoding: "utf8",
-  });
-  rmSync(archive, { force: true });
-  if (extracted.status !== 0) {
-    throw new Error(extracted.stderr || "Could not extract Shiori CLI");
+  // The verified bytes go straight into tar, and tar writes into a private
+  // directory beside the destination: nothing passes through a shared temp
+  // path, and the version directory only appears once it is whole.
+  mkdirSync(join(home, "cli"), { recursive: true });
+  const staging = mkdtempSync(join(home, "cli", `.${manifest.version}-staging-`));
+  try {
+    const extracted = spawnSync("tar", ["-xzf", "-", "-C", staging], {
+      encoding: "utf8",
+      input: bytes,
+    });
+    if (extracted.error) throw extracted.error;
+    if (extracted.status !== 0) {
+      throw new Error(extracted.stderr || "Could not extract Shiori CLI");
+    }
+    const staged = join(staging, executableName(target));
+    if (!existsSync(staged)) {
+      throw new Error("Archive did not contain the Shiori CLI executable");
+    }
+    if (!target.startsWith("win32")) chmodSync(staged, 0o755);
+    writeFileSync(join(staging, INSTALL_COMPLETE_MARKER), "");
+    publishInstall(staging, dest, target);
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
   }
-  if (!existsSync(binary)) {
-    throw new Error("Archive did not contain the Shiori CLI executable");
-  }
-  if (!target.startsWith("win32")) chmodSync(binary, 0o755);
   return binary;
 }
 

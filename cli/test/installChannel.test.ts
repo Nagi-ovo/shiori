@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -230,6 +231,69 @@ describe("CLI install channel", () => {
       });
     },
     60_000,
+  );
+
+  // An interrupted or failed extraction must not become the cache: the
+  // runner used to extract in place and then trust any directory holding the
+  // executable, so the next run kept launching the half-installed binary.
+  test("npm runner never caches a failed extraction", async () => {
+    if (!target) return;
+    await withTempDir(async (dir) => {
+      const executable = target.startsWith("win32") ? "shiori.exe" : "shiori";
+      const env = { SHIORI_CLI_HOME: join(dir, ".shiori"), SHIORI_CLI_ALLOW_HTTP: "1" };
+      const truncated = await serveCliArchive(
+        makeTruncatedArchive(mkdtempSync(join(dir, "bad-")), executable),
+        target,
+      );
+      servers.push(truncated.server);
+      await expect(
+        ensureCliBinary({ api: `http://127.0.0.1:${truncated.server.port}/api/cli`, env, target }),
+      ).rejects.toThrow();
+
+      const good = await serveCliArchive(
+        makeArchive(mkdtempSync(join(dir, "good-")), executable),
+        target,
+      );
+      servers.push(good.server);
+      const binary = await ensureCliBinary({
+        api: `http://127.0.0.1:${good.server.port}/api/cli`,
+        env,
+        target,
+      });
+      expect(readFileSync(binary, "utf8")).toContain("shiori-ok");
+    });
+  });
+
+  // The archive used to go through a fixed name in the shared temp
+  // directory, written with a plain truncate-and-write: whatever sat at that
+  // name, another user's file or a symlink to one of ours, got the bytes.
+  test.skipIf(process.platform === "win32")(
+    "npm runner writes nothing through a predictable temp path",
+    async () => {
+      if (!target) return;
+      await withTempDir(async (dir) => {
+        const { server } = await serveCliArchive(makeArchive(dir, "shiori"), target);
+        servers.push(server);
+        const fakeTmp = join(dir, "tmp");
+        mkdirSync(fakeTmp);
+        const victim = join(dir, "victim.txt");
+        writeFileSync(victim, "keep me");
+        symlinkSync(victim, join(fakeTmp, `shiori-cli-0.1.25-${target}.tar.gz`));
+        const previousTmp = process.env.TMPDIR;
+        process.env.TMPDIR = fakeTmp;
+        try {
+          await ensureCliBinary({
+            api: `http://127.0.0.1:${server.port}/api/cli`,
+            env: { SHIORI_CLI_HOME: join(dir, ".shiori"), SHIORI_CLI_ALLOW_HTTP: "1" },
+            target,
+          });
+        } finally {
+          if (previousTmp === undefined) delete process.env.TMPDIR;
+          else process.env.TMPDIR = previousTmp;
+        }
+        expect(readFileSync(victim, "utf8")).toBe("keep me");
+      });
+    },
   );
 
   test("npm runner caches the same archive the curl installer gets", async () => {
