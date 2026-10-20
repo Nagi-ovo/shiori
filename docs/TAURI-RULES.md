@@ -12,8 +12,7 @@ found the gaps noted in brackets; new code follows the rule.
   capability and no `remote` URLs.
 - Make a command `async` (or `#[tauri::command(async)]`) whenever it sleeps,
   waits on a process, or does file/PTY I/O — sync commands run on the main
-  thread. [`terminal_kill`, `terminal_spawn/write`, `open_exported_pdf`,
-  `reveal_exported_pdf`, `open_external_url` are still sync.]
+  thread. [`terminal_kill`, `terminal_spawn/write` are still sync.]
 - Move bytes with `tauri::ipc::Response` or a raw `Request` body, and
   streams with `tauri::ipc::Channel`; events are for small state changes.
   [Terminal output still streams as events.]
