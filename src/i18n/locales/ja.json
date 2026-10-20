@@ -165,6 +165,8 @@
     "saveOriginMissing": "元のファイルが見つからないため、何も書き込みませんでした。",
     "savePermissionDenied": "そのファイルへの書き込み許可がブラウザーで拒否されました。",
     "saveFailed": "元のファイルに書き戻せませんでした: {{message}}",
+    "saveSourceChanged": "Shiori で開いた後にファイルがディスク上で変更されたため、上書きしませんでした。",
+    "saveOverwrite": "上書きする",
     "saveEncodingUnsupported": "このファイルは UTF-8 テキストではないため、保存すると壊れてしまいます。何も書き込みませんでした。",
     "readOnlyNotUtf8": "読み取り専用",
     "readOnlyNotUtf8Hint": "このファイルは UTF-8 テキストではありません。保存で壊さないよう、読み取り専用で表示しています。",

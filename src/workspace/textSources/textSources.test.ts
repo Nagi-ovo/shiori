@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import type { WriteBackResult } from "../../platform/writeBack";
+import { sha256Hex } from "../../storage/hash";
 import type { WorkspaceRuntimeTab } from "../types";
 import { createWorkspaceStore } from "../workspaceStore";
 import {
@@ -224,6 +225,49 @@ describe("saving to the source file", () => {
 
     expect([...cache.values()]).toEqual(["\uFEFFhello world"]);
     expect(writes).toEqual(["\uFEFFhello world"]);
+  });
+
+  test("a file changed on disk since it was opened is only overwritten when the reader says so", async () => {
+    const encode = (text: string) => new TextEncoder().encode(text);
+    let disk = encode("hello");
+    const writes: string[] = [];
+    const { sources, notices, tabNow, store } = setup(
+      markdown({ text: "hello mine", textDirty: true, sourceHash: await sha256Hex(disk) }),
+      {
+        writeBack: {
+          target: (source) =>
+            source.type === "path" ? { kind: "desktopPath", path: source.path } : null,
+          write: async (_target, text, unchanged) => {
+            if (unchanged && !(await unchanged(disk))) return { status: "changed" };
+            writes.push(text);
+            disk = encode(text);
+            return { status: "written" };
+          },
+          saveAs: async () => ({ status: "cancelled" }),
+          requiresOrigin: true,
+        },
+      },
+    );
+
+    // Saving twice in a row compares against what the first save wrote.
+    await sources.saveToSource("md");
+    store.getState().updateTab("md", (tab) => ({ ...tab, text: "hello mine 2", textDirty: true }));
+    await sources.saveToSource("md");
+    expect(writes).toEqual(["hello mine", "hello mine 2"]);
+
+    disk = encode("theirs, from git pull");
+    store.getState().updateTab("md", (tab) => ({ ...tab, text: "hello mine 3", textDirty: true }));
+    await sources.saveToSource("md");
+
+    expect(writes).toHaveLength(2);
+    expect(tabNow().textDirty).toBe(true);
+    const conflict = notices.at(-1);
+    expect(conflict).toMatchObject({ kind: "saveSourceChanged", title: "notes.md" });
+
+    await (conflict as Extract<TextSourceNotice, { kind: "saveSourceChanged" }>).overwrite();
+
+    expect(writes.at(-1)).toBe("hello mine 3");
+    expect(tabNow().textDirty).toBe(false);
   });
 
   test("a clean document is not written", async () => {

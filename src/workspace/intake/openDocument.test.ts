@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { exportSnapshotKey } from "../../editor/export/exportStatus";
 import { createPdfEditorStore } from "../../editor/store/store";
 import type { Draft } from "../../storage/drafts";
+import { sha256Hex } from "../../storage/hash";
 import { captureSuspendedPdfSnapshot } from "../../storage/runtimeSessions";
 import type { WorkspaceRuntimeTab } from "../types";
 import { openDocument } from "./openDocument";
@@ -265,6 +266,31 @@ describe("openDocument", () => {
     await openDocument({ kind: "markdown", name: "bom.md", size: withBom.length, bytes: withBom, path: "/n/bom.md" }, {}, ports);
 
     expect(store.getState().tabs[0]).toMatchObject({ text: "# Hi", textBom: true });
+  });
+
+  test("remembers what the file on disk held, so a save can tell it changed since", async () => {
+    const disk = new TextEncoder().encode("# On disk");
+    const copy = new TextEncoder().encode("# Recovered edits");
+    const restoring = { id: "t", kind: "markdown", title: "d.md", status: "loading", textDirty: true, source: { type: "path", path: "/n/d.md" } } as WorkspaceRuntimeTab;
+    const store = workspace([restoring], "t");
+    const { ports } = fakePorts(store);
+    ports.recents.list = () => [{ kind: "markdown", name: "r.md", path: "/n/r.md", cacheId: "wc" }] as never;
+    ports.sources.get = async () => ({ id: "wc", kind: "markdown", name: "r.md", size: copy.length, bytes: copy }) as never;
+
+    // A fresh open, one that recovers a working copy, and a restore of edits.
+    await openDocument({ kind: "markdown", name: "a.md", size: disk.length, bytes: disk, path: "/n/a.md" }, {}, ports);
+    await openDocument({ kind: "markdown", name: "r.md", size: disk.length, bytes: disk, path: "/n/r.md" }, {}, ports);
+    await openDocument(
+      { kind: "markdown", name: "d.md", size: copy.length, bytes: copy, path: "/n/d.md" },
+      { tabId: "t", workingCopyCacheId: "wc", skipDuplicateCheck: true },
+      ports,
+    );
+
+    const byTitle = (title: string) => store.getState().tabs.find((tab) => tab.title === title);
+    expect(byTitle("a.md")?.sourceHash).toBe(await sha256Hex(disk));
+    expect(byTitle("r.md")).toMatchObject({ text: "# Recovered edits", sourceHash: await sha256Hex(disk) });
+    // The bytes are the edits, not the file: what the file holds is unknown.
+    expect(byTitle("d.md")?.sourceHash).toBeUndefined();
   });
 
   test("a rejected document restore marks its tab unavailable", async () => {

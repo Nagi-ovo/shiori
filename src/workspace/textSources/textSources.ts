@@ -22,6 +22,8 @@ export type TextSourceNotice =
   | { kind: "saveOriginMissing"; title: string }
   | { kind: "savePermissionDenied"; title: string }
   | { kind: "saveEncodingUnsupported"; title: string }
+  /** The file changed on disk since Shiori read it; `overwrite` saves anyway. */
+  | { kind: "saveSourceChanged"; title: string; overwrite: () => Promise<void> }
   | { kind: "saveFailed"; title: string; error: unknown };
 
 export type TextSourcePorts = {
@@ -45,7 +47,15 @@ export type TextSourcePorts = {
   persistMetadata: () => boolean;
   writeBack: {
     target: (source: DocumentSource) => WriteBackTarget | null;
-    write: (target: WriteBackTarget, text: string) => Promise<WriteBackResult>;
+    /**
+     * `unchanged` (when given) is asked about the file's current bytes right
+     * before they are replaced; false answers `changed` and writes nothing.
+     */
+    write: (
+      target: WriteBackTarget,
+      text: string,
+      unchanged?: (current: Uint8Array) => Promise<boolean>,
+    ) => Promise<WriteBackResult>;
     /** Save As: a download on the web, a dialog on desktop. */
     saveAs: (bytes: Uint8Array, name: string, mime: string) => Promise<SaveResult>;
     /** Desktop: a document with no origin has no honest place to overwrite. */
@@ -179,7 +189,7 @@ export function createTextSources(ports: TextSourcePorts) {
     reportPending();
   }
 
-  return {
+  const api = {
     schedule,
 
     /** A Markdown keystroke: the tab takes the text now, the copy follows. */
@@ -220,7 +230,7 @@ export function createTextSources(ports: TextSourcePorts) {
      * and never on a timer — autosave already protects the edit, and silently
      * rewriting someone's file is not a decision to make for them.
      */
-    saveToSource(tabId: string): Promise<void> {
+    saveToSource(tabId: string, options: { overwrite?: boolean } = {}): Promise<void> {
       const tab = store.getState().tabs.find((entry) => entry.id === tabId);
       if (!tab || (tab.kind !== "markdown" && tab.kind !== "html")) {
         return Promise.resolve();
@@ -244,13 +254,15 @@ export function createTextSources(ports: TextSourcePorts) {
       void flush(tabId).catch(() => undefined);
       const target = ports.writeBack.target(tab.source);
       return enqueueWriteBack(async () => {
-        const markSaved = async () => {
+        const markSaved = async (overSource = false) => {
           const hash = await sha256Hex(bytes);
-          store
-            .getState()
-            .updateTab(tabId, (entry) =>
-              applyTextSourceWriteCompletion(entry, text, hash),
-            );
+          store.getState().updateTab(tabId, (entry) => {
+            const next = applyTextSourceWriteCompletion(entry, text, hash);
+            // The file now holds these bytes, whatever was typed meanwhile.
+            return overSource && next.sourceHash !== hash
+              ? { ...next, sourceHash: hash }
+              : next;
+          });
         };
         const saveAs = async () => {
           const result = await ports.writeBack.saveAs(bytes, tab.title, mime);
@@ -269,12 +281,20 @@ export function createTextSources(ports: TextSourcePorts) {
           return;
         }
         try {
+          // Read when the write runs, not when it was asked for: an earlier
+          // save still in the queue moves it.
+          const expected = options.overwrite
+            ? undefined
+            : store.getState().tabs.find((entry) => entry.id === tabId)?.sourceHash;
           const result = await ports.writeBack.write(
             target,
             textDocumentContents(text, tab.textBom),
+            expected
+              ? async (current) => (await sha256Hex(current)) === expected
+              : undefined,
           );
           if (result.status === "written") {
-            await markSaved();
+            await markSaved(true);
             ports.notify({
               kind: "saved",
               name: target.kind === "desktopPath" ? target.path : tab.title,
@@ -283,6 +303,14 @@ export function createTextSources(ports: TextSourcePorts) {
             // Safari and Firefox implement only the read half of File System
             // Access. Not an error: save the other way.
             await saveAs();
+          } else if (result.status === "changed") {
+            // Another program (an editor, git) wrote the file since Shiori
+            // read it. Replacing it silently would lose that version.
+            ports.notify({
+              kind: "saveSourceChanged",
+              title: tab.title,
+              overwrite: () => api.saveToSource(tabId, { overwrite: true }),
+            });
           } else if (result.status === "permissionDenied") {
             ports.notify({ kind: "savePermissionDenied", title: tab.title });
           } else {
@@ -294,6 +322,7 @@ export function createTextSources(ports: TextSourcePorts) {
       });
     },
   };
+  return api;
 }
 
 export type TextSources = ReturnType<typeof createTextSources>;

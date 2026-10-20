@@ -94,6 +94,12 @@ export async function openNonPdf(
   // document is read straight from its source, so there is nothing to
   // recover and nothing to prefer over `sourcePayload`.
   const textKind = isTextDocumentKind(payload.kind) ? payload.kind : null;
+  // What the file on disk holds, for the save's "changed since?" check. A
+  // restore of unsaved edits reads only their working copy, so it is unknown.
+  let sourceHash: string | undefined;
+  const restoresEdits =
+    Boolean(options.workingCopyCacheId) &&
+    store.getState().tabs.find((tab) => tab.id === options.tabId)?.textDirty === true;
   const recoveryEntry =
     options.workingCopyCacheId || !textKind
       ? null
@@ -106,6 +112,7 @@ export async function openNonPdf(
       ports.recents.forget(recoveryEntry);
       ports.ui.reportWorkingCopyMissing(payload.name);
     } else {
+      sourceHash = await sha256Hex(sourcePayload.bytes);
       sourcePayload = {
         ...sourcePayload,
         size: workingCopy.size,
@@ -119,6 +126,7 @@ export async function openNonPdf(
     options.workingCopyCacheId ??
     (tabSource.type !== "cache" ? sourcePayload.cacheId : undefined);
   const contentHash = await sha256Hex(sourcePayload.bytes);
+  if (textKind && !restoresEdits) sourceHash ??= contentHash;
   const existing = options.skipDuplicateCheck
     ? null
     : await findExistingTab(ports, payload.kind, tabSource, contentHash);
@@ -154,6 +162,7 @@ export async function openNonPdf(
     text: decoded?.text,
     ...(decoded?.lossy ? { textLossy: true } : {}),
     ...(decoded?.bom ? { textBom: true } : {}),
+    ...(sourceHash ? { sourceHash } : {}),
     bytes: isBinary ? sourcePayload.bytes : undefined,
     textView: options.textView ?? patchWorkspaceTextView(undefined, {}),
     status: "loaded",

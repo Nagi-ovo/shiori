@@ -30,7 +30,10 @@ export type WriteBackResult =
   // an error: the caller should quietly fall back to Save As.
   | { status: "unsupported" }
   | { status: "permissionDenied" }
-  | { status: "missing" };
+  | { status: "missing" }
+  // The file no longer holds what the caller last read or wrote (`unchanged`
+  // said no), so nothing was written.
+  | { status: "changed" };
 
 /**
  * The writable origin of a document, or null when there is none.
@@ -71,8 +74,17 @@ export function writeBackTarget(
 export async function writeTextDocumentBack(
   target: WriteBackTarget,
   text: string,
+  unchanged?: (current: Uint8Array) => Promise<boolean>,
 ): Promise<WriteBackResult> {
   if (target.kind === "desktopPath") {
+    if (unchanged) {
+      // A file that cannot be read is left to the write, which reports it.
+      const { readDocumentBytesFromPlatformPath } = await import("./open");
+      const current = await readDocumentBytesFromPlatformPath(target.path).catch(
+        () => null,
+      );
+      if (current && !(await unchanged(current.bytes))) return { status: "changed" };
+    }
     const { commands, unwrapCommand } = await import("./ipc");
     try {
       unwrapCommand(
@@ -94,8 +106,9 @@ export async function writeTextDocumentBack(
     return { status: "written" };
   }
 
-  const outcome = await writeTextToWebFileHandle(target.id, text);
+  const outcome = await writeTextToWebFileHandle(target.id, text, unchanged);
   if (outcome === "written") return { status: "written" };
+  if (outcome === "changed") return { status: "changed" };
   if (outcome === "unsupported") return { status: "unsupported" };
   if (outcome === "permissionDenied") return { status: "permissionDenied" };
   return { status: "missing" };

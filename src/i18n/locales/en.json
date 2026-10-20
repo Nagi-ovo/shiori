@@ -165,6 +165,8 @@
     "saveOriginMissing": "The original file is no longer there, so Shiori didn't write anything.",
     "savePermissionDenied": "The browser denied permission to write to that file.",
     "saveFailed": "Couldn't write to the original file: {{message}}",
+    "saveSourceChanged": "The file changed on disk since Shiori opened it, so Shiori didn't write over it.",
+    "saveOverwrite": "Overwrite",
     "saveEncodingUnsupported": "This file isn't UTF-8 text, so saving would corrupt it. Shiori didn't write anything.",
     "readOnlyNotUtf8": "Read only",
     "readOnlyNotUtf8Hint": "This file isn't UTF-8 text. Shiori shows it read only so that saving can't corrupt it.",

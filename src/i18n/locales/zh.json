@@ -165,6 +165,8 @@
     "saveOriginMissing": "原文件已不在了，Shiori 没有写入任何内容。",
     "savePermissionDenied": "浏览器拒绝了写入该文件的权限。",
     "saveFailed": "写回原文件失败：{{message}}",
+    "saveSourceChanged": "文件在 Shiori 打开后已在磁盘上被修改，Shiori 没有覆盖它。",
+    "saveOverwrite": "仍然覆盖",
     "saveEncodingUnsupported": "此文件不是 UTF-8 文本，保存会损坏它，Shiori 没有写入任何内容。",
     "readOnlyNotUtf8": "只读",
     "readOnlyNotUtf8Hint": "此文件不是 UTF-8 文本。为免保存时损坏它，Shiori 以只读方式显示。",

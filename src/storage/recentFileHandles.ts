@@ -246,15 +246,17 @@ export type WebFileHandleWriteResult =
   | "written"
   | "unsupported"
   | "permissionDenied"
-  | "handleMissing";
+  | "handleMissing"
+  | "changed";
 
 export async function writeTextToWebFileHandle(
   webFileHandleId: string,
   text: string,
+  unchanged?: (current: Uint8Array) => Promise<boolean>,
 ): Promise<WebFileHandleWriteResult> {
   const record = await db.handles.get(webFileHandleId);
   if (!record) return "handleMissing";
-  const result = await writeTextToHandle(record.handle, text);
+  const result = await writeTextToHandle(record.handle, text, unchanged);
   // Saving counts as use. Eviction is LRU over savedAt, and only the READ
   // path refreshed it — so a tab left open for a long editing session, saved
   // repeatedly but never re-read, aged out and had its handle deleted from
@@ -267,9 +269,19 @@ export async function writeTextToWebFileHandle(
 async function writeTextToHandle(
   handle: WebFileHandle,
   text: string,
+  unchanged?: (current: Uint8Array) => Promise<boolean>,
 ): Promise<WebFileHandleWriteResult> {
   if (typeof handle.createWritable !== "function") return "unsupported";
   if (!(await ensurePermission(handle, "readwrite"))) return "permissionDenied";
+  // Checked after the grant: the request needs the click's activation, which
+  // reading the file first could outlive. Unreadable is left to the write.
+  if (unchanged) {
+    const current = await handle
+      .getFile()
+      .then(async (file) => new Uint8Array(await file.arrayBuffer()))
+      .catch(() => null);
+    if (current && !(await unchanged(current))) return "changed";
+  }
   // Not keepExistingData: the tab holds the whole document, so the write is a
   // full replace. Keeping the old bytes would leave a tail behind whenever the
   // edited text is shorter than what was on disk.
