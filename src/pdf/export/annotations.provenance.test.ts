@@ -310,6 +310,21 @@ describe("reply links between rebuilt and kept annotations", () => {
     expect(bySubtype("Caret")?.dict.get(PDFName.of("IRT"))).toBe(bySubtype("StrikeOut")!.ref);
   });
 
+  // Strip writes its mark into the Caret's /Shio, here an object of its own
+  // that both copies would name.
+  test("a duplicate page before the original leaves a Caret with an indirect /Shio grouped", async () => {
+    const bytes = await sourcePdf((doc) => {
+      const strike = annot(doc, "StrikeOut", [100, 600, 200, 614], {
+        QuadPoints: [100, 614, 200, 614, 100, 600, 200, 600],
+      });
+      const shio = doc.context.register(doc.context.obj({ V: 1 }));
+      const caret = annot(doc, "Caret", [198, 598, 206, 610], { IRT: strike, RT: "Group", Shio: shio });
+      return [strike, caret];
+    });
+    const bySubtype = await exportedWithDuplicateFirst(bytes);
+    expect(bySubtype("Caret")?.dict.get(PDFName.of("IRT"))).toBe(bySubtype("StrikeOut")!.ref);
+  });
+
   // Each copy holds its own kept Caret, which points only at a StrikeOut on
   // its own page: here the duplicate after the original carries none.
   test("a duplicate page's kept Caret is its own, not grouped to the original's StrikeOut", async () => {

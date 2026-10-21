@@ -214,6 +214,11 @@ export function separateCopiedAnnotations(page: PDFPage): void {
       return raw;
     }
     const copy = cloneDirect(dict, ctx) as PDFDict;
+    // Strip's mark lives in /Shio, and attach takes it off: a /Shio both
+    // copies name would lose it to whichever copy attach reaches first.
+    const shio = copy.get(SHIO);
+    const shioDict = shio instanceof PDFRef ? ctx.lookup(shio) : undefined;
+    if (shioDict instanceof PDFDict) copy.set(SHIO, cloneDirect(shioDict, ctx));
     cloned.push(copy);
     if (!(raw instanceof PDFRef)) return copy;
     const ref = ctx.register(copy);
