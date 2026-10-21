@@ -107,7 +107,7 @@ jobs:
       # failed before uploading, or both succeeded and left two drafts for
       # one tag with the assets split between them.
       - name: Create the draft release
-        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.publish_to_release_repo == true)
+        if: (github.event_name == 'push' || inputs.publish_to_release_repo == true) && !(inputs.android_only && inputs.android_artifacts == 'aab')
         env:
           GH_TOKEN: ${{ github.token }}
           MANUAL_TAG: ${{ inputs.tag }}
