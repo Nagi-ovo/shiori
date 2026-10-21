@@ -174,9 +174,13 @@ private fun MainActivity.requestApkInstall(id: String, apk: File) {
   val installer = packageManager.packageInstaller
   val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
   params.setAppPackageName(packageName)
-  val sessionId = installer.createSession(params)
+  // createSession throws too (no space, restricted user): inside the try,
+  // so it also reaches the modal as a slug.
+  var createdSession: Int? = null
   var receiver: BroadcastReceiver? = null
   try {
+    val sessionId = installer.createSession(params)
+    createdSession = sessionId
     installer.openSession(sessionId).use { session ->
       session.openWrite("shiori.apk", 0, apk.length()).use { output ->
         apk.inputStream().use { input -> input.copyTo(output) }
@@ -194,10 +198,12 @@ private fun MainActivity.requestApkInstall(id: String, apk: File) {
     }
   } catch (error: Exception) {
     receiver?.let { unregisterApkInstallStatusReceiver(it) }
-    try {
-      installer.abandonSession(sessionId)
-    } catch (_: Exception) {
-      // Already committed or gone; nothing left to clean up.
+    createdSession?.let { created ->
+      try {
+        installer.abandonSession(created)
+      } catch (_: Exception) {
+        // Already committed or gone; nothing left to clean up.
+      }
     }
     // A slug, not error.message: the modal translates slugs and would show
     // raw Java exception text otherwise.
