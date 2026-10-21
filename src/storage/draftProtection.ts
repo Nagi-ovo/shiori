@@ -1,3 +1,5 @@
+import { draftContentHash, isHashOnlyDraftId } from "./draftIdentity";
+
 /**
  * Drafts the LRU sweep must keep: those of documents open in workspace tabs,
  * resident or not, in this window or any other window of the same origin. A
@@ -183,6 +185,15 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
     withdraw();
   }
 
+  function anyOpen(match: (openId: string) => boolean): boolean {
+    for (const openId of openDraftIds()) if (match(openId)) return true;
+    let found = false;
+    otherEntries((_key, entry) => {
+      if (entry?.ids.some(match)) found = true;
+    });
+    return found;
+  }
+
   return {
     protectOpenDrafts(provider: () => Iterable<string>): () => void {
       stop();
@@ -202,13 +213,20 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
      * sweeps may run before the next beat. */
     republishOpenDrafts: publish,
 
+    /**
+     * Whether the quota sweep must keep this row. A hash-only row is also
+     * kept while a tab of the same bytes is open under its source's id: that
+     * tab may still adopt it (claimDraft), and builds before source ids
+     * published only the hash.
+     */
     isDraftProtected(id: string): boolean {
-      for (const openId of openDraftIds()) if (openId === id) return true;
-      let found = false;
-      otherEntries((_key, entry) => {
-        if (entry?.ids.includes(id)) found = true;
-      });
-      return found;
+      if (!isHashOnlyDraftId(id)) return anyOpen((openId) => openId === id);
+      return anyOpen((openId) => draftContentHash(openId) === id);
+    },
+
+    /** Whether a tab in any window holds exactly this draft id. */
+    isDraftOpen(id: string): boolean {
+      return anyOpen((openId) => openId === id);
     },
   };
 }
@@ -232,4 +250,5 @@ const shared = createDraftProtection({
 
 export const protectOpenDrafts = shared.protectOpenDrafts;
 export const isDraftProtected = shared.isDraftProtected;
+export const isDraftOpen = shared.isDraftOpen;
 export const republishOpenDrafts = shared.republishOpenDrafts;

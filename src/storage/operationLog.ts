@@ -83,6 +83,19 @@ export function clearOperationLog(id: string): void {
   }
 }
 
+/** The ids of the readable logs whose id starts with `prefix`. */
+export function operationLogIds(prefix: string): string[] {
+  const storage = getStorage();
+  if (!storage) return [];
+  try {
+    return operationLogKeys(storage)
+      .map((key) => key.slice(KEY_PREFIX.length))
+      .filter((id) => id.startsWith(prefix) && readOperationLog(id));
+  } catch {
+    return [];
+  }
+}
+
 export function clearAllOperationLogs(): void {
   const storage = getStorage();
   if (!storage) return;

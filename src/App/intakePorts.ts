@@ -23,9 +23,13 @@ import { prefersReducedLiveOverlayMotion } from "../live/overlayReveal";
 import { appPdfEngine } from "../pdf/engine/appEngine";
 import { MAX_PDF_BYTES, MAX_PDF_PAGES } from "../pdf/openPolicy";
 import { CAPABILITIES } from "../platform";
+import { claimDraft } from "../storage/draftClaim";
 import drafts from "../storage/drafts";
 import { readOperationLog } from "../storage/operationLog";
-import { forgetWebFileHandle } from "../storage/recentFileHandles";
+import {
+  forgetWebFileHandle,
+  webFileHandleExists,
+} from "../storage/recentFileHandles";
 import {
   readRuntimeSession,
   rememberRuntimeCredential,
@@ -137,7 +141,9 @@ export function createAppIntake() {
         void removeWorkspaceSourceIfUnreferenced(cacheId),
     },
     drafts: {
-      get: (hash) => drafts.get(hash),
+      claim: (hash, draftId) =>
+        claimDraft(hash, draftId, { webFileHandleExists }),
+      get: (draftId) => drafts.get(draftId),
       getLiveOperationReceipts: (hash) => drafts.getLiveOperationReceipts(hash),
       mergeLiveOperationReceipts: (hash, ids) =>
         drafts.mergeLiveOperationReceipts(hash, ids),

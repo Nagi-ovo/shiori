@@ -117,6 +117,22 @@ describe("draft protection across windows", () => {
     expect(b.protection.isDraftProtected("closed")).toBe(false);
   });
 
+  test("another window's path tab keeps the old hash-only row of its bytes", () => {
+    const w = world();
+    const a = w.makeWindow("a");
+    const b = w.makeWindow("b");
+    const hash = "ab".repeat(32);
+    a.protection.protectOpenDrafts(() => [`${hash}|path:/docs/paper.pdf`]);
+    b.protection.protectOpenDrafts(() => []);
+
+    // The sweep keeps the row the tab may still adopt…
+    expect(b.protection.isDraftProtected(hash)).toBe(true);
+    expect(b.protection.isDraftProtected(`${hash}|path:/docs/copy.pdf`)).toBe(false);
+    // …but no tab holds the hash-only draft itself, so a source may claim it.
+    expect(b.protection.isDraftOpen(hash)).toBe(false);
+    expect(b.protection.isDraftOpen(`${hash}|path:/docs/paper.pdf`)).toBe(true);
+  });
+
   test("a live window stays protected long past the expiry, even throttled", () => {
     // Without Web Locks (plain http origins) the heartbeat alone has to hold.
     const w = world({ webLocks: false });

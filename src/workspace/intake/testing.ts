@@ -69,6 +69,7 @@ export function fakePorts(store: WorkspaceStore, overrides: Partial<IntakePorts>
       removeIfUnreferenced: (id) => log.removedCaches.push(id),
     },
     drafts: {
+      claim: async (_hash, draftId) => draftId,
       get: async () => undefined,
       getLiveOperationReceipts: async () => [],
       mergeLiveOperationReceipts: async () => undefined,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { getRecent } from "../../editor/recentDocs";
+import { draftIdFor } from "../../storage/draftIdentity";
 import {
   protectOpenDrafts,
   republishOpenDrafts,
@@ -14,6 +15,11 @@ import {
   releaseWorkspaceSource,
   reservedWorkspaceSourceIds,
 } from "../../storage/workspaceSourceReservations";
+
+/** The draft a tab reads and writes: its bytes, from its source (fact 4). */
+function draftIdOf(meta: WorkspaceTabMeta): string[] {
+  return meta.hash ? [draftIdFor(meta.hash, meta.source)] : [];
+}
 
 interface WorkspacePersistenceParams<T> {
   tabs: T[];
@@ -105,15 +111,13 @@ export function useWorkspacePersistence<T>({
   // so the provider is in place before App's startup draft cleanup runs.
   useLayoutEffect(
     () =>
-      protectOpenDrafts(() =>
-        getTabs().flatMap((tab) => toMeta(tab).hash ?? []),
-      ),
+      protectOpenDrafts(() => getTabs().flatMap((tab) => draftIdOf(toMeta(tab)))),
     [getTabs, toMeta],
   );
   // The provider is read lazily here, but other windows see only what was
   // last published: republish when the set changes, not on the next beat.
   const openDraftKey = useMemo(
-    () => tabs.flatMap((tab) => toMeta(tab).hash ?? []).sort().join("\0"),
+    () => tabs.flatMap((tab) => draftIdOf(toMeta(tab))).sort().join("\0"),
     [tabs, toMeta],
   );
   useLayoutEffect(() => republishOpenDrafts(), [openDraftKey]);

@@ -18,6 +18,7 @@ import {
   readOperationLog,
   writeOperationLog,
 } from "../../storage/operationLog";
+import { draftIdForPayload } from "../../storage/draftIdentity";
 
 export type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
 
@@ -59,7 +60,12 @@ const draftVersionByDocument = new WeakMap<object, DraftWriteVersion | null>();
 // `disabled` suspends all persistence (the debounced put AND the op-log).
 // App.tsx sets it while a draft-restore decision is pending so that an edit
 // made before the user chooses cannot overwrite the un-restored draft, which
-// is keyed by the same content hash. Re-enabling resumes saving normally.
+// has the same draft id. Re-enabling resumes saving normally.
+//
+// Drafts and the op-log are keyed by the draft id (storage/draftIdentity.ts):
+// the hash, qualified by the path or web file handle the document opened
+// from, so the same bytes in two tabs keep two drafts. Live receipts stay
+// keyed by the hash alone.
 export function useDraftSync(
   hash: string | null,
   disabled = false,
@@ -71,6 +77,7 @@ export function useDraftSync(
     (s) => s.completedLiveOperationIds,
   );
   const undoCount = undoStack.length;
+  const draftId = hash && opened ? draftIdForPayload(hash, opened) : hash;
 
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [lastTouched, setLastTouched] = useState<number | null>(null);
@@ -91,7 +98,7 @@ export function useDraftSync(
   // Unlike undoStack.length, this survives a complete Undo back to the source
   // model. The clean revision still has to delete an older saved draft.
   const persistenceStartedRef = useRef(false);
-  const persistenceHashRef = useRef<string | null>(hash);
+  const persistenceDraftIdRef = useRef<string | null>(draftId);
   const persistenceDocumentRef = useRef(opened?.doc ?? null);
   const persistenceReceiptsRef = useRef(completedLiveOperationIds);
   const draftVersionRef = useRef<DraftWriteVersion | null>(
@@ -114,13 +121,14 @@ export function useDraftSync(
     undoStack,
     completedLiveOperationIds,
     hash,
+    draftId,
   });
   useLayoutEffect(() => {
     if (
-      persistenceHashRef.current !== hash ||
+      persistenceDraftIdRef.current !== draftId ||
       persistenceDocumentRef.current !== (opened?.doc ?? null)
     ) {
-      persistenceHashRef.current = hash;
+      persistenceDraftIdRef.current = draftId;
       persistenceDocumentRef.current = opened?.doc ?? null;
       persistenceStartedRef.current = false;
       persistenceReceiptsRef.current = completedLiveOperationIds;
@@ -146,6 +154,7 @@ export function useDraftSync(
       undoStack,
       completedLiveOperationIds,
       hash,
+      draftId,
     };
     // Publish dirtiness in the same commit as the new model. A native quit can
     // arrive before passive effects; it must still see this revision to drain.
@@ -164,9 +173,11 @@ export function useDraftSync(
     undoStack,
     completedLiveOperationIds,
     hash,
+    draftId,
   ]);
 
-  // Reset transient state when the document changes. These setState calls
+  // Reset transient state when the document changes (two tabs of the same
+  // bytes share a hash, not a draft id). These setState calls
   // are a legitimate sync to document-switch input; the lint rule targets
   // render-time cascades, not this pattern.
   useEffect(() => {
@@ -184,7 +195,7 @@ export function useDraftSync(
       window.clearTimeout(operationLogTimerRef.current);
       operationLogTimerRef.current = null;
     }
-  }, [hash]);
+  }, [draftId]);
 
   useEffect(
     () => () => {
@@ -232,7 +243,7 @@ export function useDraftSync(
   const performSave = useCallback(async () => {
     const revision = revisionRef.current;
     const snap = latestRef.current;
-    if (!snap.opened || !snap.hash) {
+    if (!snap.opened || !snap.hash || !snap.draftId) {
       dirtyRef.current = false;
       return;
     }
@@ -252,7 +263,7 @@ export function useDraftSync(
       if (clean) {
         cleanRemovalSucceeded =
           await drafts.removeDraftPreservingLiveOperationReceiptsIfVersion(
-            snap.hash,
+            snap.draftId,
             draftVersionRef.current,
           );
         if (cleanRemovalSucceeded) {
@@ -261,7 +272,7 @@ export function useDraftSync(
         }
       } else {
         const writtenVersion = await drafts.put({
-          id: snap.hash,
+          id: snap.draftId,
           fileName: snap.opened.fileName,
           fileSize: snap.opened.fileSize,
           pdfBytes: snap.opened.bytes,
@@ -275,20 +286,21 @@ export function useDraftSync(
       }
 
       const revisionIsCurrent =
-        revisionRef.current === revision && latestRef.current.hash === snap.hash;
+        revisionRef.current === revision &&
+        latestRef.current.draftId === snap.draftId;
       if (revisionIsCurrent) {
         if (operationLogTimerRef.current !== null) {
           window.clearTimeout(operationLogTimerRef.current);
           operationLogTimerRef.current = null;
         }
-        if (!clean || cleanRemovalSucceeded) clearOperationLog(snap.hash);
+        if (!clean || cleanRemovalSucceeded) clearOperationLog(snap.draftId);
         // A refused removal means another writer's draft is newer; the clean
         // log a suspension wrote must not outrank it on the next open.
         else if (
-          readOperationLog(snap.hash)?.lastTouched ===
+          readOperationLog(snap.draftId)?.lastTouched ===
           cleanOperationLogStampRef.current
         ) {
-          clearOperationLog(snap.hash);
+          clearOperationLog(snap.draftId);
         }
         setLastTouched(clean ? null : now);
         setStatus(clean ? "idle" : "saved");
@@ -354,7 +366,7 @@ export function useDraftSync(
       }
       return;
     }
-    if (!opened || !hash || !persistenceStartedRef.current) return;
+    if (!opened || !draftId || !persistenceStartedRef.current) return;
     const clean = isModelClean(model, opened.sourcePages);
 
     setStatus(clean ? "saving" : "dirty");
@@ -365,7 +377,7 @@ export function useDraftSync(
     if (!clean) {
       operationLogTimerRef.current = window.setTimeout(() => {
         operationLogTimerRef.current = null;
-        const result = writeOperationLog(hash, model);
+        const result = writeOperationLog(draftId, model);
         if (result !== "written") {
           // The op-log second tier couldn't capture this doc (too large for
           // localStorage, or storage unavailable). Don't wait out the longer
@@ -397,7 +409,7 @@ export function useDraftSync(
         window.clearTimeout(timerRef.current);
       }
     };
-  }, [opened, model, hash, undoCount, drainLatestSave, disabled]);
+  }, [opened, model, draftId, undoCount, drainLatestSave, disabled]);
 
   const flushPendingSave = useCallback(async (throwOnError: boolean) => {
     if (timerRef.current !== null) {
@@ -413,21 +425,21 @@ export function useDraftSync(
     if (operationLogTimerRef.current !== null) {
       window.clearTimeout(operationLogTimerRef.current);
       operationLogTimerRef.current = null;
-      const { hash: logHash, model: logModel } = latestRef.current;
-      if (logHash) writeOperationLog(logHash, logModel);
+      const { draftId: logId, model: logModel } = latestRef.current;
+      if (logId) writeOperationLog(logId, logModel);
     } else {
       // Undo back to the original deletes the saved draft (or an older log),
       // which teardown can cut short too. A newer clean log outranks both.
-      const { hash: logHash, model: logModel, opened: logOpened } =
+      const { draftId: logId, model: logModel, opened: logOpened } =
         latestRef.current;
       if (
-        logHash &&
+        logId &&
         logOpened &&
         isModelClean(logModel, logOpened.sourcePages) &&
-        (draftVersionRef.current !== null || readOperationLog(logHash))
+        (draftVersionRef.current !== null || readOperationLog(logId))
       ) {
         cleanOperationLogStampRef.current = Date.now();
-        writeOperationLog(logHash, logModel, cleanOperationLogStampRef.current);
+        writeOperationLog(logId, logModel, cleanOperationLogStampRef.current);
       }
     }
     setStatus("saving");

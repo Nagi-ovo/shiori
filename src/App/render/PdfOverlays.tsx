@@ -141,9 +141,9 @@ export function PdfOverlays({
   const draftPorts: DraftDecisionPorts = {
     store: workspaceStore(),
     editor: getActiveEditorStore,
-    removeDraft: (hash) => {
-      void drafts.removeDraftPreservingLiveOperationReceipts(hash);
-      clearOperationLog(hash);
+    removeDraft: (draftId) => {
+      void drafts.removeDraftPreservingLiveOperationReceipts(draftId);
+      clearOperationLog(draftId);
     },
   };
 

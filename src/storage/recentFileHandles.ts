@@ -346,6 +346,15 @@ async function writeTextToHandle(
   return "written";
 }
 
+/** Whether this handle id is still remembered; true when that is unknown. */
+export async function webFileHandleExists(id: string): Promise<boolean> {
+  try {
+    return Boolean(await db.handles.get(id));
+  } catch {
+    return true;
+  }
+}
+
 export async function forgetWebFileHandle(
   webFileHandleId: string | undefined,
 ): Promise<void> {
