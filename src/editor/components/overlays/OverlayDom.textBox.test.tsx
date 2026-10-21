@@ -58,7 +58,7 @@ describe("a text box imported with a fill, frame and opacity", () => {
   test("a thick frame is painted over the box, not laid out inside it", () => {
     const card = draw({ ...box, rect: { x: 40, y: 500, w: 40, h: 40 }, borderWidth: 10, borderColor: "#ff0000" }).getByRole("group");
     expect(card.style.boxShadow).toBe("inset 0 0 0 10px #ff0000");
-    expect(card.style.borderStyle || "none").toBe("none");
+    expect(card.style.borderStyle).toBe("none");
   });
 
   test("an opaque fill draws opaque, with its own frame colour", () => {
