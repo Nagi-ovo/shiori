@@ -56,7 +56,7 @@
   "src/editor/viewport/viewportController.test.ts": 20316,
   "src/live/annotationDigest.test.ts": 26023,
   "src/live/liveApiBridge.test.ts": 48677,
-  "src/live/liveApiBridge.ts": 36430,
+  "src/live/liveApiBridge.ts": 20382,
   "src/pdf/annotations/resolveAnchors.test.ts": 25613,
   "src/pdf/annotations/resolveAnchors.ts": 25205,
   "src/pdf/export/annotations.ts": 46157,
