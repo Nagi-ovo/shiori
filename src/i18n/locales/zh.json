@@ -631,7 +631,8 @@
     "resize": "拖拽调整浏览器宽度",
     "empty": "在终端运行 `open https://…`,或在上方输入网址。",
     "unavailable": "只有桌面版可以使用浏览器面板。",
-    "loadFailed": "无法加载此页面。检查地址后重新加载。"
+    "loadFailed": "无法加载此页面。检查地址后重新加载。",
+    "temporaryUnsupported": "这台设备的 Android System WebView 无法把临时会话和已保存的登录状态分开。请在设置中打开「保留浏览器登录状态」，或更新 Android System WebView。"
   },
   "export": {
     "title": "导出 PDF",

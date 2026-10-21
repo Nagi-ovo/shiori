@@ -631,7 +631,8 @@
     "resize": "ドラッグしてブラウザ幅を変更",
     "empty": "ターミナルで `open https://…` を実行するか、上にアドレスを入力してください。",
     "unavailable": "ブラウザパネルはデスクトップ版でのみ利用できます。",
-    "loadFailed": "このページを読み込めませんでした。アドレスを確認して再読み込みしてください。"
+    "loadFailed": "このページを読み込めませんでした。アドレスを確認して再読み込みしてください。",
+    "temporaryUnsupported": "この端末の Android System WebView では、一時セッションを保存済みのログインと分けられません。設定で「ブラウザのログインを保持」をオンにするか、Android System WebView を更新してください。"
   },
   "export": {
     "title": "PDF を書き出し",

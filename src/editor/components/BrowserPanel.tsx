@@ -22,6 +22,11 @@ import {
 // instead of reloading the page. There is only ever one panel instance.
 let servedWebPanelNonce = 0;
 
+// Android rejects a temporary session on a WebView without profiles: it could
+// only share, and write into, the saved logins. The slug may arrive wrapped
+// in the plugin's error format.
+const TEMPORARY_UNSUPPORTED = "web-panel-temporary-unsupported";
+
 function sameWebPanelBounds(
   a: WebPanelBounds | null,
   b: WebPanelBounds,
@@ -340,7 +345,9 @@ export const BrowserPanel = memo(function BrowserPanel({
               font: `12.5px/1.5 ${T.sans}`,
             }}
           >
-            {t("browser.loadFailed")}
+            {error.includes(TEMPORARY_UNSUPPORTED)
+              ? t("browser.temporaryUnsupported")
+              : t("browser.loadFailed")}
           </div>
         ) : !url ? (
           <div
