@@ -4,6 +4,8 @@ import {
   db,
   estimateDraftStorage,
   estimateJsonSize,
+  notifyChanged,
+  subscribe,
   toUint8,
   type Draft,
 } from "./draftsDb";
@@ -25,7 +27,7 @@ import {
 import { sanitizeHistory } from "./draftValidation";
 import { isDraftProtected } from "./draftProtection";
 
-export type { Draft } from "./draftsDb";
+export { subscribe, type Draft } from "./draftsDb";
 export {
   LIVE_OPERATION_LEDGER_MAX_BYTES,
   LIVE_OPERATION_RECEIPT_MAX,
@@ -68,23 +70,6 @@ export class DraftSaveError extends Error {
     this.name = "DraftSaveError";
     this.kind = kind;
   }
-}
-
-// A plain listener set rather than EventTarget/Event: the payload is empty
-// (subscribers just re-read), and a global Event dispatched on a global
-// EventTarget breaks in mixed test realms where one global was swapped for a
-// DOM shim but not the other. Mirrors the toast bus.
-const changeListeners = new Set<() => void>();
-
-export function subscribe(listener: () => void): () => void {
-  changeListeners.add(listener);
-  return () => {
-    changeListeners.delete(listener);
-  };
-}
-
-function notifyChanged(): void {
-  for (const listener of changeListeners) listener();
 }
 
 function createDraftRevision(): string {

@@ -118,6 +118,23 @@ class DraftsDb extends Dexie {
 
 export const db = new DraftsDb();
 
+// A plain listener set rather than EventTarget/Event: the payload is empty
+// (subscribers just re-read), and a global Event dispatched on a global
+// EventTarget breaks in mixed test realms where one global was swapped for a
+// DOM shim but not the other. Mirrors the toast bus.
+const changeListeners = new Set<() => void>();
+
+export function subscribe(listener: () => void): () => void {
+  changeListeners.add(listener);
+  return () => {
+    changeListeners.delete(listener);
+  };
+}
+
+export function notifyChanged(): void {
+  for (const listener of changeListeners) listener();
+}
+
 export function estimateDraftStorage(pdfByteLength: number, modelByteLength: number): number {
   return pdfByteLength + modelByteLength + 512;
 }
