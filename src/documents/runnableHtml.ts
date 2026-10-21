@@ -24,6 +24,11 @@
 //   (src-tauri/tauri.conf.json) and the web app's headers (public/_headers).
 //   A `<meta http-equiv="refresh">`, which needs no script, is removed here.
 //
+//   CSP fetch directives do not govern WebRTC either. The policy sends
+//   `webrtc 'block'` where the engine implements it, and the frame scripts
+//   remove the RTCPeerConnection constructors from the run frame and every
+//   child frame it can reach (runnableHtmlWebRtcGuard.ts).
+//
 // A small bridge script is injected before user scripts to report content
 // height back to the host, forward zoom gestures, and surface runtime errors
 // and CSP violations (the host cannot read the cross-origin frame directly),
@@ -209,6 +214,9 @@ function runCsp(
     "form-action 'none'",
     "base-uri 'none'",
     "navigate-to 'none'",
+    // CSP3; inherited by about:blank / srcdoc children. Engines without it
+    // fall back to the WebRTC guard in the frame scripts.
+    "webrtc 'block'",
   ].join("; ");
 }
 
