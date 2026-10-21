@@ -214,6 +214,37 @@ describe("openPdf", () => {
     });
     expect(log.errors).toEqual(["Invalid PDF structure"]);
   });
+
+  // A dropped file's cache row stays reserved (kept from sweeps and quota
+  // eviction) until a tab owns it, so an open that ends without a tab must
+  // hand it back, or it blocks later imports for the rest of the session.
+  const dropped = { name: "dropped.pdf", size: 4, bytes: bytes(1, 2, 3, 4) };
+
+  test("a dropped PDF that fails to parse gives up its cache row", async () => {
+    const store = workspace();
+    const { engine } = fakeEngine({
+      load: async () => {
+        throw new Error("Invalid PDF structure");
+      },
+    });
+    const { ports, log } = fakePorts(store, { engine });
+
+    await openPdf(dropped, {}, ports);
+
+    expect(store.getState().tabs).toEqual([]);
+    expect(log.removedCaches).toEqual(["cache-dropped.pdf"]);
+  });
+
+  test("a dropped PDF refused a resident slot gives up its cache row", async () => {
+    const store = workspace();
+    const { ports, log } = fakePorts(store);
+    ports.editors.reserveResidentSlot = async () => false;
+
+    await openPdf(dropped, {}, ports);
+
+    expect(store.getState().tabs).toEqual([]);
+    expect(log.removedCaches).toEqual(["cache-dropped.pdf"]);
+  });
 });
 
 describe("openDocument", () => {

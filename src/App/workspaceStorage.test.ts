@@ -10,7 +10,12 @@ Dexie.dependencies.indexedDB = fakeIndexedDB as unknown as IDBFactory;
 Dexie.dependencies.IDBKeyRange = FakeIDBKeyRange as unknown as typeof IDBKeyRange;
 // Loaded after the fake is wired: Dexie binds its IndexedDB at construction.
 const { __workspaceTest, getWorkspaceSource } = await import("../storage/workspace");
-const { putReservedWorkspaceSource } = await import("./workspaceStorage");
+const { ensureWorkspaceSource, putReservedWorkspaceSource } = await import(
+  "./workspaceStorage"
+);
+const { reservedWorkspaceSourceIds } = await import(
+  "../storage/workspaceSourceReservations"
+);
 
 const source = (name: string, savedAt: number) => ({
   kind: "markdown" as const,
@@ -39,5 +44,24 @@ describe("reserved workspace source writes", () => {
     );
     expect(saved.length).toBeGreaterThan(0);
     for (const id of saved) expect(await getWorkspaceSource(id)).toBeDefined();
+  });
+
+  // Its tab would only have appeared after the password, so nothing else
+  // gives the dropped file's reserved row back.
+  test("dismissing the password prompt of a dropped PDF gives up its cache row", async () => {
+    const { makePasswordPromptRetryable } = await import("./tabLifecyclePorts");
+    const input = await ensureWorkspaceSource({
+      kind: "pdf",
+      name: "locked.pdf",
+      size: 4,
+      bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+    });
+    const cacheId = input.cacheId!;
+
+    makePasswordPromptRetryable({ input, options: {} });
+
+    expect(reservedWorkspaceSourceIds()).not.toContain(cacheId);
+    await Bun.sleep(0);
+    expect(await getWorkspaceSource(cacheId)).toBeUndefined();
   });
 });
