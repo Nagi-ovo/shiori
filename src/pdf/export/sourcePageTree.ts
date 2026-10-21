@@ -8,6 +8,7 @@ import {
   type PDFDocument,
   type PDFObject,
 } from "pdf-lib";
+import { holdsKidsKey } from "../import/sourcePages";
 import { MAX_PDF_PAGES, PdfOpenError, assertPdfWithinPageLimit } from "../openPolicy";
 
 /**
@@ -92,7 +93,12 @@ function place(
   setDirect?: (typed: PDFDict) => void,
 ): PDFDict {
   seen.add(dict);
-  const isNode = dict.has(PDFName.of("Kids"));
+  const isNode = holdsKidsKey(dict);
+  // A node without a /Kids array holds no page in PDFium; getPages() would
+  // throw on it, so it gets an empty one.
+  if (isNode && !(dict.lookup(PDFName.of("Kids")) instanceof PDFArray)) {
+    dict.set(PDFName.of("Kids"), pdf.context.obj([]));
+  }
   if (isNode ? dict instanceof PDFPageTree : dict instanceof PDFPageLeaf) {
     return dict;
   }

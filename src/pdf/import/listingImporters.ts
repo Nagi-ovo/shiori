@@ -1,4 +1,5 @@
 import type {
+  CalloutThreadEntry,
   HighlightOverlay,
   InkOverlay,
   NoteOverlay,
@@ -19,6 +20,7 @@ import {
 import { coalescePdfRects } from "../geometry/rectCoalesce";
 import { pdfPointToPageLocal, pdfRectToPageLocal } from "../model/pageSpace";
 import { freeTextRichTextStyle, freeTextStyle } from "./freeTextStyle";
+import { noteBoxAtIcon, type NoteBox } from "./noteBox";
 
 // One listed annotation (in the shape pdf.js listed it, ./sourceAnnotations)
 // into an overlay, per subtype, and the readers for the listing's values
@@ -181,12 +183,37 @@ function importStickyNote(
     color: colorToHex(annot.color, NOTE_DEFAULT_COLOR),
     now,
   });
+  // A turned note's box and angle, while its icon is still at that box.
+  const box = noteBoxAtIcon(recordValue(annot.noteBox) as NoteBox | undefined, rect);
+  if (box) {
+    note.rect = pdfRectToPageLocal(page, { x: box.x, y: box.y, w: box.w, h: box.h });
+    note.angle = box.angle;
+  }
   // Its icon, pop-up state and review state, written back on export.
   if (typeof annot.name === "string") note.sourceIcon = annot.name;
   if (typeof annot.open === "boolean") note.sourceOpen = annot.open;
   if (typeof annot.state === "string") note.sourceState = annot.state;
   if (typeof annot.stateModel === "string") note.sourceStateModel = annot.stateModel;
   return note;
+}
+
+/** A Shiori-exported reply, read as a note, as a turn of its callout's thread. */
+export function threadEntryFromReply(
+  note: NoteOverlay,
+  meta: { role: CalloutThreadEntry["role"]; replyId: string | null },
+  makeId: () => string,
+): CalloutThreadEntry {
+  const entry: CalloutThreadEntry = { id: meta.replyId ?? makeId(), role: meta.role, text: note.text };
+  if (note.sourceAuthor) entry.author = note.sourceAuthor;
+  if (note.sourceCreatedAt !== undefined) entry.at = note.sourceCreatedAt;
+  // Print and Comment are what Shiori writes for every reply; a turn keeps
+  // only what another reader changed.
+  if (note.sourceFlags !== undefined && note.sourceFlags !== 4) entry.sourceFlags = note.sourceFlags;
+  if (note.sourceIcon !== undefined && note.sourceIcon !== "Comment") entry.sourceIcon = note.sourceIcon;
+  if (note.sourceOpen !== undefined) entry.sourceOpen = note.sourceOpen;
+  if (note.sourceState !== undefined) entry.sourceState = note.sourceState;
+  if (note.sourceStateModel !== undefined) entry.sourceStateModel = note.sourceStateModel;
+  return entry;
 }
 
 function importSquare(

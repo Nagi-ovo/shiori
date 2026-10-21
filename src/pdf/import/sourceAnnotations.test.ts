@@ -189,6 +189,17 @@ describe("what other tools wrote, kept as written", () => {
     expect(overlays).toMatchObject([{ type: "rect", id: "pdf-annotation-0-annot_p0_1", fill: "#0000ff" }]);
   });
 
+  // A direct dictionary takes its number before anything in it is read, so
+  // one with an unreadable /Subtype still counts on both passes.
+  test("a direct square after a direct annotation with a broken /Subtype keeps its fill", async () => {
+    const bytes = await onePage((_pdf, add) => {
+      add({ Subtype: 123, Rect: [0, 0, 10, 10] }, true);
+      add({ Subtype: "Square", Rect: [20, 20, 120, 100], C: [1, 0, 0], IC: [0, 0, 1] }, true);
+    });
+    const { overlays } = await importFile(bytes);
+    expect(overlays).toMatchObject([{ type: "rect", id: "pdf-annotation-0-annot_p0_2", fill: "#0000ff" }]);
+  });
+
   // Acrobat, on a /Rotate 90 page, writes a FreeText with /Rotate 90 and a
   // tall /Rect so its text reads upright: one 200 pt line, not a 30 pt column.
   test("a FreeText's own /Rotate turns its text box, not just the page", async () => {
@@ -234,6 +245,24 @@ describe("what other tools wrote, kept as written", () => {
     });
     expect(overlays).toMatchObject([{ type: "highlight", pageId: "p1" }, { type: "rect", pageId: "p2", fill: "#0000ff" }]);
     expect(claimed).toEqual([1, 2]);
+  });
+
+  // PDFium takes a kid holding /Kids for a node even when the value is null,
+  // and a node without a /Kids array holds no page; pdf-lib's has() reads
+  // null as absent, which counted that kid as a page and shifted the next.
+  test("a kid with /Kids null takes no page number", async () => {
+    const pdf = await PDFDocument.create();
+    const [a, b] = [0, 1].map(() => pdf.addPage([300, 400]));
+    const empty = pdf.context.register(pdf.context.obj({ Type: "Page", Kids: null, MediaBox: [0, 0, 300, 400] } as never));
+    pdf.catalog.Pages().set(PDFName.of("Kids"), pdf.context.obj([a!.ref, empty, b!.ref]));
+    b!.node.set(PDFName.of("Annots"), pdf.context.obj([pdf.context.register(pdf.context.obj({ Type: "Annot", Subtype: "Square", Rect: [20, 20, 120, 100], IC: [0, 0, 1] } as never))]));
+    const models = [0, 1].map((sourceIndex) => ({ ...page, id: `p${sourceIndex}`, sourceIndex }));
+    const claimed: number[] = [];
+    const overlays = await importFileAnnotations(models, await pdf.save({ useObjectStreams: false }), NOW, {
+      onSuppress: (sourceIndex) => claimed.push(sourceIndex),
+    });
+    expect(overlays).toMatchObject([{ type: "rect", pageId: "p1", fill: "#0000ff" }]);
+    expect(claimed).toEqual([1]);
   });
 
   // PDFium and pdf-lib both walk a /Pages node each time a /Kids lists it.

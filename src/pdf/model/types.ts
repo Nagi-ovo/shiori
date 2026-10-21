@@ -251,7 +251,14 @@ export type CalloutThreadEntry = {
   text: string;
   /** Epoch milliseconds. */
   at?: number;
-};
+} & Partial<Pick<NoteOverlay, ReplySourceField>>;
+
+/**
+ * What an imported reply carried beyond its words, as a NoteOverlay does: its
+ * /F, icon, pop-up state and review state, written back on export. A reply
+ * flagged, re-iconed or reviewed in another reader keeps what it became.
+ */
+export type ReplySourceField = "sourceFlags" | "sourceIcon" | "sourceOpen" | "sourceState" | "sourceStateModel";
 
 /**
  * A semantic callout: one or more source rectangles remain anchored to the

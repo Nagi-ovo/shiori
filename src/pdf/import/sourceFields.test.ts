@@ -133,6 +133,36 @@ describe("an annotation's flags and a note's state", () => {
     expect(exported.map(flags)).toEqual(["128"]);
   });
 
+  // A reply Shiori exported folds back into its callout's thread; one locked,
+  // re-iconed or reviewed in another reader since keeps what it became.
+  test("a callout reply's come back too", async () => {
+    const thread: Overlay = {
+      type: "callout", id: "c", pageId: "p1", rect: { x: 150, y: 250, w: 100, h: 40 },
+      targetRects: [{ x: 20, y: 20, w: 100, h: 20 }], text: "Root", fontSize: 12, color: "#000000",
+      bold: false, align: "left", fontFamily: "sans", thread: [{ id: "r1", role: "user", text: "Reply" }],
+    };
+    const blank = await PDFDocument.create();
+    blank.addPage([300, 400]);
+    const shiori = await PDFDocument.load((await exportPdf(await blank.save(), { pages: [page], overlays: [thread] })).bytes);
+    const annots = shiori.getPage(0).node.lookup(PDFName.of("Annots"), PDFArray);
+    const reply = annots.asArray().map((ref) => shiori.context.lookup(ref, PDFDict)).find((dict) => dict.has(PDFName.of("IRT")))!;
+    reply.set(PDFName.of("F"), shiori.context.obj(128));
+    reply.set(PDFName.of("Name"), PDFName.of("Key"));
+    reply.set(PDFName.of("Open"), shiori.context.obj(true));
+    reply.set(PDFName.of("State"), PDFString.of("Accepted"));
+    reply.set(PDFName.of("StateModel"), PDFString.of("Review"));
+    const bytes = await shiori.save({ useObjectStreams: false });
+
+    const overlays = await importFileAnnotations([page], bytes, 1);
+    expect(overlays).toMatchObject([{ type: "callout", thread: [{ id: "r1", text: "Reply" }] }]);
+    const out = await PDFDocument.load((await exportPdf(bytes, { pages: [page], overlays })).bytes);
+    const back = out.getPage(0).node.lookup(PDFName.of("Annots"), PDFArray).asArray()
+      .map((ref) => out.context.lookup(ref, PDFDict)).find((dict) => dict.has(PDFName.of("IRT")))!;
+    expect([flags(back), back.get(PDFName.of("Name"))?.toString(), back.get(PDFName.of("Open"))?.toString()])
+      .toEqual(["128", "/Key", "true"]);
+    expect([text(back, "State"), text(back, "StateModel")]).toEqual(["Accepted", "Review"]);
+  });
+
   // No /F means 0: a viewer shows it but never prints it. Exported with
   // Shiori's own Print it would start printing.
   test("an annotation without /F still does not print", async () => {

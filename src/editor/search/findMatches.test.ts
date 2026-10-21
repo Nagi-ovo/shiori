@@ -13,6 +13,19 @@ import {
 } from "./findMatches";
 
 describe("find matches", () => {
+  // Old WebViews have no Intl.Segmenter, and the search module picks its
+  // segmenter when it loads, so this one runs in a process without it.
+  test("without Intl.Segmenter, a match does not split a syllable written as jamo", () => {
+    const script = `delete Intl.Segmenter;
+const { findMatches } = await import(${JSON.stringify(`${import.meta.dir}/findMatches.ts`)});
+const pages = [{ pageId: "p", pageNumber: 1, text: "\\u1100\\u1161\\u11a8x" }];
+const found = ["\\u1100", "\\uac01"].map((query) => findMatches(pages, query).map((m) => [m.index, m.end]));
+console.log(JSON.stringify(found));`;
+    const run = Bun.spawnSync([process.execPath, "-e", script]);
+    expect(run.stderr.toString()).toBe("");
+    expect(JSON.parse(run.stdout.toString())).toEqual([[], [[0, 3]]]);
+  });
+
   test("finds case-insensitive matches across document-order pages", () => {
     expect(
       findMatches(

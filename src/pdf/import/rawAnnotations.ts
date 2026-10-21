@@ -137,6 +137,10 @@ export function readRawCallouts(
         const rawObject = annots.get(index);
         const dict = annots.lookupMaybe(index, PDFDict);
         if (!dict) continue;
+        // Numbered before any field is read, as the listing does: a direct
+        // dictionary whose /Subtype throws still takes its place.
+        const annotationId =
+          rawObject instanceof PDFRef ? pdfjsIdForRef(rawObject) : `annot_p${pageIndex}_${++directCount}`;
         const subtype = dict
           .lookupMaybe(PDFName.of("Subtype"), PDFName)
           ?.decodeText();
@@ -144,8 +148,6 @@ export function readRawCallouts(
         // Anchor provenance can sit on any Shiori-exported annotation; pdf.js
         // never surfaces developer dictionaries, so it is read here and joined
         // back to the imported overlay by pdf.js annotation id.
-        const annotationId =
-          rawObject instanceof PDFRef ? pdfjsIdForRef(rawObject) : `annot_p${pageIndex}_${++directCount}`;
         const bounds = pdfBoundsRect(pdfArrayNumbers(dict.lookupMaybe(PDFName.of("Rect"), PDFArray), 4));
         if (bounds) {
           pageRects.set(annotationId, [bounds.x, bounds.y, bounds.x + bounds.w, bounds.y + bounds.h]);
