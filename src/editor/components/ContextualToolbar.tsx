@@ -26,7 +26,6 @@ import {
   AlignGroup,
   ExpandableColorPicker,
   FontPicker,
-  type FontPickerOption,
   IconBtn,
   NumField,
   WidthPicker,
@@ -39,7 +38,6 @@ import {
 import type {
   CalloutOverlay,
   ContentTextOverlay,
-  FontFamily,
   Overlay,
   TextOverlay,
   ToolId,
@@ -49,52 +47,36 @@ import {
   useIsMobile,
   useIsPhone,
 } from "../hooks/useIsMobile";
-import { copyLastTextEditDebug } from "../textSelection/textEditDebug";
-import { toast } from "../toast";
 import { SignatureDialog } from "./SignatureDialog";
 import { isSignatureOverlay } from "./overlays/overlayGuards";
-import { ROTATE_SNAP_DEG } from "./OverlayLayer";
 import { typedZoom, zoomStepDown, zoomStepUp } from "../viewport/zoomCommands";
+import {
+  FONT_OPTIONS,
+  HIGHLIGHT_COLORS,
+  NOTE_COLORS,
+  RECT_COLORS,
+  STAMP_WIDTH_OPTIONS,
+  TEXT_FONT_SIZE_MAX,
+  TEXT_LINE_COLORS,
+  iconForDrawTool,
+  iconForSignTool,
+  iconForTextMarkupTool,
+  isDrawToolId,
+  isSignToolId,
+  isTextMarkupToolId,
+  type DrawToolId,
+  type SignToolId,
+  type TextMarkupToolId,
+} from "./inspectorOptions";
+import {
+  DrawModePicker,
+  MarkupModePicker,
+  RectFillPicker,
+  SignModePicker,
+  StampKindPicker,
+} from "./InspectorPickers";
+import { SelectionControls } from "./SelectionControls";
 
-const FONT_OPTIONS: Array<FontPickerOption<FontFamily>> = [
-  {
-    value: "sans",
-    name: "Helvetica",
-    previewCss: "'Helvetica Neue', Helvetica, Arial, sans-serif",
-  },
-  {
-    value: "serif",
-    name: "Times",
-    previewCss: "'Times', 'Times New Roman', 'Liberation Serif', serif",
-  },
-  {
-    value: "mono",
-    name: "Courier",
-    previewCss: "'Courier New', Courier, monospace",
-  },
-  {
-    value: "notoSansSc",
-    name: "Noto Sans SC",
-    previewCss: "'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif",
-  },
-  {
-    value: "notoSansJp",
-    name: "Noto Sans JP",
-    previewCss: "'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif",
-  },
-];
-
-const TEXT_FONT_SIZE_MAX = 144;
-const STAMP_WIDTH_OPTIONS = [1, 1.8, 3, 5];
-// Annotation preset palettes, tuned toward vintage stationery — fountain
-// pen inks (oxblood, sepia-black, Prussian blue, forest, plum) for lines
-// and letterpress/riso tints (mustard, apricot, sage, dusty blue, mauve)
-// for fills. The first entry of each set is the long-standing default hex,
-// kept so existing annotDefaults still match a swatch.
-const RECT_DEFAULT_COLOR = "#b13a2e";
-const RECT_COLORS = [RECT_DEFAULT_COLOR, "#2b2620", "#3d5942", "#8a6134"];
-const TEXT_LINE_COLORS = ["#b13a2e", "#2b2620", "#33506e", "#3d5942", "#6d4a67"];
-const HIGHLIGHT_COLORS = ["#f4d674", "#e8a37a", "#aac296", "#a9bdd6", "#cdb2cc"];
 
 /**
  * Zoom readout that doubles as an editable field: shows `117%`, and on click
@@ -202,9 +184,6 @@ function ZoomField({
     </button>
   );
 }
-const NOTE_COLORS = ["#f7e9a8", "#ecc9a5", "#cbdcc0", "#c3d2e4", "#dcc9dc"];
-const TEXT_MARKUP_TOOLS = ["highlight", "underline", "strikethrough"] as const;
-type TextMarkupToolId = (typeof TEXT_MARKUP_TOOLS)[number];
 
 const TOOLS: Array<{
   id: ToolId | "markup" | "draw" | "sign";
@@ -219,250 +198,6 @@ const TOOLS: Array<{
   { id: "callout", i18nKey: "tools.callout", hint: "C", Icon: Ic.callout },
   { id: "text", i18nKey: "tools.text", hint: "T", Icon: Ic.text },
 ];
-
-function isTextMarkupToolId(tool: ToolId): tool is TextMarkupToolId {
-  return TEXT_MARKUP_TOOLS.includes(tool as TextMarkupToolId);
-}
-
-function iconForTextMarkupTool(tool: TextMarkupToolId): typeof Ic.cursor {
-  if (tool === "underline") return Ic.underline;
-  if (tool === "strikethrough") return Ic.strikethrough;
-  return Ic.highlight;
-}
-
-// Freehand ink and rectangle share one "draw" toolbar slot (like the markup
-// group), with a mode picker in the inspector to switch between them.
-const DRAW_TOOLS = ["ink", "rect"] as const;
-type DrawToolId = (typeof DRAW_TOOLS)[number];
-
-function isDrawToolId(tool: ToolId): tool is DrawToolId {
-  return DRAW_TOOLS.includes(tool as DrawToolId);
-}
-
-function iconForDrawTool(tool: DrawToolId): typeof Ic.cursor {
-  return tool === "rect" ? Ic.rect : Ic.ink;
-}
-
-function DrawModePicker({
-  value,
-  onChange,
-}: {
-  value: DrawToolId;
-  onChange: (value: DrawToolId) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      aria-label={t("inspector.fields.drawMode")}
-      style={{ display: "inline-flex", alignItems: "center", gap: 3 }}
-    >
-      {DRAW_TOOLS.map((mode) => {
-        const Icon = iconForDrawTool(mode);
-        const active = value === mode;
-        return (
-          <button
-            key={mode}
-            type="button"
-            title={t(`tools.${mode}`)}
-            aria-pressed={active}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onChange(mode)}
-            style={{
-              width: 32,
-              height: 32,
-              padding: 0,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "1px solid transparent",
-              borderRadius: 6,
-              background: active ? T.ink : "transparent",
-              color: active ? T.cream : T.ink2,
-              cursor: "pointer",
-            }}
-          >
-            <Icon />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// Signature and stamp share one "sign" toolbar slot (like the markup and
-// draw groups), with a mode picker in the inspector to switch between
-// placing a saved signature and stamping a seal.
-const SIGN_TOOLS = ["signature", "stamp"] as const;
-type SignToolId = (typeof SIGN_TOOLS)[number];
-
-function isSignToolId(tool: ToolId): tool is SignToolId {
-  return SIGN_TOOLS.includes(tool as SignToolId);
-}
-
-function iconForSignTool(tool: SignToolId): typeof Ic.cursor {
-  return tool === "stamp" ? Ic.stamp : Ic.signature;
-}
-
-function SignModePicker({
-  value,
-  onChange,
-}: {
-  value: SignToolId;
-  onChange: (value: SignToolId) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      aria-label={t("inspector.fields.signMode")}
-      style={{ display: "inline-flex", alignItems: "center", gap: 3 }}
-    >
-      {SIGN_TOOLS.map((mode) => {
-        const Icon = iconForSignTool(mode);
-        const active = value === mode;
-        return (
-          <button
-            key={mode}
-            type="button"
-            title={t(`tools.${mode}`)}
-            aria-pressed={active}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onChange(mode)}
-            style={{
-              width: 32,
-              height: 32,
-              padding: 0,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "1px solid transparent",
-              borderRadius: 6,
-              background: active ? T.ink : "transparent",
-              color: active ? T.cream : T.ink2,
-              cursor: "pointer",
-            }}
-          >
-            <Icon />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function RectFillPicker({
-  value,
-  recent,
-  onChange,
-  onCommit,
-}: {
-  value: string | null;
-  recent: string[];
-  onChange: (value: string | null) => void;
-  onCommit?: (value: string) => void;
-}) {
-  const { t } = useTranslation();
-  const fillLabel = t("inspector.fields.fill");
-  const noneLabel = t("inspector.fields.fillNone");
-  const selected = value === null;
-
-  return (
-    <div
-      aria-label={fillLabel}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-      }}
-    >
-      <button
-        type="button"
-        title={noneLabel}
-        aria-label={noneLabel}
-        onClick={() => onChange(null)}
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: "50%",
-          background: T.surface,
-          cursor: "pointer",
-          border: `1.5px solid ${selected ? T.ink : T.rule}`,
-          padding: 0,
-          boxShadow: selected ? `0 0 0 2px ${T.paper}` : "none",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <span
-          aria-hidden
-          style={{
-            position: "absolute",
-            left: -3,
-            top: 9,
-            width: 28,
-            height: 2,
-            background: T.ink,
-            transform: "rotate(-45deg)",
-            transformOrigin: "center",
-          }}
-        />
-      </button>
-      <ExpandableColorPicker
-        options={RECT_COLORS}
-        value={value ?? RECT_DEFAULT_COLOR}
-        selectedValue={value}
-        recent={recent}
-        onChange={(c) => onChange(c)}
-        onCommit={onCommit}
-      />
-    </div>
-  );
-}
-
-function MarkupModePicker({
-  value,
-  onChange,
-}: {
-  value: TextMarkupToolId;
-  onChange: (value: TextMarkupToolId) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      aria-label={t("inspector.fields.markupMode")}
-      style={{ display: "inline-flex", alignItems: "center", gap: 3 }}
-    >
-      {TEXT_MARKUP_TOOLS.map((mode) => {
-        const Icon = iconForTextMarkupTool(mode);
-        const active = value === mode;
-        return (
-          <button
-            key={mode}
-            type="button"
-            title={t(`tools.${mode}`)}
-            aria-pressed={active}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onChange(mode)}
-            style={{
-              width: 32,
-              height: 32,
-              padding: 0,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "1px solid transparent",
-              borderRadius: 6,
-              background: active ? T.ink : "transparent",
-              color: active ? T.cream : T.ink2,
-              cursor: "pointer",
-            }}
-          >
-            <Icon />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 export function ContextualToolbar() {
   const { t } = useTranslation();
@@ -509,8 +244,6 @@ export function ContextualToolbar() {
   const setActiveSignature = useAppStore((s) => s.setActiveSignature);
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const overlays = useEditorStore((s) => s.model.overlays);
-  const collapsedCalloutIds = useEditorStore((s) => s.collapsedCalloutIds);
-  const toggleCalloutCollapsed = useEditorStore((s) => s.toggleCalloutCollapsed);
   const selection: Overlay | null =
     selectedIds.length > 0
       ? overlays.find((o) => o.id === selectedIds[0]) ?? null
@@ -538,12 +271,9 @@ export function ContextualToolbar() {
   const recentColors = useAppStore((s) => s.prefs.recentColors);
   const pushRecentColor = useAppStore((s) => s.pushRecentColor);
 
-  const removeSelected = useEditorStore((s) => s.removeSelected);
   const removeOverlay = useEditorStore((s) => s.removeOverlay);
-  const updateOverlay = useEditorStore((s) => s.updateOverlay);
   const updateOverlayNoHistory = useEditorStore((s) => s.updateOverlayNoHistory);
   const beginHistoryStep = useEditorStore((s) => s.beginHistoryStep);
-  const setSelectedLocked = useEditorStore((s) => s.setSelectedLocked);
   const setEditingOverlayId = useEditorStore((s) => s.setEditingOverlayId);
   const [toolbarTextHistoryId, setToolbarTextHistoryId] = useState<string | null>(
     null,
@@ -732,367 +462,16 @@ export function ContextualToolbar() {
 
   let inspector: ReactNode = null;
   if (selection) {
-    const selType = selection.type;
     const typeLabel = isSignatureOverlay(selection)
       ? t("types.signature")
-      : t(`types.${selType}`);
-    // Size and angle as numbers, because the drag handles are unreachable
-    // without a pointer: HandleHit renders a bare <div> with onPointerDown
-    // and no tabIndex, role or key handling, so Tab never lands on any of the
-    // five. Rather than bolt keys onto the handles, expose the same two
-    // properties as fields — which a screen reader can also read back, unlike
-    // a handle that only ever reports a position.
-    const sizable =
-      "rect" in selection && selection.rect ? selection : null;
-    const nudgeRect = (dw: number, dh: number) => {
-      if (!sizable) return;
-      updateOverlay(selection.id, {
-        rect: {
-          ...sizable.rect,
-          w: Math.max(4, sizable.rect.w + dw),
-          h: Math.max(4, sizable.rect.h + dh),
-        },
-      } as Partial<Overlay>);
-    };
-    // Not every resizable type carries a free angle (a note and a callout do
-    // not), so the rotation field only appears where rotation is a property
-    // the model actually has.
-    const rotatable =
-      sizable && "angle" in sizable
-        ? (sizable as typeof sizable & { angle?: number })
-        : null;
-    const nudgeAngle = (delta: number) => {
-      if (!rotatable) return;
-      const next = ((((rotatable.angle ?? 0) + delta) % 360) + 360) % 360;
-      updateOverlay(selection.id, { angle: next } as Partial<Overlay>);
-    };
-
+      : t(`types.${selection.type}`);
     inspector = (
       <InspectorRow label={t("inspector.selectionPrefix", { type: typeLabel })}>
-        {selType === "highlight" || selType === "underline" || selType === "strikethrough" ? (() => {
-          const lineMarkup = selType === "underline" || selType === "strikethrough";
-          const maxOpacity = selType === "strikethrough" ? 1 : 0.9;
-          const applyHighlightStyle = (patch: {
-            color?: string;
-            opacity?: number;
-          }) => {
-            updateOverlay(selection.id, patch as Partial<Overlay>);
-          };
-          return (
-            <>
-              <ExpandableColorPicker
-                options={lineMarkup ? TEXT_LINE_COLORS : HIGHLIGHT_COLORS}
-                value={selection.color}
-                onChange={(c) => applyHighlightStyle({ color: c })}
-                recent={recentColors}
-                onCommit={pushRecentColor}
-              />
-              <NumField
-                label={t("inspector.fields.opacity")}
-                value={Math.round(selection.opacity * 100)}
-                suffix="%"
-                onMinus={() =>
-                  applyHighlightStyle({
-                    opacity: Math.max(0.1, selection.opacity - 0.05),
-                  })
-                }
-                onPlus={() =>
-                  applyHighlightStyle({
-                    opacity: Math.min(maxOpacity, selection.opacity + 0.05),
-                  })
-                }
-                onCommit={(next) =>
-                  applyHighlightStyle({ opacity: next / 100 })
-                }
-                min={10}
-                max={maxOpacity * 100}
-              />
-            </>
-          );
-        })() : null}
-        {selType === "rect" ? (() => {
-          const applyRectStyle = (patch: {
-            color?: string;
-            strokeWidth?: number;
-            fill?: string | null;
-          }) => {
-            updateOverlay(selection.id, patch as Partial<Overlay>);
-          };
-          return (
-            <>
-              <ExpandableColorPicker
-                options={RECT_COLORS}
-                value={selection.color}
-                recent={recentColors}
-                onChange={(c) => applyRectStyle({ color: c })}
-                onCommit={pushRecentColor}
-              />
-              <NumField
-                label={t("inspector.fields.weight")}
-                value={selection.strokeWidth}
-                suffix="pt"
-                onMinus={() =>
-                  applyRectStyle({
-                    strokeWidth: Math.max(1, selection.strokeWidth - 1),
-                  })
-                }
-                onPlus={() =>
-                  applyRectStyle({
-                    strokeWidth: Math.min(24, selection.strokeWidth + 1),
-                  })
-                }
-              />
-              <RectFillPicker
-                value={selection.fill}
-                recent={recentColors}
-                onChange={(fill) => applyRectStyle({ fill })}
-                onCommit={pushRecentColor}
-              />
-            </>
-          );
-        })() : null}
-        {!isSignatureOverlay(selection) && selType === "ink" ? (() => {
-          const applyInkStyle = (patch: { color?: string; width?: number }) => {
-            updateOverlay(selection.id, patch as Partial<Overlay>);
-          };
-          return (
-            <>
-              <ExpandableColorPicker
-                options={["#b13a2e", "#1a1815", "#2d5a3d", "#2f5a8a"]}
-                value={selection.color}
-                recent={recentColors}
-                onChange={(c) => applyInkStyle({ color: c })}
-                onCommit={pushRecentColor}
-              />
-              <WidthPicker
-                value={selection.width}
-                onChange={(v) => applyInkStyle({ width: v })}
-              />
-            </>
-          );
-        })() : null}
-        {selType === "stamp" ? (() => {
-          // "Last-used style wins" — edits to a selected stamp overlay
-          // also update annotDefaults so the next newly-placed stamp
-          // inherits the same kind / color / width.
-          const applyStampStyle = (patch: {
-            kind?: "check" | "cross";
-            color?: string;
-            strokeWidth?: number;
-          }) => {
-            updateOverlay(selection.id, patch as Partial<Overlay>);
-            setAnnot({
-              ...(patch.kind !== undefined ? { stampKind: patch.kind } : {}),
-              ...(patch.color !== undefined ? { stampColor: patch.color } : {}),
-              ...(patch.strokeWidth !== undefined
-                ? { stampStrokeWidth: patch.strokeWidth }
-                : {}),
-            });
-          };
-          return (
-            <>
-              <StampKindPicker
-                value={selection.kind}
-                onChange={(kind) => applyStampStyle({ kind })}
-              />
-              <ExpandableColorPicker
-                options={["#1a1815", "#b13a2e", "#2d5a3d", "#2f5a8a"]}
-                value={selection.color}
-                recent={recentColors}
-                onChange={(c) => applyStampStyle({ color: c })}
-                onCommit={pushRecentColor}
-              />
-              <WidthPicker
-                value={selection.strokeWidth}
-                options={STAMP_WIDTH_OPTIONS}
-                onChange={(v) => applyStampStyle({ strokeWidth: v })}
-              />
-            </>
-          );
-        })() : null}
-        {selType === "note" ? (() => {
-          const applyNoteStyle = (color: string) => {
-            updateOverlay(selection.id, {
-              color,
-              updatedAt: Date.now(),
-            } as Partial<Overlay>);
-            setAnnot({ noteColor: color });
-          };
-          return (
-            <>
-              <ExpandableColorPicker
-                options={NOTE_COLORS}
-                value={selection.color}
-                recent={recentColors}
-                onChange={applyNoteStyle}
-                onCommit={pushRecentColor}
-              />
-            </>
-          );
-        })() : null}
-        {selType === "text" || selType === "contentText" || selType === "callout" ? (() => {
-          // "Last-used style wins" — edits to a selected text overlay
-          // also update textDefaults so the next newly-drawn text
-          // inherits the same font / size / color / weight / alignment.
-          const applyTextStyle = (patch: Parameters<typeof setText>[0]) => {
-            const overlayPatch =
-              selection.type === "contentText" && patch.fontFamily
-                ? ({
-                    ...patch,
-                    renderedFont: undefined,
-                  } satisfies Partial<ContentTextOverlay>)
-                : (patch as Partial<Overlay>);
-            updateOverlay(selection.id, overlayPatch as Partial<Overlay>);
-            if (selection.type === "callout") {
-              if (patch.color) setAnnot({ calloutColor: patch.color });
-            } else {
-              setText(patch);
-            }
-          };
-          return (
-            <>
-              <TextContentEditor
-                overlay={selection}
-                label={t("inspector.fields.content")}
-                placeholder={t(
-                  selection.type === "callout"
-                    ? "overlays.calloutPlaceholder"
-                    : "overlays.textPlaceholder",
-                )}
-                onChange={(text) => updateTextContent(selection, text)}
-                onFinish={(text) => finishTextContentEdit(selection, text)}
-              />
-              {selection.type === "contentText" ? (
-                <IconBtn
-                  title={t("tooltips.copyTextEditDebug")}
-                  onClick={() => {
-                    void copyLastTextEditDebug().then((copied) => {
-                      if (copied) toast.show(t("diagnostics.copied"));
-                      else toast.error(t("diagnostics.copyFailed"));
-                    });
-                  }}
-                >
-                  <Ic.copy />
-                </IconBtn>
-              ) : null}
-              {selection.type === "callout" ? null : (
-                <FontPicker
-                  options={FONT_OPTIONS}
-                  value={selection.fontFamily}
-                  onChange={(v) => applyTextStyle({ fontFamily: v })}
-                />
-              )}
-              <NumField
-                label={t("inspector.fields.size")}
-                value={selection.fontSize}
-                suffix="pt"
-                onMinus={() =>
-                  applyTextStyle({
-                    fontSize: Math.max(6, selection.fontSize - 1),
-                  })
-                }
-                onPlus={() =>
-                  applyTextStyle({
-                    fontSize: Math.min(
-                      TEXT_FONT_SIZE_MAX,
-                      selection.fontSize + 1,
-                    ),
-                  })
-                }
-              onCommit={(next) => applyTextStyle({ fontSize: next })}
-                min={6}
-                max={TEXT_FONT_SIZE_MAX}
-                />
-              <ExpandableColorPicker
-                options={["#2b2620", "#b13a2e", "#33506e", "#3d5942"]}
-                value={selection.color}
-                recent={recentColors}
-                onChange={(c) => applyTextStyle({ color: c })}
-                onCommit={pushRecentColor}
-              />
-              {selection.type === "callout" ? (
-                // The callout card has no persistent header chrome to hang a
-                // chevron on, so the toolbar is the discoverable entry point
-                // for disclosure. Notes do not need one.
-                <IconBtn
-                  active={collapsedCalloutIds.includes(selection.id)}
-                  onClick={() => toggleCalloutCollapsed(selection.id)}
-                  title={t(
-                    collapsedCalloutIds.includes(selection.id)
-                      ? "overlays.calloutExpand"
-                      : "overlays.calloutCollapse",
-                  )}
-                >
-                  <Ic.collapse />
-                </IconBtn>
-              ) : (
-                <>
-                  <IconBtn
-                    active={selection.bold}
-                    onClick={() => applyTextStyle({ bold: !selection.bold })}
-                    title={t("tooltips.bold")}
-                  >
-                    <Ic.bold />
-                  </IconBtn>
-                  <IconBtn
-                    active={Boolean(selection.italic)}
-                    onClick={() => applyTextStyle({ italic: !selection.italic })}
-                    title={t("tooltips.italic")}
-                  >
-                    <Ic.italic />
-                  </IconBtn>
-                </>
-              )}
-              <AlignGroup
-                value={selection.align}
-                onChange={(v) => applyTextStyle({ align: v })}
-              />
-            </>
-          );
-        })() : null}
-        {sizable && !selection.locked ? (
-          <>
-            <NumField
-              label={t("inspector.fields.width")}
-              value={Math.round(sizable.rect.w)}
-              onPlus={() => nudgeRect(4, 0)}
-              onMinus={() => nudgeRect(-4, 0)}
-              onCommit={(next) => nudgeRect(next - sizable.rect.w, 0)}
-              min={4}
-            />
-            <NumField
-              label={t("inspector.fields.height")}
-              value={Math.round(sizable.rect.h)}
-              onPlus={() => nudgeRect(0, 4)}
-              onMinus={() => nudgeRect(0, -4)}
-              onCommit={(next) => nudgeRect(0, next - sizable.rect.h)}
-              min={4}
-            />
-            {rotatable ? (
-              <NumField
-                label={t("inspector.fields.angle")}
-                value={Math.round(rotatable.angle ?? 0)}
-                suffix="°"
-                onPlus={() => nudgeAngle(ROTATE_SNAP_DEG)}
-                onMinus={() => nudgeAngle(-ROTATE_SNAP_DEG)}
-                onCommit={(next) =>
-                  nudgeAngle(next - (rotatable.angle ?? 0))
-                }
-              />
-            ) : null}
-          </>
-        ) : null}
-        <div style={{ flex: 1 }} />
-        <IconBtn
-          active={selection.locked}
-          title={t(selection.locked ? "tooltips.unlock" : "tooltips.lock")}
-          onClick={() => setSelectedLocked(!selection.locked)}
-        >
-          <Ic.lock />
-        </IconBtn>
-        <IconBtn title={k(t("tooltips.delete"))} onClick={removeSelected}>
-          <Ic.trash />
-        </IconBtn>
+        <SelectionControls
+          selection={selection}
+          onTextChange={updateTextContent}
+          onTextFinish={finishTextContentEdit}
+        />
       </InspectorRow>
     );
   } else if (isTextMarkupToolId(tool)) {
@@ -1584,117 +963,6 @@ export function ContextualToolbar() {
     </div>
     {signatureDialog}
     </>
-  );
-}
-
-function TextContentEditor({
-  overlay,
-  label,
-  placeholder,
-  onChange,
-  onFinish,
-}: {
-  overlay: TextOverlay | ContentTextOverlay | CalloutOverlay;
-  label: string;
-  placeholder: string;
-  onChange: (text: string) => void;
-  onFinish: (text: string) => void;
-}) {
-  return (
-    <textarea
-      dir="auto"
-      value={overlay.text}
-      aria-label={label}
-      title={label}
-      placeholder={placeholder}
-      data-shiori-text-toolbar-editor="true"
-      data-overlay-id={overlay.id}
-      rows={1}
-      onChange={(e) => onChange(e.currentTarget.value)}
-      onKeyDown={(e) => {
-        if (e.key !== "Escape") return;
-        e.preventDefault();
-        e.stopPropagation();
-        e.currentTarget.dataset.escapeCommitted = "true";
-        onFinish(e.currentTarget.value);
-        e.currentTarget.blur();
-      }}
-      onBlur={(e) => {
-        if (e.currentTarget.dataset.escapeCommitted === "true") {
-          delete e.currentTarget.dataset.escapeCommitted;
-          return;
-        }
-        onFinish(e.currentTarget.value);
-      }}
-      style={{
-        width: 260,
-        minWidth: 220,
-        maxWidth: 360,
-        height: 30,
-        padding: "6px 9px",
-        border: `1px solid ${T.rule}`,
-        borderRadius: 6,
-        background: T.surface,
-        color: T.ink,
-        outline: "none",
-        resize: "none",
-        overflow: "hidden",
-        whiteSpace: "pre",
-        font: `500 12.5px/1.2 ${T.sans}`,
-        letterSpacing: 0,
-      }}
-      wrap="off"
-    />
-  );
-}
-
-function StampKindPicker({
-  value,
-  onChange,
-}: {
-  value: "check" | "cross";
-  onChange: (kind: "check" | "cross") => void;
-}) {
-  const options: Array<{ value: "check" | "cross"; label: string }> = [
-    { value: "check", label: "✓" },
-    { value: "cross", label: "✗" },
-  ];
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 0,
-        border: `1px solid ${T.rule}`,
-        borderRadius: 6,
-        background: T.surface,
-        overflow: "hidden",
-      }}
-    >
-      {options.map((option, i) => {
-        const active = option.value === value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onChange(option.value)}
-            style={{
-              width: 30,
-              height: 28,
-              border: "none",
-              borderLeft: i === 0 ? "none" : `1px solid ${T.rule}`,
-              background: active ? T.ink : "transparent",
-              color: active ? T.cream : T.ink2,
-              cursor: "pointer",
-              font: `600 15px/1 ${T.sans}`,
-              padding: 0,
-            }}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
   );
 }
 
