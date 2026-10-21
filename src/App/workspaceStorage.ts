@@ -12,6 +12,7 @@ import {
   releaseWorkspaceSource,
   reserveWorkspaceSource,
   reservedWorkspaceSourceIds,
+  workspaceSourcesOfOtherWindows,
 } from "../storage/workspaceSourceReservations";
 import { metaFromRuntimeTab, workspaceStore } from "../workspace/appWorkspace";
 import { workspaceCacheIdsForTab } from "../workspace/tabSources";
@@ -51,11 +52,17 @@ export function removeWorkspaceSourceIfUnreferenced(
   return removeWorkspaceSource(cacheId);
 }
 
-/** Cache rows a tab, a recents entry or a still-opening document points at. */
+/**
+ * Cache rows a tab, a recents entry or a still-opening document points at, in
+ * this window or another.
+ */
 export function protectedWorkspaceCacheIds(
   tabsSnapshot: WorkspaceRuntimeTab[] = workspaceStore().getState().tabs,
 ): Set<string> {
-  const ids = new Set<string>(reservedWorkspaceSourceIds());
+  const ids = new Set<string>([
+    ...reservedWorkspaceSourceIds(),
+    ...workspaceSourcesOfOtherWindows(),
+  ]);
   for (const tab of tabsSnapshot) {
     for (const cacheId of workspaceCacheIdsForTab(tab)) ids.add(cacheId);
   }

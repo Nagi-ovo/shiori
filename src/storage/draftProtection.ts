@@ -26,6 +26,9 @@ import { draftContentHash, isHashOnlyDraftId } from "./draftIdentity";
  * sweep asks synchronously. Until this window's first answer arrives, an
  * expired entry still counts (a window opened after another froze must not
  * take it for crashed), and expired entries are removed only after an answer.
+ *
+ * The same machinery, under another key prefix, publishes the workspace cache
+ * rows each window holds (workspaceSourceReservations.ts).
  */
 
 const KEY_PREFIX = "shiori:open-drafts:v1:";
@@ -44,6 +47,8 @@ export type DraftProtectionDeps = {
   sessionId: string;
   /** navigator.locks; null where absent (insecure origins), heartbeat only. */
   locks: Locks | null;
+  /** Namespace of the published entries; open drafts by default. */
+  keyPrefix?: string;
 };
 
 type Locks = {
@@ -68,7 +73,8 @@ function parseEntry(raw: string | null): Entry | null {
 }
 
 export function createDraftProtection(deps: DraftProtectionDeps) {
-  const ownKey = KEY_PREFIX + deps.sessionId;
+  const keyPrefix = deps.keyPrefix ?? KEY_PREFIX;
+  const ownKey = keyPrefix + deps.sessionId;
   let openDraftIds: () => Iterable<string> = () => [];
   let registered = false;
   let timer: number | null = null;
@@ -95,7 +101,7 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
       const keys: string[] = [];
       for (let i = 0; i < store.length; i++) {
         const key = store.key(i);
-        if (key?.startsWith(KEY_PREFIX) && key !== ownKey) keys.push(key);
+        if (key?.startsWith(keyPrefix) && key !== ownKey) keys.push(key);
       }
       const now = deps.now();
       for (const key of keys) {
@@ -246,6 +252,15 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
     isDraftOpen(id: string): boolean {
       return anyOpen((openId) => openId === id);
     },
+
+    /** Every id the other live windows publish. */
+    otherWindowIds(): string[] {
+      const ids: string[] = [];
+      otherEntries((_key, entry) => {
+        if (entry) ids.push(...entry.ids);
+      });
+      return ids;
+    },
   };
 }
 
@@ -256,15 +271,21 @@ function newSessionId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-const shared = createDraftProtection({
-  storage: () => (typeof localStorage === "undefined" ? null : localStorage),
-  now: () => Date.now(),
-  setTimeout: (run, ms) => globalThis.setTimeout(run, ms) as unknown as number,
-  clearTimeout: (handle) => globalThis.clearTimeout(handle),
-  target: typeof window === "undefined" ? null : window,
-  sessionId: newSessionId(),
-  locks: (typeof navigator === "undefined" ? null : navigator.locks) ?? null,
-});
+/** This window's publisher under `keyPrefix`, over localStorage and Web Locks. */
+export function createWindowProtection(keyPrefix?: string) {
+  return createDraftProtection({
+    storage: () => (typeof localStorage === "undefined" ? null : localStorage),
+    now: () => Date.now(),
+    setTimeout: (run, ms) => globalThis.setTimeout(run, ms) as unknown as number,
+    clearTimeout: (handle) => globalThis.clearTimeout(handle),
+    target: typeof window === "undefined" ? null : window,
+    sessionId: newSessionId(),
+    locks: (typeof navigator === "undefined" ? null : navigator.locks) ?? null,
+    keyPrefix,
+  });
+}
+
+const shared = createWindowProtection();
 
 export const protectOpenDrafts = shared.protectOpenDrafts;
 export const isDraftProtected = shared.isDraftProtected;

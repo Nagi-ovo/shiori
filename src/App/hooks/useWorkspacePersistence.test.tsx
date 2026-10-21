@@ -16,6 +16,23 @@ const { loadWorkspaceState } = await import("../../storage/workspace");
 const { useWorkspacePersistence } = await import("./useWorkspacePersistence");
 const { createDraftProtection } = await import("../../storage/draftProtection");
 const { draftIdFor } = await import("../../storage/draftIdentity");
+const { WORKSPACE_SOURCE_KEY_PREFIX } = await import(
+  "../../storage/workspaceSourceReservations"
+);
+
+/** Another browser window of the app, publishing the cache rows it holds. */
+function otherWindowSources(sessionId: string) {
+  return createDraftProtection({
+    storage: () => localStorage,
+    now: Date.now,
+    setTimeout: () => 0,
+    clearTimeout: () => undefined,
+    target: null,
+    sessionId,
+    locks: null,
+    keyPrefix: WORKSPACE_SOURCE_KEY_PREFIX,
+  });
+}
 
 const baseTab: WorkspaceTabMeta = {
   id: "tab-a",
@@ -102,6 +119,64 @@ describe("workspace persistence scheduling", () => {
     await act(() => Bun.sleep(1100));
     expect(await getWorkspaceSource(cacheId)).toBeUndefined();
     view.unmount();
+  });
+
+  test("keeps the cache row another window is still opening or has open", async () => {
+    // Window A dropped an encrypted PDF and waits on its password prompt;
+    // this window's sweep must not take the row A's tab will point at.
+    const { getWorkspaceSource, putWorkspaceSource } = await import("../../storage/workspace");
+    const pending = await putWorkspaceSource(
+      { kind: "pdf", name: "locked.pdf", size: 4, bytes: new Uint8Array(4) },
+      new Set(),
+    );
+    const windowA = otherWindowSources("window-a");
+    const releaseA = windowA.protectOpenDrafts(() => [pending]);
+    const view = render(<Harness tabs={[baseTab]} />);
+    try {
+      await act(() => Bun.sleep(1100));
+      expect(await getWorkspaceSource(pending)).toBeDefined();
+
+      // Once A closes, the next sweep here reclaims it.
+      releaseA();
+      // A tab-set change arms the next sweep.
+      const another: WorkspaceTabMeta = {
+        ...baseTab,
+        id: "tab-c",
+        source: { type: "cache", id: "another-row" },
+      };
+      view.rerender(<Harness tabs={[baseTab, another]} />);
+      await act(() => Bun.sleep(1100));
+      expect(await getWorkspaceSource(pending)).toBeUndefined();
+    } finally {
+      releaseA();
+      view.unmount();
+    }
+  });
+
+  test("this window's still-opening and open cache rows are protected in other windows", async () => {
+    const { ensureWorkspaceSource } = await import("../workspaceStorage");
+    const windowB = otherWindowSources("window-b");
+    const cached: WorkspaceTabMeta = {
+      ...baseTab,
+      id: "tab-cached",
+      kind: "pdf",
+      source: { type: "cache", id: "cached-row" },
+    };
+    const view = render(<Harness tabs={[cached]} />);
+    try {
+      expect(windowB.otherWindowIds()).toContain("cached-row");
+      const opening = await ensureWorkspaceSource({
+        kind: "pdf",
+        name: "dropped.pdf",
+        size: 4,
+        bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      });
+      expect(windowB.otherWindowIds()).toContain(opening.cacheId!);
+      view.rerender(<Harness tabs={[]} />);
+      expect(windowB.otherWindowIds()).not.toContain("cached-row");
+    } finally {
+      view.unmount();
+    }
   });
 
   test("never evicts the draft of a document open in a tab", async () => {

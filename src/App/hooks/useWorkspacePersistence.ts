@@ -12,8 +12,11 @@ import {
   type WorkspaceTabMeta,
 } from "../../storage/workspace";
 import {
+  protectWorkspaceSources,
   releaseWorkspaceSource,
+  republishWorkspaceSources,
   reservedWorkspaceSourceIds,
+  workspaceSourcesOfOtherWindows,
 } from "../../storage/workspaceSourceReservations";
 
 /** The draft a tab reads and writes: its bytes, from its source (fact 4). */
@@ -126,6 +129,12 @@ export function useWorkspacePersistence<T>({
     () => tabs.flatMap(cacheIdsForTab).sort().join("\0"),
     [tabs, cacheIdsForTab],
   );
+  // Other windows sweep the same cache rows; they keep what this one holds.
+  useLayoutEffect(
+    () => protectWorkspaceSources(() => getTabs().flatMap(cacheIdsForTab)),
+    [getTabs, cacheIdsForTab],
+  );
+  useLayoutEffect(() => republishWorkspaceSources(), [protectedWorkspaceCacheKey]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -140,6 +149,7 @@ export function useWorkspacePersistence<T>({
         if (protectedCacheIds.has(id)) releaseWorkspaceSource(id);
         else protectedCacheIds.add(id);
       }
+      for (const id of workspaceSourcesOfOtherWindows()) protectedCacheIds.add(id);
       void cleanupWorkspaceSources(protectedCacheIds);
     }, 1000);
     return () => window.clearTimeout(timer);

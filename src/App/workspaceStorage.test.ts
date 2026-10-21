@@ -13,9 +13,10 @@ const { __workspaceTest, getWorkspaceSource } = await import("../storage/workspa
 const { ensureWorkspaceSource, putReservedWorkspaceSource } = await import(
   "./workspaceStorage"
 );
-const { reservedWorkspaceSourceIds } = await import(
+const { reservedWorkspaceSourceIds, WORKSPACE_SOURCE_KEY_PREFIX } = await import(
   "../storage/workspaceSourceReservations"
 );
+const { createDraftProtection } = await import("../storage/draftProtection");
 
 const source = (name: string, savedAt: number) => ({
   kind: "markdown" as const,
@@ -44,6 +45,31 @@ describe("reserved workspace source writes", () => {
     );
     expect(saved.length).toBeGreaterThan(0);
     for (const id of saved) expect(await getWorkspaceSource(id)).toBeDefined();
+  });
+
+  // Window A's tab (or its still-opening drop) points at a row this window
+  // never saw; this window's quota sweep must evict around it.
+  test("a write's quota sweep keeps a row another window holds", async () => {
+    const { putWorkspaceSource } = await import("../storage/workspace");
+    const heldElsewhere = await putWorkspaceSource(source("a.md", 1));
+    const windowA = createDraftProtection({
+      storage: () => localStorage,
+      now: Date.now,
+      setTimeout: () => 0,
+      clearTimeout: () => undefined,
+      target: null,
+      sessionId: "window-a",
+      locks: null,
+      keyPrefix: WORKSPACE_SOURCE_KEY_PREFIX,
+    });
+    const releaseA = windowA.protectOpenDrafts(() => [heldElsewhere]);
+    try {
+      __workspaceTest.setSourceCapBytes(30);
+      await putReservedWorkspaceSource(source("b.md", 2)).catch(() => undefined);
+      expect(await getWorkspaceSource(heldElsewhere)).toBeDefined();
+    } finally {
+      releaseA();
+    }
   });
 
   // Its tab would only have appeared after the password, so nothing else
