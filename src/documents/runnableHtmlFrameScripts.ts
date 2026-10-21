@@ -8,10 +8,21 @@
 // user's real storage / cookies / files, and is gone on reload or close. That
 // keeps Lock 1's guarantee intact ("nothing of the user's in the box, nothing
 // leaves it") while turning a cryptic crash into expected ephemeral behavior.
-// It installs only when the real API is genuinely unavailable, so it is inert
-// in a normal same-origin context. Exported for unit tests. Like the bridge,
-// it must never contain the literal script-closing sequence.
+// The storage parts install only when the real API is genuinely unavailable,
+// so they are inert in a normal same-origin context. WebRTC is removed
+// unconditionally: CSP does not govern it, so a peer connection's ICE
+// gathering could reach a STUN host the document names. This covers the run
+// frame's own realm only; a nested about:blank frame the document creates
+// gets fresh globals, and no browser run has yet confirmed either part
+// (probe: a run document that opens a data channel against its own STUN
+// host, with the network panel open). Exported for unit tests. Like the
+// bridge, it must never contain the literal script-closing sequence.
 export const STORAGE_SHIM = `(function () {
+  var rtc = ["RTCPeerConnection", "webkitRTCPeerConnection", "mozRTCPeerConnection"];
+  for (var r = 0; r < rtc.length; r++) {
+    try { Object.defineProperty(window, rtc[r], { value: undefined, writable: false, configurable: false }); }
+    catch (e) {}
+  }
   function makeStorage() {
     var data = Object.create(null);
     function keys() { return Object.keys(data); }

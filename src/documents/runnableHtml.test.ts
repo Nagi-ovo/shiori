@@ -60,6 +60,24 @@ function runShim(make: {
   return { win, doc };
 }
 
+describe("runnable html prelude", () => {
+  // CSP does not govern WebRTC: an ICE candidate to a STUN host of the
+  // document's choosing would reach the network with nothing approved.
+  test("removes WebRTC before the document's scripts run", () => {
+    const storage = { getItem: () => null };
+    const win: Record<string, unknown> = {
+      localStorage: storage,
+      sessionStorage: storage,
+      RTCPeerConnection: function RTCPeerConnection() {},
+      webkitRTCPeerConnection: function webkitRTCPeerConnection() {},
+    };
+    new Function("window", "document", STORAGE_SHIM)(win, { cookie: "" });
+
+    expect(win.RTCPeerConnection).toBeUndefined();
+    expect(win.webkitRTCPeerConnection).toBeUndefined();
+  });
+});
+
 describe("runnable html storage shim", () => {
   test("injects the shim ahead of the host bridge and user scripts", () => {
     const { html } = buildRunnableHtml(
