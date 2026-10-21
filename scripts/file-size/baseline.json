@@ -58,6 +58,5 @@
   "src/storage/drafts.test.ts": 29978,
   "src/storage/drafts.ts": 29202,
   "src/storage/workspace.test.ts": 27080,
-  "src/storage/workspace.ts": 23108,
   "src/workspace/merge/pageMerge.encrypted.test.tsx": 23002
 }
