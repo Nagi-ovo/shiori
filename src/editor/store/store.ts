@@ -49,6 +49,7 @@ import {
 } from "../../live/overlayReveal";
 import { LIVE_OPERATION_RECEIPT_MAX } from "../../live/liveReceiptPolicy";
 import { selectedOverlayActions } from "./selectedOverlayActions";
+import { pdfFontRegistry } from "./pdfFontRegistry";
 
 export type OpenedPdf = {
   fileName: string;
@@ -1793,37 +1794,7 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
           },
     ),
 
-  registerPdfFontFaces: (entries) => {
-    const { pdfFontFaces, pdfFontChars } = get();
-    let facesChanged = false;
-    let charsChanged = false;
-    const nextFaces = { ...pdfFontFaces };
-    const nextChars = { ...pdfFontChars };
-    for (const { baseFontName, faceFamily, chars } of entries) {
-      if (nextFaces[baseFontName] !== faceFamily) {
-        nextFaces[baseFontName] = faceFamily;
-        facesChanged = true;
-      }
-      if (chars) {
-        const seen = nextChars[baseFontName];
-        const merged = new Set(seen ?? []);
-        const before = merged.size;
-        for (const ch of chars) merged.add(ch);
-        if (merged.size !== before) {
-          nextChars[baseFontName] = merged;
-          charsChanged = true;
-        }
-      }
-    }
-    // No-op when nothing moved — page re-renders re-register the same
-    // faces and must not churn subscribers.
-    if (facesChanged || charsChanged) {
-      set({
-        ...(facesChanged ? { pdfFontFaces: nextFaces } : {}),
-        ...(charsChanged ? { pdfFontChars: nextChars } : {}),
-      });
-    }
-    },
+  ...pdfFontRegistry(set, get),
   }));
 }
 
