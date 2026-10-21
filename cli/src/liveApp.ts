@@ -507,7 +507,7 @@ function outcomeUnknown(
   nonce: string | undefined,
 ): LiveAppError {
   // A retry is safe only as the same operation, so it must repeat the nonce.
-  const retry = `--base-sha256 ${target.sha256}${nonce === undefined ? "" : ` --nonce ${nonce}`}`;
+  const retry = `--base-sha256 ${target.sha256}${nonce === undefined ? "" : ` --nonce=${nonce}`}`;
   return new LiveAppError(
     "ERR_APP_OUTCOME_UNKNOWN",
     "The annotation outcome is unknown; do not assume that nothing was applied",

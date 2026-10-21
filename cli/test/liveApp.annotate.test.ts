@@ -195,7 +195,7 @@ describe("app annotate", () => {
         void requestBody(request).then(async (body) => {
           const posted = body as Record<string, unknown> & { operationId: string };
           bodies.push(posted);
-          if (posted.nonce === "lost-1") {
+          if (posted.nonce === "lost-1" || posted.nonce === "-lost") {
             response.destroy();
             return;
           }
@@ -239,8 +239,23 @@ describe("app annotate", () => {
           annotateLiveApp(null, { descriptorPath, spec: EMPTY_SPEC, nonce: "lost-1" }),
         ).rejects.toMatchObject({
           code: "ERR_APP_OUTCOME_UNKNOWN",
-          detail: expect.stringContaining("--nonce lost-1"),
+          detail: expect.stringContaining("--nonce=lost-1"),
         });
+
+        // A nonce may begin with '-', which the parser takes only inline, so
+        // following the advice must post the same operation again.
+        const lost = await captureMain([...args, "--nonce=-lost"], descriptorPath).catch(
+          (error: unknown) => error,
+        );
+        expect(lost).toMatchObject({ code: "ERR_APP_OUTCOME_UNKNOWN" });
+        const advice = /with (--base-sha256 .*)$/.exec((lost as { detail: string }).detail);
+        const retried = await captureMain(
+          [...args, ...advice![1]!.split(" ")],
+          descriptorPath,
+        ).catch((error: unknown) => error);
+        expect(retried).toMatchObject({ code: "ERR_APP_OUTCOME_UNKNOWN" });
+        expect(bodies).toHaveLength(5);
+        expect(bodies[4]!.operationId).toBe(bodies[3]!.operationId);
 
         // Malformed nonces fail before anything is posted.
         for (const nonce of ["", "has space", "x".repeat(65)]) {
@@ -248,7 +263,7 @@ describe("app annotate", () => {
             annotateLiveApp(null, { descriptorPath, spec: EMPTY_SPEC, nonce }),
           ).rejects.toMatchObject({ code: "ERR_SPEC_INVALID" });
         }
-        expect(bodies).toHaveLength(3);
+        expect(bodies).toHaveLength(5);
       },
     );
     await expect(main(["app", "context", "--nonce", "again-1"])).rejects.toMatchObject({
