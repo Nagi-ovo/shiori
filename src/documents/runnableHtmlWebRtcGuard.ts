@@ -134,6 +134,10 @@ export const WEBRTC_GUARD = `(function () {
   function prefixMarkup(self, args) {
     if (!args.length || !srcdocPrefix || !createElement || !innerHtml || !templateContentOf || !queryFragment) return;
     args[0] = "" + args[0];
+    // Re-parsing through a template loses the destination's parsing context
+    // (SVG and MathML children), so only markup that can carry a srcdoc is
+    // rewritten; everything else reaches the native method untouched.
+    if (!/srcdoc/i.test(args[0])) return;
     var template = apply(createElement, runDocument, ["template"]);
     apply(innerHtml.set, template, [args[0]]);
     prefixDeep(apply(templateContentOf, template, []));

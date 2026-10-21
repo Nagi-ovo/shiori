@@ -452,6 +452,23 @@ describe("run frame WebRTC guard in nested frames", () => {
     }
   });
 
+  test("markup without a srcdoc reaches setHTMLUnsafe unchanged", () => {
+    // Re-parsing through a template would nest sibling SVG elements.
+    const win = new Window({ url: "http://localhost/" });
+    const doc = win.document as unknown as Document;
+    const received: string[] = [];
+    const proto = win.Element.prototype as unknown as Record<string, unknown>;
+    proto.setHTMLUnsafe = function (html: string) {
+      received.push(html);
+    };
+    Object.defineProperty(doc, "currentScript", { value: { src: "data:text/javascript,guard" } });
+    new Function("window", "document", WEBRTC_GUARD)(win, doc);
+    const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const markup = "<circle/><rect/>";
+    (svg as unknown as { setHTMLUnsafe: (html: string) => void }).setHTMLUnsafe(markup);
+    expect(received).toEqual([markup]);
+  });
+
   test("WebRTC is removed where a window refuses non-configurable properties", () => {
     const top = fakeRealm();
     const strict = new Proxy(top.win, {
