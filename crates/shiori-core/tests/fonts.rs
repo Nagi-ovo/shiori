@@ -239,3 +239,38 @@ fn only_a_dictionary_drawn_as_its_program_maps_loads_as_it_is() {
     );
     assert_eq!(fonts[0].data, fonts[1].data);
 }
+
+#[test]
+fn dictionaries_parting_beyond_the_probe_differ() {
+    // Two dictionaries share Foxit Serif and set code 128 as U+0400, one
+    // with the program's eacute and one with its egrave (audit B108): the
+    // same width, the same answer for every character a fixed probe asks
+    // about. A face rebuilt for one would draw the other's glyph.
+    let doc = core()
+        .open(fixture("shared-program-unicode.pdf"), None)
+        .unwrap();
+    let glyphs = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    let [acute, grave] = <[String; 2]>::try_from(ids_of(&glyphs, "\u{400}")).unwrap();
+    let plain = font_of(&glyphs, "é").1;
+    assert_ne!(acute, grave);
+    assert_ne!(plain, acute);
+    assert_ne!(plain, grave);
+
+    let rebuilt = doc.font_outlines(0, &["FoxitSerif".to_string()]).unwrap();
+    let path = |id: &str, unicode: char| {
+        let font = rebuilt.iter().find(|font| font.id == id).unwrap();
+        let glyph = font.glyphs.iter().find(|g| g.unicode == unicode as u32);
+        glyph.unwrap().path.clone()
+    };
+    assert_eq!(path(&acute, '\u{400}'), path(&plain, 'é'));
+    assert_eq!(path(&grave, '\u{400}'), path(&plain, 'è'));
+
+    // The id is the dictionary's, not its file's: written alone beside
+    // "plain" into object streams, as a merge writes it, "grave" keeps it.
+    let alone = core()
+        .open(fixture("shared-program-unicode-alone.pdf"), None)
+        .unwrap();
+    let glyphs = alone.chars(0, MAX_PAGE_CHARS).unwrap();
+    assert_eq!(ids_of(&glyphs, "\u{400}"), [grave]);
+    assert_eq!(font_of(&glyphs, "é").1, plain);
+}

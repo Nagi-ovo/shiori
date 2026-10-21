@@ -573,3 +573,89 @@ console.log(subsetsOut);
   writeFileSync(truetypeOut, await shared.save({ useObjectStreams: false }));
   console.log(truetypeOut);
 }
+
+// shared-program-unicode.pdf and shared-program-unicode-alone.pdf: font
+// dictionaries sharing the Foxit Serif program that part only at a Unicode
+// value no fixed probe reaches (tests/fonts.rs, audit B108). "plain" is
+// WinAnsi and sets "éè". "acute" draws /eacute and "grave" /egrave for code
+// 128, which both their /ToUnicode call U+0400: the same width, the same
+// answer for every probe character, two glyphs. The first file holds all
+// three, written plainly; the second only "plain" and "grave", in object
+// streams with a compressed /ToUnicode, as a merge writes them, so a
+// dictionary's id can be checked not to depend on the others in its file.
+for (const [file, keys, objectStreams] of [
+  ["shared-program-unicode.pdf", ["Plain", "Acute", "Grave"], false],
+  ["shared-program-unicode-alone.pdf", ["Plain", "Grave"], true],
+] as const) {
+  const shared = await PDFDocument.create();
+  const program = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "fonts/FoxitSerif.pfb"));
+  const ctx = shared.context;
+  const fontFile = ctx.register(ctx.stream(program, { Subtype: "Type1C" }));
+  const times = await shared.embedFont(StandardFonts.TimesRoman);
+  const timesWidths = Array.from({ length: 224 }, (_, i) => {
+    if (i === 128 - 32) return 444;
+    try {
+      return Math.round(times.widthOfTextAtSize(String.fromCharCode(32 + i), 1000));
+    } catch {
+      return 0;
+    }
+  });
+  const descriptor = ctx.register(
+    ctx.obj({
+      Type: "FontDescriptor",
+      FontName: "SHIORI+FoxitSerif",
+      Flags: 34,
+      FontBBox: [-168, -218, 1000, 898],
+      ItalicAngle: 0,
+      Ascent: 683,
+      Descent: -217,
+      CapHeight: 662,
+      StemV: 84,
+      FontFile3: fontFile,
+    }),
+  );
+  const cmap = [
+    "/CIDInit /ProcSet findresource begin 12 dict begin begincmap",
+    "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+    "/CMapName /Adobe-Identity-UCS def /CMapType 2 def",
+    "1 begincodespacerange <00> <FF> endcodespacerange",
+    "1 beginbfchar <80> <0400> endbfchar",
+    "endcmap CMapName currentdict /CMap defineresource pop end end",
+  ].join("\n");
+  const dict = (glyph?: string) =>
+    ctx.register(
+      ctx.obj({
+        Type: "Font",
+        Subtype: "Type1",
+        BaseFont: "SHIORI+FoxitSerif",
+        FirstChar: 32,
+        LastChar: 255,
+        Widths: timesWidths,
+        ...(glyph
+          ? {
+              Encoding: ctx.obj({
+                Type: "Encoding",
+                BaseEncoding: "WinAnsiEncoding",
+                Differences: [128, PDFName.of(glyph)],
+              }),
+              ToUnicode: ctx.register(objectStreams ? ctx.flateStream(cmap) : ctx.stream(cmap)),
+            }
+          : { Encoding: "WinAnsiEncoding" }),
+        FontDescriptor: descriptor,
+      }),
+    );
+  const fonts = {
+    Plain: [dict(), PDFString.of("éè")],
+    Acute: [dict("eacute"), PDFHexString.of("80")],
+    Grave: [dict("egrave"), PDFHexString.of("80")],
+  } as const;
+  const page = shared.addPage([300, 200]);
+  keys.forEach((key, i) => {
+    const [ref, text] = fonts[key];
+    page.node.setFontDictionary(PDFName.of(key), ref);
+    page.pushOperators(beginText(), setFontAndSize(key, 20), moveText(20, 150 - 50 * i), showText(text), endText());
+  });
+  const out = join(dirname(fileURLToPath(import.meta.url)), file);
+  writeFileSync(out, await shared.save({ useObjectStreams: objectStreams }));
+  console.log(out);
+}
