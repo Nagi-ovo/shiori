@@ -115,11 +115,15 @@ export function RectFillPicker({
   recent,
   onChange,
   onCommit,
+  onPreview,
+  onPreviewEnd,
 }: {
   value: string | null;
   recent: string[];
   onChange: (value: string | null) => void;
   onCommit?: (value: string) => void;
+  onPreview?: (value: string) => void;
+  onPreviewEnd?: () => void;
 }) {
   const { t } = useTranslation();
   const fillLabel = t("inspector.fields.fill");
@@ -174,6 +178,8 @@ export function RectFillPicker({
         recent={recent}
         onChange={(c) => onChange(c)}
         onCommit={onCommit}
+        onPreview={onPreview}
+        onPreviewEnd={onPreviewEnd}
       />
     </div>
   );

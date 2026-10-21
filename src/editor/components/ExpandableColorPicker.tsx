@@ -42,6 +42,8 @@ export function ExpandableColorPicker({
   selectedValue = value,
   onChange,
   onCommit,
+  onPreview,
+  onPreviewEnd,
   recent = [],
   palette = DEFAULT_COLOR_PALETTE,
 }: {
@@ -56,6 +58,13 @@ export function ExpandableColorPicker({
   // native-picker drags fire it once the stream has been quiet for
   // 300 ms, so recent-color recording doesn't flood during a drag.
   onCommit?: (c: string) => void;
+  // The native picker's drag ticks, when the caller wants them apart from
+  // discrete picks (without it they go to onChange). They form one session
+  // per popover: a palette pick inside it lands here too, and onPreviewEnd
+  // fires once the popover closes. Recolouring an annotation uses this to
+  // make a whole drag one undo step instead of one per tick.
+  onPreview?: (c: string) => void;
+  onPreviewEnd?: () => void;
   recent?: string[];
   palette?: string[];
 }) {
@@ -98,6 +107,22 @@ export function ExpandableColorPicker({
     pendingCommitRef.current = null;
     onCommit(c);
   };
+
+  // Whether this popover session has streamed a preview. Closing the
+  // popover (or unmounting with it open) ends the session.
+  const previewingRef = useRef(false);
+  const previewEndRef = useRef(onPreviewEnd);
+  useEffect(() => {
+    previewEndRef.current = onPreviewEnd;
+  });
+  useEffect(() => {
+    if (!open) return;
+    return () => {
+      if (!previewingRef.current) return;
+      previewingRef.current = false;
+      previewEndRef.current?.();
+    };
+  }, [open]);
 
   // Main row rotates: recent colors take priority, then preset fills
   // the remaining slots up to options.length. De-duplicated so a color
@@ -183,11 +208,17 @@ export function ExpandableColorPicker({
           recent={recent}
           palette={palette}
           onPreview={(c) => {
-            onChange(c);
+            if (onPreview) {
+              previewingRef.current = true;
+              onPreview(c);
+            } else {
+              onChange(c);
+            }
             scheduleCommit(c);
           }}
           onCommit={(c) => {
-            onChange(c);
+            if (onPreview && previewingRef.current) onPreview(c);
+            else onChange(c);
             commitNow(c);
             setOpen(false);
           }}

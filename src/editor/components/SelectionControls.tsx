@@ -31,6 +31,7 @@ import {
   TEXT_LINE_COLORS,
 } from "./inspectorOptions";
 import { RectFillPicker, StampKindPicker } from "./InspectorPickers";
+import { useOverlayPreviewStep, type OverlayWrite } from "./overlayPreviewStep";
 
 type EditableText = TextOverlay | ContentTextOverlay | CalloutOverlay;
 
@@ -58,6 +59,14 @@ export function SelectionControls({
   const removeSelected = useEditorStore((s) => s.removeSelected);
   const updateOverlay = useEditorStore((s) => s.updateOverlay);
   const setSelectedLocked = useEditorStore((s) => s.setSelectedLocked);
+  // A drag through the popover's colour well is one undo step, not one per
+  // tick; a swatch pick stays a step of its own.
+  const colourPreview = useOverlayPreviewStep();
+  const recolour = (apply: (c: string, write: OverlayWrite) => void) => ({
+    onChange: (c: string) => apply(c, updateOverlay),
+    onPreview: (c: string) => apply(c, colourPreview.preview),
+    onPreviewEnd: colourPreview.end,
+  });
 
   const selType = selection.type;
   // Size and angle as numbers, because the drag handles are unreachable
@@ -96,18 +105,18 @@ export function SelectionControls({
       {selType === "highlight" || selType === "underline" || selType === "strikethrough" ? (() => {
         const lineMarkup = selType === "underline" || selType === "strikethrough";
         const maxOpacity = selType === "strikethrough" ? 1 : 0.9;
-        const applyHighlightStyle = (patch: {
-          color?: string;
-          opacity?: number;
-        }) => {
-          updateOverlay(selection.id, patch as Partial<Overlay>);
+        const applyHighlightStyle = (
+          patch: { color?: string; opacity?: number },
+          write: OverlayWrite = updateOverlay,
+        ) => {
+          write(selection.id, patch as Partial<Overlay>);
         };
         return (
           <>
             <ExpandableColorPicker
               options={lineMarkup ? TEXT_LINE_COLORS : HIGHLIGHT_COLORS}
               value={selection.color}
-              onChange={(c) => applyHighlightStyle({ color: c })}
+              {...recolour((c, w) => applyHighlightStyle({ color: c }, w))}
               recent={recentColors}
               onCommit={pushRecentColor}
             />
@@ -135,12 +144,11 @@ export function SelectionControls({
         );
       })() : null}
       {selType === "rect" ? (() => {
-        const applyRectStyle = (patch: {
-          color?: string;
-          strokeWidth?: number;
-          fill?: string | null;
-        }) => {
-          updateOverlay(selection.id, patch as Partial<Overlay>);
+        const applyRectStyle = (
+          patch: { color?: string; strokeWidth?: number; fill?: string | null },
+          write: OverlayWrite = updateOverlay,
+        ) => {
+          write(selection.id, patch as Partial<Overlay>);
         };
         return (
           <>
@@ -148,7 +156,7 @@ export function SelectionControls({
               options={RECT_COLORS}
               value={selection.color}
               recent={recentColors}
-              onChange={(c) => applyRectStyle({ color: c })}
+              {...recolour((c, w) => applyRectStyle({ color: c }, w))}
               onCommit={pushRecentColor}
             />
             <NumField
@@ -169,6 +177,7 @@ export function SelectionControls({
             <RectFillPicker
               value={selection.fill}
               recent={recentColors}
+              {...recolour((c, w) => applyRectStyle({ fill: c }, w))}
               onChange={(fill) => applyRectStyle({ fill })}
               onCommit={pushRecentColor}
             />
@@ -176,8 +185,11 @@ export function SelectionControls({
         );
       })() : null}
       {!isSignatureOverlay(selection) && selType === "ink" ? (() => {
-        const applyInkStyle = (patch: { color?: string; width?: number }) => {
-          updateOverlay(selection.id, patch as Partial<Overlay>);
+        const applyInkStyle = (
+          patch: { color?: string; width?: number },
+          write: OverlayWrite = updateOverlay,
+        ) => {
+          write(selection.id, patch as Partial<Overlay>);
         };
         return (
           <>
@@ -185,7 +197,7 @@ export function SelectionControls({
               options={["#b13a2e", "#1a1815", "#2d5a3d", "#2f5a8a"]}
               value={selection.color}
               recent={recentColors}
-              onChange={(c) => applyInkStyle({ color: c })}
+              {...recolour((c, w) => applyInkStyle({ color: c }, w))}
               onCommit={pushRecentColor}
             />
             <WidthPicker
@@ -199,12 +211,15 @@ export function SelectionControls({
         // "Last-used style wins" — edits to a selected stamp overlay
         // also update annotDefaults so the next newly-placed stamp
         // inherits the same kind / color / width.
-        const applyStampStyle = (patch: {
-          kind?: "check" | "cross";
-          color?: string;
-          strokeWidth?: number;
-        }) => {
-          updateOverlay(selection.id, patch as Partial<Overlay>);
+        const applyStampStyle = (
+          patch: {
+            kind?: "check" | "cross";
+            color?: string;
+            strokeWidth?: number;
+          },
+          write: OverlayWrite = updateOverlay,
+        ) => {
+          write(selection.id, patch as Partial<Overlay>);
           setAnnot({
             ...(patch.kind !== undefined ? { stampKind: patch.kind } : {}),
             ...(patch.color !== undefined ? { stampColor: patch.color } : {}),
@@ -223,7 +238,7 @@ export function SelectionControls({
               options={["#1a1815", "#b13a2e", "#2d5a3d", "#2f5a8a"]}
               value={selection.color}
               recent={recentColors}
-              onChange={(c) => applyStampStyle({ color: c })}
+              {...recolour((c, w) => applyStampStyle({ color: c }, w))}
               onCommit={pushRecentColor}
             />
             <WidthPicker
@@ -235,8 +250,11 @@ export function SelectionControls({
         );
       })() : null}
       {selType === "note" ? (() => {
-        const applyNoteStyle = (color: string) => {
-          updateOverlay(selection.id, {
+        const applyNoteStyle = (
+          color: string,
+          write: OverlayWrite = updateOverlay,
+        ) => {
+          write(selection.id, {
             color,
             updatedAt: Date.now(),
           } as Partial<Overlay>);
@@ -248,7 +266,7 @@ export function SelectionControls({
               options={NOTE_COLORS}
               value={selection.color}
               recent={recentColors}
-              onChange={applyNoteStyle}
+              {...recolour(applyNoteStyle)}
               onCommit={pushRecentColor}
             />
           </>
@@ -258,7 +276,10 @@ export function SelectionControls({
         // "Last-used style wins" — edits to a selected text overlay
         // also update textDefaults so the next newly-drawn text
         // inherits the same font / size / color / weight / alignment.
-        const applyTextStyle = (patch: Parameters<typeof setText>[0]) => {
+        const applyTextStyle = (
+          patch: Parameters<typeof setText>[0],
+          write: OverlayWrite = updateOverlay,
+        ) => {
           const overlayPatch =
             selection.type === "contentText" && patch.fontFamily
               ? ({
@@ -266,7 +287,7 @@ export function SelectionControls({
                   renderedFont: undefined,
                 } satisfies Partial<ContentTextOverlay>)
               : (patch as Partial<Overlay>);
-          updateOverlay(selection.id, overlayPatch as Partial<Overlay>);
+          write(selection.id, overlayPatch as Partial<Overlay>);
           if (selection.type === "callout") {
             if (patch.color) setAnnot({ calloutColor: patch.color });
           } else {
@@ -331,7 +352,7 @@ export function SelectionControls({
               options={["#2b2620", "#b13a2e", "#33506e", "#3d5942"]}
               value={selection.color}
               recent={recentColors}
-              onChange={(c) => applyTextStyle({ color: c })}
+              {...recolour((c, w) => applyTextStyle({ color: c }, w))}
               onCommit={pushRecentColor}
             />
             {selection.type === "callout" ? (
