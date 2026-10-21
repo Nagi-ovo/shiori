@@ -27,12 +27,13 @@
 // mutation observer, which prefixes the frame before its srcdoc navigation
 // runs; shadow roots get the observer as they are attached, and setHTMLUnsafe
 // markup is prefixed before it is parsed, since its declarative shadow roots
-// are never observed. Still open: a closed shadow root built by
-// Document.parseHTMLUnsafe and then adopted. No engine is known to enforce
-// `webrtc 'block'`, so nothing backs these up. Browser check: a run document
-// that inserts a srcdoc frame through each route and opens a data channel
-// against a STUN host from it; no server-reflexive candidate may come back. Like the other frame scripts, it must
-// never contain the literal script-closing sequence.
+// are never observed. Still open: later writes into a parser-created open
+// root, and open/closed roots built by Document.parseHTMLUnsafe then adopted.
+// Prefixing initial markup alone cannot protect later writes inside a hidden
+// root. No engine is known to enforce `webrtc 'block'`, so nothing backs these
+// up. runnableHtmlWebRtcGuard.browser.test.ts checks the constructors visible
+// to each child's first script; those shadow routes currently fail. Like the
+// other frame scripts, this must never contain the literal script-closing sequence.
 //
 // The document's scripts run after the guard in the same realm, so every
 // built-in the guard calls later (descriptor lookup and definition, function
@@ -48,6 +49,7 @@ export const WEBRTC_GUARD = `(function () {
   var lengthDescriptor = describe(runWindow, "length");
   var lengthOf = lengthDescriptor && lengthDescriptor.get;
   var copyArgs = Array.prototype.slice;
+  var isArray = Array.isArray;
   var indexOf = String.prototype.indexOf;
   var toLower = String.prototype.toLowerCase;
   var elementProto = runWindow.Element && runWindow.Element.prototype;
@@ -66,7 +68,26 @@ export const WEBRTC_GUARD = `(function () {
   var nodeTypeOf = getterOf(nodeProto, "nodeType");
   var templateContentOf = getterOf(templateProto, "content");
   var innerHtml = elementProto && describe(elementProto, "innerHTML");
-  var OBSERVED = { childList: true, subtree: true, attributes: true, attributeFilter: ["srcdoc"] };
+  var recordProto = runWindow.MutationRecord && runWindow.MutationRecord.prototype;
+  var recordTypeOf = getterOf(recordProto, "type");
+  var recordTargetOf = getterOf(recordProto, "target");
+  var recordAddedOf = getterOf(recordProto, "addedNodes");
+  var listProto = runWindow.NodeList && runWindow.NodeList.prototype;
+  var listLengthOf = getterOf(listProto, "length");
+  var listItem = listProto && listProto.item;
+  // Web IDL reads inherited dictionary fields and invokes sequence iterators.
+  // Neither the options nor the filter iterator may consult page prototypes.
+  var attributeFilter = ["srcdoc"];
+  define(attributeFilter, Symbol.iterator, { __proto__: null, value: function () {
+    var done = false;
+    return { __proto__: null, next: function () {
+      var result = { __proto__: null, value: "srcdoc", done: done };
+      done = true;
+      return result;
+    } };
+  } });
+  var OBSERVED = { __proto__: null, childList: true, subtree: true,
+    attributes: true, attributeFilter: attributeFilter };
   var srcdocPrefix = scriptTagOf(runDocument.currentScript);
   var RTC = ["RTCPeerConnection", "webkitRTCPeerConnection", "mozRTCPeerConnection"];
   var FRAME_ELEMENTS = ["HTMLIFrameElement", "HTMLFrameElement", "HTMLObjectElement"];
@@ -94,6 +115,16 @@ export const WEBRTC_GUARD = `(function () {
     var d = proto && describe(proto, name);
     return d && d.get;
   }
+  function recordField(record, getter, name) {
+    // Some DOM test doubles use own data fields instead of native accessors.
+    return getter ? apply(getter, record, []) : record[name];
+  }
+  function listLength(list) {
+    return listLengthOf && !isArray(list) ? apply(listLengthOf, list, []) : list.length;
+  }
+  function itemAt(list, index) {
+    return listItem && !isArray(list) ? apply(listItem, list, [index]) : list[index];
+  }
   function isFrame(element) {
     try { return !!localNameOf && apply(localNameOf, element, []) === "iframe"; }
     catch (e) { return false; }
@@ -120,7 +151,7 @@ export const WEBRTC_GUARD = `(function () {
     if (type === 1) prefixFrame(node);
     var list;
     try { list = apply(query, node, ["iframe[srcdoc]"]); } catch (e) { return; }
-    for (var i = 0; i < list.length; i++) prefixFrame(list[i]);
+    for (var i = 0, count = listLength(list); i < count; i++) prefixFrame(itemAt(list, i));
   }
   // Template content is inert, so its frames are caught once a clone is
   // inserted; but setHTMLUnsafe turns <template shadowrootmode> into a live
@@ -129,8 +160,8 @@ export const WEBRTC_GUARD = `(function () {
     prefixWithin(fragment);
     var templates;
     try { templates = apply(queryFragment, fragment, ["template"]); } catch (e) { return; }
-    for (var i = 0; i < templates.length; i++) {
-      try { prefixDeep(apply(templateContentOf, templates[i], [])); } catch (e) {}
+    for (var i = 0, count = listLength(templates); i < count; i++) {
+      try { prefixDeep(apply(templateContentOf, itemAt(templates, i), [])); } catch (e) {}
     }
   }
   function prefixMarkup(self, args) {
@@ -154,9 +185,12 @@ export const WEBRTC_GUARD = `(function () {
       var nodes = [];
       for (var r = 0; r < records.length; r++) {
         var record = records[r];
-        if (record.type === "attributes") { prefixFrame(record.target); continue; }
-        var added = record.addedNodes;
-        for (var a = 0; a < added.length; a++) nodes[nodes.length] = added[a];
+        if (recordField(record, recordTypeOf, "type") === "attributes") {
+          prefixFrame(recordField(record, recordTargetOf, "target"));
+          continue;
+        }
+        var added = recordField(record, recordAddedOf, "addedNodes");
+        for (var a = 0, count = listLength(added); a < count; a++) nodes[nodes.length] = itemAt(added, a);
       }
       if (nodes.length <= BATCH_SCAN_LIMIT || !rootOf) {
         for (var n = 0; n < nodes.length; n++) prefixWithin(nodes[n]);

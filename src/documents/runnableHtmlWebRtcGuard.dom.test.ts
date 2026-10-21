@@ -3,15 +3,15 @@ import { describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import { WEBRTC_GUARD } from "./runnableHtmlWebRtcGuard";
 
-// The run frame's WebRTC guard against a real DOM (happy-dom), where the
-// mutation records and parser behaviour are the engine's, not the fakes'
-// in runnableHtmlWebRtcGuard.test.ts.
+// DOM-emulator coverage for markup rewriting and scan cost. happy-dom does
+// not establish frame execution order; the opt-in browser suite checks the
+// actual constructors visible to each child's first script.
 
-describe("run frame WebRTC guard in a real DOM", () => {
-  test("a srcdoc frame put in by any route runs the guard before its own scripts", async () => {
+describe("run frame WebRTC guard DOM rewriting", () => {
+  test("a srcdoc frame put in by each observed route receives the guard prefix", async () => {
     // Each route here got a working peer connection, with server-reflexive
     // candidates, in Chrome on 2026-10-21 before the observer prefixed them.
-    // Runs against a real DOM so the mutation records are the engine's.
+    // This assertion covers the eventual attribute, not child execution.
     const guard = "data:text/javascript,guard";
     const prefix = `<script src="${guard}"></script>`;
     const user = "<p>user</p>";
