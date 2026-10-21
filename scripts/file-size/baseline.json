@@ -12,7 +12,7 @@
   "site/src/i18n/dict.ts": 33745,
   "src-tauri/gen/android/app/src/main/java/fun/nagi/shiori/MainActivity.kt": 26968,
   "src-tauri/src/documents/mod.rs": 30189,
-  "src-tauri/src/external_terminals.rs": 42364,
+  "src-tauri/src/external_terminals.rs": 38957,
   "src-tauri/src/lib.rs": 25910,
   "src-tauri/src/live_api.rs": 96307,
   "src/app.css": 28526,
