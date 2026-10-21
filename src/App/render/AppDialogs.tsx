@@ -18,6 +18,8 @@ import type { ShioriUpdate } from "../../platform";
 import type { CanvasCapabilityReport } from "../../platform/canvasCapabilities";
 import type { PdfDocument } from "../../pdf/engine/types";
 import { useEditorStore } from "../../editor/store/store";
+import { draftConflictChoice } from "../draftConflictChoice";
+import { DraftConflictDialog } from "./DraftConflictDialog";
 import type { PdfEditKind } from "../../pdf/security/permissions";
 
 type AppDialogsProps = {
@@ -118,6 +120,11 @@ export function AppDialogs({
         onClose={closeEncryptedPdfWarning}
       />
 
+      <DraftConflictDialog
+        choice={draftConflictChoice}
+        fileName={opened?.fileName ?? ""}
+        onExport={() => setShowExport(true)}
+      />
       <ExportDialog
         open={showExport}
         onClose={() => setShowExport(false)}

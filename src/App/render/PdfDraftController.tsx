@@ -20,7 +20,7 @@ import type { DocumentModel } from "../../pdf/model/types";
 
 export type PdfDraftControllerApi = Pick<
   DraftSyncState,
-  "flushNow" | "flushNowOrThrow"
+  "flushNow" | "flushNowOrThrow" | "discardRefusedEdits"
 > & {
   completeNativeExitRequest: () => Promise<void>;
 };
@@ -63,12 +63,19 @@ export function PdfDraftController({
     apiRef.current = {
       flushNow: draftState.flushNow,
       flushNowOrThrow: draftState.flushNowOrThrow,
+      discardRefusedEdits: draftState.discardRefusedEdits,
       completeNativeExitRequest,
     };
     return () => {
       apiRef.current = null;
     };
-  }, [apiRef, completeNativeExitRequest, draftState.flushNow, draftState.flushNowOrThrow]);
+  }, [
+    apiRef,
+    completeNativeExitRequest,
+    draftState.discardRefusedEdits,
+    draftState.flushNow,
+    draftState.flushNowOrThrow,
+  ]);
 
   return (
     <PdfDraftStateContext.Provider value={draftState}>

@@ -9,7 +9,7 @@ import {
 import { useEditorStore } from "../store/store";
 import drafts, { DraftSaveError } from "../../storage/drafts";
 import { isModelClean } from "../../pdf/model/clean";
-import { readStorageEstimate } from "../../platform";
+import { useDraftStorageUsage } from "./useDraftStorageUsage";
 import {
   clearOperationLog,
   readOperationLog,
@@ -42,6 +42,9 @@ export type DraftSyncState = {
   // `status`/`error` without creating unhandled promise rejections. A save
   // refused for another window's newer draft passes once `isExported` holds.
   flushNowOrThrow: () => Promise<void>;
+  // The reader chose to drop the copy such a refusal left unsaved, so the
+  // strict flush lets the blocked leave go on. False when no copy was refused.
+  discardRefusedEdits: () => boolean;
 };
 
 export const SAVE_DEBOUNCE_MS = 800;
@@ -85,10 +88,8 @@ export function useDraftSync(
   const [lastTouched, setLastTouched] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorKind, setErrorKind] = useState<DraftSaveError["kind"] | null>(null);
-  const [usedBytes, setUsedBytes] = useState<number>(0);
-  const [realUsedBytes, setRealUsedBytes] = useState<number | null>(null);
-  const [quotaBytes, setQuotaBytes] = useState<number | null>(null);
-  const [persisted, setPersisted] = useState<boolean | null>(null);
+  const { usedBytes, realUsedBytes, quotaBytes, persisted, refreshAfterSave } =
+    useDraftStorageUsage();
 
   const timerRef = useRef<number | null>(null);
   const operationLogTimerRef = useRef<number | null>(null);
@@ -109,8 +110,9 @@ export function useDraftSync(
   // one last saw. Once a save is refused, no crash logs go there until an
   // open reads the row again.
   const conflictedDraftIdRef = useRef<string | null>(null);
+  // Bumped by discardRefusedEdits: a save begun before it must not land.
+  const discardGenerationRef = useRef(0);
   const ownLogStampRef = useRef<number | null>(null);
-  const mountedRef = useRef(true);
   const revisionRef = useRef(0);
   const saveDrainInFlightRef = useRef<Promise<void> | null>(null);
   // Keep a mutable snapshot of the latest inputs so the timer callback always
@@ -205,42 +207,12 @@ export function useDraftSync(
     [],
   );
 
-  useEffect(() => {
-    // Reset on mount (not just at init): under StrictMode the dev remount would
-    // otherwise leave this stuck false and drop post-save estimate refreshes.
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // One-time fetch of current storage usage.
-  useEffect(() => {
-    let cancelled = false;
-    const refresh = () => {
-      void drafts.totalBytes().then((n) => {
-        if (!cancelled) setUsedBytes(n);
-      });
-      void readStorageEstimate().then((estimate) => {
-        if (cancelled) return;
-        setRealUsedBytes(estimate.usage);
-        setQuotaBytes(estimate.quota);
-        setPersisted(estimate.persisted);
-      });
-    };
-    refresh();
-    const unsubscribe = drafts.subscribe(refresh);
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, []);
-
   // Persist one immutable revision. Only that same revision may clear dirty
   // state or the crash-recovery operation log; if the user edits while the
   // write is awaiting IndexedDB, the drain loop below immediately saves again.
   const performSave = useCallback(async () => {
     const revision = revisionRef.current;
+    const generation = discardGenerationRef.current;
     const snap = latestRef.current;
     if (!snap.opened || !snap.hash || !snap.draftId) {
       dirtyRef.current = false;
@@ -270,6 +242,7 @@ export function useDraftSync(
           rememberDraftVersion(snap.opened.doc, snap.draftId, null);
         }
       } else {
+        if (discardGenerationRef.current !== generation) return;
         const writtenVersion = await drafts.put({
           id: snap.draftId,
           fileName: snap.opened.fileName,
@@ -283,6 +256,15 @@ export function useDraftSync(
           // last read or wrote the row; its work must not be replaced.
           expectedVersion: draftVersionRef.current,
         });
+        if (discardGenerationRef.current !== generation) {
+          // Discarded while this write was in flight (the other window's row
+          // had gone, so it was accepted): take this copy back out.
+          if (await drafts.removeDraftPreservingLiveOperationReceiptsIfVersion(snap.draftId, writtenVersion)) {
+            draftVersionRef.current = null;
+            rememberDraftVersion(snap.opened.doc, snap.draftId, null);
+          }
+          return;
+        }
         draftVersionRef.current = writtenVersion;
         rememberDraftVersion(snap.opened.doc, snap.draftId, writtenVersion);
         savedDraftStampRef.current = now;
@@ -312,19 +294,7 @@ export function useDraftSync(
         dirtyRef.current = false;
       }
 
-      // Storage telemetry is informative, not part of the durability
-      // transaction. Never hold close/quit open because an estimate API stalls.
-      void Promise.all([drafts.totalBytes(), readStorageEstimate()])
-        .then(([total, estimate]) => {
-          if (!mountedRef.current) return;
-          setUsedBytes(total);
-          setRealUsedBytes(estimate.usage);
-          setQuotaBytes(estimate.quota);
-          setPersisted(estimate.persisted);
-        })
-        .catch((err) => {
-          console.warn("Failed to refresh draft storage usage:", err);
-        });
+      refreshAfterSave();
     } catch (err) {
       console.error("Draft save failed:", err);
       const draftError = err instanceof DraftSaveError ? err : null;
@@ -342,7 +312,7 @@ export function useDraftSync(
       setStatus("error");
       throw err;
     }
-  }, []);
+  }, [refreshAfterSave]);
 
   // One shared drain serializes autosave, explicit close, tab switching, and
   // app exit. Every caller joins the same promise; a revision that arrives
@@ -437,7 +407,10 @@ export function useDraftSync(
     }
     // Don't drain to disk while a restore decision is pending — that is
     // exactly the overwrite we are protecting the un-restored draft from.
-    if (disabled || !dirtyRef.current) return;
+    if (disabled) return;
+    // After a discard nothing is dirty, but a save it overtook may still be
+    // undoing itself; a quit right after must not cut that short.
+    if (!dirtyRef.current) return void (await saveDrainInFlightRef.current?.catch(() => undefined));
     // The IndexedDB write below is async and reads before it writes, so a
     // page torn down on pagehide can lose it. Land the pending op-log tier
     // synchronously first; a successful save clears it again.
@@ -484,6 +457,18 @@ export function useDraftSync(
     }
   }, [drainLatestSave, disabled, isExported]);
 
+  // Nothing is written: the other window's row stays, and no crash log was
+  // kept since the refusal. The next edit is unsaved and protected again.
+  const discardRefusedEdits = useCallback(() => {
+    const { draftId: current } = latestRef.current;
+    if (!current || conflictedDraftIdRef.current !== current) return false;
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+    dirtyRef.current = false;
+    discardGenerationRef.current += 1;
+    return true;
+  }, []);
+
   const flushNow = useCallback(
     () => flushPendingSave(false),
     [flushPendingSave],
@@ -506,8 +491,10 @@ export function useDraftSync(
       persisted,
       flushNow,
       flushNowOrThrow,
+      discardRefusedEdits,
     }),
     [
+      discardRefusedEdits,
       error,
       errorKind,
       flushNow,
