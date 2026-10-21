@@ -9,7 +9,6 @@ import {
   renameSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -69,17 +68,14 @@ export function cachedBinaryPath(home, version, target) {
   return join(home, "cli", version, executableName(target));
 }
 
-// Written into the staging directory last, so a version directory carrying
-// it was extracted whole before it was renamed into place.
-const INSTALL_COMPLETE_MARKER = ".shiori-install-complete";
-
+// A tree is whole when every file the package's manifest lists is there at
+// its full size, whichever installer wrote it. The curl and PowerShell
+// installers extract in place, over a tree this runner published too: tar
+// stopped part way leaves the file it was writing short and the ones after
+// it missing, so no record of an earlier complete install can stand in for
+// the check.
 function isCompleteInstall(dir, target) {
   if (!existsSync(join(dir, executableName(target)))) return false;
-  if (existsSync(join(dir, INSTALL_COMPLETE_MARKER))) return true;
-  // The curl and PowerShell installers extract into the same directory
-  // without the marker. Theirs is complete when every file the package's
-  // manifest lists is there at its full size: tar stopped part way leaves
-  // the file it was writing short and the ones after it missing.
   try {
     const { files } = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
     return (
@@ -224,7 +220,11 @@ export async function ensureCliBinary(options = {}) {
       throw new Error("Archive did not contain the Shiori CLI executable");
     }
     if (!target.startsWith("win32")) chmodSync(staged, 0o755);
-    writeFileSync(join(staging, INSTALL_COMPLETE_MARKER), "");
+    // Published, a tree this check rejects would be downloaded and replaced
+    // again by every later run.
+    if (!isCompleteInstall(staging, target)) {
+      throw new Error("Archive is not a complete Shiori CLI package");
+    }
     publishInstall(
       staging,
       dest,

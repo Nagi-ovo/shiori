@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -77,7 +78,20 @@ export function makeArchive(
     mkdirSync(dirname(join(dir, path)), { recursive: true });
     writeFileSync(join(dir, path), body);
   }
-  const entries = [executable, ...new Set(Object.keys(files).map((path) => path.split("/")[0]))];
+  // Like a real package, the archive carries the inventory its installs are
+  // checked against.
+  const listed = [executable, ...Object.keys(files)];
+  writeFileSync(
+    join(dir, "manifest.json"),
+    JSON.stringify({
+      files: listed.map((path) => ({ path, size: statSync(join(dir, path)).size })),
+    }),
+  );
+  const entries = [
+    executable,
+    "manifest.json",
+    ...new Set(Object.keys(files).map((path) => path.split("/")[0])),
+  ];
   const archive = join(dir, "shiori-cli.tar.gz");
   const packed = spawnSync("tar", ["-czf", archive, ...entries], {
     cwd: dir,

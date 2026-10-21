@@ -141,6 +141,39 @@ describe("CLI install channel: npm runner", () => {
     });
   });
 
+  // Reinstalling the same version with curl or PowerShell extracts over the
+  // tree the npm runner published. Stopped part way, it leaves the engine
+  // addon short in a directory the npm runner once completed, and that tree
+  // has to be replaced, not launched.
+  test("npm runner replaces its own install that a curl reinstall cut short", async () => {
+    if (!target) return;
+    await withTempDir(async (dir) => {
+      const executable = target.startsWith("win32") ? "shiori.exe" : "shiori";
+      const addon = "a".repeat(4096);
+      const { server } = await serveCliArchive(
+        makeArchive(mkdtempSync(join(dir, "pkg-")), executable, {
+          "native/shiori_core.node": addon,
+        }),
+        target,
+      );
+      servers.push(server);
+      const install = () =>
+        ensureCliBinary({
+          api: `http://127.0.0.1:${server.port}/api/cli`,
+          env: { SHIORI_CLI_HOME: join(dir, ".shiori"), SHIORI_CLI_ALLOW_HTTP: "1" },
+          target,
+        });
+      const installed = join(dirname(await install()), "native", "shiori_core.node");
+      writeFileSync(installed, addon.slice(0, 1024));
+
+      const binary = await install();
+      expect(readFileSync(join(dirname(binary), "native", "shiori_core.node"), "utf8")).toBe(
+        addon,
+      );
+      expect(readFileSync(binary, "utf8")).toContain("shiori-ok");
+    });
+  });
+
   // Several agents starting `npx @nagi-ovo/shiori` over a half-written
   // version directory each extract and then replace it. Without one run at
   // a time doing the replacing, a run deleted the tree another had just
