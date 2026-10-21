@@ -145,6 +145,34 @@ pub(super) fn record_main_frame_commit(inner: &mut WebPanelInner, url: &str) -> 
     true
 }
 
+// A navigation within the current document: a #fragment link, or Back and
+// Forward across one. It commits no page load, so recording only page-load
+// commits left the address bar without the hash and Back disabled while the
+// webview had gained an entry (and a pending Back unconsumed). The policy
+// callback is the only place WebKit reports it; it fires for every frame, so
+// only a URL that is the current page up to its fragment counts. WebView2
+// asks the policy about neither, as before.
+#[cfg(not(mobile))]
+pub(super) fn record_same_document_navigation(inner: &mut WebPanelInner, url: &str) -> bool {
+    let without_fragment = |raw: &str| {
+        parse_web_url(raw).ok().map(|mut parsed| {
+            parsed.set_fragment(None);
+            parsed
+        })
+    };
+    let Some(current) = inner.history.get(inner.cursor) else {
+        return false;
+    };
+    if current == url || without_fragment(current).is_none() {
+        return false;
+    }
+    if without_fragment(current) != without_fragment(url) {
+        return false;
+    }
+    record_web_navigation(inner, url);
+    true
+}
+
 #[cfg(not(mobile))]
 pub(super) fn emit_web_panel_nav<R: Runtime>(
     app: &AppHandle<R>,
@@ -302,6 +330,39 @@ mod tests {
             "file:///etc/passwd"
         ));
         assert_eq!(inner.cursor, 2);
+    }
+
+    // A #fragment link and Back across it stay in one document, so no page
+    // load reports them; the panel must still show the hash and let Back
+    // undo it.
+    #[test]
+    #[cfg(not(mobile))]
+    fn web_navigation_tracks_fragment_jumps_within_the_page() {
+        let mut inner = super::WebPanelInner::default();
+        super::record_web_navigation(&mut inner, "https://a.com/doc");
+        assert!(super::record_same_document_navigation(
+            &mut inner,
+            "https://a.com/doc#part-2"
+        ));
+        assert_eq!(
+            inner.history,
+            vec!["https://a.com/doc", "https://a.com/doc#part-2"]
+        );
+        assert_eq!(inner.cursor, 1, "Back must be enabled");
+
+        super::request_traversal(&mut inner, super::Traversal::Back);
+        assert!(super::record_same_document_navigation(
+            &mut inner,
+            "https://a.com/doc"
+        ));
+        assert_eq!(inner.cursor, 0);
+        assert_eq!(inner.history.len(), 2, "Forward must stay available");
+
+        // Another document, or the page itself again, is left to page loads.
+        for other in ["https://a.com/other#x", "https://a.com/doc"] {
+            assert!(!super::record_same_document_navigation(&mut inner, other));
+        }
+        assert_eq!(inner.cursor, 0);
     }
 
     // Back is still enabled until the first commit's nav event arrives, so
