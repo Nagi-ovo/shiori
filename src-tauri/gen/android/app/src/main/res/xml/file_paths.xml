@@ -4,4 +4,6 @@
   <external-files-path name="exports" path="exports/" />
   <cache-path name="export_cache" path="exports/" />
   <cache-path name="update_cache" path="updates/" />
+  <!-- Text shared to Shiori, saved as Markdown to open (SharedText.kt). -->
+  <cache-path name="shares" path="shares/" />
 </paths>

@@ -23,6 +23,9 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.9.0")
     implementation("androidx.appcompat:appcompat:1.6.0")
+    // Profile / ProfileStore for the temporary browser session; same
+    // version as the app module.
+    implementation("androidx.webkit:webkit:1.14.0")
     // Provided by the app's generated Android project (gen/android) — the Tauri
     // CLI includes this plugin as a Gradle module on the first `tauri android`
     // build and wires `:tauri-android` for it.

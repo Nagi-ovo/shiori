@@ -62,7 +62,7 @@ private struct NavSnapshot {
   var error: String? = nil
 }
 
-class ShioriBrowserPlugin: Plugin, WKNavigationDelegate {
+class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
   // Fallback only — Rust always passes the canonical UA (WEB_PANEL_USER_AGENT).
   static let defaultUserAgent =
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
@@ -110,6 +110,7 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate {
     }
     let wv = WKWebView(frame: .zero, configuration: config)
     wv.navigationDelegate = self
+    wv.uiDelegate = self
     wv.customUserAgent = userAgent ?? Self.defaultUserAgent
     wv.allowsBackForwardNavigationGestures = true
     if #available(iOS 11.0, *) {
@@ -295,6 +296,28 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate {
     default:
       decisionHandler(.cancel)
     }
+  }
+
+  // MARK: - WKUIDelegate
+
+  // target="_blank" links and window.open ask for a new web view. With no UI
+  // delegate WebKit drops them and the tap does nothing; the panel has one
+  // view, so load the request there. The load passes decidePolicyFor above,
+  // so the scheme gate still applies. Only http(s): window.open() and
+  // window.open('about:blank') (a script about to fill its popup) would
+  // otherwise replace the page with a blank one. window.open still returns
+  // null to the page, so popups that talk to window.opener stay unsupported.
+  func webView(
+    _ webView: WKWebView,
+    createWebViewWith configuration: WKWebViewConfiguration,
+    for navigationAction: WKNavigationAction,
+    windowFeatures: WKWindowFeatures
+  ) -> WKWebView? {
+    let scheme = navigationAction.request.url?.scheme?.lowercased()
+    if navigationAction.targetFrame == nil, scheme == "http" || scheme == "https" {
+      webView.load(navigationAction.request)
+    }
+    return nil
   }
 
   func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
