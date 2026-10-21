@@ -110,6 +110,8 @@ export function useDraftSync(
   // one last saw. Once a save is refused, no crash logs go there until an
   // open reads the row again.
   const conflictedDraftIdRef = useRef<string | null>(null);
+  // Bumped by discardRefusedEdits: a save begun before it must not land.
+  const discardGenerationRef = useRef(0);
   const ownLogStampRef = useRef<number | null>(null);
   const revisionRef = useRef(0);
   const saveDrainInFlightRef = useRef<Promise<void> | null>(null);
@@ -210,6 +212,7 @@ export function useDraftSync(
   // write is awaiting IndexedDB, the drain loop below immediately saves again.
   const performSave = useCallback(async () => {
     const revision = revisionRef.current;
+    const generation = discardGenerationRef.current;
     const snap = latestRef.current;
     if (!snap.opened || !snap.hash || !snap.draftId) {
       dirtyRef.current = false;
@@ -239,6 +242,7 @@ export function useDraftSync(
           rememberDraftVersion(snap.opened.doc, snap.draftId, null);
         }
       } else {
+        if (discardGenerationRef.current !== generation) return;
         const writtenVersion = await drafts.put({
           id: snap.draftId,
           fileName: snap.opened.fileName,
@@ -252,6 +256,15 @@ export function useDraftSync(
           // last read or wrote the row; its work must not be replaced.
           expectedVersion: draftVersionRef.current,
         });
+        if (discardGenerationRef.current !== generation) {
+          // Discarded while this write was in flight (the other window's row
+          // had gone, so it was accepted): take this copy back out.
+          if (await drafts.removeDraftPreservingLiveOperationReceiptsIfVersion(snap.draftId, writtenVersion)) {
+            draftVersionRef.current = null;
+            rememberDraftVersion(snap.opened.doc, snap.draftId, null);
+          }
+          return;
+        }
         draftVersionRef.current = writtenVersion;
         rememberDraftVersion(snap.opened.doc, snap.draftId, writtenVersion);
         savedDraftStampRef.current = now;
@@ -394,7 +407,10 @@ export function useDraftSync(
     }
     // Don't drain to disk while a restore decision is pending — that is
     // exactly the overwrite we are protecting the un-restored draft from.
-    if (disabled || !dirtyRef.current) return;
+    if (disabled) return;
+    // After a discard nothing is dirty, but a save it overtook may still be
+    // undoing itself; a quit right after must not cut that short.
+    if (!dirtyRef.current) return void (await saveDrainInFlightRef.current?.catch(() => undefined));
     // The IndexedDB write below is async and reads before it writes, so a
     // page torn down on pagehide can lose it. Land the pending op-log tier
     // synchronously first; a successful save clears it again.
@@ -449,6 +465,7 @@ export function useDraftSync(
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     timerRef.current = null;
     dirtyRef.current = false;
+    discardGenerationRef.current += 1;
     return true;
   }, []);
 

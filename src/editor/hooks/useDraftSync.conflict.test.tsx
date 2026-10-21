@@ -217,6 +217,40 @@ describe("useDraftSync across windows", () => {
     }
   });
 
+  // A close or quit can start a strict flush while the dialog is open; if the
+  // other window then removes the row, that save is accepted. A discard
+  // landing while it is in flight must still leave nothing behind, and the
+  // leave the discard releases must wait until that is so (a quit exits next).
+  test("a discard overtaking a save in flight leaves no draft of this copy", async () => {
+    const { readOperationLog } = await import("../../storage/operationLog");
+    const { default: drafts } = await import("../../storage/drafts");
+    const w = await twoWindowsOnOneHandle();
+    try {
+      w.openInThisWindow(await w.saveInWindowA("a-1"));
+      await w.saveInWindowA("a-2");
+      expect(await w.editAndFlush("b-1")).not.toBeNull();
+
+      // Window A undoes back to the original: its row is removed.
+      await drafts.remove(w.id);
+      let inFlight: Promise<unknown> = Promise.resolve();
+      let leave: Promise<unknown> = Promise.resolve();
+      await act(async () => {
+        inFlight = w.view.result.current.flushNowOrThrow().catch((err: unknown) => err);
+        expect(w.view.result.current.discardRefusedEdits()).toBe(true);
+        leave = w.view.result.current.flushNowOrThrow().then(() => null, (err: unknown) => err);
+        expect(await leave).toBeNull();
+        // The leave has gone on: nothing of this copy may be in the store.
+        expect(await w.overlays()).toBeUndefined();
+        await inFlight;
+      });
+      await act(() => Bun.sleep(900));
+      expect(await w.overlays()).toBeUndefined();
+      expect(readOperationLog(w.id)).toBeNull();
+    } finally {
+      await w.dispose();
+    }
+  });
+
   test("discarding never drops edits a save can still keep", async () => {
     const w = await twoWindowsOnOneHandle();
     try {
