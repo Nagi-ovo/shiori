@@ -6,7 +6,10 @@
  * so the reader sees something, but that text is not the file: every byte the
  * decoder could not read became U+FFFD. Saving it would replace the original
  * with those replacement characters for good, so such a document is marked
- * `lossy` and never written back.
+ * `lossy` and never written back. So is valid UTF-8 that holds a NUL: no
+ * Markdown or HTML does, but BOM-less UTF-16 decodes that way (its ASCII
+ * characters' high bytes are NUL), and an edit would splice single UTF-8 bytes
+ * into its 2-byte stream.
  *
  * A UTF-8 byte order mark is not part of the text: left in, it would sit in
  * front of the first `#` and stop it parsing as a heading. TextDecoder drops
@@ -30,11 +33,8 @@ function startsWithUtf8Bom(bytes: Uint8Array): boolean {
 export function decodeTextDocument(bytes: Uint8Array): DecodedTextDocument {
   const bom = startsWithUtf8Bom(bytes);
   try {
-    return {
-      text: new TextDecoder("utf-8", { fatal: true }).decode(bytes),
-      lossy: false,
-      bom,
-    };
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return { text, lossy: text.includes("\0"), bom };
   } catch {
     return {
       text: new TextDecoder("utf-8", { fatal: false }).decode(bytes),

@@ -258,6 +258,18 @@ describe("openDocument", () => {
     expect(clean?.textLossy).toBeUndefined();
   });
 
+  test("a UTF-16 file without a byte order mark opens marked lossy too", async () => {
+    const store = workspace();
+    const { ports } = fakePorts(store);
+    // "# a\r\nb" in UTF-16LE: every byte is valid UTF-8 (the high halves are
+    // NUL), but an edit would splice single UTF-8 bytes into the 2-byte stream.
+    const utf16 = bytes(0x23, 0, 0x20, 0, 0x61, 0, 0x0d, 0, 0x0a, 0, 0x62, 0);
+
+    await openDocument({ kind: "markdown", name: "u16.md", size: utf16.length, bytes: utf16, path: "/n/u16.md" }, {}, ports);
+
+    expect(store.getState().tabs[0]).toMatchObject({ title: "u16.md", textLossy: true });
+  });
+
   test("a byte order mark is kept on the tab, not in the text the editor parses", async () => {
     const store = workspace();
     const { ports } = fakePorts(store);
