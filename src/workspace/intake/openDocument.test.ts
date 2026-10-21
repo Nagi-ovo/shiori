@@ -7,6 +7,7 @@ import { sha256Hex } from "../../storage/hash";
 import { loadWorkspaceState, saveWorkspaceState, type WorkspaceTabMeta } from "../../storage/workspace";
 import { metaFromRuntimeTab } from "../appWorkspace";
 import { captureSuspendedPdfSnapshot } from "../../storage/runtimeSessions";
+import { observedDraftVersion } from "../../storage/draftVersions";
 import type { WorkspaceRuntimeTab } from "../types";
 import { openDocument } from "./openDocument";
 import { openPdf } from "./openPdf";
@@ -165,6 +166,29 @@ describe("openPdf", () => {
 
     const resumed = exportSnapshotKey(editors.get(tabId!)!.getState().model);
     expect(store.getState().session.exportBaselineSnapshot).not.toBe(resumed);
+  });
+
+  // Every save compares the draft row with the one its tab last saw, so a
+  // tab resumed after a restart must still know it: without it, its first
+  // save is refused against its own row.
+  test("a PDF resumed from suspension still knows the draft row it last saw", async () => {
+    const store = workspace();
+    const { ports, editors } = fakePorts(store);
+    const row = (revision: string) =>
+      ({ lastTouched: 5, revision, model: { pages: [], overlays: [] }, history: [], completedLiveOperationIds: [] }) as unknown as Draft;
+    ports.drafts.get = async () => row("seen");
+    await openPdf(pdf("paper.pdf"), {}, ports);
+    const [tabId] = tabIds(store);
+    const snapshot = captureSuspendedPdfSnapshot(editors.get(tabId!)!);
+    editors.delete(tabId!);
+    store.getState().updateTab(tabId!, (tab) => ({ ...tab, status: "suspended" }));
+    // Another window saved over it while this tab slept.
+    ports.drafts.get = async () => row("theirs");
+
+    await openPdf(pdf("paper.pdf"), { tabId, runtimeSnapshot: snapshot, skipDuplicateCheck: true }, ports);
+
+    const { opened } = editors.get(tabId!)!.getState();
+    expect(observedDraftVersion(opened, null)).toEqual({ lastTouched: 5, revision: "seen" });
   });
 
   test("a saved draft is restored silently, with a way back to the original", async () => {

@@ -34,6 +34,8 @@ import {
   type PdfEditorStoreApi,
   type Store,
 } from "../editor/store/store";
+import type { DraftWriteVersion } from "./drafts";
+import { observedDraftVersion } from "./draftVersions";
 import { sha256Hex } from "./hash";
 import { isQuotaExceededError, storageErrorMessage } from "./errors";
 import { RUNTIME_PDF_BLOB_METADATA_INDEX, workspaceDb } from "./workspace";
@@ -66,6 +68,10 @@ export type SuspendedPdfSnapshot = {
   textDefaults: Store["textDefaults"];
   showThumbs: boolean;
   readerMode: boolean;
+  // The draft row the tab last read or wrote, so its next save can tell its
+  // own row from one another window wrote meanwhile. Absent in snapshots
+  // from older builds.
+  draftVersion?: DraftWriteVersion | null;
 };
 
 export type RuntimeSessionRecord = {
@@ -119,6 +125,7 @@ export function captureSuspendedPdfSnapshot(
     textDefaults: { ...state.textDefaults },
     showThumbs: state.showThumbs,
     readerMode: state.readerMode,
+    draftVersion: observedDraftVersion(state.opened, null),
   };
 }
 

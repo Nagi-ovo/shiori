@@ -20,7 +20,6 @@ import {
   observedDraftVersion,
   rememberDraftVersion,
 } from "../../storage/draftVersions";
-import { isDraftOpenInAnotherWindow } from "../../storage/draftProtection";
 
 export type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
 
@@ -104,9 +103,9 @@ export function useDraftSync(
   const persistenceDocumentRef = useRef(opened?.doc ?? null);
   const persistenceReceiptsRef = useRef(completedLiveOperationIds);
   const draftVersionRef = useRef(observedDraftVersion(opened, draftId));
-  // Two windows on one web file handle share a draft id. While another holds
-  // it, a save must not replace a row this one never saw; once refused, no
-  // saves or crash logs go there until an open reads the row again.
+  // Two windows on one file share a draft id, so every save names the row this
+  // one last saw. Once a save is refused, no crash logs go there until an
+  // open reads the row again.
   const conflictedDraftIdRef = useRef<string | null>(null);
   const ownLogStampRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
@@ -269,9 +268,6 @@ export function useDraftSync(
           rememberDraftVersion(snap.opened.doc, snap.draftId, null);
         }
       } else {
-        const guarded =
-          conflictedDraftIdRef.current === snap.draftId ||
-          isDraftOpenInAnotherWindow(snap.draftId);
         const writtenVersion = await drafts.put({
           id: snap.draftId,
           fileName: snap.opened.fileName,
@@ -281,7 +277,9 @@ export function useDraftSync(
           history: snap.undoStack,
           completedLiveOperationIds: liveOperationReceipts,
           lastTouched: now,
-          ...(guarded ? { expectedVersion: draftVersionRef.current } : {}),
+          // Another window on the same file may have saved since this one
+          // last read or wrote the row; its work must not be replaced.
+          expectedVersion: draftVersionRef.current,
         });
         draftVersionRef.current = writtenVersion;
         rememberDraftVersion(snap.opened.doc, snap.draftId, writtenVersion);

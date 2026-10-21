@@ -265,20 +265,6 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
       return anyOpen((openId) => openId === id);
     },
 
-    /**
-     * Whether another window that is surely alive holds exactly this draft
-     * id: where Web Locks exist, one holding its lock at the last query, so a
-     * crashed window's fresh entry does not count.
-     */
-    isDraftOpenInAnotherWindow(id: string): boolean {
-      let found = false;
-      otherEntries((key, entry) => {
-        if (!entry?.ids.includes(id)) return;
-        if (!deps.locks || lockedKeys.has(key)) found = true;
-      });
-      return found;
-    },
-
     /** Every id the other live windows publish. */
     otherWindowIds(): string[] {
       const ids: string[] = [];
@@ -316,5 +302,4 @@ const shared = createWindowProtection();
 export const protectOpenDrafts = shared.protectOpenDrafts;
 export const isDraftProtected = shared.isDraftProtected;
 export const isDraftOpen = shared.isDraftOpen;
-export const isDraftOpenInAnotherWindow = shared.isDraftOpenInAnotherWindow;
 export const republishOpenDrafts = shared.republishOpenDrafts;
