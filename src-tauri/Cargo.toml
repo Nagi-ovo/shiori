@@ -70,8 +70,9 @@ tauri-plugin-updater = "2"
 # Desktop-only: mobile windows are OS-managed and have no persistent frame.
 tauri-plugin-window-state = "2"
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
-# libc backs the embedded-terminal shutdown reaper: killpg() the shell's whole
-# process group on Unix (the shell is a setsid session leader, so PID == PGID).
+# libc backs the embedded-terminal reaper on Unix: the shell is a setsid
+# session leader, and every process group in its session (its own and each
+# job's) is killpg()'d, found via getsid()/getpgid() (terminal/reaper.rs).
 # Declared explicitly rather than relied on transitively — per the base64
 # cfg-gated-dependency postmortem (2026-06-12). Unused on Windows (that path
 # uses taskkill /T) but compiles cleanly there.

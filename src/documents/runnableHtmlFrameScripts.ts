@@ -1,3 +1,5 @@
+import { WEBRTC_GUARD } from "./runnableHtmlWebRtcGuard";
+
 // Installed before the bridge and every user script. Run mode executes in an
 // opaque-origin sandbox (no allow-same-origin), where the real localStorage /
 // sessionStorage / document.cookie throw "SecurityError: The operation is
@@ -9,20 +11,12 @@
 // keeps Lock 1's guarantee intact ("nothing of the user's in the box, nothing
 // leaves it") while turning a cryptic crash into expected ephemeral behavior.
 // The storage parts install only when the real API is genuinely unavailable,
-// so they are inert in a normal same-origin context. WebRTC is removed
-// unconditionally: CSP does not govern it, so a peer connection's ICE
-// gathering could reach a STUN host the document names. This covers the run
-// frame's own realm only; a nested about:blank frame the document creates
-// gets fresh globals, and no browser run has yet confirmed either part
-// (probe: a run document that opens a data channel against its own STUN
-// host, with the network panel open). Exported for unit tests. Like the
-// bridge, it must never contain the literal script-closing sequence.
-export const STORAGE_SHIM = `(function () {
-  var rtc = ["RTCPeerConnection", "webkitRTCPeerConnection", "mozRTCPeerConnection"];
-  for (var r = 0; r < rtc.length; r++) {
-    try { Object.defineProperty(window, rtc[r], { value: undefined, writable: false, configurable: false }); }
-    catch (e) {}
-  }
+// so they are inert in a normal same-origin context. WebRTC is removed first,
+// unconditionally, here and in every child frame the document can reach (see
+// runnableHtmlWebRtcGuard.ts). Exported for unit tests. Like the bridge, it
+// must never contain the literal script-closing sequence.
+export const STORAGE_SHIM = `${WEBRTC_GUARD}
+(function () {
   function makeStorage() {
     var data = Object.create(null);
     function keys() { return Object.keys(data); }

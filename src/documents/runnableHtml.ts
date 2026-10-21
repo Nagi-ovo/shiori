@@ -24,6 +24,12 @@
 //   (src-tauri/tauri.conf.json) and the web app's headers (public/_headers).
 //   A `<meta http-equiv="refresh">`, which needs no script, is removed here.
 //
+//   CSP fetch directives do not govern WebRTC either. The policy sends
+//   `webrtc 'block'` for any engine that implements it (none is known to),
+//   and the frame scripts remove the RTCPeerConnection constructors from the
+//   run frame, every child frame it can reach, and every srcdoc child they
+//   can prefix (runnableHtmlWebRtcGuard.ts).
+//
 // A small bridge script is injected before user scripts to report content
 // height back to the host, forward zoom gestures, and surface runtime errors
 // and CSP violations (the host cannot read the cross-origin frame directly),
@@ -209,6 +215,9 @@ function runCsp(
     "form-action 'none'",
     "base-uri 'none'",
     "navigate-to 'none'",
+    // CSP3, inherited by about:blank / srcdoc children, but no engine is
+    // known to enforce it; the WebRTC guard in the frame scripts does the work.
+    "webrtc 'block'",
   ].join("; ");
 }
 
@@ -274,6 +283,15 @@ export function buildRunnableHtml(
   bridge.textContent = BRIDGE_SCRIPT;
   parsed.head.insertBefore(bridge, storageShim.nextSibling);
 
+  // A srcdoc child is its own opaque origin, out of the run frame's reach, so
+  // it runs the shim (and its WebRTC guard) itself, ahead of its own scripts.
+  const { externalizeScript } = options;
+  prefixSrcdocFrames(parsed, () =>
+    externalizeScript
+      ? `<script src="${escapeAttribute(externalizeScript(STORAGE_SHIM))}"></script>`
+      : `<script nonce="${nonce}">${STORAGE_SHIM}</script>`,
+  );
+
   if (options.externalizeScript) {
     externalizeInlineScripts(parsed, options.externalizeScript);
     return { html: serializeRunnableDocument(parsed), remoteDependencies };
@@ -296,6 +314,19 @@ function createRunNonce(): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
     "",
   );
+}
+
+function prefixSrcdocFrames(doc: Document, scriptTag: () => string) {
+  const frames = Array.from(doc.querySelectorAll("iframe[srcdoc]"));
+  if (!frames.length) return;
+  const tag = scriptTag();
+  for (const frame of frames) {
+    frame.setAttribute("srcdoc", tag + (frame.getAttribute("srcdoc") ?? ""));
+  }
+}
+
+function escapeAttribute(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
 }
 
 function removeCspAndRefreshMetas(doc: Document) {
