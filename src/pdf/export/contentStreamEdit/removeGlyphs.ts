@@ -14,12 +14,14 @@
 //
 // Hit policy is conservative: a glyph is removed only when one cover rect
 // holds its whole advance, from the baseline up through its core band
-// (GlyphPlacement.coreQuad; small epsilon for float noise). The font-wide
-// ascent/descent box is not required: editor covers hug the ink or a band
-// normalized to one em, and many fonts declare a taller box. Partially
-// covered glyphs stay — deleting a glyph the user can still half-see is
-// worse than leaving one they meant to cover — and a rect is clean only when
-// no glyph left in the stream touches its full advance box.
+// (GlyphPlacement.coreQuad; small epsilon for float noise), or when a rect
+// holding no core band hugs the ink of glyphs floating off the baseline
+// (removalsByRect). The font-wide ascent/descent box is not required:
+// editor covers hug the ink or a band normalized to one em, and many fonts
+// declare a taller box. Partially covered glyphs stay — deleting a glyph
+// the user can still half-see is worse than leaving one they meant to
+// cover — and a rect is clean only when no glyph left in the stream touches
+// its full advance box.
 
 import type { PdfRect } from "../../model/types";
 import type { ContentOp, ContentOperand } from "./tokenizer";
@@ -183,6 +185,59 @@ export function quadIntersectsRect(
   return false;
 }
 
+// Whether an upright glyph's font box holds the rect while the rect spans
+// its whole advance: the shape of a cover that hugs the ink of a glyph
+// floating off the baseline (a dash, an underscore, a quote).
+function rectHugsUprightGlyph(rect: PdfRect, quad: GlyphPlacement["quad"]): boolean {
+  const [origin, advance, , top] = quad;
+  if (
+    Math.abs(advance.y - origin.y) > HIT_EPSILON ||
+    Math.abs(top.x - origin.x) > HIT_EPSILON ||
+    advance.x <= origin.x ||
+    top.y <= origin.y
+  ) {
+    return false;
+  }
+  const rb = rectBounds(rect);
+  const qb = quadBounds(quad);
+  return (
+    rb.minX <= qb.minX + HIT_EPSILON &&
+    rb.maxX >= qb.maxX - HIT_EPSILON &&
+    rb.minY >= qb.minY - HIT_EPSILON &&
+    rb.maxY <= qb.maxY + HIT_EPSILON
+  );
+}
+
+// Side margin a hugging cover may leave past its glyphs: the editor's cover
+// pad plus the selection's inline edge padding.
+function hugSlack(rect: PdfRect): number {
+  return 0.8 + Math.max(3, 0.25 * Math.abs(rect.h));
+}
+
+// Per rect, the glyphs it removes. A rect removes every glyph whose core
+// band it holds. A rect that holds no core band may be an ink-bounds cover
+// of glyphs that float off the baseline; it removes the glyphs it hugs
+// (rectHugsUprightGlyph), but only when together they span the rect, so a
+// cover over a much larger glyph (a heading, a watermark) keeps it.
+function removalsByRect(
+  glyphs: GlyphPlacement[],
+  coverRects: PdfRect[],
+): Set<GlyphPlacement>[] {
+  return coverRects.map((rect) => {
+    const core = glyphs.filter((glyph) => quadInsideRect(glyph.coreQuad, rect));
+    if (core.length > 0) return new Set(core);
+    const hugged = glyphs.filter((glyph) => rectHugsUprightGlyph(rect, glyph.quad));
+    if (hugged.length === 0) return new Set();
+    const rb = rectBounds(rect);
+    const minX = Math.min(...hugged.map((glyph) => quadBounds(glyph.quad).minX));
+    const maxX = Math.max(...hugged.map((glyph) => quadBounds(glyph.quad).maxX));
+    const slack = hugSlack(rect);
+    return minX <= rb.minX + slack && maxX >= rb.maxX - slack
+      ? new Set(hugged)
+      : new Set();
+  });
+}
+
 function classifyGlyphCoverage(
   glyphs: GlyphPlacement[],
   coverRects: PdfRect[],
@@ -196,11 +251,12 @@ function classifyGlyphCoverage(
     kind: "none",
   }));
   const hits: GlyphPlacement[] = [];
+  const removals = removalsByRect(glyphs, coverRects);
 
   for (const glyph of glyphs) {
     let removeGlyph = false;
     for (let rectIndex = 0; rectIndex < coverRects.length; rectIndex += 1) {
-      if (quadInsideRect(glyph.coreQuad, coverRects[rectIndex]!)) {
+      if (removals[rectIndex]!.has(glyph)) {
         removeGlyph = true;
         const attribution = rectFonts[rectIndex]!;
         if (attribution.kind === "none") {

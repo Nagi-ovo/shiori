@@ -102,6 +102,72 @@ describe("page text redaction with editor-built cover rects", () => {
     expect(report.cleanRects).toEqual([true]);
   });
 
+  test("excises dashes under a cover built from their floating ink bounds", async () => {
+    const page = await pageWithContent(
+      "BT /F1 24 Tf 100 700 Td (---) Tj ET",
+      ARIAL_DESCRIPTOR,
+    );
+    // Arial hyphen ink at 24pt: 5.155pt to 7.275pt above the baseline.
+    const band = { ascent: 7.275, descent: -5.155 };
+
+    const report = redactCoveredTextOnPage(page, [editorCoverRect(36, band)]);
+
+    expect(report.removedCount).toBe(3);
+    expect(report.cleanRects).toEqual([true]);
+  });
+
+  test("excises underscores under a cover built from their ink below the baseline", async () => {
+    const page = await pageWithContent(
+      "BT /F1 12 Tf 100 700 Td (___) Tj ET",
+      ARIAL_DESCRIPTOR,
+    );
+    const band = { ascent: -0.9, descent: 1.5 };
+
+    const report = redactCoveredTextOnPage(page, [editorCoverRect(18, band)]);
+
+    expect(report.removedCount).toBe(3);
+    expect(report.cleanRects).toEqual([true]);
+  });
+
+  test("keeps a large heading glyph whose box holds a body-line cover", async () => {
+    // A 60pt "W" (advance 30pt) behind a 12pt body line: the line's cover
+    // spans the W's advance and sits inside its box, but most of the W is
+    // outside the cover and still visible.
+    const page = await pageWithContent(
+      "BT /F1 60 Tf 100 690 Td (W) Tj ET BT /F1 12 Tf 100 700 Td (ABCDEF) Tj ET",
+      ARIAL_DESCRIPTOR,
+    );
+    const band = deterministicTextVerticalMetrics(12, {
+      ascent: 0.905,
+      descent: -0.212,
+    });
+
+    const report = redactCoveredTextOnPage(page, [editorCoverRect(36, band)]);
+
+    expect(report.removedCount).toBe(6);
+    expect(report.cleanRects).toEqual([false]);
+  });
+
+  test("keeps a large heading glyph behind a cover whose own text is unplaced", async () => {
+    // The body line is in a font the walk cannot measure, so nothing holds a
+    // core band in the cover; the W still only fills a third of its width.
+    const page = await pageWithContent(
+      "BT /F1 60 Tf 100 690 Td (W) Tj ET BT /F2 12 Tf 100 700 Td (ABCDEFGHI) Tj ET",
+      ARIAL_DESCRIPTOR,
+    );
+    page.node.setFontDictionary(
+      PDFName.of("F2"),
+      page.doc.context.register(
+        page.doc.context.obj({ Type: "Font", Subtype: "Type1", BaseFont: "Helvetica" }),
+      ),
+    );
+    const band = { ascent: 0.716 * 12, descent: 0 };
+
+    const report = redactCoveredTextOnPage(page, [editorCoverRect(90, band)]);
+
+    expect(report.removedCount).toBe(0);
+  });
+
   test("keeps the line above whose descent box reaches into the cover", async () => {
     // Leading of one em: the upper line's descent box dips below the
     // lower line's cover top, but none of its glyphs was selected.
