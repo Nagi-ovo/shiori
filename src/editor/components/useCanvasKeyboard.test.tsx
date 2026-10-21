@@ -1,7 +1,8 @@
 import "../../test/setupDom";
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import type { ReactNode } from "react";
+import { VirtuosoMockContext } from "react-virtuoso";
 import i18n from "../../i18n";
 import type { Overlay, PageModel } from "../../pdf/model/types";
 import {
@@ -10,12 +11,14 @@ import {
   useAppStore,
   type PdfEditorStoreApi,
 } from "../store/store";
+import { Thumbnails } from "./Thumbnails";
 import { useCanvasKeyboard } from "./useCanvasKeyboard";
 
 // What can go wrong between a key on the window and the canvas command:
 // - a focused widget handles the key (the thumbnail rail pages on arrows, the
 //   tab strip walks tabs, the navigator handle resizes) and the canvas acts
-//   on it as well, nudging the selected annotation;
+//   on it as well, nudging the selected annotation; the rail at its first
+//   or last page, with no page to go to, still owns the arrow;
 // - a button the reader tabbed to loses Enter and Space to the canvas, so
 //   Enter places the armed tool instead of pressing the button;
 // - a button a click focused takes Space away from panning;
@@ -99,6 +102,31 @@ describe("canvas keyboard", () => {
 
     expect(rectOf(store)).toEqual(rect.rect);
     expect(store.getState().undoStack).toHaveLength(0);
+  });
+
+  test("arrows on the thumbnail rail at its first or last page do not nudge the selection", () => {
+    const { store } = mount();
+    const second: PageModel = { ...page, id: "p2" };
+    store.setState({ model: { pages: [page, second], overlays: [rect] }, activePageId: second.id });
+    const view = render(
+      <EditorStoreContext.Provider value={store}>
+        <VirtuosoMockContext.Provider value={{ viewportHeight: 600, itemHeight: 260 }}>
+          <Thumbnails doc={null} onInsertPdfPages={() => undefined} embedded />
+        </VirtuosoMockContext.Provider>
+      </EditorStoreContext.Provider>,
+    );
+    const rail = view.container.querySelector<HTMLElement>(".shioriThumbsRail")!;
+
+    for (const [activePageId, key] of [[second.id, "ArrowDown"], [page.id, "ArrowUp"]] as const) {
+      act(() => store.setState({ activePageId }));
+      act(() => {
+        fireEvent.keyDown(rail, { key });
+        fireEvent.keyUp(rail, { key });
+      });
+
+      expect(rectOf(store)).toEqual(rect.rect);
+      expect(store.getState().undoStack).toHaveLength(0);
+    }
   });
 
   test("Enter and Space on a button reached by Tab press the button, not the canvas", () => {

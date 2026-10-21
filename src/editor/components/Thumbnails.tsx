@@ -284,8 +284,8 @@ export function Thumbnails({
           : current + 1
         : current - 1;
     const next = pages[nextIndex];
-    if (!next) return;
     e.preventDefault();
+    if (!next) return;
     jumpToPage(next.id);
   };
 
