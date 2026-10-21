@@ -319,6 +319,8 @@
     "saveQuotaFailedDetail": "Open Settings → Storage and clear older drafts, then try again.",
     "saveTransientFailedToast": "Draft save failed.",
     "saveTransientFailedDetail": "Please try again in a moment.",
+    "saveConflictToast": "This document changed in another window.",
+    "saveConflictDetail": "Edits here are no longer saved as a draft, so the other window's work is kept. Export this copy if you need it, then reopen the file.",
     "saved": "Saved",
     "storageTooltip": "Local draft storage used / cap",
     "restoreTitle": "Editing will overwrite the set-aside draft",

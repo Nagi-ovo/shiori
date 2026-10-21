@@ -129,6 +129,10 @@ export function useDraftPersistence({
       toast.error(t("drafts.saveQuotaFailedToast"), t("drafts.saveQuotaFailedDetail"));
       return;
     }
+    if (draftState.errorKind === "conflict") {
+      toast.error(t("drafts.saveConflictToast"), t("drafts.saveConflictDetail"));
+      return;
+    }
     toast.error(
       t("drafts.saveTransientFailedToast"),
       t("drafts.saveTransientFailedDetail"),

@@ -73,17 +73,29 @@ export type DraftMeta = Omit<
   storageBytes: number;
 };
 
+/** "conflict": another window saved the draft since this writer last saw it. */
 export class DraftSaveError extends Error {
-  kind: "quota" | "transient";
+  kind: "quota" | "transient" | "conflict";
 
   constructor(
-    kind: "quota" | "transient",
+    kind: "quota" | "transient" | "conflict",
     message: string,
   ) {
     super(message);
     this.name = "DraftSaveError";
     this.kind = kind;
   }
+}
+
+function isVersion(
+  row: { lastTouched: number; revision?: string | null },
+  expected: DraftWriteVersion | null,
+): boolean {
+  return (
+    !!expected &&
+    row.lastTouched === expected.lastTouched &&
+    (row.revision ?? null) === expected.revision
+  );
 }
 
 function createDraftRevision(): string {
@@ -347,6 +359,8 @@ export async function totalBytes(): Promise<number> {
 // Upsert a draft. Preserves createdAt if an entry with this id already exists;
 // always bumps lastTouched. Original PDF bytes are written once per hash, then
 // later autosaves update only the model-sized row and small metadata fields.
+// With `expectedVersion` (null: none seen), an existing row written by anyone
+// else since is kept and the save fails as a "conflict".
 export async function put(
   incoming: Omit<
     Draft,
@@ -355,6 +369,7 @@ export async function put(
     createdAt?: number;
     history?: HistoryEntry[];
     completedLiveOperationIds?: string[];
+    expectedVersion?: DraftWriteVersion | null;
   },
 ): Promise<DraftWriteVersion> {
   const now = Date.now();
@@ -372,7 +387,8 @@ export async function put(
     pdfByteLength,
     modelByteLength + historyByteLength + receiptByteLength,
   );
-  const writeDraft = async () => db.transaction("rw", db.pdfBlobs, db.draftModels, async () => {
+  const { expectedVersion } = incoming;
+  const writeDraft = async () => db.transaction("rw", db.pdfBlobs, db.draftModels, db.drafts, async () => {
     // Read and conditionally write under the same transaction. An eviction or
     // clear running between an earlier read and this write must not leave a
     // model row whose supposedly-existing source blob was actually deleted.
@@ -380,6 +396,12 @@ export async function put(
       db.draftModels.get(incoming.id),
       db.pdfBlobs.get(incoming.id),
     ]);
+    if (expectedVersion !== undefined) {
+      const current = existingModel ?? (await db.drafts.get(incoming.id));
+      if (current && !isVersion(current, expectedVersion)) {
+        throw new DraftSaveError("conflict", "The draft changed in another window");
+      }
+    }
     const createdAt =
       existingModel?.createdAt ??
       existingBlob?.createdAt ??
@@ -421,6 +443,7 @@ export async function put(
   try {
     await writeDraft();
   } catch (err) {
+    if (err instanceof DraftSaveError) throw err;
     if (!isQuotaExceededError(err)) {
       throw new DraftSaveError("transient", storageErrorMessage(err));
     }
@@ -428,6 +451,7 @@ export async function put(
     try {
       await writeDraft();
     } catch (retryErr) {
+      if (retryErr instanceof DraftSaveError) throw retryErr;
       throw new DraftSaveError(
         isQuotaExceededError(retryErr) ? "quota" : "transient",
         storageErrorMessage(retryErr),
@@ -482,15 +506,7 @@ export async function removeDraftPreservingLiveOperationReceiptsIfVersion(
       db.drafts.get(id),
     ]);
     const current = model ?? legacy;
-    if (current) {
-      if (!expected) return;
-      if (
-        current.lastTouched !== expected.lastTouched ||
-        (current.revision ?? null) !== expected.revision
-      ) {
-        return;
-      }
-    }
+    if (current && !isVersion(current, expected)) return;
     await Promise.all([
       db.drafts.delete(id),
       db.pdfBlobs.delete(id),
