@@ -57,6 +57,7 @@ import {
   stripUnexportedPageDocumentFiles,
 } from "./navigation";
 import { isolatePageReferences } from "./pageIsolation";
+import { alignPageTreeWithPdfium } from "./sourcePageTree";
 import {
   drawContentTextEditsForPage,
   drawImageOverlaysForPage,
@@ -117,6 +118,8 @@ export async function rebuildPdf(
   const source = await PDFDocument.load(new Uint8Array(originalBytes), {
     ignoreEncryption: true,
   });
+  // Every sourceIndex is PDFium's page number; see sourcePageTree.ts.
+  alignPageTreeWithPdfium(source);
   const sourcePages = source.getPages();
   const sourceIndices = model.pages
     .filter((page) => !isBlankPage(page))
