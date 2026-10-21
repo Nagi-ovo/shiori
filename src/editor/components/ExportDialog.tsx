@@ -71,6 +71,7 @@ type ExportErrorState = {
 type PendingLossyExport = {
   bytes: Uint8Array;
   lostChars: number;
+  unexcisedEdits: number;
   completeDocument: boolean;
   snapshotKey: string;
   suggestedName: string;
@@ -468,12 +469,13 @@ export function ExportDialog({
       const prepared: PendingLossyExport = {
         bytes: exportResult.bytes,
         lostChars: exportResult.lostChars,
+        unexcisedEdits: exportResult.unexcisedEdits ?? 0,
         completeDocument,
         snapshotKey: exportSnapshotKey(exportModel),
         suggestedName: `${stem}-edited.pdf`,
         diagnosticContext,
       };
-      if (prepared.lostChars > 0) {
+      if (prepared.lostChars > 0 || prepared.unexcisedEdits > 0) {
         setPendingLossyExport(prepared);
         return;
       }
@@ -570,7 +572,10 @@ export function ExportDialog({
       </Section>
 
       {pendingLossyExport ? (
-        <LossyExportNotice lostChars={pendingLossyExport.lostChars} />
+        <LossyExportNotice
+          lostChars={pendingLossyExport.lostChars}
+          unexcisedEdits={pendingLossyExport.unexcisedEdits}
+        />
       ) : null}
 
       {error ? (
@@ -619,7 +624,9 @@ export function ExportDialog({
               <span>
                 {busy
                   ? t("export.busy")
-                  : t("export.lostCharsConfirmAction")}
+                  : pendingLossyExport.unexcisedEdits > 0
+                    ? t("export.unexcisedConfirmAction")
+                    : t("export.lostCharsConfirmAction")}
               </span>
             </IconBtn>
           </>

@@ -246,6 +246,53 @@ describe("ExportDialog preview scheduling", () => {
     await waitFor(() => expect(saveCalls).toHaveLength(1));
   });
 
+  // An original-text edit whose glyphs could not be cut from the page is only
+  // painted over: the PDF looks edited, but search and copy still return the
+  // old text. Saving that without a word let a "redacted" name leave the app.
+  test("requires confirmation before saving edits that leave the original text in the file", async () => {
+    runExport = async () => ({
+      bytes: new Uint8Array(1024),
+      lostChars: 0,
+      unexcisedEdits: 2,
+    });
+    const view = render(<ExportDialog open onClose={() => undefined} />);
+    await waitFor(() => expect(exportCalls).toEqual(["original"]), {
+      timeout: 3_000,
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "Export PDF" }));
+    await waitFor(() =>
+      expect(view.getByRole("alert").textContent).toContain(
+        "2 edits could not remove the original text.",
+      ),
+    );
+    expect(saveCalls).toHaveLength(0);
+
+    fireEvent.click(view.getByRole("button", { name: "Export anyway" }));
+    await waitFor(() => expect(saveCalls).toHaveLength(1));
+  });
+
+  test("names both problems when an export substitutes characters and keeps original text", async () => {
+    runExport = async () => ({
+      bytes: new Uint8Array(1024),
+      lostChars: 1,
+      unexcisedEdits: 1,
+    });
+    const view = render(<ExportDialog open onClose={() => undefined} />);
+    await waitFor(() => expect(exportCalls).toEqual(["original"]), {
+      timeout: 3_000,
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "Export PDF" }));
+    await waitFor(() => expect(view.getByRole("alert")).toBeDefined());
+    const alert = view.getByRole("alert").textContent ?? "";
+    expect(alert).toContain(
+      "1 character cannot be encoded and will be replaced with “?” in the exported PDF.",
+    );
+    expect(alert).toContain("1 edit could not remove the original text.");
+    expect(saveCalls).toHaveLength(0);
+  });
+
   test("omits document files for selected pages and explains the privacy boundary", async () => {
     const view = render(<ExportDialog open onClose={() => undefined} />);
     await waitFor(() => expect(documentFilePolicies).toEqual(["preserve"]), {
