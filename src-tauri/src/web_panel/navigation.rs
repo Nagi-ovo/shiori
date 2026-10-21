@@ -131,6 +131,20 @@ pub(super) fn record_web_navigation(inner: &mut WebPanelInner, url: &str) {
     inner.cursor = inner.history.len().saturating_sub(1);
 }
 
+// A main-frame page commit (page-load Started). Anything the policy let
+// load counts: a page sending its top frame to a blob: or about:blank used to
+// be ignored, leaving the previous address up and Back disabled on the very
+// page the user could not leave. Typed input stays http(s) (parse_web_url).
+// Returns whether the commit entered the history.
+#[cfg(not(mobile))]
+pub(super) fn record_main_frame_commit(inner: &mut WebPanelInner, url: &str) -> bool {
+    if !web_panel_allows_navigation(url) {
+        return false;
+    }
+    record_web_navigation(inner, url);
+    true
+}
+
 #[cfg(not(mobile))]
 pub(super) fn emit_web_panel_nav<R: Runtime>(
     app: &AppHandle<R>,
@@ -267,6 +281,27 @@ mod tests {
             inner.history,
             vec!["https://a.com", "https://b.com", "https://d.com"]
         );
+    }
+
+    // The policy lets a page send its own top frame to a blob: (a generated
+    // file) or about:blank. That page is then what the panel shows, so the
+    // address bar must follow and Back must lead back to the page before it.
+    #[test]
+    #[cfg(not(mobile))]
+    fn web_navigation_records_a_top_level_blob_page() {
+        let mut inner = super::WebPanelInner::default();
+        super::record_web_navigation(&mut inner, "https://a.com");
+        let blob = "blob:https://a.com/0d1c6b8e-9a43-4b1f-8f43-0c1e0a4b8b11";
+        assert!(super::record_main_frame_commit(&mut inner, blob));
+        assert_eq!(inner.history, vec!["https://a.com", blob]);
+        assert_eq!(inner.cursor, 1, "Back must be enabled");
+        assert!(super::record_main_frame_commit(&mut inner, "about:blank"));
+        assert_eq!(inner.cursor, 2);
+        assert!(!super::record_main_frame_commit(
+            &mut inner,
+            "file:///etc/passwd"
+        ));
+        assert_eq!(inner.cursor, 2);
     }
 
     // Back is still enabled until the first commit's nav event arrives, so

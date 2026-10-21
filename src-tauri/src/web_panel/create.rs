@@ -8,7 +8,7 @@ use tauri::{
 };
 
 use super::navigation::{
-    emit_web_panel_nav, parse_web_url, record_web_navigation, route_non_web_panel_navigation,
+    emit_web_panel_nav, record_main_frame_commit, route_non_web_panel_navigation,
     web_panel_allows_navigation,
 };
 use super::{
@@ -44,15 +44,15 @@ pub(super) fn create_web_panel<R: Runtime>(
         // in on_navigation put an iframe's URL (an embed, an ad) in the address
         // bar and history.
         .on_page_load(move |_webview, payload| {
-            if payload.event() != PageLoadEvent::Started
-                || parse_web_url(payload.url().as_str()).is_err()
-            {
+            if payload.event() != PageLoadEvent::Started {
                 return;
             }
             {
                 let state = nav_app.state::<WebPanelState>();
                 let mut inner = lock_web_panel(&state);
-                record_web_navigation(&mut inner, payload.url().as_str());
+                if !record_main_frame_commit(&mut inner, payload.url().as_str()) {
+                    return;
+                }
             }
             // Emit nav-state OFF this callback's stack. On Windows this closure
             // is a synchronous WebView2 COM callback (`ContentLoading`),
