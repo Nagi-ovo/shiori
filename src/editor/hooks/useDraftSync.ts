@@ -15,6 +15,7 @@ import { isModelClean } from "../../pdf/model/clean";
 import { readStorageEstimate } from "../../platform";
 import {
   clearOperationLog,
+  readOperationLog,
   writeOperationLog,
 } from "../../storage/operationLog";
 
@@ -84,6 +85,8 @@ export function useDraftSync(
 
   const timerRef = useRef<number | null>(null);
   const operationLogTimerRef = useRef<number | null>(null);
+  // Stamp of the clean op-log a suspension wrote (flushPendingSave).
+  const cleanOperationLogStampRef = useRef<number | null>(null);
   const dirtyRef = useRef<boolean>(false);
   // Unlike undoStack.length, this survives a complete Undo back to the source
   // model. The clean revision still has to delete an older saved draft.
@@ -279,6 +282,14 @@ export function useDraftSync(
           operationLogTimerRef.current = null;
         }
         if (!clean || cleanRemovalSucceeded) clearOperationLog(snap.hash);
+        // A refused removal means another writer's draft is newer; the clean
+        // log a suspension wrote must not outrank it on the next open.
+        else if (
+          readOperationLog(snap.hash)?.lastTouched ===
+          cleanOperationLogStampRef.current
+        ) {
+          clearOperationLog(snap.hash);
+        }
         setLastTouched(clean ? null : now);
         setStatus(clean ? "idle" : "saved");
         setError(null);
@@ -404,6 +415,20 @@ export function useDraftSync(
       operationLogTimerRef.current = null;
       const { hash: logHash, model: logModel } = latestRef.current;
       if (logHash) writeOperationLog(logHash, logModel);
+    } else {
+      // Undo back to the original deletes the saved draft (or an older log),
+      // which teardown can cut short too. A newer clean log outranks both.
+      const { hash: logHash, model: logModel, opened: logOpened } =
+        latestRef.current;
+      if (
+        logHash &&
+        logOpened &&
+        isModelClean(logModel, logOpened.sourcePages) &&
+        (draftVersionRef.current !== null || readOperationLog(logHash))
+      ) {
+        cleanOperationLogStampRef.current = Date.now();
+        writeOperationLog(logHash, logModel, cleanOperationLogStampRef.current);
+      }
     }
     setStatus("saving");
     try {
