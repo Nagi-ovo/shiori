@@ -1,7 +1,11 @@
 import { db, notifyChanged } from "./draftsDb";
 import { draftSource, webHandleDraftPrefix } from "./draftIdentity";
 import { isDraftOpen } from "./draftProtection";
-import { moveOperationLog, readOperationLog } from "./operationLog";
+import {
+  clearOperationLog,
+  readOperationLog,
+  writeOperationLog,
+} from "./operationLog";
 
 export type DraftClaimDeps = {
   /**
@@ -19,13 +23,15 @@ export type DraftClaimDeps = {
  * takes over a draft of the same bytes that no source can reach any more: a
  * hash-only draft (written by an older build, or by a dropped or cached copy
  * of the file) that no open tab in any window still holds, or one under a
- * forgotten web file handle. The rows move in one transaction with their revision and
- * timestamps, then the crash-recovery log follows. The first source to open
- * the bytes wins; the next one at another path starts clean.
+ * forgotten web file handle. The rows move in one transaction with their
+ * revision and timestamps, and the crash-recovery log goes with them. The
+ * first source to open the bytes wins; the next one at another path starts
+ * clean.
  *
  * Returns the id to read. That is `draftId`, except when the move failed
- * (say, quota while copying the PDF bytes): then the unclaimed draft is read
- * as before, and the tab's next save writes its own.
+ * (say, quota while copying the PDF bytes or the log): then the unclaimed
+ * draft and its log are read as before, and the tab's next save writes its
+ * own.
  */
 export async function claimDraft(
   hash: string,
@@ -40,8 +46,20 @@ export async function claimDraft(
     if ((await hasDraft(draftId)) || readOperationLog(draftId)) return draftId;
     from = await claimableDraftId(hash, deps);
     if (!from) return draftId;
-    if (await moveDraftRows(from, draftId)) notifyChanged();
-    moveOperationLog(from, draftId);
+    // The log goes first, as a copy: it is the step that can fail on quota
+    // and still be undone. If it cannot land, nothing moves, so the rows and
+    // the newest edits stay under one id.
+    const log = readOperationLog(from);
+    if (log && writeOperationLog(draftId, log.model, log.lastTouched) !== "written") {
+      return from;
+    }
+    try {
+      if (await moveDraftRows(from, draftId)) notifyChanged();
+    } catch (error) {
+      if (log) clearOperationLog(draftId);
+      throw error;
+    }
+    if (log) clearOperationLog(from);
     return draftId;
   } catch (error) {
     console.warn("Could not move a draft to its source; reading it in place", error);

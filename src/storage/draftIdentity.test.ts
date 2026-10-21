@@ -180,6 +180,58 @@ describe("draft identity", () => {
     expect(await drafts.get(atA)).toBeUndefined();
   });
 
+  test("a crash log that cannot move keeps the claim in place, rows and all", async () => {
+    // The log is newer than the saved draft: the edits after the last autosave.
+    await save(HASH, "saved", 10);
+    writeOperationLog(HASH, model("newest"), 20);
+    // localStorage has room for the log once, not for a second copy.
+    const real = localStorage;
+    const full: Storage = {
+      get length() {
+        return real.length;
+      },
+      key: (index) => real.key(index),
+      getItem: (key) => real.getItem(key),
+      removeItem: (key) => real.removeItem(key),
+      clear: () => real.clear(),
+      setItem: (key, value) => {
+        if (key.endsWith(atA)) throw new DOMException("full", "QuotaExceededError");
+        real.setItem(key, value);
+      },
+    };
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, value: full });
+    let read: string;
+    try {
+      read = await claimDraft(HASH, atA);
+    } finally {
+      Object.defineProperty(globalThis, "localStorage", { configurable: true, value: real });
+    }
+    // Whatever id comes back holds both the rows and the newest edits.
+    expect(await noteOf(read)).toEqual(["saved"]);
+    expect(readOperationLog(read)?.model.overlays.map((overlay) => overlay.id)).toEqual([
+      "newest",
+    ]);
+  });
+
+  test("a failed row move leaves the crash log where the rows are", async () => {
+    await save(HASH, "saved", 10);
+    writeOperationLog(HASH, model("newest"), 20);
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const table = __draftsTest.db.table("draftModels");
+    const refuse = () => {
+      throw new DOMException("full", "QuotaExceededError");
+    };
+    table.hook("creating", refuse);
+    try {
+      expect(await claimDraft(HASH, atA)).toBe(HASH);
+    } finally {
+      table.hook("creating").unsubscribe(refuse);
+      warn.mockRestore();
+    }
+    expect(readOperationLog(HASH)?.lastTouched).toBe(20);
+    expect(readOperationLog(atA)).toBeNull();
+  });
+
   test("the quota sweep keeps an open tab's draft and the old row of its bytes", async () => {
     const OTHER = "cd".repeat(32);
     releases.push(protectOpenDrafts(() => [atA]));
