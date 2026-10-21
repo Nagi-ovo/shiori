@@ -521,7 +521,8 @@ function isAtomicCluster(cluster: string): boolean {
 }
 
 /** True inside the folded expansion of one source code point (ß -> ss,
- * ﬁ -> fi), which has no source offset to snap to. */
+ * ﬁ -> fi), which has no source offset to snap to: within a mapped
+ * cluster, only where some code point prefix of it folds to end. */
 function splitsCodePoint(index: SearchTextIndex, offset: number): boolean {
   if (offset <= 0 || offset >= index.folded.length) return false;
   const exceptions = index.mappingExceptions;
@@ -539,8 +540,12 @@ function splitsCodePoint(index: SearchTextIndex, offset: number): boolean {
     }
   }
   if (!nearest || offset >= nearest.foldedEnd) return false;
-  const length = nearest.sourceEnd - nearest.sourceStart;
-  return length === 1 || (length === 2 && index.text.codePointAt(nearest.sourceStart)! > 0xffff);
+  let prefix = "";
+  for (const character of index.text.slice(nearest.sourceStart, nearest.sourceEnd)) {
+    prefix += character;
+    if (deterministicCaseFold(prefix).length === offset - nearest.foldedStart) return false;
+  }
+  return true;
 }
 
 function safeMappingBudget(value: number | undefined, fallback: number): number {

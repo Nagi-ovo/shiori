@@ -205,6 +205,10 @@ describe("find matches", () => {
     expect(ranges(`a${"\u0302".repeat(3)}b`, "\u0302")).toEqual([[0, 4]]);
     // A match still never splits one code point's own expansion.
     expect(ranges("ß", "s")).toEqual([]);
+    // Nor does a mark on that code point open its expansion up.
+    expect(ranges("ß́", "s")).toEqual([]);
+    expect(ranges("ﬃ́x", "f")).toEqual([]);
+    expect(ranges("ﬃ́x", "ﬃ́")).toEqual([[0, 2]]);
   });
 
   test("keeps Find on over a long pointed and Indic document", () => {
