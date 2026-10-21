@@ -7,16 +7,19 @@ import type { PdfDocument } from "../../pdf/engine/types";
 import { T } from "../../design/tokens";
 import { Ic } from "./icons";
 import { IconBtn } from "./ui";
+import { SearchTextLimitError } from "../search/findMatches";
 import {
-  SearchTextLimitError,
-  findMatchesInSearchIndexes,
-  indexSearchPages,
-  type SearchPageText,
-} from "../search/findMatches";
+  findLayoutSearchMatches,
+  indexLayoutSearchPages,
+  type LayoutSearchPageText,
+} from "../search/layoutSearch";
 import { pageJumpForOffscreenSearchMatch } from "../search/navigation";
 import { isEditableKeyboardTarget } from "./overlays/overlayPointer";
 import { useEditorStore } from "../store/store";
-import { semanticTextContentToString } from "../textSelection/semanticText";
+import {
+  buildSemanticTextLayerModel,
+  semanticUnitsToSearchIndex,
+} from "../textSelection/semanticText";
 
 type Props = {
   doc: PdfDocument;
@@ -35,7 +38,7 @@ export function FindPanel({ doc, pages, open, onClose }: Props) {
   const goToPage = useEditorStore((s) => s.goToPage);
   const setSearchMatchHighlight = useEditorStore((s) => s.setSearchMatchHighlight);
   const [query, setQuery] = useState("");
-  const [indexedPages, setIndexedPages] = useState<SearchPageText[]>([]);
+  const [indexedPages, setIndexedPages] = useState<LayoutSearchPageText[]>([]);
   const [loadedCount, setLoadedCount] = useState(0);
   const [status, setStatus] = useState<IndexStatus>("idle");
   const [requestedMatchIndex, setRequestedMatchIndex] = useState(0);
@@ -77,7 +80,7 @@ export function FindPanel({ doc, pages, open, onClose }: Props) {
       setLoadedCount(0);
       setIndexedPages([]);
 
-      const next: SearchPageText[] = [];
+      const next: LayoutSearchPageText[] = [];
       let indexedCharacters = 0;
       for (let i = 0; i < pages.length; i += 1) {
         const page = pages[i];
@@ -98,7 +101,10 @@ export function FindPanel({ doc, pages, open, onClose }: Props) {
           },
         });
         if (cancelled) return;
-        const text = semanticTextContentToString(content);
+        // The same text and breaks CLI search and quote anchors match.
+        const { text, layoutBreaks, hardBreaks } = semanticUnitsToSearchIndex(
+          buildSemanticTextLayerModel(content).units,
+        );
         indexedCharacters += text.length;
         if (indexedCharacters > MAX_FIND_INDEXED_TEXT_CHARACTERS) {
           throw new SearchTextLimitError(
@@ -109,6 +115,8 @@ export function FindPanel({ doc, pages, open, onClose }: Props) {
           pageId: page.id,
           pageNumber: i + 1,
           text,
+          layoutBreaks,
+          hardBreaks,
         });
         setLoadedCount(i + 1);
       }
@@ -128,7 +136,7 @@ export function FindPanel({ doc, pages, open, onClose }: Props) {
 
   const searchIndexResult = useMemo(() => {
     try {
-      return { pages: indexSearchPages(indexedPages), failed: false };
+      return { pages: indexLayoutSearchPages(indexedPages), failed: false };
     } catch (error) {
       if (error instanceof SearchTextLimitError) {
         console.error("find search index exceeded safety limits", error);
@@ -143,7 +151,7 @@ export function FindPanel({ doc, pages, open, onClose }: Props) {
     }
     try {
       return {
-        ...findMatchesInSearchIndexes(searchIndexResult.pages, query),
+        ...findLayoutSearchMatches(searchIndexResult.pages, query),
         failed: false,
       };
     } catch (error) {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PdfPageTextContent as TextContent } from "../engine/text";
+import { pageTextFromPdfiumGlyphs, type PdfiumGlyph } from "../engine/pdfiumText";
 import type { PageModel } from "../model/types";
 import {
   buildSemanticTextLayerModel,
@@ -378,5 +379,48 @@ describe("charRangeToPageRects", () => {
     ]);
     const { unresolvedUnits } = resolve(textContent, "visible hidden");
     expect(unresolvedUnits).toBe(1);
+  });
+});
+
+describe("charRangeToPageRects over PDFium glyph cells", () => {
+  // Proportional Helvetica-like advances at 10 pt: "i" and "l" are narrow,
+  // "W" and "M" wide, so a UTF-16 share of the item width lands elsewhere.
+  const advance: Record<string, number> = { i: 2.22, l: 2.22, t: 2.78, c: 5, W: 9.44, M: 8.33 };
+  function line(text: string, x: number, y: number): PdfiumGlyph[] {
+    const glyphs: PdfiumGlyph[] = [];
+    for (const ch of text) {
+      const w = advance[ch] ?? 2.78;
+      if (ch === " ") {
+        glyphs.push({ ...cell(ch, x, y, 0), generated: true, fontSize: 0 });
+      } else glyphs.push(cell(ch, x, y, w));
+      x += w;
+    }
+    return glyphs;
+  }
+  function cell(text: string, x: number, y: number, w: number): PdfiumGlyph {
+    return {
+      text,
+      origin: [x, y],
+      end: [x + w, y],
+      fontSize: 10,
+      angle: 0,
+      generated: false,
+      fontName: "Helvetica",
+      fontFlags: 32,
+      ascent: 7.5,
+      descent: -2.5,
+    };
+  }
+
+  test("covers exactly the matched glyphs, not a share of the line", () => {
+    const glyphs = line("illicit little iii WWW MMM", 100, 700);
+    const textContent = pageTextFromPdfiumGlyphs(glyphs, null).content;
+    const { rects, unresolvedUnits } = resolve(textContent, "WWW");
+    expect(unresolvedUnits).toBe(0);
+    const first = glyphs.find((glyph) => glyph.text === "W")!;
+    const last = glyphs.findLast((glyph) => glyph.text === "W")!;
+    expect(rects).toHaveLength(1);
+    expect(rects[0]!.x).toBeCloseTo(first.origin[0], 2);
+    expect(rects[0]!.x + rects[0]!.w).toBeCloseTo(last.end[0], 2);
   });
 });

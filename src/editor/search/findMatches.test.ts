@@ -182,6 +182,19 @@ describe("find matches", () => {
     ).toEqual([]);
   });
 
+  test("never returns half of an emoji or diacritic grapheme", () => {
+    const ranges = (text: string, query: string) =>
+      findMatches([{ pageId: "p", pageNumber: 1, text }], query).map((m) => [m.index, m.end]);
+    // A skin-tone modifier, and a mark NFKC has no precomposed form for.
+    expect(ranges("👍🏽x", "👍")).toEqual([]);
+    expect(ranges("👍🏽x", "👍🏽")).toEqual([[0, 4]]);
+    expect(ranges("q\u0301x", "q")).toEqual([]);
+    expect(ranges("q\u0301x", "q\u0301")).toEqual([[0, 2]]);
+    // Indic vowel signs and viramas stay addressable, so a word's prefix
+    // still finds it.
+    expect(ranges("हिन्दी", "हिन्द")).toEqual([[0, 5]]);
+  });
+
   test("caps repetitive results and keeps snippet work bounded", () => {
     const result = findMatchesWithStatus(
       [{ pageId: "p", pageNumber: 1, text: "a".repeat(MAX_FIND_MATCHES * 2) }],

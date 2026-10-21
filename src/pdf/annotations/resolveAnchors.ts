@@ -4,13 +4,15 @@ import {
   SearchTextLimitError,
   buildSearchTextIndex,
   compileSearchQuery,
-  iterateSearchRanges,
   makeSearchSnippet,
   type CompiledSearchQuery,
-  type SearchIgnoredRange,
   type SearchSourceRange,
   type SearchTextIndex,
 } from "../../editor/search/findMatches";
+import {
+  buildLayoutSearchIndexes,
+  iterateLayoutSearchRanges,
+} from "../../editor/search/layoutSearch";
 import {
   buildSemanticTextLayerModel,
   SemanticTextLimitError,
@@ -113,98 +115,18 @@ export class AnchorTextUnavailableError extends Error {
 
 /** Search normal text plus layout-only projections in source order, without
  * returning the same source range twice. */
-export function* iterateAnchorSearchRanges(
+export function iterateAnchorSearchRanges(
   page: Pick<
     AnchorPageText,
     "index" | "searchIndex" | "alternateSearchIndexes"
   >,
   query: CompiledSearchQuery,
 ): Generator<SearchSourceRange> {
-  const iterators = [page.searchIndex, ...page.alternateSearchIndexes].map(
-    (index) => iterateSearchRanges(index, query),
+  return iterateLayoutSearchRanges(
+    [page.searchIndex, ...page.alternateSearchIndexes],
+    page.index.hardBreaks,
+    query,
   );
-  const heads = iterators.map((iterator) => iterator.next());
-  while (heads.some((head) => !head.done)) {
-    let selected: SearchSourceRange | null = null;
-    for (const head of heads) {
-      if (head.done) continue;
-      const value = head.value;
-      if (
-        selected === null ||
-        value.index < selected.index ||
-        (value.index === selected.index && value.end < selected.end)
-      ) {
-        selected = value;
-      }
-    }
-    if (selected === null) return;
-    const crossesHardBreak = rangeIntersectsSortedBreaks(
-      selected,
-      page.index.hardBreaks,
-    );
-    heads.forEach((head, index) => {
-      if (
-        !head.done &&
-        head.value.index === selected!.index &&
-        head.value.end === selected!.end
-      ) {
-        heads[index] = iterators[index]!.next();
-      }
-    });
-    if (!crossesHardBreak) yield selected;
-  }
-}
-
-/** `hardBreaks` are emitted in source order and never overlap. Locate the
- * first break whose end is after the match start instead of scanning every
- * paragraph separator for every match. */
-function rangeIntersectsSortedBreaks(
-  range: SearchSourceRange,
-  hardBreaks: ReadonlyArray<{ start: number; end: number }>,
-): boolean {
-  let low = 0;
-  let high = hardBreaks.length;
-  while (low < high) {
-    const middle = low + Math.floor((high - low) / 2);
-    if (hardBreaks[middle]!.end <= range.index) low = middle + 1;
-    else high = middle;
-  }
-  const candidate = hardBreaks[low];
-  return candidate !== undefined && candidate.start < range.end;
-}
-
-function buildLayoutSearchIndexes(
-  index: SemanticSearchIndex,
-  normal: SearchTextIndex,
-): SearchTextIndex[] {
-  if (index.layoutBreaks.length === 0) return [];
-  const joinedRanges: SearchIgnoredRange[] = index.layoutBreaks.map(
-    ({ start, end }) => ({ start, end }),
-  );
-  const dehyphenatedRanges: SearchIgnoredRange[] = index.layoutBreaks.map(
-    ({ start, end, dehyphenateStart }) => ({
-      start: dehyphenateStart ?? start,
-      end,
-    }),
-  );
-  const output: SearchTextIndex[] = [];
-  const add = (candidate: SearchTextIndex) => {
-    if (
-      candidate.folded !== normal.folded &&
-      !output.some((existing) => existing.folded === candidate.folded)
-    ) {
-      output.push(candidate);
-    }
-  };
-  add(buildSearchTextIndex(index.text, undefined, joinedRanges));
-  if (
-    dehyphenatedRanges.some(
-      (range, rangeIndex) => range.start !== joinedRanges[rangeIndex]!.start,
-    )
-  ) {
-    add(buildSearchTextIndex(index.text, undefined, dehyphenatedRanges));
-  }
-  return output;
 }
 
 /** Cheap pre-scan so anchor-free specs skip the page text pass entirely. */

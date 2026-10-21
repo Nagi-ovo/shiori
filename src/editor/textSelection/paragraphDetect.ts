@@ -33,8 +33,18 @@ export const PARAGRAPH_DETECT = {
   fontSizeContinuity: 0.2,
   // A line this much larger than the page body median is a heading.
   headingFontRatio: 1.25,
-  // Intra-line gap larger than this × font size suggests columns/tables.
+  // Intra-line gap larger than this × font size suggests columns/tables:
+  // the line splits there into segments that chain into blocks separately.
   intraLineGapFontRatio: 0.7,
+  // A block holding such segments is a text column only while its lines
+  // (all but the last) are at least this × font size wide; narrower ones
+  // are table cells.
+  columnLineMinFontRatio: 12,
+  // ...and only with wrapping to show for it: this many lines, the body
+  // ones ending within this × font size of the block's right edge. Wide
+  // table cells stacked row on row show neither.
+  columnMinLines: 3,
+  columnRightEdgeFontRatio: 2,
   // Alignment: edge stability = MAD <= max(edgeStabilityPt, edgeStabilityWidthRatio × block width).
   edgeStabilityPt: 2,
   edgeStabilityWidthRatio: 0.01,
@@ -65,6 +75,8 @@ export type DetectedLine = {
   // Exact baseline (median of the runs' baselines) and median font size.
   baselineY: number;
   fontSizePt: number;
+  // Split off other text on the same baseline by a large gap.
+  columnSplit?: boolean;
 };
 
 export type ParagraphAlign = "left" | "center" | "right" | "justify" | "unknown";
@@ -169,40 +181,77 @@ function groupRunsIntoLines(
       groups.push([run]);
     }
   }
-  return groups.map((group) => {
+  return groups.flatMap((group) => {
     const inLine = [...group].sort((a, b) => a.x - b.x);
-    const x = Math.min(...inLine.map((run) => run.x));
-    const right = Math.max(...inLine.map((run) => run.x + run.w));
-    const top = Math.min(...inLine.map((run) => run.y));
-    const bottom = Math.max(...inLine.map((run) => run.y + run.h));
-    const sizes = inLine
+    const groupSizes = inLine
       .map((run) => run.fontSizePt)
       .filter((size): size is number => typeof size === "number" && size > 0);
-    return {
-      runs: inLine,
-      x,
-      right,
-      width: right - x,
-      top,
-      bottom,
-      baselineY: median(inLine.map((run) => run.baselineY!)),
-      fontSizePt: sizes.length > 0 ? median(sizes) : medianFontPt,
-    };
+    const limit =
+      PARAGRAPH_DETECT.intraLineGapFontRatio *
+      (groupSizes.length > 0 ? median(groupSizes) : medianFontPt) *
+      scale;
+    const segments: TextRunDisplayBounds[][] = [];
+    let segmentRight = Number.NEGATIVE_INFINITY;
+    for (const run of inLine) {
+      const current = segments[segments.length - 1];
+      if (current && run.x - segmentRight <= limit) {
+        current.push(run);
+        segmentRight = Math.max(segmentRight, run.x + run.w);
+      } else {
+        segments.push([run]);
+        segmentRight = run.x + run.w;
+      }
+    }
+    return segments.map((segment) =>
+      lineOf(segment, medianFontPt, segments.length > 1),
+    );
   });
+}
+
+function lineOf(
+  inLine: TextRunDisplayBounds[],
+  medianFontPt: number,
+  columnSplit: boolean,
+): DetectedLine {
+  const x = Math.min(...inLine.map((run) => run.x));
+  const right = Math.max(...inLine.map((run) => run.x + run.w));
+  const top = Math.min(...inLine.map((run) => run.y));
+  const bottom = Math.max(...inLine.map((run) => run.y + run.h));
+  const sizes = inLine
+    .map((run) => run.fontSizePt)
+    .filter((size): size is number => typeof size === "number" && size > 0);
+  return {
+    runs: inLine,
+    x,
+    right,
+    width: right - x,
+    top,
+    bottom,
+    baselineY: median(inLine.map((run) => run.baselineY!)),
+    fontSizePt: sizes.length > 0 ? median(sizes) : medianFontPt,
+    ...(columnSplit ? { columnSplit } : {}),
+  };
 }
 
 function xOverlap(a: DetectedLine, b: DetectedLine): number {
   return Math.min(a.right, b.right) - Math.max(a.x, b.x);
 }
 
-function lineIntraGapTooLarge(line: DetectedLine, scale: number): boolean {
-  const limit = PARAGRAPH_DETECT.intraLineGapFontRatio * line.fontSizePt * scale;
-  for (let i = 1; i < line.runs.length; i += 1) {
-    const prev = line.runs[i - 1]!;
-    const gap = line.runs[i]!.x - (prev.x + prev.w);
-    if (gap > limit) return true;
-  }
-  return false;
+// Split-off segments make a text column only when they wrap: several
+// column-width lines filled to one right edge. Anything less may be a
+// table column, whose cells are separate texts.
+function splitSegmentsAreTableCells(lines: DetectedLine[], scale: number): boolean {
+  if (!lines.some((line) => line.columnSplit)) return false;
+  if (lines.length < PARAGRAPH_DETECT.columnMinLines) return true;
+  const bodyLines = lines.slice(0, -1);
+  const right = Math.max(...bodyLines.map((line) => line.right));
+  return bodyLines.some(
+    (line) =>
+      line.width <
+        PARAGRAPH_DETECT.columnLineMinFontRatio * line.fontSizePt * scale ||
+      right - line.right >
+        PARAGRAPH_DETECT.columnRightEdgeFontRatio * line.fontSizePt * scale,
+  );
 }
 
 function detectAlign(
@@ -259,11 +308,8 @@ function finalizeBlock(
     gaps.push(lines[i]!.baselineY - lines[i - 1]!.baselineY);
   }
   const pitchPx = gaps.length > 0 ? median(gaps) : null;
-  for (const line of lines) {
-    if (lineIntraGapTooLarge(line, scale)) {
-      reasons.push("large intra-line gap (columns/table?)");
-      break;
-    }
+  if (splitSegmentsAreTableCells(lines, scale)) {
+    reasons.push("large intra-line gap (columns/table?)");
   }
   const hasMathFont = lines.some((line) =>
     line.runs.some((run) => isMathFontName(run.fontName)),
@@ -327,29 +373,56 @@ export function detectParagraphs(
   if (lines.length === 0) return [];
   const bodyMedianFontPt = median(lines.map((line) => line.fontSizePt));
 
-  const blocks: DetectedParagraph[] = [];
-  let current: DetectedLine[] = [];
-  let currentReasons: string[] = [];
-
-  const flush = () => {
-    if (current.length > 0) {
-      blocks.push(finalizeBlock(current, scale, currentReasons));
-    }
-    current = [];
-    currentReasons = [];
+  // Columns interleave in baseline order, so several blocks stay open at
+  // once; a line continues the open block right above it (horizontal
+  // overlap), and passing below any other open block closes that one.
+  type OpenBlock = { lines: DetectedLine[]; reasons: string[]; order: number };
+  const blocks: Array<{ paragraph: DetectedParagraph; order: number }> = [];
+  let open: OpenBlock[] = [];
+  let opened = 0;
+  const close = (block: OpenBlock) => {
+    open = open.filter((candidate) => candidate !== block);
+    blocks.push({
+      paragraph: finalizeBlock(block.lines, scale, block.reasons),
+      order: block.order,
+    });
   };
+  const start = (line: DetectedLine, isHeading: boolean) => {
+    const block = { lines: [line], reasons: [], order: opened };
+    opened += 1;
+    open.push(block);
+    if (isHeading) close(block); // headings are single-line blocks
+  };
+  const isHeadingLine = (line: DetectedLine) =>
+    line.fontSizePt > PARAGRAPH_DETECT.headingFontRatio * bodyMedianFontPt;
 
   for (const line of lines) {
-    const isHeading =
-      line.fontSizePt > PARAGRAPH_DETECT.headingFontRatio * bodyMedianFontPt;
-    if (current.length === 0) {
-      current.push(line);
-      if (isHeading) flush(); // headings are single-line blocks
+    const isHeading = isHeadingLine(line);
+    const above = open.filter((block) => {
+      const prev = block.lines[block.lines.length - 1]!;
+      return (
+        xOverlap(prev, line) >=
+        PARAGRAPH_DETECT.xOverlapRatio * Math.min(prev.width, line.width)
+      );
+    });
+    // The nearest block above continues; any other one ends here.
+    const block = above.reduce<OpenBlock | null>(
+      (best, candidate) =>
+        best === null ||
+        candidate.lines[candidate.lines.length - 1]!.baselineY >
+          best.lines[best.lines.length - 1]!.baselineY
+          ? candidate
+          : best,
+      null,
+    );
+    for (const other of above) if (other !== block) close(other);
+    if (!block) {
+      start(line, isHeading);
       continue;
     }
+    const current = block.lines;
     const prev = current[current.length - 1]!;
-    const prevIsHeading =
-      prev.fontSizePt > PARAGRAPH_DETECT.headingFontRatio * bodyMedianFontPt;
+    const prevIsHeading = isHeadingLine(prev);
     const gap = line.baselineY - prev.baselineY;
     const gaps = current
       .slice(1)
@@ -366,22 +439,20 @@ export function detectParagraphs(
       pitch !== null &&
       (gap < PARAGRAPH_DETECT.pitchBandMin * pitch ||
         gap > PARAGRAPH_DETECT.pitchBandMax * pitch);
-    const overlapBreak =
-      xOverlap(prev, line) <
-      PARAGRAPH_DETECT.xOverlapRatio * Math.min(prev.width, line.width);
     const blockMedianFontPt = median(current.map((l) => l.fontSizePt));
     const fontBreak =
       Math.abs(line.fontSizePt - blockMedianFontPt) / blockMedianFontPt >
       PARAGRAPH_DETECT.fontSizeContinuity;
 
-    if (isHeading || prevIsHeading || hardBreak || pitchBreak || overlapBreak || fontBreak) {
-      flush();
-      current.push(line);
-      if (isHeading) flush();
+    if (isHeading || prevIsHeading || hardBreak || pitchBreak || fontBreak) {
+      close(block);
+      start(line, isHeading);
       continue;
     }
     current.push(line);
   }
-  flush();
-  return blocks;
+  for (const block of [...open]) close(block);
+  return blocks
+    .sort((left, right) => left.order - right.order)
+    .map((entry) => entry.paragraph);
 }

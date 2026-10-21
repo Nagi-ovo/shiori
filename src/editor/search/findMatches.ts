@@ -1,3 +1,4 @@
+import { searchClusters } from "./searchClusters";
 import { FULL_CASE_FOLD_OVERRIDES } from "./unicodeCaseFold";
 
 export type SearchPageText = {
@@ -108,16 +109,19 @@ export function indexSearchPages(
   });
 }
 
-export function findMatchesInSearchIndexes(
-  pages: IndexedSearchPage[],
+/** `ranges` lists a page's matches; the default searches `page.index`. */
+export function findMatchesInSearchIndexes<Page extends IndexedSearchPage>(
+  pages: readonly Page[],
   rawQuery: string,
+  ranges: (page: Page, query: CompiledSearchQuery) => Iterable<SearchSourceRange> = (page, query) =>
+    iterateSearchRanges(page.index, query),
 ): FindMatchesResult {
   const query = compileSearchQuery(rawQuery);
   if (!query.folded) return { matches: [], truncated: false };
 
   const matches: SearchMatch[] = [];
   for (const page of pages) {
-    for (const range of iterateSearchRanges(page.index, query)) {
+    for (const range of ranges(page, query)) {
       if (matches.length >= MAX_FIND_MATCHES) {
         return { matches, truncated: true };
       }
@@ -465,10 +469,33 @@ function requiresWholeClusterMapping(
   // Canonical normalization can reorder equal-length combining marks. Those
   // output offsets are not linearly related to the source UTF-16 positions,
   // so expose only the whole grapheme cluster rather than a wrong subrange.
+  // Emoji sequences and diacritics on alphabetic letters are one character
+  // to a reader, so a query never lands inside them either. Indic vowel signs
+  // and viramas stay addressable: a word's prefix must still find the word,
+  // and mapping every such cluster would exhaust the budget on long texts.
   return (
     Array.from(sourceCluster).length > 1 &&
-    sourceCluster.normalize("NFKD") !== sourceCluster
+    (sourceCluster.normalize("NFKD") !== sourceCluster ||
+      isAtomicCluster(sourceCluster))
   );
+}
+
+function isAtomicCluster(cluster: string): boolean {
+  for (const character of cluster) {
+    const codePoint = character.codePointAt(0)!;
+    if (
+      codePoint === 0x200d ||
+      codePoint === 0x20e3 ||
+      (codePoint >= 0xfe00 && codePoint <= 0xfe0f) ||
+      (codePoint >= 0x1f1e6 && codePoint <= 0x1f1ff) ||
+      (codePoint >= 0x1f3fb && codePoint <= 0x1f3ff) ||
+      (codePoint >= 0xe0020 && codePoint <= 0xe007f) ||
+      (codePoint >= 0xe0100 && codePoint <= 0xe01ef)
+    ) {
+      return true;
+    }
+  }
+  return /^[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}]\p{M}/u.test(cluster);
 }
 
 function isValidFoldedBoundary(index: SearchTextIndex, offset: number): boolean {
@@ -488,60 +515,6 @@ function isValidFoldedBoundary(index: SearchTextIndex, offset: number): boolean 
     }
   }
   return !nearest || offset >= nearest.foldedEnd;
-}
-
-type SearchCluster = { segment: string; start: number; end: number };
-
-const SEARCH_SEGMENTER =
-  typeof Intl.Segmenter === "function"
-    ? new Intl.Segmenter("und", { granularity: "grapheme" })
-    : null;
-
-function* searchClusters(text: string): Generator<SearchCluster> {
-  if (SEARCH_SEGMENTER) {
-    for (const part of SEARCH_SEGMENTER.segment(text)) {
-      yield {
-        segment: part.segment,
-        start: part.index,
-        end: part.index + part.segment.length,
-      };
-    }
-    return;
-  }
-  // Conservative fallback for old WebViews without Intl.Segmenter: keep a
-  // base plus combining/variation/ZWJ continuation code points together.
-  for (let start = 0; start < text.length; ) {
-    let end = nextCodePointEnd(text, start);
-    let previousWasJoiner = false;
-    while (end < text.length) {
-      const nextEnd = nextCodePointEnd(text, end);
-      const next = text.slice(end, nextEnd);
-      const continuation =
-        /\p{Mark}/u.test(next) ||
-        next === "\u200d" ||
-        previousWasJoiner ||
-        isVariationOrEmojiModifier(next);
-      if (!continuation) break;
-      previousWasJoiner = next === "\u200d";
-      end = nextEnd;
-    }
-    yield { segment: text.slice(start, end), start, end };
-    start = end;
-  }
-}
-
-function nextCodePointEnd(text: string, start: number): number {
-  const codePoint = text.codePointAt(start);
-  return start + (codePoint != null && codePoint > 0xffff ? 2 : 1);
-}
-
-function isVariationOrEmojiModifier(character: string): boolean {
-  const codePoint = character.codePointAt(0) ?? -1;
-  return (
-    (codePoint >= 0xfe00 && codePoint <= 0xfe0f) ||
-    (codePoint >= 0xe0100 && codePoint <= 0xe01ef) ||
-    (codePoint >= 0x1f3fb && codePoint <= 0x1f3ff)
-  );
 }
 
 function safeMappingBudget(value: number | undefined, fallback: number): number {

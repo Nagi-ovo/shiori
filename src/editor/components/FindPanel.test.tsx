@@ -18,14 +18,21 @@ const pages: PageModel[] = [
   { id: "p3", sourceIndex: 2, rotation: 0, widthPt: 100, heightPt: 200 },
 ];
 
-// Each fake document's page texts, as the engine reads them; the calls count
-// how often the engine was asked.
-const texts = new WeakMap<PdfDocument, string[]>();
+// Each fake document's page texts, as the engine reads them: one item per
+// page, or the page's items with their geometry. The calls count how often
+// the engine was asked.
+type FakeItem = { str: string; x: number; y: number; width: number; hasEOL: boolean };
+const texts = new WeakMap<PdfDocument, Array<string | FakeItem[]>>();
 let pageTextCalls = 0;
 const textOf = (doc: PdfDocument, sourceIndex: number) => {
-  const str = texts.get(doc)?.[sourceIndex] ?? "";
+  const page = texts.get(doc)?.[sourceIndex] ?? "";
+  const items = typeof page === "string"
+    ? [{ str: page, dir: "ltr", transform: [1, 0, 0, 1, 0, 0], width: 0, height: 0, fontName: "f", hasEOL: false }]
+    : page.map(({ str, x, y, width, hasEOL }) => ({
+        str, dir: "ltr", transform: [10, 0, 0, 10, x, y], width, height: 10, fontName: "f", hasEOL,
+      }));
   return {
-    content: { items: [{ str, dir: "ltr", transform: [1, 0, 0, 1, 0, 0], width: 0, height: 0, fontName: "f", hasEOL: false }], styles: {}, lang: null },
+    content: { items, styles: {}, lang: null },
     glyphs: null,
     fontNames: new Map(),
     faceFamilies: new Map(),
@@ -173,6 +180,70 @@ describe("FindPanel navigation", () => {
     });
   });
 
+  test("does not match across a column jump", async () => {
+    // Column one ends "until the end."; column two starts on the same
+    // baseline, so the line end is a hard break, not a wrap.
+    const view = render(
+      <FindPanel
+        doc={fakeDoc([
+          [
+            { str: "until the end.", x: 72, y: 700, width: 70, hasEOL: true },
+            { str: "Column two starts", x: 300, y: 700, width: 85, hasEOL: false },
+          ],
+          "",
+          "",
+        ])}
+        pages={pages}
+        open
+        onClose={() => undefined}
+      />,
+    );
+    const input = await view.findByPlaceholderText("Find in document");
+    const user = userEvent.setup();
+    await user.type(input, "Column two");
+    await waitFor(() => {
+      expect(useEditorStore.getState().searchMatchHighlight).toEqual({
+        pageId: "p1",
+        charStart: 15,
+        charEnd: 25,
+      });
+    });
+    await user.clear(input);
+    await user.type(input, "the end. Column two");
+    await waitFor(() => {
+      expect(useEditorStore.getState().searchMatchHighlight).toBeNull();
+    });
+  });
+
+  test("finds a CJK phrase across a line wrap", async () => {
+    // "运行中" ends a filled line; "文档" continues the next one.
+    const view = render(
+      <FindPanel
+        doc={fakeDoc([
+          [
+            { str: "这是一个运行中", x: 72, y: 700, width: 70, hasEOL: true },
+            { str: "文档的内容", x: 72, y: 688, width: 50, hasEOL: false },
+          ],
+          "",
+          "",
+        ])}
+        pages={pages}
+        open
+        onClose={() => undefined}
+      />,
+    );
+    const input = await view.findByPlaceholderText("Find in document");
+    await userEvent.setup().type(input, "运行中文档");
+    // The highlight addresses the page text, wrap separator included.
+    await waitFor(() => {
+      expect(useEditorStore.getState().searchMatchHighlight).toEqual({
+        pageId: "p1",
+        charStart: 4,
+        charEnd: 10,
+      });
+    });
+  });
+
   test("fails closed instead of crashing on a pathological search map", async () => {
     const originalError = console.error;
     console.error = () => undefined;
@@ -222,7 +293,7 @@ describe("FindPanel navigation", () => {
 
 });
 
-function fakeDoc(pageTexts: string[]): PdfDocument {
+function fakeDoc(pageTexts: Array<string | FakeItem[]>): PdfDocument {
   const doc = fakePdfDocument();
   texts.set(doc, pageTexts);
   return doc;

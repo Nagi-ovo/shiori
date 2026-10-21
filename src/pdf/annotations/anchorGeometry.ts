@@ -5,6 +5,7 @@ import type {
   PdfTextStyle as TextStyle,
 } from "../engine/text";
 import { pageOrigin } from "../model/pageSpace";
+import { pdfiumItemGlyphs } from "../engine/pdfiumText";
 import { deterministicTextVerticalMetrics } from "../geometry/textMetrics";
 import {
   isSemanticGeometryContinuation,
@@ -34,6 +35,10 @@ export type PdfTextRun = {
    * A number avoids one typed-array allocation for the common one-quote case.
    * Multiple offsets are sorted and queried by binary search. */
   narrowQuoteEndOffsets?: number | Uint32Array;
+  /** The drawn glyphs, four numbers each: UTF-16 start and end in `text`,
+   * then page-local left and right x. Absent when the text came without
+   * glyph cells (only PDFium's page text carries them). */
+  glyphCells?: Float64Array;
 };
 
 export type PdfTextRunMap = {
@@ -147,7 +152,46 @@ function textItemToPdfRun(
     baselineYPt: roundPt(baselineY),
     text: item.str,
     ...narrowQuoteOffsets(item.str, quoteOffsetBudget),
+    ...glyphCellsOf(item, origin.x),
   };
+}
+
+function glyphCellsOf(item: TextItem, originX: number): Pick<PdfTextRun, "glyphCells"> {
+  const glyphs = pdfiumItemGlyphs(item);
+  if (!glyphs?.length) return {};
+  const cells = new Float64Array(glyphs.length * 4);
+  glyphs.forEach((glyph, index) => {
+    const left = Math.min(glyph.origin.x, glyph.end.x) - originX;
+    const right = Math.max(glyph.origin.x, glyph.end.x) - originX;
+    cells.set([glyph.start, glyph.endOffset, left, right], index * 4);
+  });
+  return { glyphCells: cells };
+}
+
+/** The x extent of the glyphs overlapping [startOffset, endOffset), or null
+ * when none do. Cells are in increasing offset order. */
+function glyphCellSpan(
+  cells: Float64Array,
+  startOffset: number,
+  endOffset: number,
+  consumeWork: ((amount: number) => void) | undefined,
+): { left: number; right: number } | null {
+  let low = 0;
+  let high = cells.length / 4;
+  while (low < high) {
+    consumeWork?.(1);
+    const middle = (low + high) >>> 1;
+    if (cells[middle * 4 + 1]! <= startOffset) low = middle + 1;
+    else high = middle;
+  }
+  let left = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  for (let i = low * 4; i < cells.length && cells[i]! < endOffset; i += 4) {
+    consumeWork?.(1);
+    left = Math.min(left, cells[i + 2]!);
+    right = Math.max(right, cells[i + 3]!);
+  }
+  return right > left ? { left, right } : null;
 }
 
 export type CharRangeRects = {
@@ -180,9 +224,9 @@ export class AnchorGeometryLimitError extends Error {
 
 /**
  * Map a char range of the semantic search text (the exact text findMatches
- * runs over) to page-local PDF rects. Sub-item coverage is clipped
- * proportionally along the run — a text item carries no per-glyph advances, and
- * proportional clipping is the same fallback the in-app highlighter uses.
+ * runs over) to page-local PDF rects. Sub-item coverage spans the matched
+ * glyph cells when the run carries them (PDFium page text); otherwise it is
+ * clipped proportionally along the run, the in-app highlighter's fallback.
  */
 export function charRangeToPageRects(
   range: { start: number; end: number },
@@ -275,6 +319,21 @@ export function charRangeToPageRects(
       // string, so proportional clipping against raw glyphs would misplace —
       // take the whole run.
       pushLineRect({ rect: { ...run.rect }, baselineYPt: run.baselineYPt });
+      continue;
+    }
+    const glyphSpan = run.glyphCells
+      ? glyphCellSpan(run.glyphCells, offsets.startOffset, offsets.endOffset, options.consumeWork)
+      : null;
+    if (glyphSpan) {
+      pushLineRect({
+        rect: {
+          x: roundPt(glyphSpan.left),
+          y: run.rect.y,
+          w: roundPt(glyphSpan.right - glyphSpan.left),
+          h: run.rect.h,
+        },
+        baselineYPt: run.baselineYPt,
+      });
       continue;
     }
     const { startRatio, endRatio } = inlineSliceRatios(
