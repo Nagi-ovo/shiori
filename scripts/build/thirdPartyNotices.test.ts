@@ -41,6 +41,10 @@ beforeAll(() => {
   // Ships no license file: still listed, with what package.json declares.
   write("node_modules/bare/package.json", pkg("bare", "0.1.0", { license: "ISC" }));
   write("node_modules/bare/index.js", "");
+  // @pdf-lib/fontkit 1.1.1 is bundled by the PDF export and its published
+  // archive has no license file at all.
+  write("node_modules/@pdf-lib/fontkit/package.json", pkg("@pdf-lib/fontkit", "1.1.1", { license: "MIT" }));
+  write("node_modules/@pdf-lib/fontkit/dist/fontkit.es.js", "");
   write("node_modules/never-imported/package.json", pkg("never-imported", "1.0.0", { license: "MIT" }));
   write("node_modules/never-imported/LICENSE", "Copyright never-imported authors\n");
 });
@@ -68,6 +72,7 @@ function run() {
         at("node_modules/react/index.js"),
         at("node_modules/@noble/hashes/esm/sha2.js"),
         `${at("node_modules/dexie/dist/dexie.mjs")}?v=1`,
+        at("node_modules/@pdf-lib/fontkit/dist/fontkit.es.js"),
       ],
     },
     "assets/lazy.js": {
@@ -106,6 +111,19 @@ describe("thirdPartyNotices", () => {
 
   test("lists a package that ships no license file under what package.json declares", () => {
     expect(run()).toMatch(/## bare 0\.1\.0\n+License: ISC/);
+  });
+
+  // MIT and Apache-2.0 need the copyright and permission text, not an SPDX
+  // id. fontkit also inlines Google's Brotli decoder, whose Apache notice the
+  // minifier strips from the bundle.
+  test("ships fontkit's copyright and permission text, and the notices of the code it inlines", () => {
+    const fontkit = run().split(/^## /m).find((section) => section.startsWith("@pdf-lib/fontkit 1.1.1"));
+    expect(fontkit).toContain("Copyright (c) 2014 Devon Govett");
+    expect(fontkit).toContain("Permission is hereby granted, free of charge");
+    expect(fontkit).toContain("Copyright 2013 Google Inc.");
+    expect(fontkit).toContain("Apache License");
+    expect(fontkit).toContain("Copyright (c) 2012 Niklas von Hertzen");
+    expect(fontkit).not.toContain("ships no license file");
   });
 
   test("leaves out packages the output does not contain, and the app's own source", () => {

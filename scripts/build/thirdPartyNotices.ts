@@ -113,13 +113,37 @@ function packageSection(root: string): { key: string; text: string } {
     .filter((entry) => entry.isFile() && LICENSE_FILE.test(entry.name) && !NOT_LICENSE_TEXT.test(entry.name))
     .map((entry) => entry.name)
     .sort();
+  const vendored = files.length ? [] : vendoredNotices(`${name}@${manifest.version ?? ""}`);
   const body = files.length
     ? files.map((file) => readFileSync(join(root, file), "utf8").trimEnd())
-    : ["The package ships no license file; its package.json declares the license above."];
+    : vendored.length
+      ? vendored
+      : ["The package ships no license file; its package.json declares the license above."];
   return {
     key: `${name}\0${manifest.version ?? ""}\0${root}`,
     text: [heading, "", `License: ${declaredLicense(manifest)}`, "", ...body.flatMap((text) => [text, ""])].join("\n"),
   };
+}
+
+// Packages whose published archive carries no license file, mapped to the
+// texts the CLI's license audit recovered for that exact version (cli/build.ts
+// pins @pdf-lib/fontkit 1.1.1 by hash). fontkit's bundle also inlines Brotli
+// (Apache-2.0) and other packages whose comments the minifier strips, so their
+// notices go out with it. Another version falls back to the declared license.
+const VENDORED_NOTICES: Record<string, { dir: string; files: readonly string[] }> = {
+  "@pdf-lib/fontkit@1.1.1": {
+    dir: "cli/licenses",
+    files: ["pdf-lib-fontkit-MIT.txt", "fontkit-bundled-NOTICES.txt", "Apache-2.0.txt", "fontkit-bundle/"],
+  },
+};
+
+function vendoredNotices(key: string): string[] {
+  const entry = VENDORED_NOTICES[key];
+  if (!entry) return [];
+  const dir = fileURLToPath(new URL(`./${entry.dir}/`, REPO_ROOT));
+  return entry.files
+    .flatMap((file) => (file.endsWith("/") ? listFiles(join(dir, file)).sort() : [join(dir, file)]))
+    .map((path) => `### ${relative(dir, path).replaceAll("\\", "/")}\n\n${readFileSync(path, "utf8").trimEnd()}`);
 }
 
 function declaredLicense(manifest: { license?: unknown; licenses?: unknown }): string {
