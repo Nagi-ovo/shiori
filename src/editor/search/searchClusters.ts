@@ -19,11 +19,17 @@ export function* searchClusters(text: string): Generator<SearchCluster> {
     }
     return;
   }
-  // Conservative fallback for old WebViews without Intl.Segmenter: keep a
-  // base plus combining/variation/ZWJ continuation code points together.
+  yield* fallbackSearchClusters(text);
+}
+
+/** Conservative fallback for old WebViews without Intl.Segmenter: keep a
+ * base plus combining/variation/ZWJ continuation code points together. */
+export function* fallbackSearchClusters(text: string): Generator<SearchCluster> {
   for (let start = 0; start < text.length; ) {
     let end = nextCodePointEnd(text, start);
     let previousWasJoiner = false;
+    // A regional indicator pairs with the next one into a flag.
+    let unpairedIndicator = isRegionalIndicator(text.slice(start, end));
     while (end < text.length) {
       const nextEnd = nextCodePointEnd(text, end);
       const next = text.slice(end, nextEnd);
@@ -31,9 +37,11 @@ export function* searchClusters(text: string): Generator<SearchCluster> {
         /\p{Mark}/u.test(next) ||
         next === "\u200d" ||
         previousWasJoiner ||
-        isVariationOrEmojiModifier(next);
+        isVariationOrEmojiModifier(next) ||
+        (unpairedIndicator && isRegionalIndicator(next));
       if (!continuation) break;
       previousWasJoiner = next === "\u200d";
+      unpairedIndicator = false;
       end = nextEnd;
     }
     yield { segment: text.slice(start, end), start, end };
@@ -51,6 +59,13 @@ function isVariationOrEmojiModifier(character: string): boolean {
   return (
     (codePoint >= 0xfe00 && codePoint <= 0xfe0f) ||
     (codePoint >= 0xe0100 && codePoint <= 0xe01ef) ||
-    (codePoint >= 0x1f3fb && codePoint <= 0x1f3ff)
+    (codePoint >= 0x1f3fb && codePoint <= 0x1f3ff) ||
+    // Tag characters spelling a subdivision flag, and its cancel tag.
+    (codePoint >= 0xe0020 && codePoint <= 0xe007f)
   );
+}
+
+function isRegionalIndicator(character: string): boolean {
+  const codePoint = character.codePointAt(0) ?? -1;
+  return codePoint >= 0x1f1e6 && codePoint <= 0x1f1ff;
 }
