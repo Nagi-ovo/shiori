@@ -127,13 +127,9 @@ fn write_file_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let path = resolved.as_path();
 
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let file_name = path
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| "export".to_string());
     // Same directory as the destination, so the rename never crosses a device
     // boundary (which would make it a copy, and non-atomic).
-    let (temp_path, mut file) = create_temp_beside(parent, &file_name)?;
+    let (temp_path, mut file) = create_temp_beside(parent)?;
 
     let write_result = (|| -> std::io::Result<()> {
         file.write_all(bytes)?;
@@ -175,15 +171,17 @@ fn write_file_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 // rename then turned the document itself into that symlink; two saves of one
 // path also shared the temp inode. create_new (O_EXCL, which also refuses a
 // symlink) under a per-save name sidesteps whatever sits there. A crash now
-// leaves its own temp behind instead of the next save reusing it.
+// leaves its own temp behind instead of the next save reusing it. The name
+// leaves out the destination's: a file name may use all of NAME_MAX, and a
+// suffix on it overflowed that.
 #[cfg(not(mobile))]
-fn create_temp_beside(parent: &Path, file_name: &str) -> std::io::Result<(PathBuf, fs::File)> {
+fn create_temp_beside(parent: &Path) -> std::io::Result<(PathBuf, fs::File)> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let pid = std::process::id();
     for _ in 0..16 {
         let n = NEXT.fetch_add(1, Ordering::Relaxed);
-        let temp_path = parent.join(format!(".{file_name}.shiori-tmp-{pid}-{n}"));
+        let temp_path = parent.join(format!(".shiori-tmp-{pid}-{n}"));
         match fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -464,6 +462,19 @@ mod tests {
                 bad.display()
             );
         }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // A file name may use the whole NAME_MAX (255 bytes); the temp beside it
+    // must fit too, or saving a long-named note fails.
+    #[test]
+    #[cfg(all(not(mobile), unix))]
+    fn atomic_write_saves_a_file_whose_name_is_near_the_limit() {
+        let dir = text_image_test_dir("atomic-long-name");
+        let path = dir.join(format!("{}.md", "a".repeat(237)));
+        fs::write(&path, b"old").unwrap();
+        super::write_file_atomically(&path, b"new").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
         let _ = fs::remove_dir_all(&dir);
     }
 
