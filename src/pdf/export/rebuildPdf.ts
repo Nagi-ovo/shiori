@@ -2,10 +2,8 @@
 // source pages into a fresh document, burn in or attach the overlays, carry
 // the catalog structures that still apply, and check the result round-trips.
 import {
-  PDFArray,
   PDFDict,
   PDFDocument,
-  PDFName,
   degrees,
   type PDFPage,
   type PDFRef,
@@ -56,6 +54,7 @@ import {
   stripPageDocumentFiles,
   stripUnexportedPageDocumentFiles,
 } from "./navigation";
+import { separateCopiedAnnotations } from "./keptAnnotationLinks";
 import { isolatePageReferences } from "./pageIsolation";
 import { alignPageTreeWithPdfium } from "./sourcePageTree";
 import {
@@ -212,11 +211,15 @@ export async function rebuildPdf(
   const pageIsolation = isolatePageReferences(source, sourceIndices);
   const copiedPages = await out.copyPages(source, sourceIndices);
   pageIsolation.restoreSource();
-  const duplicatedSourceIndices = new Set(
-    sourceIndices.filter(
-      (index, position) => sourceIndices.indexOf(index) !== position,
-    ),
-  );
+  // Copies of one source page share its copied /Annots and every annotation
+  // object in it (PDFPageLeaf.normalize reuses them without cloning): each
+  // later copy gets its own before any attach writes to one.
+  const copiedOnce = new Set<number>();
+  copiedPages.forEach((copied, position) => {
+    const sourceIndex = sourceIndices[position]!;
+    if (copiedOnce.has(sourceIndex)) separateCopiedAnnotations(copied);
+    else copiedOnce.add(sourceIndex);
+  });
   let copiedCursor = 0;
 
   for (const page of model.pages) {
@@ -230,18 +233,6 @@ export async function rebuildPdf(
         throw new Error(`Failed to copy source page ${page.sourceIndex + 1}.`);
       }
       inserted = out.addPage(copied);
-      if (duplicatedSourceIndices.has(page.sourceIndex)) {
-        // Duplicate copies of one source page share the same copied /Annots
-        // array object (PDFPageLeaf.normalize reuses it without cloning), so
-        // an annotation added to one duplicate would leak onto the others.
-        const annots = inserted.node.lookupMaybe(
-          PDFName.of("Annots"),
-          PDFArray,
-        );
-        if (annots) {
-          inserted.node.set(PDFName.of("Annots"), annots.clone(out.context));
-        }
-      }
     }
     if (!isBlankPage(page)) {
       const sourceRef = sourcePages[page.sourceIndex]?.ref;

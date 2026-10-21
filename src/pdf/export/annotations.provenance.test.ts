@@ -310,6 +310,28 @@ describe("reply links between rebuilt and kept annotations", () => {
     expect(bySubtype("Caret")?.dict.get(PDFName.of("IRT"))).toBe(bySubtype("StrikeOut")!.ref);
   });
 
+  // Each copy holds its own kept Caret, which points only at a StrikeOut on
+  // its own page: here the duplicate after the original carries none.
+  test("a duplicate page's kept Caret is its own, not grouped to the original's StrikeOut", async () => {
+    const bytes = await replaceText();
+    const overlays = await importFileAnnotations([page], bytes);
+    const model = { pages: [page, { ...page, id: "dup" }], overlays } as unknown as DocumentModel;
+    const loaded = await PDFDocument.load((await exportPdf(bytes, model)).bytes);
+    const onPage = (index: number) =>
+      loaded.getPage(index).node.lookup(PDFName.of("Annots"), PDFArray).asArray().map((ref) => ({
+        ref: ref as PDFRef,
+        dict: loaded.context.lookup(ref, PDFDict),
+      }));
+    const subtype = (e: { dict: PDFDict }) => e.dict.get(PDFName.of("Subtype"))?.toString();
+    const [original, duplicate] = [onPage(0), onPage(1)];
+    const strike = original.find((e) => subtype(e) === "/StrikeOut")!;
+    const caret = original.find((e) => subtype(e) === "/Caret")!;
+    const copy = duplicate.find((e) => subtype(e) === "/Caret")!;
+    expect(caret.dict.get(PDFName.of("IRT"))).toBe(strike.ref);
+    expect(copy.dict.get(PDFName.of("IRT"))).toBeUndefined();
+    expect(copy.dict.get(PDFName.of("Shio"))).toBeUndefined();
+  });
+
   test("a kept Circle replying to a callout's thread reply still points at it", async () => {
     // A callout with one turn, exported by Shiori; then another tool adds a
     // Circle that replies to that turn's Text annotation.

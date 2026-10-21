@@ -21,11 +21,13 @@
 // that no longer exists.
 
 import {
+  PDFArray,
   PDFDict,
   PDFHexString,
   PDFName,
   PDFRef,
   PDFString,
+  type PDFContext,
   type PDFObject,
   type PDFPage,
 } from "pdf-lib";
@@ -128,9 +130,10 @@ export type KeptAnnotationLinks = {
 
 type TakenMark = { id?: string; target?: string; turn?: string; type: PDFObject | undefined };
 
-// Copies of a duplicated source page share their kept annotation objects, so
-// the page attach reaches first takes the mark off for all of them. What it
-// read is kept here for the copies after it, whatever order they come in.
+// Copies of a duplicated source page still share their widgets (see
+// separateCopiedAnnotations), so the page attach reaches first takes the
+// mark off for all of them. What it read is kept here for the copies after
+// it, whatever order they come in.
 const takenMarks = new WeakMap<PDFDict, TakenMark>();
 
 /** Attach side: read every mark on the copied page and remove it. */
@@ -187,4 +190,57 @@ export function relinkKeptReplies(
     reply.dict.set(IRT, parent);
     if (reply.type) reply.dict.set(RT, reply.type);
   }
+}
+
+const LINKS_WITHIN_PAGE = [PDFName.of("Popup"), PDFName.of("Parent"), IRT];
+
+/**
+ * Gives a later copy of a duplicated source page annotation objects of its
+ * own. Every copy listed the same kept dictionaries, so attach pointed one
+ * Caret at one copy's rebuilt StrikeOut for all of them, and a copy without
+ * that StrikeOut kept a link to another page. A copy's popups and replies
+ * point at its own copies. Widgets stay shared: their field's /Kids names
+ * the one widget. Must run before attach reads any mark.
+ */
+export function separateCopiedAnnotations(page: PDFPage): void {
+  const ctx = page.doc.context;
+  const annots = page.node.Annots();
+  if (!annots) return;
+  const copies = new Map<string, PDFRef>();
+  const cloned: PDFDict[] = [];
+  const entries = annots.asArray().map((raw) => {
+    const dict = ctx.lookup(raw);
+    if (!(dict instanceof PDFDict) || dict.get(PDFName.of("Subtype")) === PDFName.of("Widget")) {
+      return raw;
+    }
+    const copy = cloneDirect(dict, ctx) as PDFDict;
+    cloned.push(copy);
+    if (!(raw instanceof PDFRef)) return copy;
+    const ref = ctx.register(copy);
+    copies.set(raw.toString(), ref);
+    return ref;
+  });
+  for (const copy of cloned) {
+    for (const key of LINKS_WITHIN_PAGE) {
+      const value = copy.get(key);
+      const mapped = value instanceof PDFRef ? copies.get(value.toString()) : undefined;
+      if (mapped) copy.set(key, mapped);
+    }
+  }
+  page.node.set(PDFName.of("Annots"), ctx.obj(entries));
+}
+
+/** `value` with every direct dictionary and array in it copied; references stay shared. */
+function cloneDirect(value: PDFObject, ctx: PDFContext): PDFObject {
+  if (value instanceof PDFDict) {
+    const copy = PDFDict.withContext(ctx);
+    for (const [key, entry] of value.entries()) copy.set(key, cloneDirect(entry, ctx));
+    return copy;
+  }
+  if (value instanceof PDFArray) {
+    const copy = PDFArray.withContext(ctx);
+    for (const entry of value.asArray()) copy.push(cloneDirect(entry, ctx));
+    return copy;
+  }
+  return value;
 }
