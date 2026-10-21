@@ -228,6 +228,62 @@ describe("pdfiumEngine fonts", () => {
     });
   });
 
+  test("a dictionary its program's own cmap does not draw is rebuilt, not loaded as it is", async () => {
+    // Two dictionaries share one TrueType program (audit B108): "1a" draws
+    // "a" as the program's cmap does, "2b" draws its A as "a", as a small-caps
+    // encoding would. Loaded as it is, the program would edit 2b's "a" as a.
+    const runs = [["a", "1a"], ["a", "2b"]] as const;
+    await withFontStubs(async (added) => {
+      core.pageText.mockImplementation((async () => ({
+        glyphs: runs.map(([text, fontId], run) => ({
+          text,
+          origin: [72, 700 - 20 * run] as [number, number],
+          end: [78, 700 - 20 * run] as [number, number],
+          fontSize: 12,
+          angle: 0,
+          generated: false,
+          fontName: "LiberationSans",
+          fontId,
+          fontFlags: 32,
+          ascent: 9,
+          descent: -3,
+        })),
+        lang: null,
+      })) as unknown as typeof core.pageText);
+      core.pageFonts.mockImplementation(async () =>
+        packFonts(
+          runs.map(([, id]) => ({ name: "LiberationSans", id, format: "truetype", ownCmap: id === "1a", data: [0, 1, 0, 0, 9] })),
+        ),
+      );
+      core.fontOutlines.mockImplementation(async () =>
+        new TextEncoder().encode(
+          JSON.stringify(
+            runs.map(([text, id]) => ({
+              name: "LiberationSans",
+              id,
+              flags: 32,
+              ascent: 700,
+              descent: -200,
+              glyphs: [[text.codePointAt(0), 667, "M0 0L667 0L333 700Z"]],
+            })),
+          ),
+        ),
+      );
+      const { doc } = await engine.load(new Uint8Array([7]), {});
+      const text = await engine.pageText(doc, 0);
+      const familyOf = (id: string) => {
+        const style = [...text.fontNames].find(([, key]) => key.endsWith(`#${id}`))![0];
+        return text.faceFamilies.get(style);
+      };
+      const [loaded, rebuilt] = [familyOf("1a"), familyOf("2b")];
+      expect(loaded).toMatch(/^shiori-pdf-/);
+      expect(rebuilt).toMatch(/^shiori-pdf-/);
+      expect(rebuilt).not.toBe(loaded);
+      // 1a's program as it is; 2b's "a" from the glyph PDFium draws for it.
+      expect(added).toEqual([loaded!, `${rebuilt} U+61`]);
+    });
+  });
+
   test("a rebuilt font seen before keeps its family on a page beside a new one", async () => {
     // Page 0 sets "Hi" in one CMR10; page 1 sets "Ho" in it and "x" in a
     // second CMR10 program, the usual later page of a merged LaTeX file.
@@ -322,9 +378,13 @@ async function withFontStubs(body: (added: string[]) => Promise<void>): Promise<
 }
 
 /** shiori-core's font container: u32 length, a JSON listing, the programs. */
-function packFonts(fonts: Array<{ name: string; id?: string; format: string; data: number[] }>): Uint8Array {
+function packFonts(
+  fonts: Array<{ name: string; id?: string; format: string; ownCmap?: boolean; data: number[] }>,
+): Uint8Array {
   const header = new TextEncoder().encode(
-    JSON.stringify(fonts.map(({ name, id, format, data }) => ({ name, id, flags: 32, format, length: data.length }))),
+    JSON.stringify(
+      fonts.map(({ name, id, format, ownCmap = true, data }) => ({ name, id, flags: 32, format, ownCmap, length: data.length })),
+    ),
   );
   const out = new Uint8Array(4 + header.length + fonts.reduce((sum, font) => sum + font.data.length, 0));
   new DataView(out.buffer).setUint32(0, header.length, true);

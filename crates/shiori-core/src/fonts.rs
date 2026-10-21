@@ -8,6 +8,11 @@ use pdfium_render::prelude::{FPDF_FONT, FPDF_PAGEOBJECT, FPDF_PAGEOBJ_FORM, FPDF
 
 use crate::{CoreError, Document, Lib, TextPage, MAX_FORM_DEPTH, PDF_FONT_FLAGS};
 
+mod id;
+mod own_cmap;
+pub(crate) use id::font_id;
+use id::font_identity;
+
 /// A font program a page's text uses that the file embeds, as the file
 /// stores it: TrueType, OpenType (TrueType or CFF outlines), bare CFF or
 /// Type 1. The reading layer turns the ones a browser can load into faces,
@@ -18,11 +23,16 @@ pub struct EmbeddedFont {
     /// glyphs carry: PDFium drops a Type 1 font's subset prefix ("ABCDEF+")
     /// and keeps a TrueType or CID font's.
     pub name: String,
-    /// The program's identity (`program_id`), as the glyphs carry it.
+    /// The font's identity (`id::font_identity`), as the glyphs carry it.
     pub id: String,
     /// Descriptor flags (PDF 32000 table 123).
     pub flags: i32,
     pub format: FontFormat,
+    /// Whether the program as it is, through its own cmap and advances,
+    /// draws every probe character this dictionary maps the way the
+    /// dictionary does (`own_cmap::draws_alike`). Only then may a browser
+    /// load the program as a face; otherwise the reading layer rebuilds it.
+    pub own_cmap: bool,
     pub data: Vec<u8>,
 }
 
@@ -137,11 +147,12 @@ pub fn encode_embedded_fonts(fonts: &[EmbeddedFont]) -> Vec<u8> {
             header.push(',');
         }
         header.push_str(&format!(
-            "{{\"name\":{},\"id\":{},\"flags\":{},\"format\":\"{}\",\"length\":{}}}",
+            "{{\"name\":{},\"id\":{},\"flags\":{},\"format\":\"{}\",\"ownCmap\":{},\"length\":{}}}",
             json_string(&font.name),
             json_string(&font.id),
             font.flags,
             font.format.as_str(),
+            font.own_cmap,
             font.data.len()
         ));
     }
@@ -188,32 +199,6 @@ pub(crate) unsafe fn font_program(lib: &Lib, font: FPDF_FONT) -> Option<Vec<u8>>
     }
     data.truncate(size);
     Some(data)
-}
-
-/// Tells apart fonts PDFium names alike. Two papers merged into one file
-/// often embed two subsets of one font, both "Calibri" once PDFium drops
-/// their subset tags, and a face built from one lacks the other's glyphs.
-/// PDFium gives a font handle no object number, and its handles are freed
-/// with their pages, so the identity is the program itself: FNV-1a 64 over
-/// its bytes, in hex. The same program has the same id on every page, in a
-/// reopened file and in a file merged from it, where edits saved with it in
-/// a draft find it again. Hashing reads the program once per font per page
-/// read: microseconds for a subset, a few milliseconds for a whole CJK font.
-pub(crate) fn program_id(data: &[u8]) -> String {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for &byte in data {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x0100_0000_01b3);
-    }
-    format!("{hash:016x}")
-}
-
-/// The id of a font's program (`program_id`); empty for a font the file
-/// does not embed.
-pub(crate) unsafe fn font_id(lib: &Lib, font: FPDF_FONT) -> String {
-    font_program(lib, font)
-        .map(|data| program_id(&data))
-        .unwrap_or_default()
 }
 
 /// A font's BaseFont name as PDFium reports it (see `EmbeddedFont::name`).
@@ -326,9 +311,13 @@ impl Document {
                         };
                         fonts.push(EmbeddedFont {
                             name: base_font_name(lib, font),
-                            id: program_id(&data),
+                            id: font_identity(lib, font, &data),
                             flags: lib.FPDFFont_GetFlags(font) & PDF_FONT_FLAGS,
                             format: FontFormat::of(&data),
+                            own_cmap: matches!(
+                                FontFormat::of(&data),
+                                FontFormat::TrueType | FontFormat::OpenType
+                            ) && own_cmap::draws_alike(lib, font, &data),
                             data,
                         });
                     }

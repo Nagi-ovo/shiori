@@ -152,6 +152,9 @@ describe("shiori-core in wasm", () => {
     try {
       const fonts = decodeEmbeddedFonts(doc.embeddedFonts(0));
       expect(fonts.map((font) => font.format)).toEqual(["truetype", "cff"]);
+      // pdf-lib's TrueType subset drops the program's cmap and bare CFF
+      // never loads as it is: both are rebuilt, not loaded (audit B108).
+      expect(fonts.map((font) => font.ownCmap)).toEqual([false, false]);
       expect(fonts[0]!.name.startsWith("LiberationSans")).toBe(true);
       expect(Buffer.from(fonts[0]!.data.subarray(0, 4)).toString("latin1")).toBe("true");
       expect(Buffer.from(fonts[0]!.data).includes("glyf")).toBe(true);

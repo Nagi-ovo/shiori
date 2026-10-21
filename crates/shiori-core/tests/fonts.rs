@@ -112,3 +112,130 @@ fn a_font_is_known_by_its_program_in_any_file() {
     let helvetica = font_of(&source.chars(0, MAX_PAGE_CHARS).unwrap(), "H");
     assert_eq!(helvetica, ("Helvetica".to_string(), String::new()));
 }
+
+#[test]
+fn dictionaries_sharing_a_program_keep_their_own_glyphs() {
+    // Three dictionaries share one Foxit Serif program, as pdfTeX shares a
+    // Type 1 file across encodings (audit B108). Each sets an "a" with its
+    // own glyph: the program's a, its A (as small caps would) and its e at
+    // a's width. A face rebuilt for one must not stand in for another.
+    let doc = core().open(fixture("shared-program.pdf"), None).unwrap();
+    let glyphs = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    let ids: Vec<String> = glyphs
+        .iter()
+        .filter(|g| g.text == "a")
+        .map(|g| {
+            assert_eq!(g.font_name, "FoxitSerif");
+            g.font_id.clone()
+        })
+        .collect();
+    let [plain, caps, swap] = <[String; 3]>::try_from(ids).unwrap();
+    assert!(!plain.is_empty());
+    assert_ne!(plain, caps);
+    assert_ne!(plain, swap);
+    assert_ne!(caps, swap);
+    // The ids are the font's, not the page's: the same on every read.
+    let again = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    assert_eq!(font_of(&again, "A").1, plain);
+
+    // The programs carry the same ids as the glyphs drawn with them.
+    let fonts = doc.embedded_fonts(0).unwrap();
+    let embedded: Vec<&str> = fonts.iter().map(|font| font.id.as_str()).collect();
+    assert_eq!(embedded, [plain.as_str(), caps.as_str(), swap.as_str()]);
+    assert!(fonts.iter().all(|font| font.data == fonts[0].data));
+
+    // Rebuilt by name, each dictionary's "a" is the glyph it draws.
+    let rebuilt = doc.font_outlines(0, &["FoxitSerif".to_string()]).unwrap();
+    let glyph = |id: &str, unicode: char| {
+        let font = rebuilt.iter().find(|font| font.id == id).unwrap();
+        let glyph = font.glyphs.iter().find(|g| g.unicode == unicode as u32);
+        let glyph = glyph.unwrap();
+        (glyph.advance.round(), glyph.path.clone())
+    };
+    assert_eq!(rebuilt.len(), 3);
+    assert_eq!(glyph(&caps, 'a'), glyph(&plain, 'A'));
+    assert_eq!(glyph(&swap, 'a'), glyph(&plain, 'e'));
+    assert_eq!(glyph(&swap, 'a').0, glyph(&plain, 'a').0);
+    assert_ne!(glyph(&swap, 'a').1, glyph(&plain, 'a').1);
+}
+
+/// The id of the font each glyph `text` is drawn with, in page order.
+fn ids_of(glyphs: &[shiori_core::TextChar], text: &str) -> Vec<String> {
+    glyphs
+        .iter()
+        .filter(|g| g.text == text)
+        .map(|g| g.font_id.clone())
+        .collect()
+}
+
+#[test]
+fn dictionaries_drawing_mirrored_glyphs_differ() {
+    // Two dictionaries share Foxit Serif and both set "<", one with the
+    // program's less and one with its greater (audit B108): one width, one
+    // segment count, one set of bounds, mirrored. A face rebuilt for one
+    // would draw the other's "<" pointing the wrong way.
+    let doc = core()
+        .open(fixture("shared-program-beyond.pdf"), None)
+        .unwrap();
+    let glyphs = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    let [plain, greater] = <[String; 2]>::try_from(ids_of(&glyphs, "<")).unwrap();
+    assert_ne!(plain, greater);
+
+    let rebuilt = doc.font_outlines(0, &["FoxitSerif".to_string()]).unwrap();
+    let path = |id: &str, unicode: char| {
+        let font = rebuilt.iter().find(|font| font.id == id).unwrap();
+        let glyph = font.glyphs.iter().find(|g| g.unicode == unicode as u32);
+        glyph.unwrap().path.clone()
+    };
+    assert_eq!(path(&greater, '<'), path(&plain, '>'));
+    assert_ne!(path(&greater, '<'), path(&plain, '<'));
+}
+
+#[test]
+fn dictionaries_parting_beyond_ascii_differ() {
+    // Two dictionaries share Foxit Serif and agree on all of ASCII; one
+    // draws "é" with the program's eacute, the other with its egrave (audit
+    // B108). Latin-1 is where 8-bit encodings that share a program part
+    // beyond ASCII, so the id must see it.
+    let doc = core()
+        .open(fixture("shared-program-beyond.pdf"), None)
+        .unwrap();
+    let glyphs = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    let [plain, grave] = <[String; 2]>::try_from(ids_of(&glyphs, "é")).unwrap();
+    assert_ne!(plain, grave);
+
+    let rebuilt = doc.font_outlines(0, &["FoxitSerif".to_string()]).unwrap();
+    let path = |id: &str, unicode: char| {
+        let font = rebuilt.iter().find(|font| font.id == id).unwrap();
+        let glyph = font.glyphs.iter().find(|g| g.unicode == unicode as u32);
+        glyph.unwrap().path.clone()
+    };
+    assert_eq!(path(&grave, 'é'), path(&plain, 'è'));
+}
+
+#[test]
+fn only_a_dictionary_drawn_as_its_program_maps_loads_as_it_is() {
+    // Two dictionaries share one whole Liberation Sans program (audit B108):
+    // pdf-lib's own, and one whose /ToUnicode calls the glyph of "A" "a". A
+    // browser loading the program as it is draws "a" through the program's
+    // cmap: right for the first, the wrong letter for the second, which must
+    // be rebuilt from what PDFium draws instead.
+    let doc = core().open(fixture("shared-truetype.pdf"), None).unwrap();
+    let glyphs = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    let [plain, remap] = <[String; 2]>::try_from(ids_of(&glyphs, "a")).unwrap();
+    assert_ne!(plain, remap);
+
+    let fonts = doc.embedded_fonts(0).unwrap();
+    let own: Vec<(&str, &str, bool)> = fonts
+        .iter()
+        .map(|font| (font.id.as_str(), font.format.as_str(), font.own_cmap))
+        .collect();
+    assert_eq!(
+        own,
+        [
+            (plain.as_str(), "truetype", true),
+            (remap.as_str(), "truetype", false)
+        ]
+    );
+    assert_eq!(fonts[0].data, fonts[1].data);
+}
