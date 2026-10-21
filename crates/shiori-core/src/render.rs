@@ -2,6 +2,8 @@
 
 use std::os::raw::c_int;
 
+use pdfium_render::prelude::FS_RECTF;
+
 use crate::{CoreError, Document};
 
 // fpdfview.h render flags and bitmap format.
@@ -52,6 +54,22 @@ impl Document {
         let geometry = self.page_geometry(index)?;
         let page = self.page(index)?;
         let lib = self.lib;
+        // A crop box that misses the media box leaves PDFium's page box
+        // empty, and it then draws the page unscaled with y down. Its crop
+        // box on this open copy becomes the box page_geometry falls back
+        // to, so PDFium draws, forms included, where the overlays are.
+        let mut bbox = FS_RECTF {
+            left: 0.0,
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+        };
+        let has_box = unsafe { lib.FPDF_GetPageBoundingBox(page.handle, &mut bbox) } != 0;
+        if !has_box || bbox.right <= bbox.left || bbox.top <= bbox.bottom {
+            let (left, bottom) = (geometry.origin_x, geometry.origin_y);
+            let (right, top) = (left + geometry.width, bottom + geometry.height);
+            unsafe { lib.FPDFPage_SetCropBox(page.handle, left, bottom, right, top) };
+        }
         // PDFium applies the page's own /Rotate first and `rotate` on top.
         let page_turns = i32::from(geometry.rotation / 90);
         let turns = (i32::from(rotation / 90) - page_turns).rem_euclid(4);
