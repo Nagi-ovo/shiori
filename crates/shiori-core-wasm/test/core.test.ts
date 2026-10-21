@@ -191,7 +191,7 @@ describe("shiori-core in wasm", () => {
       const ids = decodeEmbeddedFonts(doc.embeddedFonts(0)).map((font) => font.id);
       expect(new Set(ids).size).toBe(3);
       const glyphs = JSON.parse(doc.pageText(0)).glyphs as PdfiumGlyph[];
-      const drawn = (all: PdfiumGlyph[]) => all.filter((g) => g.text === text).map((g) => g.fontId);
+      const drawn = (all: PdfiumGlyph[]) => all.filter((g) => g.text === "Ѐ").map((g) => g.fontId);
       expect(drawn(glyphs)).toEqual(ids.slice(1));
       expect(drawn(native.glyphs(0))).toEqual(ids.slice(1));
     } finally {
