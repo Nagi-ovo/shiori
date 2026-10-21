@@ -98,4 +98,45 @@ describe("insertPdfPages with tagged PDFs", () => {
       expect(dict.get(PDFName.of("StructParent"))).toBeUndefined();
     }
   });
+
+  test("tagged images reached through patterns and Type 3 fonts drop their key", async () => {
+    const base = await PDFDocument.create();
+    const basePage = base.addPage([300, 300]);
+    const paragraph = base.context.register(base.context.obj({ Type: "StructElem", S: "P", Pg: basePage.ref }));
+    base.catalog.set(PDFName.of("StructTreeRoot"), base.context.obj({
+      Type: "StructTreeRoot", K: [paragraph], ParentTree: { Nums: [1, paragraph] }, ParentTreeNextKey: 2,
+    }));
+
+    const incoming = await PDFDocument.create();
+    const page = incoming.addPage([200, 200]);
+    const image = () => incoming.context.register(incoming.context.stream(new Uint8Array([0, 0, 0]), {
+      Type: "XObject", Subtype: "Image", Width: 1, Height: 1,
+      ColorSpace: "DeviceRGB", BitsPerComponent: 8, StructParent: 1,
+    }));
+    const pattern = incoming.context.register(incoming.context.stream("/Im Do", {
+      Type: "Pattern", PatternType: 1, PaintType: 1, TilingType: 1,
+      BBox: [0, 0, 10, 10], XStep: 10, YStep: 10,
+    }));
+    // A pattern that paints with itself must not hang the walk.
+    incoming.context.lookup(pattern, PDFStream).dict.set(PDFName.of("Resources"), incoming.context.obj({
+      XObject: { Im: image() }, Pattern: { Self: pattern },
+    }));
+    const glyphs = incoming.context.obj({
+      Type: "Font", Subtype: "Type3", FontBBox: [0, 0, 10, 10], FontMatrix: [0.1, 0, 0, 0.1, 0, 0],
+      CharProcs: {}, Encoding: { Type: "Encoding", Differences: [] }, FirstChar: 0, LastChar: 0, Widths: [0],
+      Resources: { XObject: { Im: image() } },
+    });
+    page.node.set(PDFName.of("Resources"), incoming.context.obj({ Pattern: { P: pattern }, Font: { T3: glyphs } }));
+
+    const result = await insertPdfPages(await base.save(), await incoming.save(), 1);
+    const loaded = await PDFDocument.load(result.bytes);
+    const resources = loaded.getPage(1).node.lookup(PDFName.of("Resources"), PDFDict);
+    const imageIn = (owner: PDFDict) => owner.lookup(PDFName.of("Resources"), PDFDict)
+      .lookup(PDFName.of("XObject"), PDFDict).lookup(PDFName.of("Im"), PDFStream).dict;
+    const patternCopy = resources.lookup(PDFName.of("Pattern"), PDFDict).lookup(PDFName.of("P"), PDFStream).dict;
+    const fontCopy = resources.lookup(PDFName.of("Font"), PDFDict).lookup(PDFName.of("T3"), PDFDict);
+
+    expect(imageIn(patternCopy).get(PDFName.of("StructParent"))).toBeUndefined();
+    expect(imageIn(fontCopy).get(PDFName.of("StructParent"))).toBeUndefined();
+  });
 });
