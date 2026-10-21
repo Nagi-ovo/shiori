@@ -56,9 +56,14 @@ Code and docs cite these by number, so keep the numbering.
 3. **Platform abstraction lives in `src/platform/`.** Only `src/platform/`
    imports `@tauri-apps/*` (statically or via `import()`); ESLint enforces it.
    It branches on `IS_TAURI`, which keeps the web build working.
-4. **Draft autosave is keyed by the SHA-256 of the PDF bytes** — the same PDF
-   recovers across sessions, a different one never collides
-   (`src/storage/drafts.ts`). No age-based expiry, cap 1 GB, LRU eviction.
+4. **Draft autosave is keyed by the SHA-256 of the PDF bytes plus the
+   source** — `<hash>|path:…` or `<hash>|web:<handle id>` for desktop paths
+   and web file handles, the bare hash for cache and ephemeral sources
+   (`src/storage/draftIdentity.ts`). The same file recovers across sessions;
+   the same bytes at two paths keep two drafts. A hash-only draft (older
+   builds, dropped copies) is adopted by the first path that opens those
+   bytes (`draftClaim.ts`). Live receipts stay keyed by the hash alone. No
+   age-based expiry, cap 1 GB, LRU eviction (`src/storage/drafts.ts`).
 5. **The bundle identifier is `fun.nagi.shiori`.** Changing it wipes every
    user's IndexedDB drafts and localStorage prefs, so it needs a migration
    plan first.

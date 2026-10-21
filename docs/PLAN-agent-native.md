@@ -62,7 +62,7 @@ web / mobile 的可行路径（CLI 离线写 spec → 打开时加载）是降�
 ### 审查带来的修正
 
 **hash-mismatch 冲突弹窗不是"现成分支"，是新基建。**
-草稿按 bytes 的 SHA-256 键控（`src/storage/drafts.ts:48`），
+草稿按 bytes 的 SHA-256 键控（`src/storage/drafts.ts:48`；2026-10-21 起改为 hash 加来源，见 AGENTS.md 事实 4），
 原文件被外部改动后是新 bytes → 新 hash → 直接 miss——
 **今天这个场景根本不弹窗**，旧草稿静默变孤儿。
 要检测"文件变过了"，需要 path → 上次 hash 的映射；
