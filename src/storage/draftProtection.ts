@@ -23,7 +23,9 @@ import { draftContentHash, isHashOnlyDraftId } from "./draftIdentity";
  * Locks exist, each registered window holds a lock named after its key until
  * it unregisters or dies, and an expired entry whose lock is held still
  * counts. Lock state is read asynchronously and cached at each publish; the
- * sweep asks synchronously.
+ * sweep asks synchronously. Until this window's first answer arrives, an
+ * expired entry still counts (a window opened after another froze must not
+ * take it for crashed), and expired entries are removed only after an answer.
  */
 
 const KEY_PREFIX = "shiori:open-drafts:v1:";
@@ -73,6 +75,8 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
   let releaseLock: (() => void) | null = null;
   // Keys whose window held its lock at the last query.
   let lockedKeys = new Set<string>();
+  // Whether lockedKeys answers for anything yet; without Web Locks it never will.
+  let locksKnown = deps.locks === null;
 
   function storage(): Storage | null {
     try {
@@ -96,7 +100,9 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
       const now = deps.now();
       for (const key of keys) {
         const entry = parseEntry(store.getItem(key));
-        const live = entry && (Math.abs(now - entry.at) < EXPIRY_MS || lockedKeys.has(key));
+        const live =
+          entry &&
+          (Math.abs(now - entry.at) < EXPIRY_MS || !locksKnown || lockedKeys.has(key));
         visit(key, live ? entry : null);
       }
     } catch {
@@ -116,29 +122,41 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
     }
   }
 
-  function refreshLocks(): void {
+  // Re-reads lock state, then removes expired entries. A failed query keeps
+  // the last answer; with none yet, the heartbeat alone decides from then on.
+  function refreshLocksThenSweep(): void {
+    const answered = () => {
+      locksKnown = true;
+      sweepExpired();
+    };
+    const locks = deps.locks;
+    if (!locks) return sweepExpired();
     try {
-      deps.locks?.query().then(
-        (snapshot) => {
-          lockedKeys = new Set((snapshot.held ?? []).flatMap((lock) => lock.name ?? []));
-        },
-        () => undefined,
-      );
+      locks.query().then((snapshot) => {
+        lockedKeys = new Set((snapshot.held ?? []).flatMap((lock) => lock.name ?? []));
+        answered();
+      }, answered);
     } catch {
-      // Keep the last answer.
+      answered();
     }
   }
 
   function publish(): void {
     if (!registered) return;
-    refreshLocks();
+    const store = storage();
+    if (store) {
+      try {
+        store.setItem(ownKey, JSON.stringify({ at: deps.now(), ids: [...openDraftIds()] }));
+      } catch {
+        // Full or read-only storage: other windows fall back to their own tabs.
+      }
+    }
+    refreshLocksThenSweep();
+  }
+
+  function sweepExpired(): void {
     const store = storage();
     if (!store) return;
-    try {
-      store.setItem(ownKey, JSON.stringify({ at: deps.now(), ids: [...openDraftIds()] }));
-    } catch {
-      // Full or read-only storage: other windows fall back to their own tabs.
-    }
     const expired: string[] = [];
     otherEntries((key, entry) => {
       if (!entry) expired.push(key);
