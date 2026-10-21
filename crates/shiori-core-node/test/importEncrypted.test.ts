@@ -32,6 +32,7 @@ describe("importing an encrypted file's annotations", () => {
           createdAt: 0,
           updatedAt: 0,
           sourceAuthor: "Reviewer",
+          sourceFlags: 0,
           sourceModifiedAt: Date.UTC(2026, 8, 25, 12),
           origin: "imported",
           importedAt: 0,
