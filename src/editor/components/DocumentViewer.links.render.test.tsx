@@ -108,6 +108,20 @@ describe("DocumentViewer link clicks", () => {
     expect(opened).toEqual([]);
   });
 
+  test("scrolls a Markdown back-to-top link to the start of the document", async () => {
+    const view = renderMarkdown('<h2 id="intro">Intro</h2><p><a href="#">Back to top</a></p>');
+    const link = await view.findByText("Back to top");
+    const article = view.container.querySelector("article")!;
+    let scrolled = 0;
+    article.scrollIntoView = () => {
+      scrolled += 1;
+    };
+
+    expect(fireEvent.click(link)).toBe(false);
+    expect(scrolled).toBe(1);
+    expect(opened).toEqual([]);
+  });
+
   test("scrolls an HTML fragment link inside the document frame", async () => {
     const view = render(
       <DocumentViewer
@@ -117,14 +131,14 @@ describe("DocumentViewer link clicks", () => {
         scrollTop={0}
         onScrollTopChange={() => undefined}
         renderHtml={async () =>
-          '<!doctype html><html><body><a href="#ch2">Go</a><a name="ch2">Chapter 2</a><a href="https://example.com/x">Out</a></body></html>'
+          '<!doctype html><html><body><a href="#ch2">Go</a><a name="ch2">Chapter 2</a><a href="https://example.com/x">Out</a><a href="#top">Top</a></body></html>'
         }
       />,
     );
     const iframe = (await view.findByTitle("toc.html")) as HTMLIFrameElement;
     fireEvent.load(iframe);
     const doc = iframe.contentDocument!;
-    const [toc, target, out] = Array.from(doc.querySelectorAll("a"));
+    const [toc, target, out, top] = Array.from(doc.querySelectorAll("a"));
     let scrolled = 0;
     target!.scrollIntoView = () => {
       scrolled += 1;
@@ -145,5 +159,13 @@ describe("DocumentViewer link clicks", () => {
     out!.dispatchEvent(outClick);
     expect(outClick.defaultPrevented).toBe(true);
     expect(opened).toEqual(["https://example.com/x"]);
+
+    // "#top" with no such id is the top of the document, as in a browser.
+    let toTop = 0;
+    doc.documentElement.scrollIntoView = () => {
+      toTop += 1;
+    };
+    top!.dispatchEvent(click());
+    expect(toTop).toBe(1);
   });
 });

@@ -60,7 +60,8 @@ function asElement(target: EventTarget | null): Element | null {
 }
 
 // The HTML rule for a fragment: the first element with that id, else the
-// first <a> with that name, else the heading whose GitHub-style slug is the
+// first <a> with that name, else, for "" and "top", the top of the document.
+// Between the last two sits the heading whose GitHub-style slug is the
 // fragment: marked renders headings without ids, and adding them would let a
 // Markdown heading clash with the app's own ids.
 function fragmentTarget(scope: ParentNode, fragment: string): Element | null {
@@ -76,7 +77,8 @@ function fragmentTarget(scope: ParentNode, fragment: string): Element | null {
     candidates.find(
       (element) => element.localName === "a" && element.getAttribute("name") === id,
     ) ??
-    (id ? headingWithSlug(scope, id) : null)
+    (id ? headingWithSlug(scope, id) : null) ??
+    (!id || id.toLowerCase() === "top" ? scopeTop(scope) : null)
   );
 }
 
@@ -105,4 +107,8 @@ function headingSlug(text: string): string {
     .toLowerCase()
     .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
     .replace(/ /g, "-");
+}
+
+function scopeTop(scope: ParentNode): Element | null {
+  return scope.nodeType === 9 ? (scope as Document).documentElement : (scope as Element);
 }
