@@ -104,12 +104,11 @@ describe("an annotation's flags and a note's state", () => {
     expect([text(note, "State"), text(note, "StateModel")]).toEqual(["Accepted", "Review"]);
   });
 
-  // No /F means 0, which would also mean "never print"; the export has
-  // always printed these, and still does.
-  test("an annotation without /F still prints", async () => {
-    const { overlays, exported } = await roundTrip([{ Subtype: "Highlight", ...quad }]);
-    expect(overlays[0]).not.toHaveProperty("sourceFlags");
-    expect(flags(exported[0]!)).toBe("4");
+  // No /F means 0: a viewer shows it but never prints it. Exported with
+  // Shiori's own Print it would start printing.
+  test("an annotation without /F still does not print", async () => {
+    const { exported } = await roundTrip([{ Subtype: "Highlight", ...quad }]);
+    expect(flags(exported[0]!)).toBe("0");
   });
 });
 

@@ -126,9 +126,11 @@ function readAnnotation(
     modificationDate: latin1(dict.lookup(PDFName.of("M"))) ?? null,
   };
   const appearance = normalAppearance(dict);
-  // The /F as written, so export can write it back; only when there is one.
+  // The /F as written, so export can write it back. None is 0, as pdf.js
+  // reads it: shown, never printed.
   const sourceFlags = dict.lookup(PDFName.of("F"));
-  if (sourceFlags instanceof PDFNumber && Number.isSafeInteger(sourceFlags.asNumber()) && sourceFlags.asNumber() >= 0) {
+  if (sourceFlags === undefined) data.annotationFlags = 0;
+  else if (sourceFlags instanceof PDFNumber && Number.isSafeInteger(sourceFlags.asNumber()) && sourceFlags.asNumber() >= 0) {
     data.annotationFlags = sourceFlags.asNumber();
   }
 
