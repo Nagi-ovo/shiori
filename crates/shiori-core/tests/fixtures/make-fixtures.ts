@@ -445,3 +445,85 @@ console.log(subsetsOut);
   writeFileSync(sharedOut, await shared.save({ useObjectStreams: false }));
   console.log(sharedOut);
 }
+
+// shared-program-beyond.pdf: one page, three more dictionaries sharing the
+// Foxit Serif program (tests/fonts.rs, audit B108). "plain" is WinAnsi and
+// sets "<>éè". "greater" draws /greater for code 60, which its /ToUnicode
+// still calls "<": the mirror image of "<", same width, same segment count,
+// same bounds. "grave" draws /egrave for code 233, which its /ToUnicode
+// calls "é": the two agree on all of ASCII and part only beyond it.
+{
+  const shared = await PDFDocument.create();
+  const program = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "fonts/FoxitSerif.pfb"));
+  const ctx = shared.context;
+  const fontFile = ctx.register(ctx.stream(program, { Subtype: "Type1C" }));
+  const times = await shared.embedFont(StandardFonts.TimesRoman);
+  const timesWidths = Array.from({ length: 224 }, (_, i) => {
+    try {
+      return Math.round(times.widthOfTextAtSize(String.fromCharCode(32 + i), 1000));
+    } catch {
+      return 0;
+    }
+  });
+  const descriptor = ctx.register(
+    ctx.obj({
+      Type: "FontDescriptor",
+      FontName: "SHIORI+FoxitSerif",
+      Flags: 34,
+      FontBBox: [-168, -218, 1000, 898],
+      ItalicAngle: 0,
+      Ascent: 683,
+      Descent: -217,
+      CapHeight: 662,
+      StemV: 84,
+      FontFile3: fontFile,
+    }),
+  );
+  const toUnicode = (code: string, unicode: string) =>
+    ctx.register(
+      ctx.stream(
+        [
+          "/CIDInit /ProcSet findresource begin 12 dict begin begincmap",
+          "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+          "/CMapName /Adobe-Identity-UCS def /CMapType 2 def",
+          "1 begincodespacerange <00> <FF> endcodespacerange",
+          `1 beginbfchar <${code}> <${unicode}> endbfchar`,
+          "endcmap CMapName currentdict /CMap defineresource pop end end",
+        ].join("\n"),
+      ),
+    );
+  const dict = (remap?: { code: number; glyph: string; unicode: string }) =>
+    ctx.register(
+      ctx.obj({
+        Type: "Font",
+        Subtype: "Type1",
+        BaseFont: "SHIORI+FoxitSerif",
+        FirstChar: 32,
+        LastChar: 255,
+        Widths: timesWidths,
+        ...(remap
+          ? {
+              Encoding: ctx.obj({
+                Type: "Encoding",
+                BaseEncoding: "WinAnsiEncoding",
+                Differences: [remap.code, PDFName.of(remap.glyph)],
+              }),
+              ToUnicode: toUnicode(remap.code.toString(16).toUpperCase(), remap.unicode),
+            }
+          : { Encoding: "WinAnsiEncoding" }),
+        FontDescriptor: descriptor,
+      }),
+    );
+  const page = shared.addPage([300, 200]);
+  for (const [key, ref, text, y] of [
+    ["Plain", dict(), "<>éè", 150],
+    ["Greater", dict({ code: 0x3c, glyph: "greater", unicode: "003C" }), "<", 100],
+    ["Grave", dict({ code: 0xe9, glyph: "egrave", unicode: "00E9" }), "é", 50],
+  ] as const) {
+    page.node.setFontDictionary(PDFName.of(key), ref);
+    page.pushOperators(beginText(), setFontAndSize(key, 20), moveText(20, y), showText(PDFString.of(text)), endText());
+  }
+  const beyondOut = join(dirname(fileURLToPath(import.meta.url)), "shared-program-beyond.pdf");
+  writeFileSync(beyondOut, await shared.save({ useObjectStreams: false }));
+  console.log(beyondOut);
+}

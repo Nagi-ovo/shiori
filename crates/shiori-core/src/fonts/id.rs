@@ -50,17 +50,19 @@ impl Fnv {
 
 /// The id of an embedded font whose program is `program`, in hex: FNV-1a 64
 /// over the program's bytes, its descriptor flags and, for each probe
-/// character, the advance its /Widths give it and the rough shape of the
+/// character, the advance its /Widths give it and the whole outline of the
 /// glyph it draws. The advance (through PDFium's lookup from Unicode back to
 /// a code) catches a dictionary that maps a character elsewhere or widens
-/// it; the shape catches one that swaps in a glyph of the same width.
+/// it; the outline catches one that swaps in a glyph of the same width, a
+/// mirror image included.
 ///
-/// The shape is the outline's segment count and its bounds in whole 1/1000
-/// em, as PDFium's FreeType draws it: coarse, so an upgrade of either that
-/// moves points by a fraction of a unit keeps almost every id (one that
-/// changes leaves a draft's edit in a fallback face). Hashing reads the
-/// program and asks about 95 characters once per font per page read:
-/// microseconds for a subset, a few milliseconds for a whole CJK font.
+/// The outline is every segment's type, point and closure in whole 1/1000
+/// em, as `glyph_outline` rebuilds it from PDFium's FreeType, so two ids are
+/// equal when the rebuilt probe glyphs are. An upgrade of either that moves
+/// a point across a rounding boundary changes the id and leaves a draft's
+/// edit in a fallback face. Hashing reads the program and asks about 95
+/// characters once per font per page read: microseconds for a subset, a few
+/// milliseconds for a whole CJK font.
 pub(crate) unsafe fn font_identity(lib: &Lib, font: FPDF_FONT, program: &[u8]) -> String {
     let mut hash = Fnv::new();
     hash.bytes(program);
@@ -74,8 +76,8 @@ pub(crate) unsafe fn font_identity(lib: &Lib, font: FPDF_FONT, program: &[u8]) -
     format!("{:016x}", hash.0)
 }
 
-/// The segment count and whole-unit bounds of the glyph `font` draws for
-/// `unicode`; -1 for none.
+/// The outline of the glyph `font` draws for `unicode`: its segment count
+/// (-1 for none), then each segment's type, point and closure.
 unsafe fn glyph_shape(lib: &Lib, font: FPDF_FONT, unicode: u32, hash: &mut Fnv) {
     let glyph = lib.FPDFFont_GetGlyphPath(font, unicode, 1000.0);
     let count = if glyph.is_null() {
@@ -84,26 +86,17 @@ unsafe fn glyph_shape(lib: &Lib, font: FPDF_FONT, unicode: u32, hash: &mut Fnv) 
         lib.FPDFGlyphPath_CountGlyphSegments(glyph)
     };
     hash.int(count);
-    let mut bounds = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
     for i in 0..count.max(0) {
         let segment = lib.FPDFGlyphPath_GetGlyphPathSegment(glyph, i);
         let (mut x, mut y) = (0f32, 0f32);
         if segment.is_null() || lib.FPDFPathSegment_GetPoint(segment, &mut x, &mut y) == 0 {
+            hash.int(-1);
             continue;
         }
-        let (x, y) = (
-            (x * GLYPH_PATH_SCALE).round() as i32,
-            (y * GLYPH_PATH_SCALE).round() as i32,
-        );
-        bounds = [
-            bounds[0].min(x),
-            bounds[1].min(y),
-            bounds[2].max(x),
-            bounds[3].max(y),
-        ];
-    }
-    if count > 0 {
-        bounds.iter().for_each(|&edge| hash.int(edge));
+        hash.int(lib.FPDFPathSegment_GetType(segment));
+        hash.int((x * GLYPH_PATH_SCALE).round() as i32);
+        hash.int((y * GLYPH_PATH_SCALE).round() as i32);
+        hash.int(lib.FPDFPathSegment_GetClose(segment));
     }
 }
 

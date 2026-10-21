@@ -158,3 +158,35 @@ fn dictionaries_sharing_a_program_keep_their_own_glyphs() {
     assert_eq!(glyph(&swap, 'a').0, glyph(&plain, 'a').0);
     assert_ne!(glyph(&swap, 'a').1, glyph(&plain, 'a').1);
 }
+
+/// The id of the font each glyph `text` is drawn with, in page order.
+fn ids_of(glyphs: &[shiori_core::TextChar], text: &str) -> Vec<String> {
+    glyphs
+        .iter()
+        .filter(|g| g.text == text)
+        .map(|g| g.font_id.clone())
+        .collect()
+}
+
+#[test]
+fn dictionaries_drawing_mirrored_glyphs_differ() {
+    // Two dictionaries share Foxit Serif and both set "<", one with the
+    // program's less and one with its greater (audit B108): one width, one
+    // segment count, one set of bounds, mirrored. A face rebuilt for one
+    // would draw the other's "<" pointing the wrong way.
+    let doc = core()
+        .open(fixture("shared-program-beyond.pdf"), None)
+        .unwrap();
+    let glyphs = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    let [plain, greater] = <[String; 2]>::try_from(ids_of(&glyphs, "<")).unwrap();
+    assert_ne!(plain, greater);
+
+    let rebuilt = doc.font_outlines(0, &["FoxitSerif".to_string()]).unwrap();
+    let path = |id: &str, unicode: char| {
+        let font = rebuilt.iter().find(|font| font.id == id).unwrap();
+        let glyph = font.glyphs.iter().find(|g| g.unicode == unicode as u32);
+        glyph.unwrap().path.clone()
+    };
+    assert_eq!(path(&greater, '<'), path(&plain, '>'));
+    assert_ne!(path(&greater, '<'), path(&plain, '<'));
+}
