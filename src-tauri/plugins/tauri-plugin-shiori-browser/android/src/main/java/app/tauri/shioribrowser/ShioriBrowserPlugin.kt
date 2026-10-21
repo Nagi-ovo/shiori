@@ -59,13 +59,15 @@ class SetBoundsArgs {
     lateinit var bounds: BoundsArg
 }
 
-private const val TEMP_PROFILE = "shiori-browser-temporary"
+private const val TEMP_PROFILE_PREFIX = "shiori-browser-temporary"
 
 @TauriPlugin
 class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
     private var webView: WebView? = null
     private var tauriWebView: WebView? = null
     private var currentPersist = true
+    private var tempProfile: String? = null
+    private var tempProfilesSwept = false
 
     private val density: Float
         get() = activity.resources.displayMetrics.density
@@ -82,16 +84,44 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
         this.tauriWebView = webView
     }
 
-    // Empties the temporary session's profile. deleteProfile is not an
-    // option: it refuses a profile this process has loaded.
+    // Every temporary session gets a profile no earlier session used. A
+    // reused profile cannot be emptied: removeAllCookies is asynchronous
+    // (the next loadUrl can still send the old cookies), deleteAllData
+    // leaves CacheStorage and service workers, and deleteProfile refuses a
+    // profile this process has loaded. Profiles left by earlier runs are not
+    // loaded yet, so the first temporary session of a run deletes them;
+    // those used earlier in this run stay on disk until the next run.
+    private fun newTempProfile(): String {
+        val store = ProfileStore.getInstance()
+        if (!tempProfilesSwept) {
+            tempProfilesSwept = true
+            store.allProfileNames
+                .filter { it.startsWith(TEMP_PROFILE_PREFIX) }
+                .forEach { name ->
+                    try {
+                        store.deleteProfile(name)
+                    } catch (_: Exception) {
+                        // In use; the next run deletes it.
+                    }
+                }
+        }
+        val name = "$TEMP_PROFILE_PREFIX-${System.currentTimeMillis()}"
+        store.getOrCreateProfile(name)
+        tempProfile = name
+        return name
+    }
+
+    // Best effort: empties the closed session's profile until the next run
+    // deletes it.
     private fun clearTempProfile() {
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) return
+        val name = tempProfile ?: return
+        tempProfile = null
         try {
-            val profile = ProfileStore.getInstance().getOrCreateProfile(TEMP_PROFILE)
+            val profile = ProfileStore.getInstance().getProfile(name) ?: return
             profile.cookieManager.removeAllCookies(null)
             profile.webStorage.deleteAllData()
         } catch (_: Exception) {
-            // Best effort; the next temporary session clears it again.
+            // The next run deletes the profile anyway.
         }
     }
 
@@ -112,19 +142,18 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
             if (!currentPersist) clearTempProfile()
         }
         val wv = WebView(activity)
-        // A temporary session gets its own WebView profile: cookies, site
-        // storage and cache apart from the persistent one, emptied when the
-        // session starts and ends. CookieManager.getInstance() is
-        // process-global, so the old approach (refuse and delete every
-        // cookie) erased the persistent logins, blocked all sign-ins, and
-        // left localStorage/IndexedDB shared. setProfile must precede any
-        // other use of the view. Without MULTI_PROFILE (old WebView) the
+        // A temporary session gets its own fresh WebView profile (see
+        // newTempProfile): cookies, site storage and cache apart from the
+        // persistent one and from earlier temporary sessions.
+        // CookieManager.getInstance() is process-global, so the old approach
+        // (refuse and delete every cookie) erased the persistent logins,
+        // blocked all sign-ins, and left localStorage/IndexedDB shared.
+        // setProfile must precede any other use of the view. Without MULTI_PROFILE (old WebView) the
         // panel falls back to the shared default profile rather than
         // destroying it.
         val isolated = !persist && WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)
         if (isolated) {
-            clearTempProfile()
-            WebViewCompat.setProfile(wv, TEMP_PROFILE)
+            WebViewCompat.setProfile(wv, newTempProfile())
         }
         wv.settings.javaScriptEnabled = true
         wv.settings.domStorageEnabled = true
