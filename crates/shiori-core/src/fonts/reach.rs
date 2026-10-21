@@ -101,9 +101,11 @@ struct Read {
 ///
 /// A code whose /ToUnicode gives a character past U+FFFF (U+1F600, or a
 /// math letter such as U+1D44E) reads back as the two halves of its UTF-16
-/// pair, which PDFium looks no glyph up by, on every platform. Nothing
-/// shows which glyph such a code draws, so its halves go into `unverified`
-/// with their box and the mapping is not established.
+/// pair, which PDFium looks no glyph up by, on every platform. Its halves
+/// go into `unverified` with their box, so dictionaries that part there get
+/// different ids, but they leave the mapping established: unicode-math and
+/// emoji fonts set such characters through the program's own cmap, and a
+/// rebuilt face has no glyph for them.
 ///
 /// Costs a text page of 65,536 characters in lines of 256 per font (about
 /// 0.1 s natively for a whole Latin TrueType program, 10 ms for a subset or
@@ -169,6 +171,7 @@ pub(super) unsafe fn reach(lib: &Lib, document: FPDF_DOCUMENT, font: FPDF_FONT) 
         .chain(decomposed)
         .collect();
     let mut unverified: Option<Fnv> = None;
+    let mut unmapped_any = false;
     // The line is read as it is set unless the font has right-to-left
     // letters; then only each code alone is.
     let as_set = if rtl { &alone } else { &line };
@@ -176,6 +179,7 @@ pub(super) unsafe fn reach(lib: &Lib, document: FPDF_DOCUMENT, font: FPDF_FONT) 
         let half = (0xd800..0xe000).contains(&read.unicode);
         let unmapped =
             rtl && !right_to_left(read.unicode) && character(read.unicode) && !maps(read.unicode);
+        unmapped_any |= unmapped;
         if half || unmapped {
             let hash = unverified.get_or_insert_with(Fnv::new);
             hash.int(read.unicode as i32);
@@ -186,7 +190,7 @@ pub(super) unsafe fn reach(lib: &Lib, document: FPDF_DOCUMENT, font: FPDF_FONT) 
     beyond.dedup();
     Reach {
         beyond,
-        established: read_alone && unverified.is_none(),
+        established: read_alone && !unmapped_any,
         unverified: unverified.map(|hash| hash.0),
     }
 }

@@ -203,11 +203,10 @@ describe("shiori-core in wasm", () => {
   // Liberation Sans under two Identity-H dictionaries that give U+0400 to
   // the glyphs of "Ő" and "ő", GIDs 274 and 275 (audit B108); in the second
   // file both read their codes 0x100-0x1FF exactly as 0x00-0xFF and part at
-  // 0x300; in the third they give them U+1F600, read back as a UTF-16 pair.
+  // 0x300.
   test.each([
     ["shared-truetype-high.pdf", "Ѐ"],
     ["shared-truetype-periodic.pdf", "Ѐ"],
-    ["shared-truetype-supplementary.pdf", "😀"],
   ])("tells apart dictionaries that part past the first 256 codes and loads neither as it is, as the native core does (%s)", (file, text) => {
     const bytes = readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures", file));
     const doc = wasm.CoreDocument.open(bytes, undefined);
@@ -227,6 +226,27 @@ describe("shiori-core in wasm", () => {
     }
     // Reading every code of three whole fonts, in wasm and natively, can
     // take longer than bun's 5 s.
+  }, 30_000);
+
+  // The same two dictionaries giving U+1F600, read back as a UTF-16 pair:
+  // their ids part, and both still load as they are, as unicode-math and
+  // emoji fonts must (a rebuilt face has no glyph past U+FFFF).
+  test("tells apart dictionaries that part at a character past U+FFFF and still loads them as they are", () => {
+    const bytes = readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures/shared-truetype-supplementary.pdf"));
+    const doc = wasm.CoreDocument.open(bytes, undefined);
+    const native = openCoreDocument(bytes);
+    try {
+      const fonts = decodeEmbeddedFonts(doc.embeddedFonts(0));
+      expect(fonts.map((font) => font.ownCmap)).toEqual([true, true, true]);
+      const ids = fonts.map((font) => font.id);
+      expect(new Set(ids).size).toBe(3);
+      const drawn = (all: PdfiumGlyph[]) => all.filter((g) => g.text === "😀").map((g) => g.fontId);
+      expect(drawn(JSON.parse(doc.pageText(0)).glyphs as PdfiumGlyph[])).toEqual(ids.slice(1));
+      expect(drawn(native.glyphs(0))).toEqual(ids.slice(1));
+    } finally {
+      doc.free();
+      native.close();
+    }
   }, 30_000);
 
   test("rebuilds embedded fonts a browser refuses so they draw as PDFium draws them", async () => {

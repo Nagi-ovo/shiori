@@ -391,6 +391,9 @@ fn dictionaries_parting_at_a_character_past_u_ffff_differ() {
     // as its UTF-16 pair, for the glyph of "Ő" and of "ő", and every other
     // character mapped as the program maps it: PDFium looks no glyph up by
     // half a pair, so nothing shows the program draws those codes alike.
+    // The ids still part; both load as they are, because fonts that set
+    // such characters (unicode-math, emoji) draw them from the program's
+    // own cmap and a rebuilt face has no glyph for them.
     let doc = core()
         .open(fixture("shared-truetype-supplementary.pdf"), None)
         .unwrap();
@@ -399,5 +402,5 @@ fn dictionaries_parting_at_a_character_past_u_ffff_differ() {
     assert_ne!(upper, lower);
     let fonts = doc.embedded_fonts(0).unwrap();
     let own: Vec<bool> = fonts.iter().map(|font| font.own_cmap).collect();
-    assert_eq!(own, [true, false, false]);
+    assert_eq!(own, [true, true, true]);
 }
