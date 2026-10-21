@@ -41,6 +41,7 @@ async function exportCompactPdf(
     assertExportIntegrity,
     exportPdf,
     preserveDocumentFilesInPdf,
+    preserveDocumentInfoInPdf,
     refuseUnhandledEncryption,
   } = await loadExportPdfModule();
   const encryption = options.sourceEncryption;
@@ -72,11 +73,27 @@ async function exportCompactPdf(
   ) {
     return vector;
   }
+  // The validated vector result already reflects logical page deletion and
+  // annotation mode, and carries the source's Info. Using the untouched
+  // source here would resurrect files owned only by pages the user removed
+  // from the document. An unchanged encrypted vector is the source itself,
+  // so its plaintext carries exactly the source's files and Info.
+  let plainVector: Uint8Array | null = null;
+  const vectorPlaintext = async () =>
+    (plainVector ??= encryption
+      ? (vectorPlain ?? (await encryption.plaintext()))
+      : vector.bytes);
   let rasterBytes: Uint8Array;
   try {
     rasterBytes = await exportCompactRasterPdf(doc, model, {
       mode: options.mode,
     });
+    // Title, Author and the rest, whatever the attachment policy. Should
+    // they fail to copy, the vector, which has them, is the better file.
+    rasterBytes = await preserveDocumentInfoInPdf(
+      await vectorPlaintext(),
+      rasterBytes,
+    );
   } catch (err) {
     console.warn("Compact raster export failed; using standard PDF.", err);
     return vector;
@@ -86,15 +103,10 @@ async function exportCompactPdf(
   // round-trip check fails, the export must fail loudly instead of silently
   // changing the user's selected result.
   if (options.documentFiles === "preserve") {
-    // The validated vector result already reflects logical page deletion and
-    // annotation mode. Using the untouched source here would resurrect files
-    // owned only by pages the user removed from the document.
-    // An unchanged encrypted vector is the source itself, so its plaintext
-    // carries exactly the source's files.
-    const filesSource = encryption
-      ? (vectorPlain ?? (await encryption.plaintext()))
-      : vector.bytes;
-    rasterBytes = await preserveDocumentFilesInPdf(filesSource, rasterBytes);
+    rasterBytes = await preserveDocumentFilesInPdf(
+      await vectorPlaintext(),
+      rasterBytes,
+    );
   }
   // Both sides compared as they would be saved: encryption adds a little.
   if (rasterBytes.byteLength >= vector.bytes.byteLength) return vector;

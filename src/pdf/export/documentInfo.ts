@@ -1,4 +1,5 @@
-import type { PDFDocument } from "pdf-lib";
+import { PDFDocument } from "pdf-lib";
+import { ExportEncryptedSourceError } from "./encryptedSource";
 
 // Export builds a brand-new document, whose Info dict starts empty — so every
 // export used to strip Title/Author/Subject/Keywords and stamp pdf-lib as the
@@ -32,4 +33,27 @@ function safeInfoRead<T>(read: () => T | undefined): T | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Copy a source PDF's document Info onto an already serialized PDF.
+ *
+ * The compact raster builds its pages outside rebuildPdf(), so when it won on
+ * size the saved file came out untitled. This runs on it whatever the
+ * attachment policy: Info describes the document, not a hidden payload.
+ */
+export async function preserveDocumentInfoInPdf(
+  sourceBytes: Uint8Array,
+  outputBytes: Uint8Array,
+): Promise<Uint8Array> {
+  const source = await PDFDocument.load(new Uint8Array(sourceBytes), {
+    ignoreEncryption: true,
+    updateMetadata: false,
+  });
+  // pdf-lib decrypts nothing: an encrypted source's Info strings are
+  // ciphertext, and copying them would write garbage as the title.
+  if (source.isEncrypted) throw new ExportEncryptedSourceError();
+  const output = await PDFDocument.load(new Uint8Array(outputBytes));
+  copySourceDocumentInfo(source, output);
+  return output.save({ useObjectStreams: true });
 }

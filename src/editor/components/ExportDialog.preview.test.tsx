@@ -17,6 +17,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import { PDFDocument } from "pdf-lib";
 import i18n from "../../i18n";
 import type { PageModel } from "../../pdf/model/types";
 import type { ExportResult } from "../../pdf/export/exportPdf";
@@ -28,6 +29,10 @@ const exportCalls: string[] = [];
 const saveCalls: Uint8Array[] = [];
 const documentFilePolicies: string[] = [];
 const preservedDocumentFileSources: Uint8Array[] = [];
+const preservedInfoSources: Uint8Array[] = [];
+/** The Info bridge; tests that check the saved file swap in the real one. */
+let runInfoBridge: (source: Uint8Array, output: Uint8Array) => Promise<Uint8Array> =
+  async (_source, output) => output;
 let runExport: () => Promise<ExportResult> = async () => ({
   bytes: new Uint8Array(1024),
   lostChars: 0,
@@ -95,6 +100,10 @@ mock.module("../export/exportPdfAdapter", () => ({
       preservedDocumentFileSources.push(sourceBytes);
       return outputBytes;
     },
+    preserveDocumentInfoInPdf: (sourceBytes: Uint8Array, outputBytes: Uint8Array) => {
+      preservedInfoSources.push(sourceBytes);
+      return runInfoBridge(sourceBytes, outputBytes);
+    },
     ExportIntegrityError: MockExportIntegrityError,
     ExportEncryptedSourceError: MockExportEncryptedSourceError,
     ExportSignedSourceError: MockExportSignedSourceError,
@@ -148,6 +157,8 @@ describe("ExportDialog preview scheduling", () => {
     saveCalls.length = 0;
     documentFilePolicies.length = 0;
     preservedDocumentFileSources.length = 0;
+    preservedInfoSources.length = 0;
+    runInfoBridge = async (_source, output) => output;
     compactRasterCalls = 0;
     unhandledEncryption = false;
     sourceEncryption = undefined;
@@ -331,6 +342,43 @@ describe("ExportDialog preview scheduling", () => {
     );
   });
 
+  // The raster is a new PDF drawn page by page. When it won on size, the saved
+  // file had no Title or Author, so Zotero, Calibre and Finder listed it as
+  // untitled; the vector path has carried them since copySourceDocumentInfo.
+  test("a compact raster keeps the source's title and author, attachments or not", async () => {
+    runInfoBridge = (await import("../../pdf/export/documentInfo")).preserveDocumentInfoInPdf;
+    const vector = await PDFDocument.create();
+    vector.setTitle("Attention Is All You Need");
+    vector.setAuthor("A. Vaswani");
+    for (let i = 0; i < 40; i++) vector.addPage([612, 792]);
+    const vectorBytes = await vector.save();
+    runExport = async () => ({ bytes: vectorBytes, lostChars: 0 });
+    const raster = await PDFDocument.create();
+    raster.addPage([612, 792]);
+    const rasterBytes = await raster.save();
+    runCompactRaster = async () => rasterBytes;
+    localStorage.setItem(
+      "shiori:exportPrefs:v1",
+      JSON.stringify({ mode: "annotations", quality: "compact" }),
+    );
+    const view = render(<ExportDialog open onClose={() => undefined} />);
+    const pagesGroup = view.getByRole("radiogroup", { name: "Pages" });
+    fireEvent.click(
+      within(pagesGroup).getByRole("radio", { name: /Current page only/ }),
+    );
+    await waitFor(() => expect(documentFilePolicies.at(-1)).toBe("omit"), {
+      timeout: 3_000,
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "Export PDF" }));
+    await waitFor(() => expect(saveCalls).toHaveLength(1), { timeout: 3_000 });
+    expect(compactRasterCalls).toBeGreaterThan(0);
+    const saved = await PDFDocument.load(saveCalls[0]!);
+    expect(saved.getPageCount()).toBe(1);
+    expect(saved.getTitle()).toBe("Attention Is All You Need");
+    expect(saved.getAuthor()).toBe("A. Vaswani");
+  });
+
   describe("an encrypted source", () => {
     const MODIFY = 1 << 3;
     const ANNOTATE = 1 << 5;
@@ -366,8 +414,10 @@ describe("ExportDialog preview scheduling", () => {
       fireEvent.click(view.getByRole("button", { name: "Export PDF" }));
       await waitFor(() => expect(saveCalls).toHaveLength(1), { timeout: 3_000 });
       expect(Array.from(saveCalls[0]!)).toEqual(Array.from(await fakeEncrypt(rasterPlain)));
-      // Attachments are copied from the plaintext vector, never from ciphertext.
+      // Attachments and Info are copied from the plaintext vector, never
+      // from ciphertext.
       expect(preservedDocumentFileSources.map((b) => b[0])).toEqual([vectorPlain[0]]);
+      expect(preservedInfoSources.map((b) => b[0])).toEqual([vectorPlain[0]]);
       expect(new Set(encryptionPasswords)).toEqual(new Set(["user-pw"]));
     });
 
