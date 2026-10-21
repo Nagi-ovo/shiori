@@ -5,11 +5,17 @@
 // that preserves the advance so following text does not shift).
 //
 // Fail-closed by design: any construct whose geometry we cannot model
-// EXACTLY (unknown fonts, vertical/CMap encodings via glyphWidths, clipping
-// text render modes, ExtGState font overrides, malformed operands — which
-// also catch token-boundary damage from raw /Contents coalescing) aborts the
-// whole walk with { ok: false }. The caller must then leave the page
-// untouched. Approximating here would silently delete the wrong glyphs.
+// EXACTLY (unresolvable fonts, clipping text render modes, ExtGState font
+// overrides, malformed operands — which also catch token-boundary damage
+// from /Contents coalescing) aborts the whole walk with { ok: false }. The
+// caller must then leave the page untouched. Approximating here would
+// silently delete the wrong glyphs.
+//
+// One exception keeps a single odd font from disabling the whole page: text
+// in a font glyphWidths cannot measure (a Standard-14 font without /Widths,
+// a vertical or CMap encoding) yields no placements and sets unplacedText,
+// so it is never removed. Its advance is unknown, so later shows on the same
+// line are unplaced too, until a line operator moves from the line start.
 
 import type { ContentOp, ContentOperand } from "./tokenizer";
 import type { ContentFontInfo, UnsupportedFont } from "./glyphWidths";
@@ -20,6 +26,10 @@ export type Point = { x: number; y: number };
 type Matrix = [number, number, number, number, number, number];
 
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
+
+// Top of a glyph's core band, in em above the baseline: below the x-height
+// of common text faces, far below the next line's baseline.
+const CORE_TOP_EM = 0.4;
 
 function multiply(m: Matrix, n: Matrix): Matrix {
   // Apply m first, then n.
@@ -56,6 +66,15 @@ export type GlyphPlacement = {
   // origin+advance, top+advance, top. A degenerate box (zero advance) is
   // still emitted — the removal pass decides how to treat it.
   quad: [Point, Point, Point, Point];
+  // Same advance, but only from the baseline up to CORE_TOP_EM (or the
+  // ascent, if lower): the part of the glyph any cover built for its line
+  // contains. Editor covers come from ink bounds or a band normalized to one
+  // em, both shorter than many fonts' FontDescriptor box, so the removal
+  // pass tests this band, not `quad`, for "fully covered".
+  coreQuad: [Point, Point, Point, Point];
+  // Op indices of the BMC/BDC operators whose marked-content spans enclose
+  // the glyph, outermost first — where its /ActualText or /Alt would live.
+  markedContent: readonly number[];
   // TJ number that reproduces this glyph's whole displacement (advance width
   // + char/word spacing) when the glyph bytes are removed: insert
   // -tjCompensation at the glyph's position. Units: thousandths of text
@@ -71,8 +90,22 @@ export type XObjectUse = {
   ctm: [number, number, number, number, number, number];
 };
 
+// An inline image (BI…EI) paints the unit square under the CTM in effect.
+export type InlineImageUse = {
+  opIndex: number;
+  ctm: [number, number, number, number, number, number];
+};
+
 export type TextWalkResult =
-  | { ok: true; glyphs: GlyphPlacement[]; xobjects: XObjectUse[] }
+  | {
+      ok: true;
+      glyphs: GlyphPlacement[];
+      xobjects: XObjectUse[];
+      inlineImages: InlineImageUse[];
+      // Some text was shown where the walk cannot place it; no cover rect
+      // can be proven free of it.
+      unplacedText: boolean;
+    }
   | { ok: false; reason: string };
 
 type GraphicsState = {
@@ -91,7 +124,8 @@ type GraphicsState = {
 };
 
 export type TextWalkCallbacks = {
-  // Resolve a /Font resource name. Unsupported fonts abort the walk.
+  // Resolve a /Font resource name. Null (unresolvable) aborts the walk; an
+  // unsupported font leaves its text unplaced.
   resolveFont: (name: string) => ContentFontInfo | UnsupportedFont | null;
   // Whether an /ExtGState resource contains a /Font entry. Return null when
   // unknown — the walk then assumes it might and taints the current font.
@@ -114,6 +148,7 @@ export function walkTextPlacements(
 ): TextWalkResult {
   const glyphs: GlyphPlacement[] = [];
   const xobjects: XObjectUse[] = [];
+  const inlineImages: InlineImageUse[] = [];
   const stack: GraphicsState[] = [];
   let gs: GraphicsState = {
     ctm: IDENTITY,
@@ -130,6 +165,11 @@ export function walkTextPlacements(
   let tm: Matrix = IDENTITY;
   let tlm: Matrix = IDENTITY;
   let inTextObject = false;
+  // Set once a show of unknown advance moved tm by an unknown amount.
+  let tmUnknown = false;
+  let unplacedText = false;
+  // Replaced, never mutated, so glyphs can share it.
+  let markedContent: readonly number[] = [];
   const fontCache = new Map<string, ContentFontInfo | UnsupportedFont | null>();
 
   const fail = (reason: string): TextWalkResult => ({ ok: false, reason });
@@ -148,6 +188,7 @@ export function walkTextPlacements(
   const nextLine = (tx: number, ty: number) => {
     tlm = multiply([1, 0, 0, 1, tx, ty], tlm);
     tm = tlm;
+    tmUnknown = false;
   };
 
   const show = (
@@ -165,7 +206,11 @@ export function walkTextPlacements(
     }
     const font = resolveFont(gs.fontName);
     if (font === null) return `unresolvable font /${gs.fontName}`;
-    if (!font.ok) return `unsupported font /${gs.fontName}: ${font.reason}`;
+    if (!font.ok || tmUnknown) {
+      unplacedText = true;
+      tmUnknown = true;
+      return null;
+    }
     if (gs.fontSize === 0) return "show-text at font size 0";
     if (font.bytesPerCode === 2 && bytes.length % 2 !== 0) {
       return "odd byte count in 2-byte-code show string";
@@ -200,6 +245,13 @@ export function walkTextPlacements(
         apply(trm, { x: w0Em, y: font.ascentEm }),
         apply(trm, { x: 0, y: font.ascentEm }),
       ];
+      const coreTopEm = Math.min(CORE_TOP_EM, font.ascentEm);
+      const coreQuad: [Point, Point, Point, Point] = [
+        apply(trm, { x: 0, y: 0 }),
+        apply(trm, { x: w0Em, y: 0 }),
+        apply(trm, { x: w0Em, y: coreTopEm }),
+        apply(trm, { x: 0, y: coreTopEm }),
+      ];
       glyphs.push({
         opIndex,
         arrayItemIndex,
@@ -208,6 +260,8 @@ export function walkTextPlacements(
         code,
         fontName: gs.fontName,
         quad,
+        coreQuad,
+        markedContent,
         tjCompensation: 1000 * (w0Em + spacing / gs.fontSize),
       });
       const advance =
@@ -250,6 +304,7 @@ export function walkTextPlacements(
         inTextObject = true;
         tm = IDENTITY;
         tlm = IDENTITY;
+        tmUnknown = false;
         break;
       case "ET":
         if (!inTextObject) return fail("ET without BT");
@@ -325,6 +380,7 @@ export function walkTextPlacements(
         if (!inTextObject) return fail("Tm outside BT/ET");
         tm = nums as Matrix;
         tlm = nums as Matrix;
+        tmUnknown = false;
         break;
       }
       case "T*":
@@ -397,12 +453,23 @@ export function walkTextPlacements(
         xobjects.push({ opIndex, name, ctm: [...gs.ctm] });
         break;
       }
+      case "BI":
+        inlineImages.push({ opIndex, ctm: [...gs.ctm] });
+        break;
+      case "BMC":
+      case "BDC":
+        markedContent = [...markedContent, opIndex];
+        break;
+      case "EMC":
+        // An unbalanced EMC changes nothing PDFium draws; ignore it.
+        markedContent = markedContent.slice(0, -1);
+        break;
       default:
-        // Painting, color, path, and marked-content operators do not affect
-        // text geometry. Their bytes pass through the rewrite verbatim.
+        // Painting, color, path, and marked-content point operators do not
+        // affect text geometry. Their bytes pass through the rewrite verbatim.
         break;
     }
   }
   if (inTextObject) return fail("unterminated BT");
-  return { ok: true, glyphs, xobjects };
+  return { ok: true, glyphs, xobjects, inlineImages, unplacedText };
 }

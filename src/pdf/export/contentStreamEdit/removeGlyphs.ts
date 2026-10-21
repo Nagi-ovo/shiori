@@ -7,12 +7,22 @@
 //    displacement (advance width + char/word spacing) is re-inserted as a TJ
 //    adjustment, so following glyphs in the same text object do not shift.
 // 2. Bytes outside the rewritten show ops are copied verbatim via the
-//    tokenizer's extents — no re-serialization of ops we didn't change.
+//    tokenizer's extents — no re-serialization of ops we didn't change. The
+//    one other edit: a BDC property list enclosing a removed glyph loses its
+//    /ActualText, /Alt and /E entries, which would otherwise still hand the
+//    removed text to extractors that honour them (a named list through a
+//    sanitized copy the caller registers).
 //
-// Hit policy is conservative: a glyph is removed only when its entire
-// advance-box quad lies inside one cover rect (small epsilon for float
-// noise). Partially covered glyphs stay — deleting a glyph the user can
-// still half-see is worse than leaving one they meant to cover.
+// Hit policy is conservative: a glyph is removed only when one cover rect
+// holds its whole advance, from the baseline up through its core band
+// (GlyphPlacement.coreQuad; small epsilon for float noise), or when a rect
+// holding no core band hugs the ink of glyphs floating off the baseline
+// (removalsByRect). The font-wide ascent/descent box is not required:
+// editor covers hug the ink or a band normalized to one em, and many fonts
+// declare a taller box. Partially covered glyphs stay — deleting a glyph
+// the user can still half-see is worse than leaving one they meant to
+// cover — and a rect is clean only when no glyph left in the stream touches
+// its full advance box.
 
 import type { PdfRect } from "../../model/types";
 import type { ContentOp, ContentOperand } from "./tokenizer";
@@ -176,6 +186,59 @@ export function quadIntersectsRect(
   return false;
 }
 
+// Whether an upright glyph's font box holds the rect while the rect spans
+// its whole advance: the shape of a cover that hugs the ink of a glyph
+// floating off the baseline (a dash, an underscore, a quote).
+function rectHugsUprightGlyph(rect: PdfRect, quad: GlyphPlacement["quad"]): boolean {
+  const [origin, advance, , top] = quad;
+  if (
+    Math.abs(advance.y - origin.y) > HIT_EPSILON ||
+    Math.abs(top.x - origin.x) > HIT_EPSILON ||
+    advance.x <= origin.x ||
+    top.y <= origin.y
+  ) {
+    return false;
+  }
+  const rb = rectBounds(rect);
+  const qb = quadBounds(quad);
+  return (
+    rb.minX <= qb.minX + HIT_EPSILON &&
+    rb.maxX >= qb.maxX - HIT_EPSILON &&
+    rb.minY >= qb.minY - HIT_EPSILON &&
+    rb.maxY <= qb.maxY + HIT_EPSILON
+  );
+}
+
+// Side margin a hugging cover may leave past its glyphs: the editor's cover
+// pad plus the selection's inline edge padding.
+function hugSlack(rect: PdfRect): number {
+  return 0.8 + Math.max(3, 0.25 * Math.abs(rect.h));
+}
+
+// Per rect, the glyphs it removes. A rect removes every glyph whose core
+// band it holds. A rect that holds no core band may be an ink-bounds cover
+// of glyphs that float off the baseline; it removes the glyphs it hugs
+// (rectHugsUprightGlyph), but only when together they span the rect, so a
+// cover over a much larger glyph (a heading, a watermark) keeps it.
+function removalsByRect(
+  glyphs: GlyphPlacement[],
+  coverRects: PdfRect[],
+): Set<GlyphPlacement>[] {
+  return coverRects.map((rect) => {
+    const core = glyphs.filter((glyph) => quadInsideRect(glyph.coreQuad, rect));
+    if (core.length > 0) return new Set(core);
+    const hugged = glyphs.filter((glyph) => rectHugsUprightGlyph(rect, glyph.quad));
+    if (hugged.length === 0) return new Set();
+    const rb = rectBounds(rect);
+    const minX = Math.min(...hugged.map((glyph) => quadBounds(glyph.quad).minX));
+    const maxX = Math.max(...hugged.map((glyph) => quadBounds(glyph.quad).maxX));
+    const slack = hugSlack(rect);
+    return minX <= rb.minX + slack && maxX >= rb.maxX - slack
+      ? new Set(hugged)
+      : new Set();
+  });
+}
+
 function classifyGlyphCoverage(
   glyphs: GlyphPlacement[],
   coverRects: PdfRect[],
@@ -189,13 +252,12 @@ function classifyGlyphCoverage(
     kind: "none",
   }));
   const hits: GlyphPlacement[] = [];
+  const removals = removalsByRect(glyphs, coverRects);
 
   for (const glyph of glyphs) {
     let removeGlyph = false;
     for (let rectIndex = 0; rectIndex < coverRects.length; rectIndex += 1) {
-      const rect = coverRects[rectIndex]!;
-      if (!quadIntersectsRect(glyph.quad, rect)) continue;
-      if (quadInsideRect(glyph.quad, rect)) {
+      if (removals[rectIndex]!.has(glyph)) {
         removeGlyph = true;
         const attribution = rectFonts[rectIndex]!;
         if (attribution.kind === "none") {
@@ -206,11 +268,18 @@ function classifyGlyphCoverage(
         ) {
           rectFonts[rectIndex] = { kind: "mixed" };
         }
-      } else {
+      }
+    }
+    if (removeGlyph) {
+      hits.push(glyph);
+      continue;
+    }
+    // A glyph that stays is still drawn: any rect it touches needs its cover.
+    for (let rectIndex = 0; rectIndex < coverRects.length; rectIndex += 1) {
+      if (quadIntersectsRect(glyph.quad, coverRects[rectIndex]!)) {
         cleanRects[rectIndex] = false;
       }
     }
-    if (removeGlyph) hits.push(glyph);
   }
 
   return { hits, cleanRects, rectFonts };
@@ -331,11 +400,81 @@ function rebuildShowOp(op: ContentOp, removed: GlyphPlacement[]): string {
   }
 }
 
+// Property-list keys that carry a text equivalent of the marked content.
+const ALT_TEXT_KEYS = new Set(["ActualText", "Alt", "E"]);
+
+// A name token for a decoded name value, #-escaping every byte that is not
+// a regular printable character.
+function nameToken(value: string): string {
+  let out = "/";
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    out +=
+      code > 0x20 && code < 0x7f && !"()<>[]{}/%#".includes(char)
+        ? char
+        : `#${code.toString(16).padStart(2, "0")}`;
+  }
+  return out;
+}
+
+// Called for a BDC enclosing a removed glyph whose property list is named:
+// the name of a copy of that list without its alternate text, or null when
+// the list has none to drop.
+export type RenameProperties = (name: string) => string | null;
+
+// The BDC op with its alternate-text entries blanked out, or null when its
+// property list has none. A named list is not edited in place (it may be
+// shared): the op is pointed at the copy renameProperties names instead.
+function stripAltText(
+  source: Uint8Array,
+  op: ContentOp,
+  renameProperties: RenameProperties | undefined,
+): Uint8Array | null {
+  const properties = op.operands[op.operands.length - 1];
+  if (op.operator !== "BDC") return null;
+  if (properties?.kind === "name") {
+    const tag = op.operands[0];
+    const renamed = renameProperties?.(properties.value) ?? null;
+    if (renamed === null || op.operands.length !== 2 || tag?.kind !== "name") {
+      return null;
+    }
+    return new TextEncoder().encode(
+      `${nameToken(tag.value)} ${nameToken(renamed)} BDC`,
+    );
+  }
+  if (properties?.kind !== "dict") return null;
+  const drop = properties.entries.filter((entry) => ALT_TEXT_KEYS.has(entry.key));
+  if (drop.length === 0) return null;
+  const chunks: Uint8Array[] = [];
+  let cursor = op.start;
+  for (const entry of drop) {
+    chunks.push(source.subarray(cursor, entry.start), SPACE);
+    cursor = entry.end;
+  }
+  chunks.push(source.subarray(cursor, op.end));
+  return concatBytes(chunks);
+}
+
+const SPACE = new Uint8Array([0x20]);
+
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+  let total = 0;
+  for (const chunk of chunks) total += chunk.length;
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return out;
+}
+
 export function removeCoveredGlyphs(
   source: Uint8Array,
   ops: ContentOp[],
   glyphs: GlyphPlacement[],
   coverRects: PdfRect[],
+  renameProperties?: RenameProperties,
 ): GlyphRemovalResult {
   const { hits, cleanRects, rectFonts } = classifyGlyphCoverage(
     glyphs,
@@ -353,29 +492,33 @@ export function removeCoveredGlyphs(
   }
 
   const encoder = new TextEncoder();
+  const replacements = new Map<number, Uint8Array>();
+  for (const [opIndex, removed] of byOp) {
+    replacements.set(
+      opIndex,
+      encoder.encode(rebuildShowOp(ops[opIndex]!, removed)),
+    );
+  }
+  for (const opIndex of new Set(hits.flatMap((hit) => hit.markedContent))) {
+    const stripped = stripAltText(source, ops[opIndex]!, renameProperties);
+    if (stripped) replacements.set(opIndex, stripped);
+  }
+
   const chunks: Uint8Array[] = [];
   let cursor = 0;
-  for (const [opIndex, removed] of [...byOp.entries()].sort(
+  for (const [opIndex, bytes] of [...replacements.entries()].sort(
     (a, b) => a[0] - b[0],
   )) {
     const op = ops[opIndex]!;
     chunks.push(source.subarray(cursor, op.start));
-    chunks.push(encoder.encode(rebuildShowOp(op, removed)));
+    chunks.push(bytes);
     cursor = op.end;
   }
   chunks.push(source.subarray(cursor));
 
-  let total = 0;
-  for (const chunk of chunks) total += chunk.length;
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.length;
-  }
   return {
     changed: true,
-    bytes: out,
+    bytes: concatBytes(chunks),
     removedCount: hits.length,
     cleanRects,
     rectFonts,
