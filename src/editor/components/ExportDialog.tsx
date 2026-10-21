@@ -9,6 +9,8 @@ import {
   Section,
   type RadioOption,
 } from "./ui";
+import { ExportErrorNotice, LossyExportNotice } from "./ExportNotices";
+import { ExportPagesSection } from "./ExportPagesSection";
 import { useEditorStore } from "../store/store";
 import type {
   DocumentFilesPolicy,
@@ -327,23 +329,6 @@ export function ExportDialog({
     : sizePreviewState.request === previewRequest
       ? sizePreviewState.previews
       : deferredSizePreviews(quality);
-  const rangeOpts: RadioOption<RangeV>[] = [
-    {
-      v: "all",
-      label: t("export.range.all"),
-      hint: t("export.range.allHint", { count: pageCount }),
-    },
-    {
-      v: "current",
-      label: t("export.range.current"),
-      hint: t("export.range.currentHint", { page: currentIdx }),
-    },
-    {
-      v: "range",
-      label: t("export.range.custom"),
-      hint: customRange,
-    },
-  ];
   const annotOpts: RadioOption<ExportMode>[] = [
     {
       v: "annotations",
@@ -614,44 +599,14 @@ export function ExportDialog({
       title={t("export.title")}
       subtitle={opened.fileName}
     >
-      <Section label={t("export.sections.pages")}>
-        <Radio
-          label={t("export.sections.pages")}
-          options={rangeOpts}
-          value={range}
-          onChange={setRange}
-        />
-        {range === "range" ? (
-          <input
-            type="text"
-            value={customRange}
-            onChange={(e) => setCustomRange(e.target.value)}
-            placeholder={t("export.range.customPlaceholder")}
-            style={{
-              marginTop: 8,
-              width: "100%",
-              boxSizing: "border-box",
-              padding: "8px 12px",
-              borderRadius: 4,
-              border: `1px solid ${T.rule}`,
-              background: T.surface,
-              font: `500 13px/1 ${T.mono}`,
-              color: T.ink,
-            }}
-          />
-        ) : null}
-        {range !== "all" ? (
-          <div
-            style={{
-              marginTop: 8,
-              color: T.dim,
-              font: `12.5px/1.45 ${T.sans}`,
-            }}
-          >
-            {t("export.range.attachmentsOmitted")}
-          </div>
-        ) : null}
-      </Section>
+      <ExportPagesSection
+        range={range}
+        onRangeChange={setRange}
+        customRange={customRange}
+        onCustomRangeChange={setCustomRange}
+        pageCount={pageCount}
+        currentPage={currentIdx}
+      />
 
       <Section label={t("export.sections.annotations")}>
         <Radio
@@ -693,81 +648,16 @@ export function ExportDialog({
       </Section>
 
       {pendingLossyExport ? (
-        <div
-          role="alert"
-          style={{
-            padding: "11px 12px",
-            borderRadius: 4,
-            background: "#fff2cf",
-            border: `1px solid #d9b65f`,
-            color: T.ink,
-            font: `13px/1.45 ${T.sans}`,
-            marginBottom: 10,
-          }}
-        >
-          <strong>{t("export.lostCharsConfirmTitle")}</strong>
-          <div style={{ marginTop: 4 }}>
-            {t("export.lostCharsConfirmBody", {
-              count: pendingLossyExport.lostChars,
-            })}
-          </div>
-        </div>
+        <LossyExportNotice lostChars={pendingLossyExport.lostChars} />
       ) : null}
 
       {error ? (
-        <div
-          style={{
-            padding: "10px 12px",
-            borderRadius: 4,
-            background: "#f7e2de",
-            border: `1px solid #e0b5ab`,
-            color: "#7a2418",
-            font: `13px/1.4 ${T.sans}`,
-            marginBottom: 10,
-          }}
-        >
-          <div>{error.message}</div>
-          <div
-            style={{
-              marginTop: 6,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <code
-              style={{
-                font: `500 11px/1 ${T.mono}`,
-                color: "#7a2418",
-                letterSpacing: ".04em",
-              }}
-            >
-              {t("diagnostics.code", { code: error.code })}
-            </code>
-            <button
-              type="button"
-              onClick={onCopyDiagnostic}
-              style={{
-                appearance: "none",
-                border: "1px solid #c78378",
-                borderRadius: 4,
-                background: "#fff7f4",
-                color: "#7a2418",
-                padding: "4px 8px",
-                font: `600 11.5px/1 ${T.sans}`,
-                cursor: "pointer",
-              }}
-            >
-              {copyState === "copied"
-                ? t("diagnostics.copied")
-                : copyState === "error"
-                  ? t("diagnostics.copyFailed")
-                  : t("diagnostics.copy")}
-            </button>
-          </div>
-        </div>
+        <ExportErrorNotice
+          message={error.message}
+          code={error.code}
+          copyState={copyState}
+          onCopy={onCopyDiagnostic}
+        />
       ) : null}
 
       <div

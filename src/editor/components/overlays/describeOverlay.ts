@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next";
-import type { Overlay } from "../../../pdf/model/types";
+import type { Overlay, OverlayType } from "../../../pdf/model/types";
+import { isSignatureOverlay } from "./overlayGuards";
 
 // How much annotation text goes into the accessible name before it is cut.
 // Long enough to identify which annotation this is, short enough that a
@@ -11,6 +12,23 @@ function trimForName(text: string): string {
   if (flat.length <= NAME_TEXT_LIMIT) return flat;
   return `${flat.slice(0, NAME_TEXT_LIMIT - 1)}…`;
 }
+
+// The `inspector.labels.*` key that names each overlay type. A Record, so a new
+// type cannot ship without a name: the lookup used to fall back to the raw
+// type, and rect / image / contentText were announced as those slugs.
+const TYPE_LABEL: Record<OverlayType, string> = {
+  highlight: "highlight",
+  underline: "underline",
+  strikethrough: "strikethrough",
+  ink: "ink",
+  image: "image",
+  stamp: "stamp",
+  rect: "rectangle",
+  note: "note",
+  text: "text",
+  callout: "callout",
+  contentText: "contentText",
+};
 
 /**
  * A one-line name for an annotation, in the reading order "what it is, what it
@@ -26,9 +44,10 @@ function trimForName(text: string): string {
  * the name a screen reader hears matches the word the inspector shows.
  */
 export function describeOverlay(overlay: Overlay, t: TFunction): string {
-  const kind = t(`inspector.labels.${overlay.type}`, {
-    defaultValue: overlay.type,
-  });
+  const label = isSignatureOverlay(overlay)
+    ? "signature"
+    : TYPE_LABEL[overlay.type];
+  const kind = t(`inspector.labels.${label}`);
   const parts: string[] = [kind];
 
   // Text-bearing annotations identify themselves by what they say.

@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import type { ComponentType } from "react";
 import i18n from "../../i18n";
 import { deferModal } from "./deferModal";
+import { Modal } from "./ui";
 
 afterEach(() => {
   cleanup();
@@ -22,8 +23,19 @@ function Real({ onClose }: Props) {
   );
 }
 
+/** The real thing: a dialog on the Modal shell, which restores focus itself. */
+function RealModal({ onClose }: Props) {
+  return (
+    <Modal title="real" onClose={onClose}>
+      <button type="button" onClick={onClose}>
+        close
+      </button>
+    </Modal>
+  );
+}
+
 /** A loader the test settles by hand. */
-function manualLoader() {
+function manualLoader(component: ComponentType<Props> = Real) {
   let resolve!: (c: ComponentType<Props>) => void;
   let reject!: (e: unknown) => void;
   let calls = 0;
@@ -37,7 +49,7 @@ function manualLoader() {
   return {
     load,
     calls: () => calls,
-    resolve: () => act(async () => { resolve(Real); await Promise.resolve(); }),
+    resolve: () => act(async () => { resolve(component); await Promise.resolve(); }),
     reject: () => act(async () => { reject(new Error("chunk")); await Promise.resolve(); }),
   };
 }
@@ -95,4 +107,35 @@ describe("deferModal", () => {
     expect(second.getByRole("dialog", { name: "real" })).toBeTruthy();
     expect(loader.calls()).toBe(1);
   });
+
+  // A cold chunk on the web build shows the loading notice after 400 ms. The
+  // notice's panel held focus when the real dialog mounted and captured it as
+  // the place to return to; the notice was gone by the time the dialog closed,
+  // so focus fell to <body> instead of the button that opened it.
+  for (const closeBy of ["open prop", "unmount"] as const) {
+    test(`returns focus to the trigger after a slow load (closed by ${closeBy})`, async () => {
+      const loader = manualLoader(RealModal);
+      const Deferred = deferModal<Props>(loader.load, (p) => p.open === true);
+      const ui = (open: boolean, mounted = true) => (
+        <>
+          <button type="button">open settings</button>
+          {mounted ? <Deferred open={open} onClose={() => undefined} /> : null}
+        </>
+      );
+      const view = render(ui(false));
+      const trigger = view.getByRole("button", { name: "open settings" });
+      trigger.focus();
+      view.rerender(ui(true));
+      await act(() => new Promise((resolve) => setTimeout(resolve, 450)));
+      expect(view.getByRole("dialog", { name: i18n.t("deferred.loading") })).toBeTruthy();
+
+      await loader.resolve();
+      expect(view.getByRole("dialog", { name: "real" })).toBeTruthy();
+
+      view.rerender(closeBy === "unmount" ? ui(true, false) : ui(false));
+      await act(async () => undefined);
+      expect(view.queryByRole("dialog")).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    });
+  }
 });

@@ -40,6 +40,8 @@ export function ToastHost() {
   return (
     <div
       className="shioriPrintHide"
+      // Dialogs leave this subtree out of their inert background.
+      data-shiori-stays-live=""
       style={{
         position: "fixed",
         right: 20,
