@@ -118,9 +118,10 @@ export function useAppShortcuts({
       if (isEditableTarget(e.target)) return;
       if (e.defaultPrevented) return;
       const state = editorStore.getState();
-      if (state.overlayClipboard.length > 0 && state.activePageId) {
+      const { overlayClipboard } = useAppStore.getState();
+      if (overlayClipboard.length > 0 && state.activePageId) {
         e.preventDefault();
-        const count = state.overlayClipboard.length;
+        const count = overlayClipboard.length;
         const pageId = state.activePageId;
         state.pasteClipboard(pageId);
         const page = state.model.pages.findIndex((item) => item.id === pageId) + 1;

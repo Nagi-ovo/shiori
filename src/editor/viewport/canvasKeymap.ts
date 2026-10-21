@@ -16,7 +16,13 @@ export type CanvasKeyEvent = {
   ctrlKey: boolean;
   shiftKey: boolean;
   repeat: boolean;
-  target: { tagName: string; isContentEditable: boolean } | null;
+  target: {
+    tagName: string;
+    isContentEditable: boolean;
+    getAttribute?: (name: string) => string | null;
+  } | null;
+  /** The target took focus from a pointer press, not from the keyboard. */
+  targetFocusedByPointer?: boolean;
 };
 
 export type CanvasCommand =
@@ -69,12 +75,42 @@ export function arrowDelta(key: string): { x: number; y: number } | null {
   }
 }
 
+// Controls whose Space and Enter press them.
+const ACTIVATED_BY_KEY = new Set(["BUTTON", "A", "SUMMARY"]);
+// Widgets whose arrow keys move within them (APG patterns).
+const ARROW_WIDGET_ROLES = new Set([
+  "tab",
+  "slider",
+  "spinbutton",
+  "option",
+  "treeitem",
+  "menuitem",
+  "menuitemradio",
+  "menuitemcheckbox",
+  "radio",
+  "gridcell",
+  "separator",
+  "scrollbar",
+]);
+
 export function resolveCanvasKey(e: CanvasKeyEvent): CanvasCommand | null {
   const target = e.target;
   if (
     target &&
-    (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+    (target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      target.tagName === "SELECT" ||
+      target.isContentEditable)
   ) {
+    return null;
+  }
+  // A focused button keeps Space and Enter, or keyboard readers could not
+  // press it. Only when the keyboard put it there: Chromium also focuses a
+  // button on click, and that button must not take Space from panning.
+  const ownsActivation =
+    target !== null && !e.targetFocusedByPointer && ACTIVATED_BY_KEY.has(target.tagName);
+  if (ownsActivation && (e.code === "Space" || e.key === "Enter")) return null;
+  if (arrowDelta(e.key) && ARROW_WIDGET_ROLES.has(target?.getAttribute?.("role") ?? "")) {
     return null;
   }
   if (e.code === "Space") return { type: "spacePan", repeat: e.repeat };

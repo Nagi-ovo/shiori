@@ -16,6 +16,12 @@ import { resolveCanvasKey, type CanvasKeyEvent } from "./canvasKeymap";
 // - Enter with a modifier places the armed tool;
 // - a held Space restarts the pan on each auto-repeat;
 // - the help sheet's variants (Cmd+?, the fullwidth ？, Cmd+/) miss.
+// - a control the reader tabbed to loses its own keys: Space and Enter stop
+//   pressing a focused button, letters stop picking a <select> option, and
+//   arrows move the selected annotation instead of walking a tab list or
+//   moving a slider;
+// - a button that only took focus from a click (Chromium does that, macOS
+//   WebKit does not) takes Space and Enter away from panning and placing.
 
 function key(k: string, init: Partial<CanvasKeyEvent> = {}): CanvasKeyEvent {
   return {
@@ -46,6 +52,45 @@ describe("canvas keymap", () => {
     expect(resolveCanvasKey(key("j", { target: { tagName: "DIV", isContentEditable: false } }))).toEqual({
       type: "page",
       delta: 1,
+    });
+  });
+
+  test("a control reached from the keyboard keeps its own activation and arrow keys", () => {
+    const element = (tagName: string, role: string | null = null) => ({
+      tagName,
+      isContentEditable: false,
+      getAttribute: (name: string) => (name === "role" ? role : null),
+    });
+    const space = (init: Partial<CanvasKeyEvent>) => key(" ", { code: "Space", ...init });
+    for (const tag of ["BUTTON", "A", "SUMMARY"]) {
+      const target = element(tag);
+      expect(resolveCanvasKey(space({ target }))).toBeNull();
+      expect(resolveCanvasKey(key("Enter", { target }))).toBeNull();
+      // The rest of the canvas keys still work from a focused button.
+      expect(resolveCanvasKey(cmd("z", { target }))).toEqual({ type: "undo" });
+      expect(resolveCanvasKey(key("ArrowLeft", { target }))).toEqual({ type: "nudge", dx: -1, dy: 0, repeat: false });
+      expect(resolveCanvasKey(key("Delete", { target }))).toEqual({ type: "delete" });
+    }
+    const select = element("SELECT");
+    expect(resolveCanvasKey(key("j", { target: select }))).toBeNull();
+    expect(resolveCanvasKey(key("ArrowDown", { target: select }))).toBeNull();
+    for (const role of ["tab", "slider", "option", "treeitem", "menuitem", "separator"]) {
+      const target = element("DIV", role);
+      for (const k of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]) {
+        expect(resolveCanvasKey(key(k, { target }))).toBeNull();
+      }
+      expect(resolveCanvasKey(key("j", { target }))).toEqual({ type: "page", delta: 1 });
+    }
+  });
+
+  test("a button focused by a click still leaves Space to pan and Enter to place", () => {
+    const target = { tagName: "BUTTON", isContentEditable: false };
+    expect(resolveCanvasKey(key(" ", { code: "Space", target, targetFocusedByPointer: true }))).toEqual({
+      type: "spacePan",
+      repeat: false,
+    });
+    expect(resolveCanvasKey(key("Enter", { target, targetFocusedByPointer: true }))).toEqual({
+      type: "placeArmedTool",
     });
   });
 
