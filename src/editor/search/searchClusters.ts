@@ -85,16 +85,21 @@ export function* fallbackSearchClusters(text: string): Generator<SearchCluster> 
     // A consonant, a linker and another consonant form one conjunct
     // (UAX #29 GB9c): 0 off, 1 after a consonant, 2 after its linker.
     let conjunct = CONJUNCT_CONSONANT.test(text.slice(start, end)) ? 1 : 0;
+    // Hangul jamo build one syllable (GB6-GB8): the last code point's kind.
+    let hangul = hangulKind(text.slice(start, end));
     while (end < text.length) {
       const nextEnd = nextCodePointEnd(text, end);
       const next = text.slice(end, nextEnd);
       const linksConsonant = conjunct === 2 && CONJUNCT_CONSONANT.test(next);
+      const nextHangul = hangulKind(next);
       const continuation =
         isFallbackContinuation(next) ||
         previousWasJoiner ||
         linksConsonant ||
+        (hangul !== null && nextHangul !== null && HANGUL_FOLLOWERS[hangul].includes(nextHangul)) ||
         (unpairedIndicator && isRegionalIndicator(next));
       if (!continuation) break;
+      hangul = nextHangul;
       if (linksConsonant) conjunct = 1;
       else if (conjunct && CONJUNCT_LINKER.test(next)) conjunct = 2;
       else if (!/^[\p{Mn}\p{Me}\u200d]$/u.test(next)) conjunct = 0;
@@ -127,6 +132,27 @@ const CONJUNCT_LINKER =
   /^[्্્୍్്္្᩠᭄᮫꧀꫶\u{10A3F}\u{11133}\u{113D0}\u{1193E}\u{11A47}\u{11A99}\u{11F42}]$/u;
 const CONJUNCT_CONSONANT =
   /^[क-हक़-य़ॸ-ॿক-নপ-রলশ-হড়ঢ়য়ৰৱક-નપ-રલળવ-હૹକ-ନପ-ରଲଳଵ-ହଡ଼ଢ଼ୟୱక-నప-హౘ-ౚക-ഺက-ဪဿၐ-ၕၚ-ၝၡၥၦၮ-ၰၵ-ႁႎក-ឳᨠ-ᩔᬋᬌᬓ-ᬳᭅ-ᭌᮃ-ᮠᮮᮯᮻ-ᮽꦉ-ꦋꦏ-ꦲꧠ-ꧤꧧ-ꧯꧺ-ꧾꩠ-ꩯꩱ-ꩳꩺꩾꩿꫠ-ꫪꯀ-ꯚ\u{10A00}\u{10A10}-\u{10A13}\u{10A15}-\u{10A17}\u{10A19}-\u{10A35}\u{11103}-\u{11126}\u{11144}\u{11147}\u{11380}-\u{11389}\u{1138B}\u{1138E}\u{11390}-\u{113B5}\u{11900}-\u{11906}\u{11909}\u{1190C}-\u{11913}\u{11915}\u{11916}\u{11918}-\u{1192F}\u{11A00}\u{11A0B}-\u{11A32}\u{11A50}\u{11A5C}-\u{11A83}\u{11F04}-\u{11F10}\u{11F12}-\u{11F33}]$/u;
+
+type HangulKind = "L" | "V" | "T" | "LV" | "LVT";
+
+/** What may follow each kind inside one syllable (UAX #29 GB6, GB7, GB8). */
+const HANGUL_FOLLOWERS: Record<HangulKind, readonly HangulKind[]> = {
+  L: ["L", "V", "LV", "LVT"],
+  V: ["V", "T"],
+  LV: ["V", "T"],
+  T: ["T"],
+  LVT: ["T"],
+};
+
+/** Hangul_Syllable_Type: leading, vowel and trailing jamo, and precomposed syllables. */
+function hangulKind(character: string): HangulKind | null {
+  const codePoint = character.codePointAt(0) ?? -1;
+  if ((codePoint >= 0x1100 && codePoint <= 0x115f) || (codePoint >= 0xa960 && codePoint <= 0xa97c)) return "L";
+  if ((codePoint >= 0x1160 && codePoint <= 0x11a7) || (codePoint >= 0xd7b0 && codePoint <= 0xd7c6)) return "V";
+  if ((codePoint >= 0x11a8 && codePoint <= 0x11ff) || (codePoint >= 0xd7cb && codePoint <= 0xd7fb)) return "T";
+  if (codePoint >= 0xac00 && codePoint <= 0xd7a3) return (codePoint - 0xac00) % 28 === 0 ? "LV" : "LVT";
+  return null;
+}
 
 function nextCodePointEnd(text: string, start: number): number {
   const codePoint = text.codePointAt(start);

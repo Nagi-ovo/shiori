@@ -27,6 +27,15 @@ describe("search clusters without Intl.Segmenter", () => {
       "अ्षx", // from a vowel,
       "का्षx", // past a vowel sign,
       "க்ஷx", // or with a Tamil pulli, which is no linker.
+      // Hangul jamo join into syllables (UAX #29 GB6-GB8): L V T,
+      "\u1100\u1161\u11a8x",
+      "\u1100\u1100\u1161x", // L L V,
+      "\u1100\uac00\u11a8x", // L, a precomposed LV and a T,
+      "\uac01\u11a8\u11a8x", // LVT T T,
+      "\ua960\ud7b0\ud7cbx", // the extended jamo blocks;
+      "\uac01\u1161x", // but no V after a T or an LVT,
+      "\u11a8\u1100x", // no L after a T,
+      "\u1100\u0301\u1161x", // and no join across a mark.
     ]) {
       expect(segments(fallbackSearchClusters(text))).toEqual(
         segments(segmenter.segment(text)),
