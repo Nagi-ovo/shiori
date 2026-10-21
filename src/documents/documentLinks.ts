@@ -60,7 +60,9 @@ function asElement(target: EventTarget | null): Element | null {
 }
 
 // The HTML rule for a fragment: the first element with that id, else the
-// first <a> with that name.
+// first <a> with that name, else the heading whose GitHub-style slug is the
+// fragment: marked renders headings without ids, and adding them would let a
+// Markdown heading clash with the app's own ids.
 function fragmentTarget(scope: ParentNode, fragment: string): Element | null {
   let id = fragment;
   try {
@@ -68,13 +70,39 @@ function fragmentTarget(scope: ParentNode, fragment: string): Element | null {
   } catch {
     // A malformed escape is matched as written.
   }
-  if (!id) return null;
-  const candidates = Array.from(scope.querySelectorAll("[id], a[name]"));
+  const candidates = id ? Array.from(scope.querySelectorAll("[id], a[name]")) : [];
   return (
     candidates.find((element) => element.id === id) ??
     candidates.find(
       (element) => element.localName === "a" && element.getAttribute("name") === id,
     ) ??
-    null
+    (id ? headingWithSlug(scope, id) : null)
   );
+}
+
+function headingWithSlug(scope: ParentNode, slug: string): Element | null {
+  const seen = new Map<string, number>();
+  for (const heading of Array.from(scope.querySelectorAll("h1, h2, h3, h4, h5, h6"))) {
+    const base = headingSlug(heading.textContent ?? "");
+    let candidate = base;
+    let count = seen.get(base) ?? 0;
+    while (seen.has(candidate)) {
+      count += 1;
+      candidate = `${base}-${count}`;
+    }
+    seen.set(base, count);
+    seen.set(candidate, 0);
+    if (candidate === slug) return heading;
+  }
+  return null;
+}
+
+// github-slugger's rule: lower case, drop everything but letters, marks,
+// numbers, "_", "-" and spaces, then spaces become "-".
+function headingSlug(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
+    .replace(/ /g, "-");
 }

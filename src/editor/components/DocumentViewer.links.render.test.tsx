@@ -82,6 +82,32 @@ describe("DocumentViewer link clicks", () => {
     expect(scrolled).toBe(1);
   });
 
+  // marked gives headings no id, so a TOC written for GitHub targets the
+  // heading's slug; the default renderer runs here, not a stub.
+  test("scrolls a Markdown TOC link to the heading its slug names", async () => {
+    const view = render(
+      <DocumentViewer
+        kind="markdown"
+        title="toc.md"
+        text={"[Contents](#chapter-2)\n[Again](#whats-new-1)\n\n## What's new?\n\n## Chapter 2\n\n## What's new?\n"}
+        scrollTop={0}
+        onScrollTopChange={() => undefined}
+      />,
+    );
+    const contents = await view.findByText("Contents");
+    const scrolled: string[] = [];
+    for (const heading of Array.from(view.container.querySelectorAll("h2"))) {
+      heading.scrollIntoView = () => {
+        scrolled.push(`${heading.textContent}@${heading.getAttribute("data-source-line")}`);
+      };
+    }
+
+    expect(fireEvent.click(contents)).toBe(false);
+    expect(fireEvent.click(view.getByText("Again"))).toBe(false);
+    expect(scrolled).toEqual(["Chapter 2@6", "What's new?@8"]);
+    expect(opened).toEqual([]);
+  });
+
   test("scrolls an HTML fragment link inside the document frame", async () => {
     const view = render(
       <DocumentViewer
