@@ -1,4 +1,8 @@
-import { searchClusters } from "./searchClusters";
+import {
+  CLUSTER_START_STRIDE,
+  searchClusterLocator,
+  searchClusters,
+} from "./searchClusters";
 import { FULL_CASE_FOLD_OVERRIDES } from "./unicodeCaseFold";
 
 export type SearchPageText = {
@@ -43,6 +47,9 @@ export type SearchTextIndex = {
   /** Sparse spans where normalization changes string length. Everywhere
    * else source offsets advance one-for-one with folded offsets. */
   mappingExceptions: SearchMappingException[];
+  /** Sparse grapheme cluster starts in `text`, one per stride, from which
+   * a match is snapped to whole graphemes without a mapping per mark. */
+  clusterStarts: number[];
 };
 
 type SearchMappingException = {
@@ -163,6 +170,7 @@ export function buildSearchTextIndex(
   const mappingExceptions: SearchMappingException[] = [];
   let pendingWhitespace: { start: number; end: number } | null = null;
   let ignoredIndex = 0;
+  const clusterStarts: number[] = [];
 
   const append = (
     chunk: string,
@@ -220,6 +228,9 @@ export function buildSearchTextIndex(
   };
 
   for (const { segment, start, end } of searchClusters(text)) {
+    if (start >= (clusterStarts.at(-1) ?? -CLUSTER_START_STRIDE) + CLUSTER_START_STRIDE) {
+      clusterStarts.push(start);
+    }
     while (
       ignoredIndex < ignoredRanges.length &&
       ignoredRanges[ignoredIndex]!.end <= start
@@ -262,6 +273,7 @@ export function buildSearchTextIndex(
     text,
     folded,
     mappingExceptions,
+    clusterStarts,
   };
 }
 
@@ -309,29 +321,34 @@ export function* iterateSearchRanges(
   query: CompiledSearchQuery,
 ): Generator<SearchSourceRange> {
   if (!query.folded) return;
+  const clusters = searchClusterLocator(index.text, index.clusterStarts);
   let from = 0;
   while (from < index.folded.length) {
     const foldedStart = index.folded.indexOf(query.folded, from);
     if (foldedStart === -1) return;
     const foldedEnd = foldedStart + query.folded.length;
-    if (
-      !isValidFoldedBoundary(index, foldedStart) ||
-      !isValidFoldedBoundary(index, foldedEnd)
-    ) {
+    if (splitsCodePoint(index, foldedStart) || splitsCodePoint(index, foldedEnd)) {
       from = foldedStart + 1;
       continue;
     }
-    const start = sourceRangeAt(index, foldedStart).start;
-    const end = sourceRangeAt(index, foldedEnd - 1).end;
-    yield { index: start, end };
-    from = foldedStart + Math.max(1, query.folded.length);
+    // Snap outward to whole graphemes, so a base letter finds its pointed
+    // or signed form and a word's prefix the word. A mapping exception is
+    // already a whole cluster; any other cluster maps one-for-one, so its
+    // source growth is folded growth too. Storing these boundaries instead
+    // would cost a mapping per Hebrew, Arabic, Thai or Indic grapheme.
+    const last = sourceRangeAt(index, foldedEnd - 1);
+    const end = clusters.end(last.end);
+    yield { index: clusters.start(sourceRangeAt(index, foldedStart).start), end };
+    from = last.foldedEnd + end - last.end;
   }
 }
 
+/** The source span of the folded unit at `foldedOffset`, and where that
+ * unit (a whole exception, or one code unit) ends in folded text. */
 function sourceRangeAt(
   index: SearchTextIndex,
   foldedOffset: number,
-): { start: number; end: number } {
+): { start: number; end: number; foldedEnd: number } {
   const exceptions = index.mappingExceptions;
   let low = 0;
   let high = exceptions.length - 1;
@@ -347,12 +364,17 @@ function sourceRangeAt(
     }
   }
   if (nearest && foldedOffset < nearest.foldedEnd) {
-    return { start: nearest.sourceStart, end: nearest.sourceEnd };
+    return {
+      start: nearest.sourceStart,
+      end: nearest.sourceEnd,
+      foldedEnd: nearest.foldedEnd,
+    };
   }
   const delta = nearest?.deltaAfter ?? 0;
   return {
     start: foldedOffset + delta,
     end: foldedOffset + delta + 1,
+    foldedEnd: foldedOffset + 1,
   };
 }
 
@@ -498,8 +520,10 @@ function isAtomicCluster(cluster: string): boolean {
   return /^[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}]\p{M}/u.test(cluster);
 }
 
-function isValidFoldedBoundary(index: SearchTextIndex, offset: number): boolean {
-  if (offset <= 0 || offset >= index.folded.length) return true;
+/** True inside the folded expansion of one source code point (ß -> ss,
+ * ﬁ -> fi), which has no source offset to snap to. */
+function splitsCodePoint(index: SearchTextIndex, offset: number): boolean {
+  if (offset <= 0 || offset >= index.folded.length) return false;
   const exceptions = index.mappingExceptions;
   let low = 0;
   let high = exceptions.length - 1;
@@ -514,7 +538,9 @@ function isValidFoldedBoundary(index: SearchTextIndex, offset: number): boolean 
       high = middle - 1;
     }
   }
-  return !nearest || offset >= nearest.foldedEnd;
+  if (!nearest || offset >= nearest.foldedEnd) return false;
+  const length = nearest.sourceEnd - nearest.sourceStart;
+  return length === 1 || (length === 2 && index.text.codePointAt(nearest.sourceStart)! > 0xffff);
 }
 
 function safeMappingBudget(value: number | undefined, fallback: number): number {
