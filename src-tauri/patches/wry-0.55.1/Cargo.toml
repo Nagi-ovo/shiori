@@ -298,6 +298,10 @@ features = [
     "NSMenu",
     "NSGraphics",
     "NSScreen",
+    # Shiori (src/shiori.rs): the Browser panel's JavaScript dialogs.
+    "block2",
+    "NSAlert",
+    "NSTextField",
 ]
 default-features = false
 

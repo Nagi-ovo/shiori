@@ -483,6 +483,60 @@ impl InnerWebView {
       });
     }
 
+    // Shiori: the engine's back/forward availability (src/shiori.rs). The
+    // list's `changed` fires when an item is added or removed and when the
+    // current item moves.
+    if let Some(handler) = attributes.id.and_then(crate::shiori::history_handler) {
+      if let Some(list) = webview.back_forward_list() {
+        let handler = handler.clone();
+        list.connect_local("changed", false, move |args| {
+          use webkit2gtk::{BackForwardList, BackForwardListExt};
+          if let Some(list) = args
+            .first()
+            .and_then(|list| list.get::<BackForwardList>().ok())
+          {
+            handler(crate::shiori::HistoryEvent {
+              same_document_url: None,
+              can_go_back: list.back_item().is_some(),
+              can_go_forward: list.forward_item().is_some(),
+            });
+          }
+          None
+        });
+      }
+      // The uri also moves while a new load is provisional (started, maybe
+      // redirected, not yet committed). Any other change stayed within the
+      // document. Not `is_loading()`: it stays true past the commit until
+      // every image and iframe is done, so a hash change or pushState then
+      // would wait for that, for good behind a request that never ends. The
+      // uri notify can come before load-changed STARTED, so look once both
+      // have been dispatched.
+      let provisional = Rc::new(std::cell::Cell::new(false));
+      let same_document_handler = handler.clone();
+      let uri_provisional = provisional.clone();
+      webview.connect_uri_notify(move |webview| {
+        let webview = webview.clone();
+        let handler = same_document_handler.clone();
+        let provisional = uri_provisional.clone();
+        gtk::glib::idle_add_local_once(move || {
+          if !provisional.get() {
+            handler(shiori_same_document_event(&webview));
+          }
+        });
+      });
+      webview.connect_load_changed(move |webview, load_event| match load_event {
+        LoadEvent::Started => provisional.set(true),
+        LoadEvent::Committed => provisional.set(false),
+        // Also ends a provisional load that failed. Report the URL again in
+        // case a change was held back meanwhile.
+        LoadEvent::Finished => {
+          provisional.set(false);
+          handler(shiori_same_document_event(webview));
+        }
+        _ => (),
+      });
+    }
+
     // window creation handler
     if let Some(new_window_req_handler) = attributes.new_window_req_handler.take() {
       let related_webviews = Rc::new(Mutex::new(HashMap::new()));
@@ -1245,5 +1299,14 @@ mod ffi {
       result: *mut gio::ffi::GAsyncResult,
       error: *mut *mut glib::ffi::GError,
     ) -> *mut glib::ffi::GList;
+  }
+}
+
+// Shiori (src/shiori.rs).
+fn shiori_same_document_event(webview: &WebView) -> crate::shiori::HistoryEvent {
+  crate::shiori::HistoryEvent {
+    same_document_url: webview.uri().map(|uri| uri.to_string()),
+    can_go_back: webview.can_go_back(),
+    can_go_forward: webview.can_go_forward(),
   }
 }

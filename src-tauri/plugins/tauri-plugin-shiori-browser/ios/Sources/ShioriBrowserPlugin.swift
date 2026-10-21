@@ -354,7 +354,7 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
     let alert = UIAlertController(
       title: frame.securityOrigin.host, message: message, preferredStyle: .alert)
     alert.addAction(UIAlertAction(title: dialogLabels.ok, style: .default) { _ in completionHandler() })
-    if !presentDialog(alert) { completionHandler() }
+    if !presentDialog(alert, from: webView) { completionHandler() }
   }
 
   func webView(
@@ -366,7 +366,7 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
     alert.addAction(
       UIAlertAction(title: dialogLabels.cancel, style: .cancel) { _ in completionHandler(false) })
     alert.addAction(UIAlertAction(title: dialogLabels.ok, style: .default) { _ in completionHandler(true) })
-    if !presentDialog(alert) { completionHandler(false) }
+    if !presentDialog(alert, from: webView) { completionHandler(false) }
   }
 
   func webView(
@@ -383,12 +383,15 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
       UIAlertAction(title: dialogLabels.ok, style: .default) { [weak alert] _ in
         completionHandler(alert?.textFields?.first?.text ?? "")
       })
-    if !presentDialog(alert) { completionHandler(nil) }
+    if !presentDialog(alert, from: webView) { completionHandler(nil) }
   }
 
   // Present over whatever is on top (a share sheet may be up). False when
-  // there is nowhere to present, so the caller answers for the user.
-  private func presentDialog(_ alert: UIAlertController) -> Bool {
+  // there is nowhere to present, so the caller answers for the user. A
+  // hidden panel (the Browser rail closed, Settings open) keeps its page
+  // running; its late alert would cover the app over a page no one sees.
+  private func presentDialog(_ alert: UIAlertController, from webView: WKWebView) -> Bool {
+    guard !webView.isHidden, webView.window != nil else { return false }
     guard var top = self.manager.viewController else { return false }
     while let presented = top.presentedViewController { top = presented }
     if top is UIAlertController { return false }

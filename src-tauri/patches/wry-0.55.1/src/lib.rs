@@ -353,6 +353,8 @@ mod error;
 #[cfg(any(target_os = "android", test))]
 mod inject_initialization_scripts;
 mod proxy;
+// Shiori's per-webview hooks (not upstream).
+pub mod shiori;
 #[cfg(any(target_os = "macos", target_os = "android", target_os = "ios"))]
 mod util;
 mod web_context;

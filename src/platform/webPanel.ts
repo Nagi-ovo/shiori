@@ -41,8 +41,8 @@ export type WebPanelNavState = {
   error: string | null;
 };
 
-// Buttons for the page's JavaScript alert/confirm/prompt. iOS draws those
-// dialogs itself and has no t(); the other engines show their own.
+// Buttons for the page's JavaScript alert/confirm/prompt. iOS and macOS draw
+// those dialogs themselves and have no t(); the other engines show their own.
 export type WebPanelDialogLabels = { ok: string; cancel: string };
 
 // Open `url` in the embedded panel. Non-http(s) URLs fall back to the

@@ -4,7 +4,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use objc2::{define_class, msg_send, rc::Retained, runtime::NSObject, MainThreadOnly};
+use objc2::{
+  define_class, msg_send, rc::Retained, runtime::NSObject, DefinedClass, MainThreadOnly,
+};
 use objc2_foundation::{MainThreadMarker, NSObjectProtocol};
 use objc2_web_kit::{
   WKDownload, WKNavigation, WKNavigationAction, WKNavigationActionPolicy, WKNavigationDelegate,
@@ -28,7 +30,7 @@ use crate::{
   PageLoadEvent, WryWebView,
 };
 
-use super::wry_download_delegate::WryDownloadDelegate;
+use super::{shiori_history_observer::history_event, wry_download_delegate::WryDownloadDelegate};
 
 pub struct WryNavigationDelegateIvars {
   pub pending_scripts: Arc<Mutex<Option<Vec<String>>>>,
@@ -37,6 +39,7 @@ pub struct WryNavigationDelegateIvars {
   pub download_delegate: Option<Retained<WryDownloadDelegate>>,
   pub on_page_load_handler: Option<Box<dyn Fn(PageLoadEvent)>>,
   pub on_web_content_process_terminate_handler: Option<Box<dyn Fn()>>,
+  pub shiori_history: Option<crate::shiori::HistoryHandler>,
 }
 
 define_class!(
@@ -46,6 +49,25 @@ define_class!(
   pub struct WryNavigationDelegate;
 
   unsafe impl NSObjectProtocol for WryNavigationDelegate {}
+
+  /// Shiori (src/shiori.rs): WebKit's private WKNavigationDelegatePrivate
+  /// callback for a navigation within the document (0 anchor, 1 pushState,
+  /// 2 replaceState, 3 Back/Forward), none of which commits a page load.
+  impl WryNavigationDelegate {
+    #[unsafe(method(_webView:navigation:didSameDocumentNavigation:))]
+    fn did_same_document_navigation(
+      &self,
+      webview: &WKWebView,
+      _navigation: Option<&WKNavigation>,
+      _kind: isize,
+    ) {
+      if let Some(handler) = &self.ivars().shiori_history {
+        let mut event = history_event(webview);
+        event.same_document_url = url_from_webview(webview).ok();
+        handler(event);
+      }
+    }
+  }
 
   unsafe impl WKNavigationDelegate for WryNavigationDelegate {
     #[unsafe(method(webView:decidePolicyForNavigationAction:decisionHandler:))]
@@ -115,6 +137,7 @@ impl WryNavigationDelegate {
     download_delegate: Option<Retained<WryDownloadDelegate>>,
     on_page_load_handler: Option<Box<dyn Fn(PageLoadEvent, String)>>,
     on_web_content_process_terminate_handler: Option<Box<dyn Fn()>>,
+    shiori_history: Option<crate::shiori::HistoryHandler>,
     mtm: MainThreadMarker,
   ) -> Retained<Self> {
     let navigation_policy_function = Box::new(move |url: String| -> bool {
@@ -151,6 +174,7 @@ impl WryNavigationDelegate {
         download_delegate,
         on_page_load_handler,
         on_web_content_process_terminate_handler,
+        shiori_history,
       });
 
     unsafe { msg_send![super(delegate), init] }
