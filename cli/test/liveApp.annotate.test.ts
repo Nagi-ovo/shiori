@@ -9,9 +9,12 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
+import { liveOperationIdMatches } from "../../src/live/liveOperationId";
 import { annotateLiveApp, describeAnnotateResult } from "../src/liveApp";
+import { main } from "../src/main";
 import {
   CONTEXT,
+  captureMain,
   EMPTY_SPEC,
   contextEnvelope,
   hostCacheFixture,
@@ -175,5 +178,82 @@ describe("app annotate", () => {
         ).rejects.toMatchObject({ code: "ERR_APP_OUTCOME_UNKNOWN" });
       },
     );
+  });
+
+  test("--nonce applies an identical spec again as a new operation", async () => {
+    // The receipt of an operation outlives Undo and a discarded draft, so the
+    // same spec is the same operation and adds nothing. A nonce makes it a
+    // new one; the app has to accept the id the CLI derived with it, and a
+    // call without one must post exactly what it always did.
+    const bodies: Record<string, unknown>[] = [];
+    await withFixture(
+      (request, response) => {
+        if (request.url === "/v1/context") {
+          json(response, contextEnvelope());
+          return;
+        }
+        void requestBody(request).then(async (body) => {
+          const posted = body as Record<string, unknown> & { operationId: string };
+          bodies.push(posted);
+          if (posted.nonce === "lost-1") {
+            response.destroy();
+            return;
+          }
+          if (!(await liveOperationIdMatches(posted as never))) {
+            json(response, {
+              schema: "shiori.live/v1",
+              ok: false,
+              error: { code: "SPEC_INVALID", message: "operation id mismatch" },
+            });
+            return;
+          }
+          json(response, {
+            schema: "shiori.live/v1",
+            ok: true,
+            data: {
+              documentId: CONTEXT.documentId,
+              sha256: CONTEXT.sha256,
+              pageTopologyHash: CONTEXT.pageTopologyHash,
+              operationId: posted.operationId,
+              added: 1,
+              annotationIds: ["h1"],
+              dryRun: false,
+              annotationCount: CONTEXT.annotationCount + 1,
+            },
+          });
+        });
+      },
+      async ({ descriptorPath }) => {
+        const args = ["app", "annotate", "--highlight", "the bound", "--json"];
+        await captureMain(args, descriptorPath);
+        const again = await captureMain([...args, "--nonce", "again-1"], descriptorPath);
+        expect(JSON.parse(again.stdout)).toMatchObject({ ok: true, data: { added: 1 } });
+        expect(bodies).toHaveLength(2);
+        expect("nonce" in bodies[0]!).toBe(false);
+        expect(bodies[1]).toMatchObject({ nonce: "again-1" });
+        expect(bodies[1]!.operationId).not.toBe(bodies[0]!.operationId);
+
+        // A retry is the same operation only with the same nonce, so the
+        // outcome-unknown advice has to carry it.
+        await expect(
+          annotateLiveApp(null, { descriptorPath, spec: EMPTY_SPEC, nonce: "lost-1" }),
+        ).rejects.toMatchObject({
+          code: "ERR_APP_OUTCOME_UNKNOWN",
+          detail: expect.stringContaining("--nonce lost-1"),
+        });
+
+        // Malformed nonces fail before anything is posted.
+        for (const nonce of ["", "has space", "x".repeat(65)]) {
+          await expect(
+            annotateLiveApp(null, { descriptorPath, spec: EMPTY_SPEC, nonce }),
+          ).rejects.toMatchObject({ code: "ERR_SPEC_INVALID" });
+        }
+        expect(bodies).toHaveLength(3);
+      },
+    );
+    await expect(main(["app", "context", "--nonce", "again-1"])).rejects.toMatchObject({
+      code: "ERR_USAGE",
+      message: "Unknown option for app context: --nonce",
+    });
   });
 });

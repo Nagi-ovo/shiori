@@ -3,12 +3,13 @@ import { sha256Hex } from "../storage/hash";
 import { liveOperationCanonicalPayload } from "./liveOperation";
 
 export async function deriveLiveOperationId(
-  request: Pick<LiveApiAnnotationRequest, "target" | "spec">,
+  request: Pick<LiveApiAnnotationRequest, "target" | "spec" | "nonce">,
 ): Promise<string> {
   const canonical = liveOperationCanonicalPayload(
     request.target.sha256,
     request.target.pageTopologyHash,
     request.spec,
+    request.nonce,
   );
   return sha256Hex(new TextEncoder().encode(canonical));
 }

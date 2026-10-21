@@ -123,8 +123,8 @@ Token tip:
   if (command === "app") {
     return `Usage:
   shiori app context [--agent | --json]
-  shiori app annotate --highlight "quoted text" [--dry-run]
-  shiori app annotate --spec <spec.json> [--dry-run] [--base-sha256 hash] [--agent | --json]
+  shiori app annotate --highlight "quoted text" [--dry-run] [--nonce value]
+  shiori app annotate --spec <spec.json> [--dry-run] [--base-sha256 hash] [--nonce value] [--agent | --json]
 
 Output:
   context reads the active PDF, page, annotation count, document ID, and SHA-256,
@@ -135,7 +135,11 @@ Output:
   a PDF file on disk. --highlight "quoted text" (repeatable) needs no spec
   file and no coordinates; --spec accepts anchored or coordinate specs (see
   \`shiori help spec\`). --base-sha256 fails if the target changed.
-  Same target topology + spec reuses a stable operation ID for safe retries.
+  Same target topology + spec reuses a stable operation ID for safe retries,
+  so a spec applied once is not applied again, even after Undo in Shiori.
+  To apply it again on purpose, add --nonce with a value not used before
+  (letters, digits, '.', '_' or '-', up to 64); repeat that same value only
+  to retry that new operation.
 
 Connection:
   Shiori must be running. The CLI connects only to its authenticated 127.0.0.1
@@ -204,9 +208,9 @@ export function helpPayload(target: CommandName | null): unknown {
     },
     app: {
       usage:
-        "shiori app context [--agent|--json] | shiori app annotate --highlight \"quoted text\" | --spec <spec.json> [--dry-run] [--base-sha256 hash]",
+        "shiori app context [--agent|--json] | shiori app annotate --highlight \"quoted text\" | --spec <spec.json> [--dry-run] [--base-sha256 hash] [--nonce value]",
       does: "reads or annotates the active in-memory Shiori PDF without writing a PDF file",
-      tokenTip: "same target topology + spec has one stable operation ID for safe retries",
+      tokenTip: "same target topology + spec has one stable operation ID for safe retries; a new --nonce value applies it again (e.g. after Undo)",
     },
   };
   return {

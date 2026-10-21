@@ -100,6 +100,7 @@ describe("live API contract fixtures", () => {
       target: { documentId: "doc-1f2e3d4c", sha256: SHA_A, pageTopologyHash: SHA_B },
       spec: { schema: "shiori.annotations/v1", annotations: [] },
       dryRun: false,
+      nonce: "again-1",
     } satisfies Required<LiveApiAnnotationRequest>;
     expect(fixtures.annotationRequestEvent).toEqual(event);
   });

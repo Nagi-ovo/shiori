@@ -76,6 +76,34 @@ pub(super) struct AnnotationRequestBody {
     pub(super) operation_id: String,
     #[serde(default)]
     pub(super) dry_run: bool,
+    /// Makes an identical spec a new operation (`shiori app annotate --nonce`).
+    #[serde(default)]
+    pub(super) nonce: Option<String>,
+}
+
+impl AnnotationRequestBody {
+    pub(super) fn is_valid(&self) -> bool {
+        validate_target(&self.target)
+            && self.spec.is_object()
+            && valid_operation_id(&self.operation_id)
+            && self.nonce.as_deref().is_none_or(valid_nonce)
+    }
+
+    pub(super) fn into_event(
+        self,
+        request_id: String,
+        expires_at_ms: u64,
+    ) -> AnnotationRequestEvent {
+        AnnotationRequestEvent {
+            request_id,
+            expires_at_ms,
+            target: self.target,
+            spec: self.spec,
+            operation_id: self.operation_id,
+            dry_run: self.dry_run,
+            nonce: self.nonce,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -87,6 +115,9 @@ pub(super) struct AnnotationRequestEvent {
     pub(super) spec: Value,
     pub(super) operation_id: String,
     pub(super) dry_run: bool,
+    // Absent, not null: the webview hashes the nonce into the operation id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) nonce: Option<String>,
 }
 
 // Native re-checks the digest caps the frontend already applies. The context
@@ -183,6 +214,15 @@ pub(super) fn valid_operation_id(value: &str) -> bool {
     valid_sha256(value)
 }
 
+// LIVE_OPERATION_NONCE_PATTERN in src/live/liveOperation.ts, which the CLI
+// checks before it posts.
+fn valid_nonce(value: &str) -> bool {
+    (1..=64).contains(&value.len())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
 pub(super) fn context_matches_target(
     context: Option<&LiveApiContext>,
     target: &LiveApiTarget,
@@ -250,6 +290,41 @@ mod tests {
         assert!(validate_context(&empty_quote).is_err());
     }
 
+    // The nonce is part of the operation id the webview re-derives
+    // (src/live/liveOperation.ts), so native forwards it as sent, leaves it
+    // off the event when absent (a `null` would change the id), and refuses
+    // one the CLI could never have sent.
+    #[test]
+    fn annotation_body_forwards_an_optional_nonce() {
+        let body = |nonce: Option<&str>| {
+            let mut value = json!({
+                "target": {
+                    "documentId": "document-1",
+                    "sha256": sha('a'),
+                    "pageTopologyHash": sha('b'),
+                },
+                "spec": { "schema": "shiori.annotations/v1", "annotations": [] },
+                "operationId": sha('c'),
+            });
+            if let Some(nonce) = nonce {
+                value["nonce"] = json!(nonce);
+            }
+            serde_json::from_value::<AnnotationRequestBody>(value).unwrap()
+        };
+        let event = |body: AnnotationRequestBody| {
+            serde_json::to_value(body.into_event("request-1".into(), 1)).unwrap()
+        };
+        let plain = body(None);
+        assert!(plain.is_valid());
+        assert!(event(plain).get("nonce").is_none());
+        let again = body(Some("again-1"));
+        assert!(again.is_valid());
+        assert_eq!(event(again)["nonce"], "again-1");
+        for bad in ["", "has space", &"x".repeat(65), "naïve"] {
+            assert!(!body(Some(bad)).is_valid(), "{bad:?}");
+        }
+    }
+
     #[test]
     fn annotation_body_requires_and_forwards_lowercase_hex_operation_id() {
         let operation_id = sha('c');
@@ -274,6 +349,7 @@ mod tests {
             spec: body.spec,
             operation_id: body.operation_id.clone(),
             dry_run: body.dry_run,
+            nonce: None,
         };
         let event = serde_json::to_value(event).unwrap();
         assert_eq!(event["operationId"], operation_id);
@@ -336,8 +412,8 @@ mod tests {
         let body: AnnotationRequestBody =
             serde_json::from_value(fixtures["annotationRequestBody"].clone())
                 .expect("annotationRequestBody fixture must deserialize");
-        assert!(validate_target(&body.target));
-        assert!(valid_operation_id(&body.operation_id));
+        assert!(body.is_valid());
+        assert_eq!(body.nonce.as_deref(), Some("again-1"));
 
         // The event payload the frontend receives must keep its wire shape.
         let event_fixture = fixtures["annotationRequestEvent"].clone();
@@ -348,6 +424,7 @@ mod tests {
             spec: event_fixture["spec"].clone(),
             operation_id: event_fixture["operationId"].as_str().unwrap().to_string(),
             dry_run: event_fixture["dryRun"].as_bool().unwrap(),
+            nonce: event_fixture["nonce"].as_str().map(Into::into),
         };
         assert_eq!(serde_json::to_value(&event).unwrap(), event_fixture);
 

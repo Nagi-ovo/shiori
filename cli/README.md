@@ -49,6 +49,9 @@ the caller not to assume nothing was added. Its error detail includes the
 original operation ID, PDF hash, and page-topology hash. Before retrying, read
 `app context` again, verify both hashes, and reuse the same spec plus
 `--base-sha256`; switching tabs and blindly rerunning is not an exact retry.
+An operation stays applied even after Undo in the app, so the same spec adds
+nothing a second time; `--nonce <value>` with a value not used before makes it
+a new operation, and repeating that value retries it.
 
 The desktop app publishes a short-lived descriptor in its platform cache
 directory. The CLI validates its schema, token, PID, port, and Unix file

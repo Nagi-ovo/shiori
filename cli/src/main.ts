@@ -90,12 +90,12 @@ import {
 } from "../../src/pdf/openPolicy";
 import { BoundedFileError, readFileWithinLimit } from "./safeRead";
 import { sanitizeTerminalText } from "./terminalText";
+import { printAnnotationDigest } from "./liveAppPrint";
 import {
   LiveAppError,
   annotateLiveApp,
   describeAnnotateResult,
   getLiveAppContextDetails,
-  type LiveAppContext,
 } from "./liveApp";
 import {
   CLI_VERSION,
@@ -134,6 +134,7 @@ type GlobalOptions = {
   specPath?: string;
   outputPath?: string;
   baseSha256?: string;
+  nonce?: string;
   highlights: string[];
   page?: number;
   scale?: number;
@@ -1183,39 +1184,6 @@ async function liveAppContext(options: GlobalOptions): Promise<unknown> {
   };
 }
 
-/**
- * The annotations an agent can actually reason about, with their IDs. The ID
- * is the operative part: it is what a `calloutReply` spec targets, so reading
- * and replying become one continuous move instead of a guess.
- */
-function printAnnotationDigest(context: LiveAppContext): void {
-  const annotations = context.annotations ?? [];
-  if (annotations.length === 0) return;
-  console.log("");
-  console.log(
-    `Annotations with content (${annotations.length} of ${context.annotationCount}${
-      context.annotationsTruncated ? ", truncated" : ""
-    }):`,
-  );
-  for (const annotation of annotations) {
-    console.log(
-      sanitizeTerminalText(
-        `  [${annotation.type} p${annotation.page}] ${annotation.id}`,
-      ),
-    );
-    if (annotation.quote) {
-      console.log(sanitizeTerminalText(`    quote: ${annotation.quote}`));
-    }
-    if (annotation.text) {
-      console.log(sanitizeTerminalText(`    text: ${annotation.text}`));
-    }
-    for (const turn of annotation.thread ?? []) {
-      const who = turn.role === "agent" ? turn.author ?? "agent" : "you";
-      console.log(sanitizeTerminalText(`    ${who}: ${turn.text}`));
-    }
-  }
-}
-
 async function liveAppAnnotate(
   specPath: string | null,
   options: GlobalOptions,
@@ -1224,6 +1192,7 @@ async function liveAppAnnotate(
     annotateLiveApp(specPath, {
       dryRun: options.dryRun,
       baseSha256: options.baseSha256,
+      nonce: options.nonce,
       ...(specPath == null
         ? { spec: synthesizedHighlightSpec(options.highlights).value }
         : {}),
@@ -1906,6 +1875,7 @@ const COMMAND_OPTIONS: Record<ParsedCommand, ReadonlySet<string>> = {
     "--dry-run",
     "--base-sha256",
     "--base-hash",
+    "--nonce",
   ]),
   help: new Set(["--agent", "--json", "--help", "-h"]),
   version: new Set(["--agent", "--json"]),
@@ -1928,6 +1898,7 @@ const VALUE_OPTIONS: ReadonlySet<string> = new Set([
   "-o",
   "--base-sha256",
   "--base-hash",
+  "--nonce",
 ]);
 
 // Options that may appear more than once; everything else keeps the strict
@@ -2057,6 +2028,7 @@ function parseArgs(argv: string[]): ParsedArgs {
         options.highlights.push(raw);
       }
       else if (name === "--output" || name === "-o") options.outputPath = raw;
+      else if (name === "--nonce") options.nonce = raw;
       else if (name === "--page") options.page = positiveIntegerOption(name, raw);
       else if (name === "--scale") {
         const value = Number(raw);
@@ -2173,7 +2145,9 @@ function validateParsedArgs(parsed: ParsedArgs): void {
             ? "--dry-run"
             : options.baseSha256
               ? "--base-sha256"
-              : null;
+              : options.nonce !== undefined
+                ? "--nonce"
+                : null;
       if (invalidOption) {
         throw new CliError(
           "ERR_USAGE",

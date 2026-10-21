@@ -24,10 +24,7 @@ use std::{
 use tauri::{AppHandle, Emitter, EventTarget, Manager, Runtime};
 
 mod wire;
-use wire::{
-    context_matches_target, valid_operation_id, validate_context, validate_target,
-    AnnotationRequestBody, AnnotationRequestEvent,
-};
+use wire::{context_matches_target, validate_context, AnnotationRequestBody};
 pub(crate) use wire::{LiveApiContext, LiveApiTarget};
 
 pub(crate) const LIVE_API_SCHEMA: &str = "shiori.live/v1";
@@ -1013,10 +1010,7 @@ fn handle_connection<R: Runtime>(
                     return;
                 }
             };
-            if !validate_target(&body.target)
-                || !body.spec.is_object()
-                || !valid_operation_id(&body.operation_id)
-            {
+            if !body.is_valid() {
                 write_problem(
                     &mut stream,
                     HttpProblem::new(
@@ -1078,14 +1072,7 @@ fn handle_connection<R: Runtime>(
                     }
                 };
 
-            let event = AnnotationRequestEvent {
-                request_id: request_id.clone(),
-                expires_at_ms,
-                target: body.target,
-                spec: body.spec,
-                operation_id: body.operation_id,
-                dry_run: body.dry_run,
-            };
+            let event = body.into_event(request_id.clone(), expires_at_ms);
             if app
                 .emit_to(
                     EventTarget::webview(MAIN_WEBVIEW_LABEL),

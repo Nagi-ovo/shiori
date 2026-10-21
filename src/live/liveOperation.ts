@@ -46,16 +46,30 @@ export function canonicalJson(value: unknown, depth = 0): string {
   throw new CanonicalJsonError("Spec contains a non-JSON value");
 }
 
-/** The exact payload whose sha256 is a live operation id. */
+/**
+ * An optional caller-chosen token that makes an identical spec a new
+ * operation: the receipt of the first outlives Undo and a discarded draft, so
+ * without one the same spec can never be applied again. Native checks the
+ * same rule (src-tauri/src/live_api/wire.rs valid_nonce).
+ */
+export const LIVE_OPERATION_NONCE_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+
+/**
+ * The exact payload whose sha256 is a live operation id. Without a nonce it
+ * is byte-identical to the payload before nonces existed, so stored receipts
+ * keep matching.
+ */
 export function liveOperationCanonicalPayload(
   sha256: string,
   pageTopologyHash: string,
   spec: unknown,
+  nonce?: string,
 ): string {
   return canonicalJson({
     schema: LIVE_OPERATION_SCHEMA,
     sha256,
     pageTopologyHash,
     spec,
+    nonce,
   });
 }
