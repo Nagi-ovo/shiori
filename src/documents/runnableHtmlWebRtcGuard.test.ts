@@ -331,6 +331,37 @@ describe("run frame WebRTC guard in nested frames", () => {
     }
   });
 
+  test("a srcdoc inside a template runs the guard before its own scripts", () => {
+    // The browser's parser turns <template shadowrootmode> into a live shadow
+    // root, and a page can clone any template into the document.
+    const user = "new RTCPeerConnection()";
+    const frame = `<iframe srcdoc="<script>${user}</script>"></iframe>`;
+    const parse = (html: string) => new window.DOMParser().parseFromString(html, "text/html");
+    const frameIn = (root: ParentNode): Element | null => {
+      const found = root.querySelector("iframe");
+      if (found) return found;
+      for (const template of Array.from(root.querySelectorAll("template"))) {
+        const inner = frameIn((template as HTMLTemplateElement).content);
+        if (inner) return inner;
+      }
+      return null;
+    };
+    const wrappers = [
+      `<template>${frame}</template>`,
+      `<div><template shadowrootmode="open">${frame}</template></div>`,
+      `<div><template shadowrootmode="closed">${frame}</template></div>`,
+      `<template><p><template>${frame}</template></p></template>`,
+    ];
+    for (const raw of wrappers) {
+      const { html } = buildRunnableHtml(raw);
+      const srcdoc = frameIn(parse(html))?.getAttribute("srcdoc") ?? "";
+      const scripts = Array.from(parse(srcdoc).querySelectorAll("script"));
+
+      expect(scripts[0]?.textContent).toBe(STORAGE_SHIM);
+      expect(scripts.at(-1)?.textContent).toBe(user);
+    }
+  });
+
   test("WebRTC is removed where a window refuses non-configurable properties", () => {
     const top = fakeRealm();
     const strict = new Proxy(top.win, {
