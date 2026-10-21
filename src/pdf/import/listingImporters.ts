@@ -20,6 +20,7 @@ import {
 import { coalescePdfRects } from "../geometry/rectCoalesce";
 import { pdfPointToPageLocal, pdfRectToPageLocal } from "../model/pageSpace";
 import { freeTextRichTextStyle, freeTextStyle } from "./freeTextStyle";
+import { noteBoxAtIcon, type NoteBox } from "./noteBox";
 
 // One listed annotation (in the shape pdf.js listed it, ./sourceAnnotations)
 // into an overlay, per subtype, and the readers for the listing's values
@@ -182,6 +183,12 @@ function importStickyNote(
     color: colorToHex(annot.color, NOTE_DEFAULT_COLOR),
     now,
   });
+  // A turned note's box and angle, while its icon is still at that box.
+  const box = noteBoxAtIcon(recordValue(annot.noteBox) as NoteBox | undefined, rect);
+  if (box) {
+    note.rect = pdfRectToPageLocal(page, { x: box.x, y: box.y, w: box.w, h: box.h });
+    note.angle = box.angle;
+  }
   // Its icon, pop-up state and review state, written back on export.
   if (typeof annot.name === "string") note.sourceIcon = annot.name;
   if (typeof annot.open === "boolean") note.sourceOpen = annot.open;

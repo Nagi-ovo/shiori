@@ -41,6 +41,7 @@ import {
   unionRects,
   type FreeRotation,
 } from "./annotationShared";
+import { NOTE_BOX_KEY } from "../import/noteBox";
 
 export function buildHighlight(page: PDFPage, o: HighlightOverlay): PDFRef {
   const ctx = page.doc.context;
@@ -235,6 +236,13 @@ export function buildStickyNote(page: PDFPage, o: NoteOverlay): PDFRef {
   if (o.sourceState && o.sourceStateModel) {
     dict.set(PDFName.of("State"), PDFHexString.fromText(o.sourceState));
     dict.set(PDFName.of("StateModel"), PDFHexString.fromText(o.sourceStateModel));
+  }
+  // No viewer turns the icon; a turned note's box and angle ride in /Shio
+  // so it reopens as it was (src/pdf/import/noteBox.ts).
+  const turn = (((o.angle ?? 0) % 360) + 360) % 360;
+  if (Number.isFinite(turn) && turn !== 0) {
+    const box = ctx.obj({ Rect: [o.rect.x, o.rect.y, o.rect.w, o.rect.h], Angle: turn });
+    dict.set(PDFName.of("Shio"), ctx.obj({ V: 1, [NOTE_BOX_KEY]: box }));
   }
   setShioAnchor(page, dict, o);
   return ctx.register(dict);

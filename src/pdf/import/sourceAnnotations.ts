@@ -12,6 +12,7 @@ import {
 } from "pdf-lib";
 import { freeTextAppearance } from "./appearanceStream";
 import { latin1, lookup, rgbColor } from "./pdfjsValues";
+import { shioNoteBox } from "./noteBox";
 import { richTextRoot } from "./richText";
 import { sourcePageDicts } from "./sourcePages";
 
@@ -247,7 +248,7 @@ function readMarkup(dict: PDFDict, data: SourceAnnotation): void {
   }
 }
 
-/** A sticky note's icon, whether its pop-up opens, and its review state. */
+/** A sticky note's icon, whether its pop-up opens, its review state, and its turned box. */
 function readNoteState(dict: PDFDict, data: SourceAnnotation): void {
   const name = lookup(dict, "Name", PDFName)?.decodeText();
   if (name) data.name = name;
@@ -258,6 +259,8 @@ function readNoteState(dict: PDFDict, data: SourceAnnotation): void {
     const decoded = value === undefined ? "" : textObject(value).str;
     if (decoded) data[key === "State" ? "state" : "stateModel"] = decoded;
   }
+  const box = shioNoteBox(dict);
+  if (box) data.noteBox = box;
 }
 
 /** pdf.js's `_parseStringHelper`: a text string, decoded; "" when absent. */

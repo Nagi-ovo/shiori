@@ -20,6 +20,7 @@ const shapes: Record<string, Overlay> = {
     color: "#1a1815", bold: false, align: "left", fontFamily: "sans",
   },
   stamp: { type: "stamp", id: "o", pageId: "p1", kind: "check", rect: RECT, color: "#1a1815", strokeWidth: 2 },
+  note: { type: "note", id: "o", pageId: "p1", rect: RECT, text: "Turned", color: "#f4d674" },
 };
 
 async function exported(overlay: Overlay): Promise<{ dict: PDFDict; bytes: Uint8Array }> {
@@ -86,7 +87,7 @@ describe("a turned box in the editable export", () => {
 
 describe("a turned box reopened", () => {
   test.each([
-    ["rect", 30], ["text", 30], ["text", 90], ["stamp", 45], ["rect", 200],
+    ["rect", 30], ["text", 30], ["text", 90], ["stamp", 45], ["rect", 200], ["note", 30],
   ] as const)("a %s at %d° comes back turned", async (kind, angle) => {
     const { bytes } = await exported({ ...shapes[kind]!, angle } as Overlay);
     const [back] = await importFileAnnotations([page], bytes, 1);
@@ -94,5 +95,21 @@ describe("a turned box reopened", () => {
     const turned = back as Overlay & { rect: PdfRect; angle?: number };
     expect(turned.angle).toBeCloseTo(angle, 4);
     close([turned.rect.x, turned.rect.y, turned.rect.w, turned.rect.h], [RECT.x, RECT.y, RECT.w, RECT.h]);
+  });
+});
+
+// A sticky note exports as an icon at its box's top-left corner, which no
+// viewer turns; its box and angle ride in Shiori's /Shio dictionary.
+describe("a turned sticky note", () => {
+  test("moved in another reader since, comes back where it was put, unturned", async () => {
+    const { bytes } = await exported({ ...shapes.note!, angle: 30 } as Overlay);
+    const doc = await PDFDocument.load(bytes);
+    const annots = doc.getPage(0).node.lookup(PDFName.of("Annots"), PDFArray);
+    doc.context.lookup(annots.get(0), PDFDict).set(PDFName.of("Rect"), doc.context.obj([400, 600, 420, 620]));
+    const [back] = await importFileAnnotations([page], await doc.save(), 1);
+    expect(back).toMatchObject({ type: "note" });
+    const note = back as Overlay & { rect: PdfRect; angle?: number };
+    expect(note.angle).toBeUndefined();
+    expect([note.rect.x, note.rect.y + note.rect.h]).toEqual([400, 620]);
   });
 });
