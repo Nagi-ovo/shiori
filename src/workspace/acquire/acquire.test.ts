@@ -178,6 +178,28 @@ describe("picking documents", () => {
     expect(intents[0]).toBeDefined();
     expect(new Set(intents).size).toBe(1);
   });
+
+  // A claimed intent sends every slower open still in flight to the
+  // background, so a picker that opens nothing must not claim one.
+  test.each([
+    ["desktop", "a cancel", []],
+    ["web", "a cancel", []],
+    ["web", "only unsupported files", [{ name: "a.exe", size: 1, bytes }]],
+  ] as const)(
+    "%s: a pick that opens nothing (%s) leaves an earlier open in front",
+    async (on, _what, files) => {
+      const { acquire, store, opened } = setup(on, {
+        platform: { pickDocuments: async () => [] },
+        webHandles: { pickDocuments: async () => [...files] },
+      });
+      const before = store.getState().navigation.foregroundIntent;
+
+      await acquire.pick();
+
+      expect(opened).toEqual([]);
+      expect(store.getState().navigation.foregroundIntent).toBe(before);
+    },
+  );
 });
 
 describe("a tab whose file could not be restored", () => {

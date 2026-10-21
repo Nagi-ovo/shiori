@@ -183,6 +183,9 @@ export function createDocumentAcquisition(ports: AcquirePorts) {
         const picked = await platform.pickDocuments((error, name) =>
           ports.notify({ kind: "openFailed", error, name }),
         );
+        // A claimed intent backgrounds every slower open still in flight, so
+        // a pick that opens nothing (a cancel) must not claim one.
+        if (picked.length === 0) return;
         const foregroundIntent = ports.store.getState().claimForegroundIntent();
         for (const payload of picked) {
           await ports.open.document(payload, { foregroundIntent });
@@ -197,12 +200,14 @@ export function createDocumentAcquisition(ports: AcquirePorts) {
         const picked = await webHandles.pickDocuments((error, name) =>
           ports.notify({ kind: "openFailed", error, name }),
         );
-        const foregroundIntent = ports.store.getState().claimForegroundIntent();
-        for (const file of picked) {
+        const accepted = picked.flatMap((file) => {
           const kind = acceptedKind(file.name);
-          if (kind) {
-            await ports.open.document(pickedPayload(file, kind), { foregroundIntent });
-          }
+          return kind ? [pickedPayload(file, kind)] : [];
+        });
+        if (accepted.length === 0) return;
+        const foregroundIntent = ports.store.getState().claimForegroundIntent();
+        for (const loaded of accepted) {
+          await ports.open.document(loaded, { foregroundIntent });
         }
       } catch (error) {
         ports.notify({ kind: "openFailed", error });
