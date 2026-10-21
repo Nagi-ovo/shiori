@@ -96,6 +96,8 @@ export function metaFromRuntimeTab(tab: WorkspaceRuntimeTab): WorkspaceTabMeta {
     // look unsaved after a restart, not silently clean.
     textDirty: tab.textDirty,
     hash: tab.hash,
+    // What the file held, so restored edits can tell whether it changed since.
+    sourceHash: tab.sourceHash,
     pinned: tab.pinned,
     pdfView: tab.pdfView,
     textView: tab.textView,

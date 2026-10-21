@@ -95,12 +95,13 @@ export async function openNonPdf(
   // recover and nothing to prefer over `sourcePayload`.
   const textKind = isTextDocumentKind(payload.kind) ? payload.kind : null;
   // What the file on disk holds, for the save's "changed since?" check. A
-  // restore of unsaved edits reads only their working copy, so it is unknown.
-  let sourceHash: string | undefined;
-  let unknownSource = false;
+  // restore of unsaved edits reads only their working copy, so it keeps the
+  // hash saved with the tab, or none if it has none.
+  const restoring = store.getState().tabs.find((tab) => tab.id === options.tabId);
   const restoresEdits =
-    Boolean(options.workingCopyCacheId) &&
-    store.getState().tabs.find((tab) => tab.id === options.tabId)?.textDirty === true;
+    Boolean(options.workingCopyCacheId) && restoring?.textDirty === true;
+  let sourceHash = restoresEdits ? restoring?.sourceHash : undefined;
+  let unknownSource = false;
   const recoveryEntry =
     options.workingCopyCacheId || !textKind
       ? null
