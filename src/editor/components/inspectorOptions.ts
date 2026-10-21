@@ -1,4 +1,5 @@
-import type { ToolId } from "../../pdf/model/types";
+import type { FontFamily, ToolId } from "../../pdf/model/types";
+import type { FontPickerOption } from "./ui";
 import { Ic } from "./icons";
 
 // The inspector's option sets: which tools share a toolbar slot, and the
@@ -54,3 +55,34 @@ export function isSignToolId(tool: ToolId): tool is SignToolId {
 export function iconForSignTool(tool: SignToolId): typeof Ic.cursor {
   return tool === "stamp" ? Ic.stamp : Ic.signature;
 }
+
+export const FONT_OPTIONS: Array<FontPickerOption<FontFamily>> = [
+  {
+    value: "sans",
+    name: "Helvetica",
+    previewCss: "'Helvetica Neue', Helvetica, Arial, sans-serif",
+  },
+  {
+    value: "serif",
+    name: "Times",
+    previewCss: "'Times', 'Times New Roman', 'Liberation Serif', serif",
+  },
+  {
+    value: "mono",
+    name: "Courier",
+    previewCss: "'Courier New', Courier, monospace",
+  },
+  {
+    value: "notoSansSc",
+    name: "Noto Sans SC",
+    previewCss: "'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif",
+  },
+  {
+    value: "notoSansJp",
+    name: "Noto Sans JP",
+    previewCss: "'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif",
+  },
+];
+
+export const TEXT_FONT_SIZE_MAX = 144;
+export const STAMP_WIDTH_OPTIONS = [1, 1.8, 3, 5];
