@@ -293,7 +293,19 @@ function importFreeText(
       alignFromNumber(numberValue(annot.textAlignment, 0)),
     fontFamily: richTextStyle.fontFamily ?? appearanceStyle.fontFamily,
     ...angle,
+    ...freeTextBox(annot),
   };
+}
+
+// A text box's fill (/C, its background on FreeText), frame (/BS width; the
+// frame takes the text colour, as Acrobat draws it) and /CA. Text colour
+// comes from the appearance or /DA, so a fill never doubles as it.
+function freeTextBox(annot: PdfjsAnnotation): Partial<TextOverlay> {
+  const box: Partial<TextOverlay> = {};
+  if (toNumberArray(annot.color).length >= 3) box.fill = colorToHex(annot.color, "#ffffff");
+  const border = numberValue(recordValue(annot.borderStyle)?.width, 0);
+  if (border > 0) box.borderWidth = border;
+  return { ...box, ...translucency(annot) };
 }
 
 function stampKindFromText(text: string): StampOverlay["kind"] | null {

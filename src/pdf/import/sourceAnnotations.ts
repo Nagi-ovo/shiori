@@ -168,7 +168,7 @@ function readAnnotation(
       data.opacity = opacityAsWritten(dict);
       break;
   }
-  if (subtype === "Square") data.opacity = opacityAsWritten(dict);
+  if (subtype === "Square" || subtype === "FreeText") data.opacity = opacityAsWritten(dict);
   if (QUAD_SUBTYPES.has(subtype)) data.quadPoints = quadPoints(dict);
   if (subtype === "Popup") {
     const parent = lookup(dict, "Parent", PDFDict);

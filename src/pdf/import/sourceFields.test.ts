@@ -128,3 +128,36 @@ describe("an ink or square's opacity", () => {
     expect(exported.map(ca)).toEqual(["0.4", "0.3", undefined]);
   });
 });
+
+describe("a text box's fill, border and opacity", () => {
+  test("come back from its /C, /BS and /CA", async () => {
+    const { overlays, exported } = await roundTrip([{
+      Subtype: "FreeText", Rect: [20, 20, 220, 60], DA: PDFString.of("/Helv 12 Tf 0 0 1 rg"),
+      Contents: PDFString.of("Boxed"), C: [1, 1, 0.6], BS: { W: 2 }, CA: 0.6,
+    }]);
+    expect(overlays).toMatchObject([{ type: "text", color: "#0000ff", fill: "#ffff99", borderWidth: 2, opacity: 0.6 }]);
+    const [box] = exported;
+    expect(box!.get(PDFName.of("C"))?.toString()).toBe("[ 1 1 0.6 ]");
+    expect(box!.get(PDFName.of("CA"))?.toString()).toBe("0.6");
+  });
+
+  test("a box Shiori exported reopens with its text colour, not its fill", async () => {
+    const box: Overlay = {
+      type: "text", id: "t", pageId: "p1", rect: { x: 20, y: 20, w: 200, h: 40 }, text: "Boxed",
+      fontSize: 12, color: "#0000ff", bold: false, align: "left", fontFamily: "sans",
+      fill: "#ffff99", borderWidth: 2, opacity: 0.6,
+    };
+    const blank = await PDFDocument.create();
+    blank.addPage([300, 400]);
+    const { bytes } = await exportPdf(await blank.save(), { pages: [page], overlays: [box] });
+    const [back] = await importFileAnnotations([page], bytes, 1);
+    expect(back).toMatchObject({ color: "#0000ff", fill: "#ffff99", borderWidth: 2, opacity: 0.6 });
+  });
+
+  test("a plain box gets none of them", async () => {
+    const { overlays } = await roundTrip([{
+      Subtype: "FreeText", Rect: [20, 20, 220, 60], DA: PDFString.of("/Helv 12 Tf 0 g"), Contents: PDFString.of("Plain"),
+    }]);
+    for (const key of ["fill", "borderWidth", "opacity"]) expect(overlays[0]).not.toHaveProperty(key);
+  });
+});
