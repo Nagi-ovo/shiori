@@ -149,12 +149,15 @@ function readAnnotation(
       data.opacity = opacityOrOne(dict);
       data.inkLists = inkLists(dict);
       break;
-    // pdf.js reads /CA only for Ink and Highlight; Shiori draws underlines
-    // and strikeouts with it too, so they keep it.
     case "Highlight":
+      data.opacity = opacityOrOne(dict);
+      break;
+    // pdf.js reads /CA only for Ink and Highlight, where its `|| 1` turns 0
+    // into 1; Shiori draws underlines and strikeouts with it too, so they keep
+    // it as written, 0 included.
     case "Underline":
     case "StrikeOut":
-      data.opacity = opacityOrOne(dict);
+      data.opacity = opacityAsWritten(dict);
       break;
   }
   if (QUAD_SUBTYPES.has(subtype)) data.quadPoints = quadPoints(dict);
@@ -346,6 +349,12 @@ function opacityOrOne(dict: PDFDict): number {
   const ca = dict.lookup(PDFName.of("CA"));
   const value = ca instanceof PDFNumber ? ca.asNumber() : 0;
   return value || 1;
+}
+
+function opacityAsWritten(dict: PDFDict): number {
+  const ca = dict.lookup(PDFName.of("CA"));
+  const value = ca instanceof PDFNumber ? ca.asNumber() : 1;
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1;
 }
 
 /** pdf.js's getQuadPoints: each quad as its axis-aligned box, or null if unusable. */

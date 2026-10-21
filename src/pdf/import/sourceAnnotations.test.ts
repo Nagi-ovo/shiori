@@ -245,9 +245,14 @@ describe("what other tools wrote, kept as written", () => {
     const bytes = await onePage((_pdf, add) => {
       add({ Subtype: "Underline", Rect: [18, 18, 122, 42], CA: 0.5, QuadPoints: [20, 40, 120, 40, 20, 20, 120, 20] });
       add({ Subtype: "StrikeOut", Rect: [18, 58, 122, 82], CA: 0.25, QuadPoints: [20, 80, 120, 80, 20, 60, 120, 60] });
+      add({ Subtype: "StrikeOut", Rect: [18, 98, 122, 122], CA: 0, QuadPoints: [20, 120, 120, 120, 20, 100, 120, 100] });
     });
     const { overlays } = await importFile(bytes);
-    expect(overlays).toMatchObject([{ type: "underline", opacity: 0.5 }, { type: "strikethrough", opacity: 0.25 }]);
+    expect(overlays).toMatchObject([
+      { type: "underline", opacity: 0.5 },
+      { type: "strikethrough", opacity: 0.25 },
+      { type: "strikethrough", opacity: 0 },
+    ]);
   });
 
   // The listing hands colours over as bytes, so a channel of 1 is 1/255.
