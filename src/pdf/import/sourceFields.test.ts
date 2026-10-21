@@ -44,6 +44,13 @@ async function roundTrip(annots: Record<string, unknown>[]) {
   return { overlays, exported };
 }
 
+// An Acrobat callout: its label, the leader to what it points at.
+const callout = {
+  Subtype: "FreeText", IT: "FreeTextCallout", Rect: [60, 120, 260, 220], RD: [100, 30, 10, 20],
+  CL: [90, 145, 130, 165, 160, 165], LE: "OpenArrow", Contents: PDFString.of("Callout text"),
+  DA: PDFString.of("/Helv 12 Tf 0 0 0 rg"),
+};
+
 function text(dict: PDFDict, key: string): string | undefined {
   return dict.lookupMaybe(PDFName.of(key), PDFString, PDFHexString)?.decodeText();
 }
@@ -81,6 +88,12 @@ describe("a hidden annotation", () => {
       ["Accepted", "6"],
       [undefined, "2"],
     ]);
+  });
+
+  test("callout is kept as it is, not copied visible", async () => {
+    const { overlays, exported } = await roundTrip([{ ...callout, F: 6 }]);
+    expect(overlays).toEqual([]);
+    expect(exported.map((dict) => dict.get(PDFName.of("F"))?.toString())).toEqual(["6"]);
   });
 
   test("written by Shiori and hidden since, is kept too", async () => {

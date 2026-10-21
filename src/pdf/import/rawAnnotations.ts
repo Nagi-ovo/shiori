@@ -23,7 +23,7 @@ import {
   alignFromNumber,
   colorToHex,
 } from "./listingImporters";
-import { pdfjsRefId } from "./sourceAnnotations";
+import { isListedForImport, pdfjsRefId } from "./sourceAnnotations";
 import { sourcePageDicts } from "./sourcePages";
 
 export type RawCallout = {
@@ -174,6 +174,9 @@ export function readRawCallouts(
 
         const intent = dict.lookupMaybe(PDFName.of("IT"), PDFName)?.decodeText();
         if (subtype !== "FreeText" || intent !== "FreeTextCallout") continue;
+        // One the listing leaves out (hidden, say) would otherwise import as
+        // an unmatched callout, while export keeps the original as well.
+        if (!isListedForImport(dict, subtype)) continue;
         const descriptor = rawCalloutFromDict(
           dict,
           rawObject instanceof PDFRef ? pdfjsIdForRef(rawObject) : null,
