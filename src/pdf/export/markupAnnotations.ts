@@ -4,8 +4,10 @@
 
 import {
   LineCapStyle,
+  PDFDict,
   PDFHexString,
   PDFName,
+  PDFNumber,
   PDFString,
   fill,
   lineTo,
@@ -252,7 +254,14 @@ export function buildSquare(page: PDFPage, o: RectOverlay): PDFRef {
     dict.set(PDFName.of("IC"), ctx.obj(hexToRgbArr(o.fill)));
   }
   if (o.comment) dict.set(PDFName.of("Contents"), commentContents(o));
+  setOpacity(dict, o);
   return ctx.register(dict);
+}
+
+// /CA for a translucent square or ink; none for an opaque one, as before.
+function setOpacity(dict: PDFDict, o: { opacity?: number }): void {
+  if (typeof o.opacity !== "number" || !Number.isFinite(o.opacity) || o.opacity >= 1) return;
+  dict.set(PDFName.of("CA"), PDFNumber.of(Math.max(0, o.opacity)));
 }
 
 export function buildInk(page: PDFPage, o: InkOverlay): PDFRef {
@@ -297,6 +306,7 @@ export function buildInk(page: PDFPage, o: InkOverlay): PDFRef {
     NM: shioriAnnotationName(o.id),
   });
   if (o.comment) dict.set(PDFName.of("Contents"), commentContents(o));
+  setOpacity(dict, o);
   return ctx.register(dict);
 }
 

@@ -112,3 +112,19 @@ describe("an annotation's flags and a note's state", () => {
     expect(flags(exported[0]!)).toBe("4");
   });
 });
+
+describe("an ink or square's opacity", () => {
+  const ca = (dict: PDFDict) => dict.get(PDFName.of("CA"))?.toString();
+
+  test("comes back from its /CA", async () => {
+    const { overlays, exported } = await roundTrip([
+      // A highlighter pen, and a filled box that must not hide the text under it.
+      { Subtype: "Ink", Rect: [10, 100, 60, 150], CA: 0.4, BS: { W: 8 }, InkList: [[12, 102, 30, 140]] },
+      { Subtype: "Square", Rect: [20, 20, 120, 100], CA: 0.3, IC: [1, 1, 0] },
+      { Subtype: "Square", Rect: [20, 200, 120, 280] },
+    ]);
+    expect(overlays).toMatchObject([{ type: "ink", opacity: 0.4 }, { type: "rect", opacity: 0.3 }, { type: "rect" }]);
+    expect(overlays[2]).not.toHaveProperty("opacity");
+    expect(exported.map(ca)).toEqual(["0.4", "0.3", undefined]);
+  });
+});

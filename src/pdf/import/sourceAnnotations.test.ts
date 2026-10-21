@@ -110,7 +110,7 @@ describe("the file annotation reader", () => {
       add({ Subtype: "Square", Rect: [10.1, 20.3, 90.7, 80.9], C: [0, 0, 1], BS: { W: 3 }, IC: [1, 0, 0] });
       add({ Subtype: "Square", Rect: [110, 20, 190, 80], C: [0, 0, 1], Border: [0, 0, 2, [3, 0]] });
       add({ Subtype: "Square", Rect: [210, 20, 290, 80], Border: [0, 0, 5, [0, 0]] });
-      // A border wider than half the rect falls back to 1; CA 0 reads as 1.
+      // A border wider than half the rect falls back to 1; CA 0 stays 0, as PDFium draws it.
       add({ Subtype: "Ink", Rect: [10, 100, 60, 150], CA: 0, BS: { W: 50 }, InkList: [[12, 102, 30, 140, 58, 120], [15, 110, 16, 111]] });
       add({ Subtype: "Link", Rect: [200, 300, 250, 320], A: { S: "URI", URI: PDFString.of("https://example.com") } });
       const note = add({ Subtype: "Text", Rect: [150, 300, 170, 320], Contents: PDFString.of("with popup") });
@@ -136,7 +136,7 @@ describe("the file annotation reader", () => {
       {
         type: "ink", id: "pdf-annotation-0-11R", pageId: "p1",
         paths: [[{ x: 12, y: 102 }, { x: 30, y: 140 }, { x: 58, y: 120 }], [{ x: 15, y: 110 }, { x: 16, y: 111 }]],
-        color: "#b13a2e", width: 1, ...imported,
+        color: "#b13a2e", width: 1, opacity: 0, ...imported,
       },
       { ...note("13R", 150), text: "with popup", color: "#f7e9a8", ...imported },
     ]);

@@ -153,6 +153,12 @@ function sourceComment(annot: PdfjsAnnotation): { comment?: string } {
   return comment ? { comment } : {};
 }
 
+// A listed /CA below 1. Opaque marks carry no opacity, as in Shiori.
+function translucency(annot: PdfjsAnnotation): { opacity?: number } {
+  const opacity = clampOpacity(numberValue(annot.opacity, 1));
+  return opacity < 1 ? { opacity } : {};
+}
+
 function importStickyNote(
   annot: PdfjsAnnotation,
   page: PageModel,
@@ -200,6 +206,7 @@ function importSquare(
     strokeWidth: numberValue(border?.width, 2),
     fill: null,
     ...sourceComment(annot),
+    ...translucency(annot),
   };
 }
 
@@ -229,6 +236,7 @@ function importInk(
     color: colorToHex(annot.color, "#b13a2e"),
     width: numberValue(border?.width, 2),
     ...sourceComment(annot),
+    ...translucency(annot),
   };
 }
 

@@ -154,20 +154,21 @@ function readAnnotation(
       }
       break;
     case "Ink":
-      data.opacity = opacityOrOne(dict);
+      data.opacity = opacityAsWritten(dict);
       data.inkLists = inkLists(dict);
       break;
     case "Highlight":
       data.opacity = opacityOrOne(dict);
       break;
     // pdf.js reads /CA only for Ink and Highlight, where its `|| 1` turns 0
-    // into 1; Shiori draws underlines and strikeouts with it too, so they keep
-    // it as written, 0 included.
+    // into 1. Shiori draws the others with it too, and keeps it as written,
+    // 0 included, as PDFium and Acrobat draw it.
     case "Underline":
     case "StrikeOut":
       data.opacity = opacityAsWritten(dict);
       break;
   }
+  if (subtype === "Square") data.opacity = opacityAsWritten(dict);
   if (QUAD_SUBTYPES.has(subtype)) data.quadPoints = quadPoints(dict);
   if (subtype === "Popup") {
     const parent = lookup(dict, "Parent", PDFDict);
