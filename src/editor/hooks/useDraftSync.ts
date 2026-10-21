@@ -7,10 +7,7 @@ import {
   useState,
 } from "react";
 import { useEditorStore } from "../store/store";
-import drafts, {
-  DraftSaveError,
-  type DraftWriteVersion,
-} from "../../storage/drafts";
+import drafts, { DraftSaveError } from "../../storage/drafts";
 import { isModelClean } from "../../pdf/model/clean";
 import { readStorageEstimate } from "../../platform";
 import {
@@ -19,6 +16,10 @@ import {
   writeOperationLog,
 } from "../../storage/operationLog";
 import { draftIdForPayload } from "../../storage/draftIdentity";
+import {
+  observedDraftVersion,
+  rememberDraftVersion,
+} from "../../storage/draftVersions";
 import { isDraftOpenInAnotherWindow } from "../../storage/draftProtection";
 
 export type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
@@ -45,22 +46,6 @@ export type DraftSyncState = {
 
 export const SAVE_DEBOUNCE_MS = 800;
 const OPERATION_LOG_DEBOUNCE_MS = 250;
-const draftVersionByDocument = new WeakMap<object, DraftWriteVersion | null>();
-// The same, by draft id: a tab resumed from its suspended snapshot has a new
-// document and opens without reading its draft.
-const draftVersionById = new Map<string, DraftWriteVersion | null>();
-
-/** The draft row this document last read or wrote; null when none. */
-function observedDraftVersion(
-  opened: { doc: object; draftVersion?: DraftWriteVersion | null } | null,
-  draftId: string | null,
-): DraftWriteVersion | null {
-  if (!opened?.doc) return null;
-  if (draftVersionByDocument.has(opened.doc)) {
-    return draftVersionByDocument.get(opened.doc) ?? null;
-  }
-  return opened.draftVersion ?? (draftId ? draftVersionById.get(draftId) : null) ?? null;
-}
 
 // Watches the current document model and persists a debounced snapshot to
 // IndexedDB whenever the user has committed at least one edit.
@@ -281,8 +266,7 @@ export function useDraftSync(
           );
         if (cleanRemovalSucceeded) {
           draftVersionRef.current = null;
-          draftVersionByDocument.set(snap.opened.doc, null);
-          draftVersionById.set(snap.draftId, null);
+          rememberDraftVersion(snap.opened.doc, snap.draftId, null);
         }
       } else {
         const guarded =
@@ -300,8 +284,7 @@ export function useDraftSync(
           ...(guarded ? { expectedVersion: draftVersionRef.current } : {}),
         });
         draftVersionRef.current = writtenVersion;
-        draftVersionByDocument.set(snap.opened.doc, writtenVersion);
-        draftVersionById.set(snap.draftId, writtenVersion);
+        rememberDraftVersion(snap.opened.doc, snap.draftId, writtenVersion);
         savedDraftStampRef.current = now;
       }
 
