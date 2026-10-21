@@ -5,6 +5,14 @@ import fs from "node:fs/promises";
 const DEFAULT_MANIFEST =
   "https://updates.shiori.nagi.fun/alpha/latest.json";
 const DEFAULT_CONFIG = "src-tauri/tauri.conf.json";
+// Every desktop platform the release ships an updater artifact for. A client
+// whose key is missing never hears about the release.
+const REQUIRED_PLATFORMS = [
+  "darwin-aarch64",
+  "darwin-x86_64",
+  "windows-x86_64",
+  "linux-x86_64",
+];
 
 function usage() {
   return `Usage:
@@ -175,10 +183,23 @@ async function loadUpdaterPublicKey(configPath) {
   return parsePublicKey(decodeBase64Text(encoded, "plugins.updater.pubkey"));
 }
 
-async function verifyPlatform(name, platform, publicKey) {
+// A correctly signed asset from an older release passes every signature
+// check, and the client then installs that old build and is offered the same
+// update again. Release assets live under the vX.Y.Z tag with the version in
+// the file name, so both must name the manifest's version.
+function assertAssetVersion(name, url, version) {
+  const path = new URL(url).pathname;
+  const file = path.slice(path.lastIndexOf("/") + 1);
+  if (!path.includes(`/v${version}/`) || !file.includes(`_${version}_`)) {
+    throw new Error(`${name} url is not the v${version} asset: ${url}`);
+  }
+}
+
+async function verifyPlatform(name, platform, publicKey, version) {
   if (!platform?.url || !platform?.signature) {
     throw new Error(`${name} is missing url or signature`);
   }
+  assertAssetVersion(name, platform.url, version);
 
   const embeddedSignatureBase64 = String(platform.signature).trim();
   const remoteSignatureBase64 = (await fetchText(`${platform.url}.sig`)).trim();
@@ -211,14 +232,19 @@ async function main() {
   const publicKey = await loadUpdaterPublicKey(args.config);
   const manifest = JSON.parse(await fetchText(args.manifest));
   const platforms = manifest.platforms ?? {};
-  const names = args.platform ? [args.platform] : Object.keys(platforms);
+  const names = args.platform
+    ? [args.platform]
+    : [...new Set([...REQUIRED_PLATFORMS, ...Object.keys(platforms)])];
+  if (typeof manifest.version !== "string" || manifest.version.trim() === "") {
+    throw new Error(`Manifest ${args.manifest} has no version`);
+  }
 
   if (names.length === 0) {
     throw new Error("Manifest has no platforms to verify");
   }
 
   console.log(`Manifest: ${args.manifest}`);
-  console.log(`Version: ${manifest.version ?? "(missing)"}`);
+  console.log(`Version: ${manifest.version}`);
   console.log(`Public key: ${publicKey.algorithm} ${publicKey.keyId}`);
 
   let failures = 0;
@@ -230,7 +256,12 @@ async function main() {
     }
 
     try {
-      const result = await verifyPlatform(name, platforms[name], publicKey);
+      const result = await verifyPlatform(
+        name,
+        platforms[name],
+        publicKey,
+        manifest.version,
+      );
       console.log(`OK ${name}`);
       console.log(`  url: ${platforms[name].url}`);
       console.log(`  bytes: ${result.bytes}`);

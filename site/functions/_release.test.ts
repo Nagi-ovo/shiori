@@ -81,6 +81,27 @@ describe("buildReleaseInfo", () => {
     expect(buildReleaseInfo([])).toBeNull();
   });
 
+  // The CLI publishes cli-v* releases into the same list. In September one
+  // sat at the top for 13 days and the site nav read "V cli-v0.1.25".
+  test("takes the headline version from the newest app release, not a CLI or QA one", () => {
+    const info = buildReleaseInfo([
+      {
+        tag_name: "cli-v0.1.26",
+        published_at: "2026-10-21T00:00:00Z",
+        assets: [asset("shiori-cli-0.1.26-darwin-arm64.tar.gz")],
+      },
+      {
+        tag_name: "qa-android-1234",
+        published_at: "2026-10-20T12:00:00Z",
+        assets: [asset("Shiori_26.10.21-qa.apk")],
+      },
+      ...releases,
+    ]);
+    expect(info?.version).toBe("26.9.7");
+    expect(info?.publishedAt).toBe("2026-09-07T15:09:47Z");
+    expect(info?.platforms.android?.filename).toBe("Shiori_26.9.6.apk");
+  });
+
   test("resolves each platform to the newest release that carries its asset", () => {
     const info = buildReleaseInfo(releases);
     expect(info?.version).toBe("26.9.7");

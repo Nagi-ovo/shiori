@@ -1,13 +1,8 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { startupBundleGuard } from "./scripts/build/startupBundleGuard.ts";
-import {
-  existsSync,
-  readFileSync,
-  readdirSync,
-} from "node:fs";
-import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { thirdPartyNotices } from "./scripts/build/thirdPartyNotices.ts";
+import { readFileSync } from "node:fs";
 
 // Tauri-aware Vite config. The same build output serves the web deploy
 // (Vercel / any static host) and is embedded inside the desktop app; the
@@ -70,61 +65,6 @@ function desktopWithoutWasmCore(): Plugin {
       }
     },
   };
-}
-
-
-function thirdPartyNotices(): Plugin {
-  return {
-    name: "shiori-third-party-notices",
-    apply: "build",
-    buildStart() {
-      this.emitFile({
-        type: "asset",
-        fileName: "THIRD_PARTY_NOTICES.md",
-        source: readFileSync(
-          new URL("./THIRD_PARTY_NOTICES.md", import.meta.url),
-          "utf8",
-        ),
-      });
-      // The Word editor bundles harfbuzzjs, a prebuilt HarfBuzz wasm and
-      // OFL/GUST fonts; each package carries the texts for what it ships.
-      const docxEditor = fileURLToPath(new URL("./node_modules/@docx-editor.dev", import.meta.url));
-      for (const pkg of ["core", "fonts", "react", "i18n"]) {
-        const dir = join(docxEditor, pkg);
-        const files = ["LICENSE", "THIRD_PARTY_NOTICES.md"].map((name) => join(dir, name));
-        if (existsSync(join(dir, "licenses"))) files.push(...listFiles(join(dir, "licenses")));
-        for (const file of files) {
-          this.emitFile({
-            type: "asset",
-            fileName: `licenses/docx-editor/${pkg}/${relative(dir, file).replaceAll("\\", "/")}`,
-            source: readFileSync(file),
-          });
-        }
-      }
-      // The wasm core ships PDFium and Rust crates; their texts come from
-      // scripts/pdfium/build-wasm.ts.
-      if (WASM_CORE) {
-        const licenses = fileURLToPath(new URL("./src/pdf/engine/wasm/generated/licenses", import.meta.url));
-        for (const file of listFiles(licenses)) {
-          this.emitFile({
-            type: "asset",
-            fileName: `licenses/${relative(licenses, file).replaceAll("\\", "/")}`,
-            source: readFileSync(file),
-          });
-        }
-      }
-    },
-  };
-}
-
-function listFiles(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...listFiles(path));
-    else if (entry.isFile()) out.push(path);
-  }
-  return out;
 }
 
 
@@ -250,7 +190,7 @@ function tabPerfMetrics(): Plugin {
 }
 
 export default defineConfig(({ command }) => ({
-  plugins: [react(), desktopWithoutWasmCore(), tabPerfMetrics(), zoomDebugCollector(), thirdPartyNotices(), startupBundleGuard()],
+  plugins: [react(), desktopWithoutWasmCore(), tabPerfMetrics(), zoomDebugCollector(), thirdPartyNotices({ wasmCore: WASM_CORE }), startupBundleGuard()],
   clearScreen: false,
   server: {
     port: 1573,

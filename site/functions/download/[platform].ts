@@ -7,8 +7,16 @@
 import {
   ASSET_PATTERNS,
   findLatestAssetForPlatform,
+  readLastGood,
+  rememberLastGood,
   type Platform,
 } from "../_release";
+
+// Like /api/release and /api/downloads, each platform keeps the last
+// installer URL it resolved, for when a cold cache meets a GitHub 403/5xx.
+// Without it the button silently bounced back to the homepage.
+const lastGoodKey = (platform: Platform) =>
+  `https://shiori.internal/download/${platform}/last-good`;
 
 export const onRequestGet: PagesFunction<unknown, "platform"> = async (
   ctx,
@@ -22,8 +30,10 @@ export const onRequestGet: PagesFunction<unknown, "platform"> = async (
 
   const match = await findLatestAssetForPlatform(ctx, platform);
   if (!match) {
-    return Response.redirect(fallback, 302);
+    const lastGood = await readLastGood(lastGoodKey(platform));
+    return Response.redirect(lastGood ?? fallback, 302);
   }
 
+  rememberLastGood(ctx, lastGoodKey(platform), match.asset.browser_download_url);
   return Response.redirect(match.asset.browser_download_url, 302);
 };
