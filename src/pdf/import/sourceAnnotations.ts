@@ -33,6 +33,7 @@ export type SourceAnnotation = Record<string, unknown>;
 
 // pdf.js's AnnotationFlag.
 const INVISIBLE = 0x01;
+const HIDDEN = 0x02;
 const NOVIEW = 0x20;
 // The subtypes pdf.js builds its own class for. setFlags drops INVISIBLE for
 // them; only the base class for an unknown subtype keeps it.
@@ -166,7 +167,7 @@ function readAnnotation(
     if (parent && !viewable(data, flags)) {
       const parentFlags = parent.lookup(PDFName.of("F"));
       const raw = parentFlags instanceof PDFNumber ? parentFlags.asNumber() : 0;
-      if (!(raw & INVISIBLE) && !(raw & NOVIEW)) flags = annotationFlags(parent, subtype);
+      if (!(raw & (INVISIBLE | HIDDEN | NOVIEW))) flags = annotationFlags(parent, subtype);
     }
   }
   return viewable(data, flags) ? data : null;
@@ -182,11 +183,16 @@ export function isListedForImport(dict: PDFDict, subtype: string): boolean {
   return viewable(data, annotationFlags(dict, subtype));
 }
 
-/** pdf.js's `viewable`: a markup without usable quads, or NoView, is not shown. */
+/**
+ * pdf.js's `viewable`: a markup without usable quads, or NoView, is not
+ * shown. Hidden too, unlike pdf.js, which lists a hidden annotation and
+ * leaves it to its layer to hide: Shiori would import it as a visible
+ * overlay, and export would replace it with a visible one.
+ */
 function viewable(data: SourceAnnotation, flags: number): boolean {
   if (data.quadPoints === null) return false;
   if (flags === 0) return true;
-  return !(flags & INVISIBLE) && !(flags & NOVIEW);
+  return !(flags & (INVISIBLE | HIDDEN | NOVIEW));
 }
 
 function annotationFlags(dict: PDFDict, subtype = lookup(dict, "Subtype", PDFName)?.decodeText()): number {

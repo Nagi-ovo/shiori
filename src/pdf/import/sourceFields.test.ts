@@ -68,3 +68,18 @@ describe("a comment on a markup, square or ink", () => {
     expect(overlays[0]).not.toHaveProperty("comment");
   });
 });
+
+describe("a hidden annotation", () => {
+  // Hidden (2) | Print (4): how review-state markers are written.
+  test("is neither imported nor replaced, so it stays hidden", async () => {
+    const { overlays, exported } = await roundTrip([
+      { Subtype: "Text", F: 6, Rect: [40, 300, 60, 320], Contents: PDFString.of("Accepted") },
+      { Subtype: "Highlight", F: 2, ...quad },
+    ]);
+    expect(overlays).toEqual([]);
+    expect(exported.map((dict) => [text(dict, "Contents"), dict.get(PDFName.of("F"))?.toString()])).toEqual([
+      ["Accepted", "6"],
+      [undefined, "2"],
+    ]);
+  });
+});
