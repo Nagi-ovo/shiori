@@ -138,6 +138,9 @@ export type InkOverlay = OverlayCommon & SourceComment & {
   color: string;
   width: number;
   source?: "signature";
+  // A source annotation's /CA, 0-1, when it was translucent (a highlighter
+  // pen). Missing = opaque; strokes drawn in Shiori carry none.
+  opacity?: number;
 };
 
 export type ImageOverlay = OverlayCommon & {
@@ -174,6 +177,9 @@ export type RectOverlay = OverlayCommon & SourceComment & {
   fill: string | null;
   // Free rotation about the rect center, degrees clockwise. Missing = 0.
   angle?: number;
+  // A source annotation's /CA, 0-1, applied to stroke and fill alike.
+  // Missing = opaque.
+  opacity?: number;
 };
 
 export type NoteOverlay = OverlayCommon & {

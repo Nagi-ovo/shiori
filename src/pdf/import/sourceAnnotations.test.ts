@@ -20,7 +20,8 @@ import { importFileAnnotations } from "./annotations";
 
 const page: PageModel = { id: "p1", sourceIndex: 0, rotation: 0, widthPt: 300, heightPt: 400 };
 const NOW = 1_700_000_000_000;
-const imported = { origin: "imported", importedAt: NOW } as const;
+// No /F is flags 0, carried so export keeps it unprinted.
+const imported = { origin: "imported", importedAt: NOW, sourceFlags: 0 } as const;
 
 /** The overlays imported from `bytes`, and each annotation claimed from the page raster. */
 async function importFile(bytes: Uint8Array) {
@@ -77,14 +78,14 @@ describe("the file annotation reader", () => {
       // The skewed quad's bounds; dates in UTC.
       {
         type: "highlight", id: "pdf-annotation-0-5R", pageId: "p1", rects: [{ x: 20, y: 19, w: 100, h: 22 }],
-        color: "#3399ff", opacity: 0.3, sourceAuthor: "Réviseur 审阅",
+        color: "#3399ff", opacity: 0.3, comment: "bullet • dash –", sourceAuthor: "Réviseur 审阅",
         sourceCreatedAt: Date.UTC(2026, 8, 24), sourceModifiedAt: Date.UTC(2026, 8, 25, 2, 15), ...imported,
       },
       // pdf.js's CMYK conversion, not the naive (1 - c)(1 - k).
       { type: "underline", id: "pdf-annotation-0-6R", pageId: "p1", rects: [{ x: 20, y: 60, w: 100, h: 20 }], color: "#dd6791", opacity: 1, ...imported },
       { type: "strikethrough", id: "pdf-annotation-0-7R", pageId: "p1", rects: [{ x: 20, y: 100, w: 100, h: 20 }], color: "#808080", opacity: 1, ...imported },
       // 8R has a short quad list and 10R is NoView; 9R's Invisible flag is ignored.
-      { type: "highlight", id: "pdf-annotation-0-9R", pageId: "p1", rects: [{ x: 20, y: 180, w: 100, h: 20 }], color: "#f4d674", opacity: 0.45, ...imported },
+      { type: "highlight", id: "pdf-annotation-0-9R", pageId: "p1", rects: [{ x: 20, y: 180, w: 100, h: 20 }], color: "#f4d674", opacity: 0.45, ...imported, sourceFlags: 1 },
       { type: "strikethrough", id: "pdf-annotation-0-annot_p0_1", pageId: "p1", rects: [{ x: 20, y: 260, w: 100, h: 20 }], color: "#b13a2e", opacity: 1, ...imported },
     ]);
     // PDFium hides what Shiori claims by the file's own /Rect.
@@ -110,7 +111,7 @@ describe("the file annotation reader", () => {
       add({ Subtype: "Square", Rect: [10.1, 20.3, 90.7, 80.9], C: [0, 0, 1], BS: { W: 3 }, IC: [1, 0, 0] });
       add({ Subtype: "Square", Rect: [110, 20, 190, 80], C: [0, 0, 1], Border: [0, 0, 2, [3, 0]] });
       add({ Subtype: "Square", Rect: [210, 20, 290, 80], Border: [0, 0, 5, [0, 0]] });
-      // A border wider than half the rect falls back to 1; CA 0 reads as 1.
+      // A border wider than half the rect falls back to 1; CA 0 stays 0, as PDFium draws it.
       add({ Subtype: "Ink", Rect: [10, 100, 60, 150], CA: 0, BS: { W: 50 }, InkList: [[12, 102, 30, 140, 58, 120], [15, 110, 16, 111]] });
       add({ Subtype: "Link", Rect: [200, 300, 250, 320], A: { S: "URI", URI: PDFString.of("https://example.com") } });
       const note = add({ Subtype: "Text", Rect: [150, 300, 170, 320], Contents: PDFString.of("with popup") });
@@ -136,7 +137,7 @@ describe("the file annotation reader", () => {
       {
         type: "ink", id: "pdf-annotation-0-11R", pageId: "p1",
         paths: [[{ x: 12, y: 102 }, { x: 30, y: 140 }, { x: 58, y: 120 }], [{ x: 15, y: 110 }, { x: 16, y: 111 }]],
-        color: "#b13a2e", width: 1, ...imported,
+        color: "#b13a2e", width: 1, opacity: 0, ...imported,
       },
       { ...note("13R", 150), text: "with popup", color: "#f7e9a8", ...imported },
     ]);
@@ -200,6 +201,20 @@ describe("what other tools wrote, kept as written", () => {
       { type: "text", text: "Upright", rect: { x: 15, y: 185, w: 200, h: 30 }, angle: 270 },
       { type: "text", text: "Flipped", rect: { x: 20, y: 20, w: 100, h: 40 }, angle: 180 },
     ]);
+  });
+
+  // Only a turn is read back as an angle (Shiori writes one); a matrix that
+  // skews or scales unevenly leaves the box as its /Rect says.
+  test("an appearance that skews is not taken for a turn", async () => {
+    const bytes = await onePage((pdf, add) => {
+      const skewed = pdf.context.register(pdf.context.flateStream("0 0 100 40 re S", {
+        Type: "XObject", Subtype: "Form", BBox: [0, 0, 100, 40], Matrix: [1, 0.5, 0, 1, 0, 0],
+      }));
+      add({ Subtype: "Square", Rect: [20, 20, 120, 110], AP: { N: skewed } });
+    });
+    const { overlays } = await importFile(bytes);
+    expect(overlays).toMatchObject([{ type: "rect", rect: { x: 20, y: 20, w: 100, h: 90 } }]);
+    expect(overlays[0]).not.toHaveProperty("angle");
   });
 
   // PDFium counts a page tree leaf without /Type /Page; pdf-lib's getPages()

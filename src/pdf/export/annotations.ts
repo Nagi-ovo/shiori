@@ -308,10 +308,12 @@ function removeOrphanedPopups(
 
 function isReplaceableAnnotation(dict: PDFDict): boolean {
   const name = decodePdfText(dict.lookupMaybe(PDFName.of("NM"), PDFString, PDFHexString));
-  // Written by Shiori: always ours to replace, whatever its current state.
-  if (name.startsWith(SHIORI_ANNOT_PREFIX)) return true;
   const subtype = dict.lookupMaybe(PDFName.of("Subtype"), PDFName)?.decodeText();
-  if (!subtype || !REPLACED_SOURCE_SUBTYPES.has(subtype)) return false;
+  if (!subtype) return false;
+  // Written by Shiori: ours whatever its subtype, but still only once the
+  // importer saw it. One hidden since in another reader never became an
+  // overlay, so removing it would lose it.
+  if (!name.startsWith(SHIORI_ANNOT_PREFIX) && !REPLACED_SOURCE_SUBTYPES.has(subtype)) return false;
   // Matching subtype is not enough. Removal is only safe for annotations the
   // editor actually took ownership of, and it only ever saw the ones the
   // importer's listing handed over. Anything it filtered out never became an

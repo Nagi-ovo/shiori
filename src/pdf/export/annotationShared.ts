@@ -105,3 +105,42 @@ export function decodePdfText(value: PDFString | PDFHexString | undefined): stri
     return "";
   }
 }
+
+export type FreeRotation = {
+  /** /Rect: the axis-aligned bounds of the turned box. */
+  rect: [number, number, number, number];
+  /** The appearance /Matrix over BBox [0 0 w h]: the turn about its centre. */
+  matrix: [number, number, number, number, number, number];
+  /** The FreeText /Rotate for a quarter turn: the content's own counter-clockwise turn. */
+  rotate?: 90 | 180 | 270;
+};
+
+// An overlay's free rotation (degrees clockwise as seen, about the rect
+// centre) for an annotation that has none of its own. A viewer fits the
+// appearance's turned BBox into /Rect, so the turn lives in the /Matrix and
+// /Rect grows to hold the turned box. Clockwise is the negative angle in
+// PDF's y-up space, as in the flattened draw (./overlayDraw). Null when the
+// box is not turned, so its annotation is written exactly as before.
+export function freeRotation(
+  rect: { x: number; y: number; w: number; h: number },
+  angle: number | undefined,
+): FreeRotation | null {
+  const turn = (((angle ?? 0) % 360) + 360) % 360;
+  if (!Number.isFinite(turn) || turn === 0) return null;
+  const snap = (n: number) => Number(n.toFixed(10)) || 0;
+  const rad = (turn * Math.PI) / 180;
+  const cos = snap(Math.cos(rad));
+  const sin = snap(Math.sin(rad));
+  const cx = rect.w / 2;
+  const cy = rect.h / 2;
+  const w = Math.abs(rect.w * cos) + Math.abs(rect.h * sin);
+  const h = Math.abs(rect.w * sin) + Math.abs(rect.h * cos);
+  const px = rect.x + cx;
+  const py = rect.y + cy;
+  const rotate = turn === 90 ? 270 : turn === 180 ? 180 : turn === 270 ? 90 : undefined;
+  return {
+    rect: [px - w / 2, py - h / 2, px + w / 2, py + h / 2],
+    matrix: [cos, -sin, sin, cos, snap(cx - cos * cx - sin * cy), snap(cy + sin * cx - cos * cy)],
+    ...(rotate ? { rotate } : {}),
+  };
+}

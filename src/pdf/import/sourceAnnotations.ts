@@ -1,5 +1,6 @@
 import {
   PDFArray,
+  PDFBool,
   PDFDict,
   PDFDocument,
   PDFName,
@@ -33,6 +34,7 @@ export type SourceAnnotation = Record<string, unknown>;
 
 // pdf.js's AnnotationFlag.
 const INVISIBLE = 0x01;
+const HIDDEN = 0x02;
 const NOVIEW = 0x20;
 // The subtypes pdf.js builds its own class for. setFlags drops INVISIBLE for
 // them; only the base class for an unknown subtype keeps it.
@@ -124,11 +126,19 @@ function readAnnotation(
     modificationDate: latin1(dict.lookup(PDFName.of("M"))) ?? null,
   };
   const appearance = normalAppearance(dict);
+  // The /F as written, so export can write it back. None is 0, as pdf.js
+  // reads it: shown, never printed.
+  const sourceFlags = dict.lookup(PDFName.of("F"));
+  if (sourceFlags === undefined) data.annotationFlags = 0;
+  else if (sourceFlags instanceof PDFNumber && Number.isSafeInteger(sourceFlags.asNumber()) && sourceFlags.asNumber() >= 0) {
+    data.annotationFlags = sourceFlags.asNumber();
+  }
 
   if (MARKUP_SUBTYPES.has(subtype)) readMarkup(dict, data);
 
   switch (subtype) {
     case "Text":
+      readNoteState(dict, data);
       if (!appearance) {
         rect[1] = rect[3]! - TEXT_ICON_SIZE;
         rect[2] = rect[0]! + TEXT_ICON_SIZE;
@@ -146,19 +156,24 @@ function readAnnotation(
       }
       break;
     case "Ink":
-      data.opacity = opacityOrOne(dict);
+      data.opacity = opacityAsWritten(dict);
       data.inkLists = inkLists(dict);
       break;
     case "Highlight":
       data.opacity = opacityOrOne(dict);
       break;
     // pdf.js reads /CA only for Ink and Highlight, where its `|| 1` turns 0
-    // into 1; Shiori draws underlines and strikeouts with it too, so they keep
-    // it as written, 0 included.
+    // into 1. Shiori draws the others with it too, and keeps it as written,
+    // 0 included, as PDFium and Acrobat draw it.
     case "Underline":
     case "StrikeOut":
       data.opacity = opacityAsWritten(dict);
       break;
+  }
+  if (subtype === "Square" || subtype === "FreeText") {
+    data.opacity = opacityAsWritten(dict);
+    const turn = appearanceTurn(appearance, rect);
+    if (turn) data.appearanceTurn = turn;
   }
   if (QUAD_SUBTYPES.has(subtype)) data.quadPoints = quadPoints(dict);
   if (subtype === "Popup") {
@@ -166,7 +181,7 @@ function readAnnotation(
     if (parent && !viewable(data, flags)) {
       const parentFlags = parent.lookup(PDFName.of("F"));
       const raw = parentFlags instanceof PDFNumber ? parentFlags.asNumber() : 0;
-      if (!(raw & INVISIBLE) && !(raw & NOVIEW)) flags = annotationFlags(parent, subtype);
+      if (!(raw & (INVISIBLE | HIDDEN | NOVIEW))) flags = annotationFlags(parent, subtype);
     }
   }
   return viewable(data, flags) ? data : null;
@@ -182,11 +197,16 @@ export function isListedForImport(dict: PDFDict, subtype: string): boolean {
   return viewable(data, annotationFlags(dict, subtype));
 }
 
-/** pdf.js's `viewable`: a markup without usable quads, or NoView, is not shown. */
+/**
+ * pdf.js's `viewable`: a markup without usable quads, or NoView, is not
+ * shown. Hidden too, unlike pdf.js, which lists a hidden annotation and
+ * leaves it to its layer to hide: Shiori would import it as a visible
+ * overlay, and export would replace it with a visible one.
+ */
 function viewable(data: SourceAnnotation, flags: number): boolean {
   if (data.quadPoints === null) return false;
   if (flags === 0) return true;
-  return !(flags & INVISIBLE) && !(flags & NOVIEW);
+  return !(flags & (INVISIBLE | HIDDEN | NOVIEW));
 }
 
 function annotationFlags(dict: PDFDict, subtype = lookup(dict, "Subtype", PDFName)?.decodeText()): number {
@@ -224,6 +244,19 @@ function readMarkup(dict: PDFDict, data: SourceAnnotation): void {
   }
   if (dict.has(PDFName.of("RC"))) {
     data.richText = richTextRoot(latin1(dict.lookup(PDFName.of("RC"))));
+  }
+}
+
+/** A sticky note's icon, whether its pop-up opens, and its review state. */
+function readNoteState(dict: PDFDict, data: SourceAnnotation): void {
+  const name = lookup(dict, "Name", PDFName)?.decodeText();
+  if (name) data.name = name;
+  const open = dict.lookup(PDFName.of("Open"));
+  if (open instanceof PDFBool) data.open = open.asBoolean();
+  for (const key of ["State", "StateModel"] as const) {
+    const value = dict.lookup(PDFName.of(key));
+    const decoded = value === undefined ? "" : textObject(value).str;
+    if (decoded) data[key === "State" ? "state" : "stateModel"] = decoded;
   }
 }
 
@@ -343,6 +376,39 @@ function annotationRotation(dict: PDFDict): number {
   const angle = value instanceof PDFNumber ? value.asNumber() : 0;
   if (!Number.isInteger(angle) || angle % 90 !== 0) return 0;
   return ((angle % 360) + 360) % 360;
+}
+
+/**
+ * The turn an appearance's /Matrix gives a box (Shiori's own) when it is a
+ * rotation, and its unturned size: the BBox, scaled as the viewer scales it
+ * to fit the turned box into /Rect. Undefined when the matrix does not turn,
+ * or does more than turn and scale evenly, so such a box imports as before.
+ */
+function appearanceTurn(
+  appearance: PDFRawStream | null,
+  rect: readonly number[],
+): { angle: number; w: number; h: number } | undefined {
+  if (!appearance) return undefined;
+  const m = numbers(lookup(appearance.dict, "Matrix", PDFArray));
+  const box = normalRect(lookup(appearance.dict, "BBox", PDFArray));
+  if (!m || m.length !== 6 || !box) return undefined;
+  const [a, b, c, d] = m as [number, number, number, number];
+  const scale = Math.hypot(a, b);
+  if (!(scale > 0) || Math.abs(a - d) > 1e-4 * scale || Math.abs(b + c) > 1e-4 * scale) return undefined;
+  // Clockwise as seen: the matrix turns by the negative angle in y-up space.
+  const angle = Number(((((Math.atan2(-b, a) * 180) / Math.PI) % 360 + 360) % 360).toFixed(6)) % 360;
+  if (angle === 0) return undefined;
+  const [cos, sin] = [Math.abs(a / scale), Math.abs(b / scale)];
+  const w = box[2]! - box[0]!;
+  const h = box[3]! - box[1]!;
+  const turnedW = scale * (w * cos + h * sin);
+  const turnedH = scale * (w * sin + h * cos);
+  if (!(turnedW > 0 && turnedH > 0)) return undefined;
+  const fitX = (rect[2]! - rect[0]!) / turnedW;
+  const fitY = (rect[3]! - rect[1]!) / turnedH;
+  if (Math.abs(fitX - fitY) > 0.01 * Math.max(fitX, fitY)) return undefined;
+  const k = scale * ((fitX + fitY) / 2);
+  return { angle, w: w * k, h: h * k };
 }
 
 function opacityOrOne(dict: PDFDict): number {
