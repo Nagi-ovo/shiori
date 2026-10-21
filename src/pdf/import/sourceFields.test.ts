@@ -82,6 +82,16 @@ describe("a hidden annotation", () => {
       [undefined, "2"],
     ]);
   });
+
+  test("written by Shiori and hidden since, is kept too", async () => {
+    const { overlays, exported } = await roundTrip([
+      { Subtype: "Text", F: 6, NM: PDFString.of("shiori:n1"), Rect: [40, 300, 60, 320], Contents: PDFString.of("Hidden later") },
+    ]);
+    expect(overlays).toEqual([]);
+    expect(exported.map((dict) => [text(dict, "Contents"), dict.get(PDFName.of("F"))?.toString()])).toEqual([
+      ["Hidden later", "6"],
+    ]);
+  });
 });
 
 describe("an annotation's flags and a note's state", () => {
