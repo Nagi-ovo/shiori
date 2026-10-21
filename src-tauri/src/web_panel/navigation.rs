@@ -46,14 +46,11 @@ struct ExternalOpenRequest {
 // emit in create.rs does.
 #[cfg(not(mobile))]
 pub(super) fn route_non_web_panel_navigation<R: Runtime>(app: &AppHandle<R>, raw: &str) {
-    static GATE: std::sync::Mutex<ExternalOpenGate> =
-        std::sync::Mutex::new(ExternalOpenGate::new());
     let url = raw.trim();
     if !url.to_ascii_lowercase().starts_with("mailto:") {
         return;
     }
-    let mut gate = GATE.lock().unwrap_or_else(|err| err.into_inner());
-    if !external_open_allowed(&mut gate, Instant::now()) {
+    if !external_open_request_allowed(&app.state::<WebPanelState>(), Instant::now()) {
         return;
     }
     let app = app.clone();
@@ -69,7 +66,7 @@ const OPEN_QUIET: Duration = Duration::from_secs(2);
 const OPEN_RESET: Duration = Duration::from_secs(600);
 
 #[cfg_attr(mobile, allow(dead_code))]
-struct ExternalOpenGate {
+pub(super) struct ExternalOpenGate {
     last_attempt: Option<Instant>,
     quiet: Duration,
 }
@@ -82,6 +79,35 @@ impl ExternalOpenGate {
             quiet: OPEN_QUIET,
         }
     }
+}
+
+impl Default for ExternalOpenGate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(not(mobile))]
+fn external_open_request_allowed(state: &WebPanelState, now: Instant) -> bool {
+    let mut gate = state
+        .external_open
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+    external_open_allowed(&mut gate, now)
+}
+
+// The gate belongs to one panel session and one page the user went to.
+// Opening, closing, a typed address and the panel's Back, Forward and Reload
+// start it afresh: a quiet period stretched by an earlier page's requests
+// silently dropped the next page's mailto click. Only the main webview can
+// call those commands, so a page cannot reset the gate; its own navigations
+// and history calls keep it.
+#[cfg(not(mobile))]
+pub(super) fn restart_external_open_gate(state: &WebPanelState) {
+    *state
+        .external_open
+        .lock()
+        .unwrap_or_else(|err| err.into_inner()) = ExternalOpenGate::new();
 }
 
 // Every attempt restarts the quiet period, so a loop keeps being refused for
@@ -295,6 +321,24 @@ mod tests {
                 .count();
             assert!(opened <= most, "{period_ms} ms loop opened {opened} times");
         }
+    }
+
+    // After a page's mailto requests stretched the quiet period past a
+    // minute, reopening the panel or going elsewhere from its own controls
+    // must let the next mailto click through.
+    #[test]
+    #[cfg(not(mobile))]
+    fn web_panel_mailto_asks_again_after_the_user_moves_on() {
+        use std::time::{Duration, Instant};
+        let state = super::WebPanelState::default();
+        let start = Instant::now();
+        let minute = |i: u64| start + Duration::from_secs(60 * i);
+        let opened = (0..6)
+            .filter(|&i| super::external_open_request_allowed(&state, minute(i)))
+            .count();
+        assert_eq!(opened, 5, "the sixth request a minute on is refused");
+        super::restart_external_open_gate(&state);
+        assert!(super::external_open_request_allowed(&state, minute(6)));
     }
 
     // The address bar's back/forward enablement and target are driven

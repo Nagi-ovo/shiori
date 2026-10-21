@@ -42,6 +42,10 @@ const WEB_PANEL_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like
 #[derive(Default)]
 pub(crate) struct WebPanelState {
     inner: Mutex<WebPanelInner>,
+    // The mailto: throttle (web_panel/navigation.rs). Apart from `inner`, so
+    // the navigation policy callback takes no lock it did not take before.
+    #[cfg(not(mobile))]
+    external_open: Mutex<navigation::ExternalOpenGate>,
 }
 
 // A linear history of committed URLs plus a cursor. Tracked purely to
@@ -146,6 +150,7 @@ pub(crate) fn web_panel_open<R: Runtime>(
     let parsed = parse_web_url(&url)?;
     let persist_session = persist_session.unwrap_or(true);
     engine::set_engine_dialog_labels(dialog_labels);
+    navigation::restart_external_open_gate(&app.state::<WebPanelState>());
     // Fresh "open" intent resets history; seed it so the address bar shows
     // the target immediately (on_navigation no-ops on the matching URL).
     let recreate_for_session_mode = {
@@ -246,6 +251,7 @@ pub(crate) fn web_panel_navigate<R: Runtime>(
     let webview = app
         .get_webview(WEB_PANEL_LABEL)
         .ok_or_else(|| "web-panel-missing".to_string())?;
+    navigation::restart_external_open_gate(&app.state::<WebPanelState>());
     webview.navigate(parsed).map_err(|err| err.to_string())?;
     // Defer off the IPC COM-callback stack (see web_panel_open). A synchronous
     // emit here would inline-run eval -> send_user_message on the main thread,
@@ -386,6 +392,7 @@ pub(crate) fn web_panel_back<R: Runtime>(
 ) -> Result<(), String> {
     enforce_main_webview(&caller)?;
     if let Some(webview) = app.get_webview(WEB_PANEL_LABEL) {
+        navigation::restart_external_open_gate(&app.state::<WebPanelState>());
         navigation::request_traversal(
             &mut lock_web_panel(&app.state::<WebPanelState>()),
             navigation::Traversal::Back,
@@ -418,6 +425,7 @@ pub(crate) fn web_panel_forward<R: Runtime>(
 ) -> Result<(), String> {
     enforce_main_webview(&caller)?;
     if let Some(webview) = app.get_webview(WEB_PANEL_LABEL) {
+        navigation::restart_external_open_gate(&app.state::<WebPanelState>());
         navigation::request_traversal(
             &mut lock_web_panel(&app.state::<WebPanelState>()),
             navigation::Traversal::Forward,
@@ -452,6 +460,7 @@ pub(crate) fn web_panel_reload<R: Runtime>(
 ) -> Result<(), String> {
     enforce_main_webview(&caller)?;
     if let Some(webview) = app.get_webview(WEB_PANEL_LABEL) {
+        navigation::restart_external_open_gate(&app.state::<WebPanelState>());
         webview
             .eval("location.reload()")
             .map_err(|err| err.to_string())?;
@@ -483,6 +492,7 @@ pub(crate) fn web_panel_close<R: Runtime>(
         let _ = webview.close();
     }
     let state = app.state::<WebPanelState>();
+    navigation::restart_external_open_gate(&state);
     let mut inner = lock_web_panel(&state);
     inner.history.clear();
     inner.cursor = 0;
