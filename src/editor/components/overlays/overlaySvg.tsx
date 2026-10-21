@@ -207,7 +207,7 @@ function renderOverlaySvg(
     );
     if (reveal) {
       return (
-        <g key={overlay.id} data-live-reveal="rect">
+        <g key={overlay.id} data-live-reveal="rect" opacity={overlay.opacity}>
           {overlay.fill ? (
             <rect
               x={box.x}
@@ -257,6 +257,7 @@ function renderOverlaySvg(
         stroke={overlay.color}
         strokeWidth={overlay.strokeWidth}
         fill={overlay.fill ?? "none"}
+        opacity={overlay.opacity}
         rx={2}
         ry={2}
       />

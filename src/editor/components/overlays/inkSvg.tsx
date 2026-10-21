@@ -41,6 +41,8 @@ export function renderInkSvg(
   }
   return (
     <g key={overlay.id}>
+      {/* One group, so overlapping strokes do not darken where they cross. */}
+      <g opacity={overlay.opacity}>
       {overlay.paths.map((pts, i) => {
         const d = pts.map((p) =>
           pdfToDisplay(p, page.widthPt, page.heightPt, page.rotation, scale),
@@ -75,6 +77,7 @@ export function renderInkSvg(
           />
         );
       })}
+      </g>
       {selBox ? (
         <rect
           x={selBox.x}
