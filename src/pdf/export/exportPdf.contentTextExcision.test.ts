@@ -39,11 +39,11 @@ describe("original-text edits that could not be excised", () => {
     });
   }
 
+  // One edit with two grazing rects is one edit left behind. (A second edit
+  // over the same "Hi" would not do: a full cover removes the H the sliver
+  // grazes, and then nothing of the sliver's edit is left in the file.)
   test("counts edits, not their cover rectangles", async () => {
-    const overlays = [
-      edit("removed", FULL_COVER),
-      { ...edit("kept", SLIVER), coverRects: [SLIVER, SLIVER] },
-    ];
+    const overlays = [{ ...edit("kept", SLIVER), coverRects: [SLIVER, SLIVER] }];
     const result = await exportPdf(await sourceWithHi(), model(overlays));
     expect(result.unexcisedEdits).toBe(1);
   });
