@@ -18,12 +18,16 @@ function hashOf(data: Uint8Array): string {
 /**
  * Loads a document's embedded font as a browser face and resolves to its CSS
  * family, or null when the browser cannot use it. Only TrueType and OpenType
- * programs can load as they are; the rest (bare CFF and Type 1, common in TeX
- * and InDesign output) and the ones the browser refuses are rebuilt from
- * their glyphs by `addOutlineFontFace`.
+ * programs whose own cmap draws the font's text as the PDF does can load as
+ * they are; the rest (bare CFF and Type 1, common in TeX and InDesign output,
+ * programs a dictionary remaps or a subset that lost its cmap) and the ones
+ * the browser refuses are rebuilt from their glyphs by `addOutlineFontFace`.
  */
 export function loadEmbeddedFontFace(font: PdfEmbeddedFont): Promise<string | null> {
   if (font.format !== "truetype" && font.format !== "opentype") return Promise.resolve(null);
+  // Before the cache: a dictionary sharing a program another draws as it is
+  // must not pick up that face (audit B108).
+  if (!font.ownCmap) return Promise.resolve(null);
   if (typeof FontFace === "undefined" || typeof document === "undefined") return Promise.resolve(null);
   const key = hashOf(font.data);
   let pending = faces.get(key);

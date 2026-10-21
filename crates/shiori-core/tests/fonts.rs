@@ -212,3 +212,30 @@ fn dictionaries_parting_beyond_ascii_differ() {
     };
     assert_eq!(path(&grave, 'é'), path(&plain, 'è'));
 }
+
+#[test]
+fn only_a_dictionary_drawn_as_its_program_maps_loads_as_it_is() {
+    // Two dictionaries share one whole Liberation Sans program (audit B108):
+    // pdf-lib's own, and one whose /ToUnicode calls the glyph of "A" "a". A
+    // browser loading the program as it is draws "a" through the program's
+    // cmap: right for the first, the wrong letter for the second, which must
+    // be rebuilt from what PDFium draws instead.
+    let doc = core().open(fixture("shared-truetype.pdf"), None).unwrap();
+    let glyphs = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    let [plain, remap] = <[String; 2]>::try_from(ids_of(&glyphs, "a")).unwrap();
+    assert_ne!(plain, remap);
+
+    let fonts = doc.embedded_fonts(0).unwrap();
+    let own: Vec<(&str, &str, bool)> = fonts
+        .iter()
+        .map(|font| (font.id.as_str(), font.format.as_str(), font.own_cmap))
+        .collect();
+    assert_eq!(
+        own,
+        [
+            (plain.as_str(), "truetype", true),
+            (remap.as_str(), "truetype", false)
+        ]
+    );
+    assert_eq!(fonts[0].data, fonts[1].data);
+}

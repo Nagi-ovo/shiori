@@ -527,3 +527,49 @@ console.log(subsetsOut);
   writeFileSync(beyondOut, await shared.save({ useObjectStreams: false }));
   console.log(beyondOut);
 }
+
+// shared-truetype.pdf: one page, two Type0 dictionaries on one whole
+// Liberation Sans program, cmap included (tests/fonts.rs, audit B108).
+// "plain" is pdf-lib's own, setting "aA"; "remap" shares its descendant font
+// and gives the glyph of "A" the /ToUnicode "a", as a small-caps dictionary
+// would, setting "a" with it. A browser loading the program as it is draws
+// "a" through the program's cmap, so only "plain" may be loaded that way.
+{
+  const shared = await PDFDocument.create();
+  shared.registerFontkit(fontkit);
+  const program = readFileSync(join(root, "node_modules/@docx-editor.dev/fonts/assets/LiberationSans-Regular.ttf"));
+  const plain = await shared.embedFont(program, { subset: false });
+  const page = shared.addPage([300, 200]);
+  page.drawText("aA", { x: 20, y: 150, size: 20, font: plain });
+  await shared.flush();
+  const ctx = shared.context;
+  const plainDict = ctx.lookup(plain.ref) as PDFDict;
+  const gid = fontkit.create(program).glyphForCodePoint(0x41).id.toString(16).toUpperCase().padStart(4, "0");
+  const toUnicode = ctx.register(
+    ctx.stream(
+      [
+        "/CIDInit /ProcSet findresource begin 12 dict begin begincmap",
+        "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+        "/CMapName /Adobe-Identity-UCS def /CMapType 2 def",
+        "1 begincodespacerange <0000> <FFFF> endcodespacerange",
+        `1 beginbfchar <${gid}> <0061> endbfchar`,
+        "endcmap CMapName currentdict /CMap defineresource pop end end",
+      ].join("\n"),
+    ),
+  );
+  const remap = ctx.register(
+    ctx.obj({
+      Type: "Font",
+      Subtype: "Type0",
+      BaseFont: plainDict.get(PDFName.of("BaseFont")),
+      Encoding: "Identity-H",
+      DescendantFonts: plainDict.get(PDFName.of("DescendantFonts")),
+      ToUnicode: toUnicode,
+    }),
+  );
+  page.node.setFontDictionary(PDFName.of("Remap"), remap);
+  page.pushOperators(beginText(), setFontAndSize("Remap", 20), moveText(20, 100), showText(PDFHexString.of(gid)), endText());
+  const truetypeOut = join(dirname(fileURLToPath(import.meta.url)), "shared-truetype.pdf");
+  writeFileSync(truetypeOut, await shared.save({ useObjectStreams: false }));
+  console.log(truetypeOut);
+}

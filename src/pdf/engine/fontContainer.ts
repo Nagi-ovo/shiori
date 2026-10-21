@@ -6,12 +6,20 @@ export type PdfEmbeddedFont = {
   id?: string;
   flags: number;
   format: "truetype" | "opentype" | "cff" | "type1" | "unknown";
+  /**
+   * Whether the program as it is, through its own cmap and advances, draws
+   * this font's text as the PDF does (shiori-core's `own_cmap`). Only then
+   * may it load as a face; two dictionaries can share one program and map
+   * it apart (audit B108).
+   */
+  ownCmap: boolean;
   data: Uint8Array;
 };
 
 /**
  * Unpacks shiori-core's `encode_embedded_fonts`: a u32 little-endian length,
- * that much JSON listing each font's name, id, flags, format and length, then
+ * that much JSON listing each font's name, id, flags, format, ownCmap and
+ * length, then
  * the programs in order.
  */
 export function decodeEmbeddedFonts(bytes: Uint8Array): PdfEmbeddedFont[] {

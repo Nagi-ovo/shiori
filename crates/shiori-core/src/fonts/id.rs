@@ -30,7 +30,7 @@ use crate::Lib;
 /// further on, as two CID fonts on one program can, keep one id. The probe
 /// is fixed, never the characters a page sets, so the id does not depend on
 /// which page is read.
-const PROBE: &[std::ops::RangeInclusive<u32>] = &[
+pub(super) const PROBE: &[std::ops::RangeInclusive<u32>] = &[
     0x20..=0x7e,
     0xa0..=0x17f,
     0x192..=0x192,
@@ -55,10 +55,10 @@ const PROBE: &[std::ops::RangeInclusive<u32>] = &[
 ];
 
 /// FNV-1a 64.
-struct Fnv(u64);
+pub(super) struct Fnv(pub(super) u64);
 
 impl Fnv {
-    fn new() -> Fnv {
+    pub(super) fn new() -> Fnv {
         Fnv(0xcbf2_9ce4_8422_2325)
     }
 
@@ -105,7 +105,7 @@ pub(crate) unsafe fn font_identity(lib: &Lib, font: FPDF_FONT, program: &[u8]) -
 
 /// The outline of the glyph `font` draws for `unicode`: its segment count
 /// (-1 for none), then each segment's type, point and closure.
-unsafe fn glyph_shape(lib: &Lib, font: FPDF_FONT, unicode: u32, hash: &mut Fnv) {
+pub(super) unsafe fn glyph_shape(lib: &Lib, font: FPDF_FONT, unicode: u32, hash: &mut Fnv) {
     let glyph = lib.FPDFFont_GetGlyphPath(font, unicode, 1000.0);
     let count = if glyph.is_null() {
         -1
