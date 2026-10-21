@@ -14,6 +14,7 @@ import {
   prepareThumbnailCanvas,
   thumbnailViewportForPage,
 } from "./thumbnailCompositor";
+import { loadThumbnailOverlayImages } from "./thumbnailImages";
 
 export type ThumbnailPaintJob = {
   /** Read after each await: the tile may have unmounted meanwhile. */
@@ -34,7 +35,12 @@ export type ThumbnailPaintJob = {
  */
 export async function paintThumbnail(job: ThumbnailPaintJob): Promise<boolean> {
   const { page, overlays, paperColor } = job;
-  await loadThumbnailOverlayFonts(overlays);
+  // Placed images and signatures are decoded per paint, not cached: a
+  // module-wide cache would keep every pasted image alive for the session.
+  const [, images] = await Promise.all([
+    loadThumbnailOverlayFonts(overlays),
+    loadThumbnailOverlayImages(overlays, { skipUndecodable: true }),
+  ]);
   if (job.cancelled()) return false;
   const canvas = job.canvas();
   if (!canvas) return false;
@@ -48,7 +54,7 @@ export async function paintThumbnail(job: ThumbnailPaintJob): Promise<boolean> {
     );
     drawThumbnailPaper(ctx, viewport);
     compositePdfPaperColor(ctx, canvas.width, canvas.height, paperColor);
-    drawThumbnailOverlays(ctx, page, overlays, viewport);
+    drawThumbnailOverlays(ctx, page, overlays, viewport, images);
     return true;
   }
 
@@ -76,7 +82,7 @@ export async function paintThumbnail(job: ThumbnailPaintJob): Promise<boolean> {
   const ctx = canvas.getContext("2d");
   if (ctx) {
     compositePdfPaperColor(ctx, canvas.width, canvas.height, paperColor);
-    drawThumbnailOverlays(ctx, page, overlays, viewport);
+    drawThumbnailOverlays(ctx, page, overlays, viewport, images);
   }
   return true;
 }
