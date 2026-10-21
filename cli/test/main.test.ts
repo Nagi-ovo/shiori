@@ -146,6 +146,33 @@ describe("shiori cli", () => {
     );
   });
 
+  test("a value beginning with '-' points at the inline --name=value form", async () => {
+    const pdf = "site/public/welcome.pdf";
+    await expect(
+      main(["annotate", pdf, "--highlight", "-3 dB roll-off", "-o", "out.pdf"]),
+    ).rejects.toMatchObject({
+      code: "ERR_USAGE",
+      message: "--highlight requires a value",
+      detail: "A value beginning with '-' must be written inline: --highlight=<value>",
+    });
+    // -o has no inline form; the hint names the long option. The value
+    // itself (it may be a password) is never echoed.
+    await expect(main(["render", pdf, "--page", "1", "-o", "-p1.png"])).rejects.toMatchObject({
+      detail: "A value beginning with '-' must be written inline: --output=<value>",
+    });
+    await expect(main(["inspect", pdf, "--password", "-s3cret"])).rejects.toMatchObject({
+      detail: expect.not.stringContaining("s3cret"),
+    });
+    const help = await captureCli(["--help"]);
+    expect(help.stdout).toContain("must be written inline: --option=value");
+    const agentHelp = JSON.parse((await captureCli(["--help", "--agent"])).stdout) as {
+      rules: string[];
+    };
+    expect(agentHelp.rules).toContain(
+      "an option value beginning with '-' must be written inline: --option=value",
+    );
+  });
+
   test("direct-entry matching canonicalizes path aliases and symlinks", async () => {
     const base = process.platform === "darwin" ? "/tmp" : tmpdir();
     const dir = await mkdtemp(join(base, "shiori-cli-entry-"));
@@ -298,6 +325,24 @@ describe("shiori cli", () => {
       await writeFile(markdown, "İ".repeat(50_001));
       await expect(main(["search", markdown, "i", "--agent"])).rejects.toMatchObject({
         code: "ERR_TEXT_UNAVAILABLE",
+      });
+    });
+  });
+
+  test("rejects Word files as unsupported before reading them", async () => {
+    await withTempDir(async (dir) => {
+      const docx = join(dir, "report.docx");
+      await writeFile(docx, "PK\u0003\u0004 not text");
+      for (const args of [["inspect", docx], ["text", docx], ["search", docx, "x"]]) {
+        await expect(main(args)).rejects.toMatchObject({
+          code: "ERR_UNSUPPORTED_DOCUMENT",
+          message: "Supported files are PDF, Markdown, and HTML",
+        });
+      }
+      // Past the Markdown read limit: the kind decides, not a size error.
+      await truncate(docx, 20 * 1024 * 1024 + 1);
+      await expect(main(["text", docx])).rejects.toMatchObject({
+        code: "ERR_UNSUPPORTED_DOCUMENT",
       });
     });
   });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CoreGlyph } from "../src/coreEngine";
-import { quoteFromGlyphs } from "../src/extract";
+import { QuoteWorkLimitError, pageQuoter, quoteFromGlyphs } from "../src/extract";
 
 /** Glyphs of one 10 pt line at y = 700, each 5 pt wide, from x = 72. */
 function line(text: string, y = 700, x0 = 72): CoreGlyph[] {
@@ -83,5 +83,30 @@ describe("quoteFromGlyphs", () => {
     // and stops before its advance ends: "two" is x 92–107, drawn 93.5–105.5.
     const rect = { x: 93.5, y: 698, w: 12, h: 10 };
     expect(quoteFromGlyphs(glyphs, [rect], page)).toBe("two");
+  });
+});
+
+describe("pageQuoter work", () => {
+  test("a highlight on one line of a long page reads about that line, not the page", () => {
+    // 400 lines of 50 glyphs: 20,000 glyphs, one 12 pt line apart.
+    const glyphs = Array.from({ length: 400 }, (_, i) =>
+      line("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwx", 100 + i * 12),
+    ).flat();
+    const budget = { visits: 500 };
+    const quote = pageQuoter(glyphs, page, budget);
+    // Line 200 sits at y = 2500; "fghij" is x 97 to 122.
+    expect(quote([{ x: 97, y: 2498, w: 25, h: 10 }])).toBe("fghij");
+    expect(quote([{ x: 97, y: 2498, w: 25, h: 10 }])).toBe("fghij");
+  });
+
+  test("a page that piles every glyph under each highlight stops at the budget", () => {
+    // A hostile file: one line of 20,000 glyphs and highlight after highlight
+    // over all of it. Without a cap this is annotations x glyphs x rects.
+    const glyphs = line("x".repeat(20_000));
+    const quote = pageQuoter(glyphs, page, { visits: 100_000 });
+    const rect = { x: 0, y: 690, w: 200_000, h: 20 };
+    expect(() => {
+      for (let i = 0; i < 10; i += 1) quote([rect]);
+    }).toThrow(QuoteWorkLimitError);
   });
 });
