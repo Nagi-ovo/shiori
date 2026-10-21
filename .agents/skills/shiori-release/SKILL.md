@@ -203,7 +203,10 @@ on; the tag must already exist on the remote, or the run fails at checkout.
 Only a publishing dispatch builds the tag: an analysis dispatch (publishing
 off) builds the branch it was started from. Runs of one tag share a
 concurrency group, so the dispatch waits for a tag run still in progress
-instead of clobbering its assets; cancel the old run only if it is stuck. A
+instead of clobbering its assets; cancel the old run only if it is stuck.
+The wait needs both runs to carry the group, and a run takes it from its own
+commit's release.yml: a tag cut before the group existed (and any re-run of
+its jobs) does not queue, so let that run finish or cancel it first. A
 test APK for device checks
 comes from a dispatch with `android_only=true`, `android_artifacts=apk`,
 publishing off; it lands in a `qa-android-<run>` draft.
