@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import type { LoadedDocumentPayload } from "../documents/types";
 import { getRecent, type RecentEntry } from "../editor/recentDocs";
+import { createSerialQueue } from "../shared/serialQueue";
 import { repairRuntimeSessions } from "../storage/runtimeSessions";
 import {
   putWorkspaceSource,
@@ -64,22 +65,29 @@ export function protectedWorkspaceCacheIds(
   return ids;
 }
 
+const enqueueSourceWrite = createSerialQueue();
+
 /**
  * Writes a cache row nothing references yet. It is reserved before the write
  * so the orphan sweep and quota eviction leave it alone until a tab or recent
  * owns it or its writer gives it up (removeWorkspaceSourceIfUnreferenced).
+ * Writes run one at a time: each one's admission and quota sweep use the
+ * protected set taken when it starts, so a write running alongside would
+ * treat the other's fresh row as unprotected and delete it.
  */
-export async function putReservedWorkspaceSource(
+export function putReservedWorkspaceSource(
   source: Parameters<typeof putWorkspaceSource>[0],
 ): Promise<string> {
   const id = source.id ?? nanoid();
   reserveWorkspaceSource(id);
-  try {
-    return await putWorkspaceSource({ ...source, id }, protectedWorkspaceCacheIds());
-  } catch (error) {
-    releaseWorkspaceSource(id);
-    throw error;
-  }
+  return enqueueSourceWrite(async () => {
+    try {
+      return await putWorkspaceSource({ ...source, id }, protectedWorkspaceCacheIds());
+    } catch (error) {
+      releaseWorkspaceSource(id);
+      throw error;
+    }
+  });
 }
 
 /**

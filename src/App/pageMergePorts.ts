@@ -2,14 +2,13 @@ import { getRecentLastPage, recordMergedPdfRecent } from "../editor/recentDocs";
 import type { PdfEditorStoreApi } from "../editor/store/store";
 import { getTabEditorStore } from "../editor/store/tabStoreRegistry";
 import { appPdfEngine } from "../pdf/engine/appEngine";
-import { putWorkspaceSource } from "../storage/workspace";
 import { workspaceStore } from "../workspace/appWorkspace";
 import { createPageMerges } from "../workspace/merge/pageMerge";
 import { animateOverlays } from "./intakePorts";
 import { translate } from "./translate";
 import { showPageMergeNotice } from "./workspaceNotices";
 import {
-  protectedWorkspaceCacheIds,
+  putReservedWorkspaceSource,
   removeWorkspaceSourceIfUnreferenced,
 } from "./workspaceStorage";
 
@@ -32,8 +31,7 @@ export function createAppPageMerges(activeEditor: () => PdfEditorStoreApi) {
       return insertPdfPages(base, incoming, basePageCount, incomingName);
     },
     cache: {
-      put: (entry) =>
-        putWorkspaceSource({ kind: "pdf", ...entry }, protectedWorkspaceCacheIds()),
+      put: (entry) => putReservedWorkspaceSource({ kind: "pdf", ...entry }),
       removeIfUnreferenced: (cacheId) =>
         removeWorkspaceSourceIfUnreferenced(cacheId),
     },
