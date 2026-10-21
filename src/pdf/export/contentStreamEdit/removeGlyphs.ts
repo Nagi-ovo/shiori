@@ -10,7 +10,8 @@
 //    tokenizer's extents — no re-serialization of ops we didn't change. The
 //    one other edit: a BDC property list enclosing a removed glyph loses its
 //    /ActualText, /Alt and /E entries, which would otherwise still hand the
-//    removed text to extractors that honour them.
+//    removed text to extractors that honour them (a named list through a
+//    sanitized copy the caller registers).
 //
 // Hit policy is conservative: a glyph is removed only when one cover rect
 // holds its whole advance, from the baseline up through its core band
@@ -402,11 +403,46 @@ function rebuildShowOp(op: ContentOp, removed: GlyphPlacement[]): string {
 // Property-list keys that carry a text equivalent of the marked content.
 const ALT_TEXT_KEYS = new Set(["ActualText", "Alt", "E"]);
 
+// A name token for a decoded name value, #-escaping every byte that is not
+// a regular printable character.
+function nameToken(value: string): string {
+  let out = "/";
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    out +=
+      code > 0x20 && code < 0x7f && !"()<>[]{}/%#".includes(char)
+        ? char
+        : `#${code.toString(16).padStart(2, "0")}`;
+  }
+  return out;
+}
+
+// Called for a BDC enclosing a removed glyph whose property list is named:
+// the name of a copy of that list without its alternate text, or null when
+// the list has none to drop.
+export type RenameProperties = (name: string) => string | null;
+
 // The BDC op with its alternate-text entries blanked out, or null when its
-// inline property list has none (a named /Properties resource is not edited).
-function stripAltText(source: Uint8Array, op: ContentOp): Uint8Array | null {
+// property list has none. A named list is not edited in place (it may be
+// shared): the op is pointed at the copy renameProperties names instead.
+function stripAltText(
+  source: Uint8Array,
+  op: ContentOp,
+  renameProperties: RenameProperties | undefined,
+): Uint8Array | null {
   const properties = op.operands[op.operands.length - 1];
-  if (op.operator !== "BDC" || properties?.kind !== "dict") return null;
+  if (op.operator !== "BDC") return null;
+  if (properties?.kind === "name") {
+    const tag = op.operands[0];
+    const renamed = renameProperties?.(properties.value) ?? null;
+    if (renamed === null || op.operands.length !== 2 || tag?.kind !== "name") {
+      return null;
+    }
+    return new TextEncoder().encode(
+      `${nameToken(tag.value)} ${nameToken(renamed)} BDC`,
+    );
+  }
+  if (properties?.kind !== "dict") return null;
   const drop = properties.entries.filter((entry) => ALT_TEXT_KEYS.has(entry.key));
   if (drop.length === 0) return null;
   const chunks: Uint8Array[] = [];
@@ -438,6 +474,7 @@ export function removeCoveredGlyphs(
   ops: ContentOp[],
   glyphs: GlyphPlacement[],
   coverRects: PdfRect[],
+  renameProperties?: RenameProperties,
 ): GlyphRemovalResult {
   const { hits, cleanRects, rectFonts } = classifyGlyphCoverage(
     glyphs,
@@ -463,7 +500,7 @@ export function removeCoveredGlyphs(
     );
   }
   for (const opIndex of new Set(hits.flatMap((hit) => hit.markedContent))) {
-    const stripped = stripAltText(source, ops[opIndex]!);
+    const stripped = stripAltText(source, ops[opIndex]!, renameProperties);
     if (stripped) replacements.set(opIndex, stripped);
   }
 

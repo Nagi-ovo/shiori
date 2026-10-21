@@ -1,9 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { PDFDocument, PDFName, type PDFPage } from "pdf-lib";
+import {
+  decodePDFRawStream,
+  PDFDict,
+  PDFDocument,
+  PDFName,
+  PDFRawStream,
+  PDFString,
+  type PDFPage,
+} from "pdf-lib";
 import type { PageModel, PdfRect } from "../../model/types";
 import { deterministicTextVerticalMetrics } from "../../geometry/textMetrics";
 import { expandPdfRectSides } from "../../../editor/components/textHighlightGeometry";
 import { redactCoveredTextOnPage } from "./redactCoveredText";
+import { tokenizeContentStream } from "./tokenizer";
 
 const enc = new TextEncoder();
 
@@ -284,5 +293,48 @@ describe("page text redaction clean rect report", () => {
       cleanRects: [false, false],
       rectFonts: [{ kind: "none" }, { kind: "none" }],
     });
+  });
+});
+
+// The property list each BDC of the page's current /Contents points at,
+// resolved through the page's /Properties when it is named.
+function bdcPropertyLists(page: PDFPage): Array<PDFDict | undefined> {
+  const contents = page.node.lookup(PDFName.of("Contents"), PDFRawStream);
+  const ops = tokenizeContentStream(decodePDFRawStream(contents).decode());
+  const properties = page.node
+    .Resources()
+    ?.lookupMaybe(PDFName.of("Properties"), PDFDict);
+  return ops
+    .filter((op) => op.operator === "BDC")
+    .map((op) => {
+      const operand = op.operands[1];
+      return operand?.kind === "name"
+        ? properties?.lookupMaybe(PDFName.of(operand.value), PDFDict)
+        : undefined;
+    });
+}
+
+describe("page text redaction of marked-content alternate text", () => {
+  test("drops /ActualText from a named property list around removed glyphs", async () => {
+    const page = await pageWithContent(
+      "/Span /P1 BDC BT /F1 12 Tf 100 700 Td (A) Tj ET EMC " +
+        "/Span /P1 BDC BT /F1 12 Tf 300 700 Td (B) Tj ET EMC",
+    );
+    const context = page.doc.context;
+    const layer = context.register(context.obj({ Type: "OCG" }));
+    const p1 = context.obj({ ActualText: PDFString.of("Alice"), OC: layer });
+    const shared = context.obj({ P1: context.register(p1) });
+    page.node.Resources()!.set(PDFName.of("Properties"), shared);
+
+    const report = redactCoveredTextOnPage(page, [{ x: 99, y: 697, w: 8, h: 13 }]);
+
+    expect(report.removedCount).toBe(1);
+    const [edited, untouched] = bdcPropertyLists(page);
+    expect(edited?.has(PDFName.of("ActualText"))).toBe(false);
+    expect(edited?.get(PDFName.of("OC"))).toBe(layer);
+    // The span whose glyph stayed, and the shared resources, keep the text.
+    expect(untouched).toBe(p1);
+    expect(p1.has(PDFName.of("ActualText"))).toBe(true);
+    expect(shared.keys().map(String)).toEqual(["/P1"]);
   });
 });

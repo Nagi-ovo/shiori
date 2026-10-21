@@ -9,7 +9,8 @@
 //
 // Sharing safety: nothing is mutated in place. The rewritten bytes go into a
 // NEW stream object referenced from THIS page's dict, so duplicates of the
-// same source page (which share copied stream objects) are unaffected.
+// same source page (which share copied stream objects) are unaffected; a
+// sanitized named property list goes into a page-local copy of /Resources.
 //
 // Known v1 limit: text inside Form XObjects is not walked, so it stays
 // covered-but-present. Recursing with copy-on-write is the planned follow-up
@@ -17,6 +18,7 @@
 
 import {
   decodePDFRawStream,
+  type PDFContext,
   PDFArray,
   PDFDict,
   PDFName,
@@ -28,7 +30,7 @@ import {
 } from "pdf-lib";
 import type { PdfRect } from "../../model/types";
 import type { GlyphPlacement, InlineImageUse, XObjectUse } from "./textState";
-import type { RectFontAttribution } from "./removeGlyphs";
+import type { RectFontAttribution, RenameProperties } from "./removeGlyphs";
 import { coalesceContentStreams, tokenizeContentStream } from "./tokenizer";
 import { walkTextPlacements } from "./textState";
 import { contentFontInfo } from "./glyphWidths";
@@ -185,6 +187,53 @@ function applyXObjectDirtiness(
   }
 }
 
+const ALT_TEXT_KEYS = [
+  PDFName.of("ActualText"),
+  PDFName.of("Alt"),
+  PDFName.of("E"),
+];
+
+// Named property lists (BDC /Tag /Name) live in /Properties and may be
+// shared with spans and pages this edit does not touch, so a list holding
+// alternate text is never edited. The span gets a copy without it (indirect
+// values such as /OC kept), filed under a fresh name in a page-local copy
+// of the resources, which install() puts on the page.
+function namedPropertiesSanitizer(
+  resources: PDFDict | undefined,
+  context: PDFContext,
+): { rename: RenameProperties; install: (node: PDFPage["node"]) => void } {
+  const properties = resources?.lookupMaybe(PDFName.of("Properties"), PDFDict);
+  const renamed = new Map<string, string>();
+  let local: PDFDict | null = null;
+  const rename = (name: string): string | null => {
+    const known = renamed.get(name);
+    if (known !== undefined) return known;
+    const list = properties?.lookupMaybe(PDFName.of(name), PDFDict);
+    if (!properties || !list || !ALT_TEXT_KEYS.some((key) => list.has(key))) {
+      return null;
+    }
+    const copy = PDFDict.withContext(context);
+    for (const [key, value] of list.entries()) {
+      if (!ALT_TEXT_KEYS.includes(key)) copy.set(key, value);
+    }
+    local ??= properties.clone(context);
+    let fresh = "";
+    for (let index = 0; fresh === "" || local.has(PDFName.of(fresh)); index += 1) {
+      fresh = `ShioriExcised${index}`;
+    }
+    local.set(PDFName.of(fresh), copy);
+    renamed.set(name, fresh);
+    return fresh;
+  };
+  const install = (node: PDFPage["node"]) => {
+    if (!resources || !local) return;
+    const pageResources = resources.clone(context);
+    pageResources.set(PDFName.of("Properties"), local);
+    node.set(PDFName.of("Resources"), pageResources);
+  };
+  return { rename, install };
+}
+
 export function redactCoveredTextOnPage(
   page: PDFPage,
   coverRects: PdfRect[],
@@ -239,7 +288,14 @@ export function redactCoveredTextOnPage(
     });
     if (!walk.ok) return dirtyReport(coverRects);
 
-    const result = removeCoveredGlyphs(source, ops, walk.glyphs, coverRects);
+    const properties = namedPropertiesSanitizer(resources, context);
+    const result = removeCoveredGlyphs(
+      source,
+      ops,
+      walk.glyphs,
+      coverRects,
+      properties.rename,
+    );
     const cleanRects = walk.unplacedText
       ? coverRects.map(() => false)
       : [...result.cleanRects];
@@ -252,6 +308,7 @@ export function redactCoveredTextOnPage(
     );
 
     if (result.changed) {
+      properties.install(node);
       const rewritten = context.flateStream(result.bytes);
       node.set(PDFName.of("Contents"), context.register(rewritten));
     }
