@@ -200,10 +200,12 @@ describe("shiori-core in wasm", () => {
     }
   });
 
-  test("tells apart dictionaries that part past the first 256 codes and loads neither as it is, as the native core does", () => {
-    // Liberation Sans under two Identity-H dictionaries that give U+0400 to
-    // the glyphs of "Ő" and "ő", GIDs 274 and 275 (audit B108).
-    const bytes = readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures/shared-truetype-high.pdf"));
+  // Liberation Sans under two Identity-H dictionaries that give U+0400 to
+  // the glyphs of "Ő" and "ő", GIDs 274 and 275 (audit B108); in the second
+  // file both read their codes 0x100-0x1FF exactly as 0x00-0xFF and part at
+  // 0x300.
+  test.each(["shared-truetype-high.pdf", "shared-truetype-periodic.pdf"])("tells apart dictionaries that part past the first 256 codes and loads neither as it is, as the native core does (%s)", (file) => {
+    const bytes = readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures", file));
     const doc = wasm.CoreDocument.open(bytes, undefined);
     const native = openCoreDocument(bytes);
     try {

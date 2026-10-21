@@ -19,6 +19,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  PDFArray,
   PDFDict,
   PDFDocument,
   PDFHexString,
@@ -760,4 +761,75 @@ for (const [file, keys, objectStreams, unicode] of [
   const highOut = join(dirname(fileURLToPath(import.meta.url)), "shared-truetype-high.pdf");
   writeFileSync(highOut, await shared.save({ useObjectStreams: false }));
   console.log(highOut);
+}
+
+// shared-truetype-periodic.pdf: shared-truetype-high.pdf's three
+// dictionaries, except that "upper" and "lower" have descendants of their
+// own on the same program (second review of the audit fixes for B108).
+// Both read codes 0x100-0x1FF exactly as 0x00-0xFF, as a simple font's
+// would: their /CIDToGIDMap sends both to GIDs 0-255, their /ToUnicode
+// gives both the same characters and their /DW the same width. They part
+// at code 0x300, which they send to the glyph of "Ő" and of "ő" and their
+// /ToUnicode calls U+0400.
+{
+  const shared = await PDFDocument.create();
+  shared.registerFontkit(fontkit);
+  const program = readFileSync(join(root, "node_modules/@docx-editor.dev/fonts/assets/LiberationSans-Regular.ttf"));
+  const plain = await shared.embedFont(program, { subset: false });
+  const page = shared.addPage([300, 200]);
+  page.drawText("aA\u0150\u0151", { x: 20, y: 150, size: 20, font: plain });
+  await shared.flush();
+  const ctx = shared.context;
+  const plainDict = ctx.lookup(plain.ref) as PDFDict;
+  const plainCid = ctx.lookup((ctx.lookup(plainDict.get(PDFName.of("DescendantFonts"))) as PDFArray).get(0)) as PDFDict;
+  const face = fontkit.create(program);
+  const toUnicode = ctx.register(
+    ctx.stream(
+      [
+        "/CIDInit /ProcSet findresource begin 12 dict begin begincmap",
+        "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+        "/CMapName /Adobe-Identity-UCS def /CMapType 2 def",
+        "1 begincodespacerange <0000> <FFFF> endcodespacerange",
+        "2 beginbfrange <0000> <00FF> <4E00> <0100> <01FF> <4E00> endbfrange",
+        "1 beginbfchar <0300> <0400> endbfchar",
+        "endcmap CMapName currentdict /CMap defineresource pop end end",
+      ].join("\n"),
+    ),
+  );
+  ([
+    ["Upper", 0x150, 100],
+    ["Lower", 0x151, 50],
+  ] as const).forEach(([key, codePoint, y]) => {
+    const map = new Uint8Array(0x301 * 2);
+    for (let cid = 0; cid < 0x300; cid++) map[cid * 2 + 1] = cid & 0xff;
+    const gid = face.glyphForCodePoint(codePoint).id;
+    map[0x600] = gid >> 8;
+    map[0x601] = gid & 0xff;
+    const cid = ctx.register(
+      ctx.obj({
+        Type: "Font",
+        Subtype: "CIDFontType2",
+        BaseFont: plainCid.get(PDFName.of("BaseFont")),
+        CIDSystemInfo: plainCid.get(PDFName.of("CIDSystemInfo")),
+        FontDescriptor: plainCid.get(PDFName.of("FontDescriptor")),
+        DW: 600,
+        CIDToGIDMap: ctx.register(ctx.stream(map)),
+      }),
+    );
+    const dict = ctx.register(
+      ctx.obj({
+        Type: "Font",
+        Subtype: "Type0",
+        BaseFont: plainDict.get(PDFName.of("BaseFont")),
+        Encoding: "Identity-H",
+        DescendantFonts: [cid],
+        ToUnicode: toUnicode,
+      }),
+    );
+    page.node.setFontDictionary(PDFName.of(key), dict);
+    page.pushOperators(beginText(), setFontAndSize(key, 20), moveText(20, y), showText(PDFHexString.of("0300")), endText());
+  });
+  const periodicOut = join(dirname(fileURLToPath(import.meta.url)), "shared-truetype-periodic.pdf");
+  writeFileSync(periodicOut, await shared.save({ useObjectStreams: false }));
+  console.log(periodicOut);
 }

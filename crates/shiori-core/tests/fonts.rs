@@ -356,3 +356,31 @@ fn dictionaries_parting_at_a_presentation_form_differ() {
     assert_ne!(plain, acute);
     assert_ne!(plain, grave);
 }
+
+#[test]
+fn dictionaries_reading_their_first_codes_as_a_simple_font_would_differ() {
+    // shared-truetype-high.pdf's "upper" and "lower", whose codes 0x100-0x1FF
+    // read back exactly as 0x00-0xFF, as a simple font's do. They part at
+    // code 0x300, the glyph of "Ő" and of "ő", both called U+0400.
+    let doc = core()
+        .open(fixture("shared-truetype-periodic.pdf"), None)
+        .unwrap();
+    let glyphs = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    let [upper, lower] = <[String; 2]>::try_from(ids_of(&glyphs, "\u{400}")).unwrap();
+    let plain = font_of(&glyphs, "a").1;
+    assert_ne!(upper, lower);
+
+    let fonts = doc.embedded_fonts(0).unwrap();
+    let own: Vec<(&str, bool)> = fonts
+        .iter()
+        .map(|font| (font.id.as_str(), font.own_cmap))
+        .collect();
+    assert_eq!(
+        own,
+        [
+            (plain.as_str(), true),
+            (upper.as_str(), false),
+            (lower.as_str(), false)
+        ]
+    );
+}

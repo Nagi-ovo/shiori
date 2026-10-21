@@ -40,11 +40,9 @@ const BLOCK: c_uint = 256;
 const SIZE: f32 = 10.0;
 
 /// Where the first line of codes is set, and how far apart the lines are,
-/// in points: 900 and 600 share a binary exponent, so the two halves of
-/// the first 512 codes round alike, and 20 pt apart the lines of a page
-/// stay close enough to the origin for a box to round true.
+/// in points: 20 pt apart the lines of a page stay close enough to the
+/// origin for a box to round true.
 const TOP: c_double = 900.0;
-const HALVES_GAP: c_double = 300.0;
 const LINE_GAP: c_double = 20.0;
 
 /// Lines set on one page: a page of all 65,536 codes one per line would
@@ -75,7 +73,6 @@ pub(super) struct Reach {
 /// One character a code read back as, and its box (its advance by the
 /// font's ascent and descent) from the origin in 1/100 pt (1/1000 em at
 /// `SIZE`).
-#[derive(PartialEq)]
 struct Read {
     unicode: u32,
     mapped: bool,
@@ -85,11 +82,12 @@ struct Read {
 /// Reads every code `font`'s dictionary can set (see the module docs).
 /// `document` is the font's own: the text object takes its font from there.
 /// It is set on a page of a blank document of its own, so the file is never
-/// touched. Codes 0..512 come first: a simple font's code past 255 is that
-/// code's low byte, so when the second 256 read back exactly as the first,
-/// the first are all it has. Otherwise all 65,536 are read: a CMap with
+/// touched. All 65,536 codes are read, whatever the font: a simple font's
+/// code past 255 is that code's low byte, but PDFium does not say which
+/// kind a font is, and a CID font can read its first 512 codes exactly as
+/// a simple font would and part from another only further on. A CMap with
 /// three- or four-byte codes (rare, and never Identity-H) keeps those past
-/// them out.
+/// 0xFFFF out.
 ///
 /// Set in a line, a text page lays out a right-to-left run backwards,
 /// mirroring the brackets and arrows in it and decomposing what it can, and
@@ -100,25 +98,21 @@ struct Read {
 /// letter, whose sources are asked about directly. A code that draws
 /// nothing on a line of its own is dropped from that reading.
 ///
-/// Costs a text page of 512 characters per font, one of 65,536 in lines of
-/// 256 for a CID font (about 0.1 s natively for a whole Latin TrueType
-/// program, 10 ms for a subset) and as much again for a font with
-/// right-to-left letters, once per font per document (`seen`).
+/// Costs a text page of 65,536 characters in lines of 256 per font (about
+/// 0.1 s natively for a whole Latin TrueType program, 10 ms for a subset or
+/// a simple font) and as much again for a font with right-to-left letters,
+/// once per font per document (`seen`).
 pub(super) unsafe fn reach(lib: &Lib, document: FPDF_DOCUMENT, font: FPDF_FONT) -> Reach {
     let scan = with_blank_document(lib, |blank| {
-        let mut halves = read_codes(lib, blank, document, font, &[0..256, 256..512], HALVES_GAP)?;
-        if halves[0] == halves[1] && halves[0].iter().any(|read| read.mapped) {
-            return Some((0..256, halves.swap_remove(0)));
-        }
         let blocks: Vec<Range<c_uint>> = ALL_CODES
             .step_by(BLOCK as usize)
             .map(|first| first..first + BLOCK)
             .collect();
         let all = read_codes(lib, blank, document, font, &blocks, LINE_GAP)?;
-        Some((ALL_CODES, all.into_iter().flatten().collect()))
+        Some(all.into_iter().flatten().collect::<Vec<Read>>())
     })
     .flatten();
-    let Some((codes, line)) = scan else {
+    let Some(line) = scan else {
         return Reach {
             beyond: Vec::new(),
             unverified: None,
@@ -144,7 +138,7 @@ pub(super) unsafe fn reach(lib: &Lib, document: FPDF_DOCUMENT, font: FPDF_FONT) 
             .any(|read| read.mapped && right_to_left(read.unicode) && maps(read.unicode));
     // None when a font with right-to-left letters could not be read again.
     let alone = if rtl {
-        let each: Vec<Range<c_uint>> = codes.map(|code| code..code + 1).collect();
+        let each: Vec<Range<c_uint>> = ALL_CODES.map(|code| code..code + 1).collect();
         with_blank_document(lib, |blank| {
             let mut alone = Vec::new();
             for page in each.chunks(LINES_PER_PAGE) {
