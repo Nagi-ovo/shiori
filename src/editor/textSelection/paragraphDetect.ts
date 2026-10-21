@@ -46,6 +46,9 @@ export const PARAGRAPH_DETECT = {
   // table cells stacked row on row show neither.
   columnMinLines: 3,
   columnRightEdgeFontRatio: 2,
+  // ...and an ending: a final line narrower than this share of the block.
+  // Rows of equally full cells wrap nothing and end nothing.
+  columnFinalLineRatio: 0.9,
   // Alignment: edge stability = MAD <= max(edgeStabilityPt, edgeStabilityWidthRatio × block width).
   edgeStabilityPt: 2,
   edgeStabilityWidthRatio: 0.01,
@@ -239,14 +242,19 @@ function xOverlap(a: DetectedLine, b: DetectedLine): number {
   return Math.min(a.right, b.right) - Math.max(a.x, b.x);
 }
 
-// Split-off segments make a text column only when they wrap: several
-// column-width lines filled to one right edge. Anything less may be a
-// table column, whose cells are separate texts.
+// Split-off segments make a text column only when they wrap and end:
+// several column-width lines filled to one right edge, then a short final
+// line. Anything less may be a table column, whose cells are separate texts.
 function splitSegmentsAreTableCells(lines: DetectedLine[], scale: number): boolean {
   if (!lines.some((line) => line.columnSplit)) return false;
   if (lines.length < PARAGRAPH_DETECT.columnMinLines) return true;
   const bodyLines = lines.slice(0, -1);
   const right = Math.max(...bodyLines.map((line) => line.right));
+  const left = Math.min(...lines.map((line) => line.x));
+  const last = lines[lines.length - 1]!;
+  if (last.width >= PARAGRAPH_DETECT.columnFinalLineRatio * (right - left)) {
+    return true;
+  }
   return bodyLines.some(
     (line) =>
       line.width <
