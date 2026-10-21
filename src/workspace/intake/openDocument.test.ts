@@ -286,12 +286,19 @@ describe("openDocument", () => {
     const restoring = { id: "t", kind: "markdown", title: "d.md", status: "loading", textDirty: true, source: { type: "path", path: "/n/d.md" } } as WorkspaceRuntimeTab;
     const store = workspace([restoring], "t");
     const { ports } = fakePorts(store);
-    ports.recents.list = () => [{ kind: "markdown", name: "r.md", path: "/n/r.md", cacheId: "wc" }] as never;
-    ports.sources.get = async () => ({ id: "wc", kind: "markdown", name: "r.md", size: copy.length, bytes: copy }) as never;
+    ports.recents.list = () => [
+      { kind: "markdown", name: "r.md", path: "/n/r.md", cacheId: "wc" },
+      { kind: "markdown", name: "s.md", path: "/n/s.md", cacheId: "same" },
+    ] as never;
+    ports.sources.get = async (id: string) =>
+      (id === "same"
+        ? { id, kind: "markdown", name: "s.md", size: disk.length, bytes: disk }
+        : { id, kind: "markdown", name: "r.md", size: copy.length, bytes: copy }) as never;
 
-    // A fresh open, one that recovers a working copy, and a restore of edits.
+    // A fresh open, two that recover a working copy, and a restore of edits.
     await openDocument({ kind: "markdown", name: "a.md", size: disk.length, bytes: disk, path: "/n/a.md" }, {}, ports);
     await openDocument({ kind: "markdown", name: "r.md", size: disk.length, bytes: disk, path: "/n/r.md" }, {}, ports);
+    await openDocument({ kind: "markdown", name: "s.md", size: disk.length, bytes: disk, path: "/n/s.md" }, {}, ports);
     await openDocument(
       { kind: "markdown", name: "d.md", size: copy.length, bytes: copy, path: "/n/d.md" },
       { tabId: "t", workingCopyCacheId: "wc", skipDuplicateCheck: true },
@@ -300,7 +307,11 @@ describe("openDocument", () => {
 
     const byTitle = (title: string) => store.getState().tabs.find((tab) => tab.title === title);
     expect(byTitle("a.md")?.sourceHash).toBe(await sha256Hex(disk));
-    expect(byTitle("r.md")).toMatchObject({ text: "# Recovered edits", sourceHash: await sha256Hex(disk) });
+    // Recovered edits may have started from an older file than the one on
+    // disk now, so its hash vouches for nothing, unless the copy matches it.
+    expect(byTitle("r.md")?.text).toBe("# Recovered edits");
+    expect(byTitle("r.md")?.sourceHash).toBeUndefined();
+    expect(byTitle("s.md")?.sourceHash).toBe(await sha256Hex(disk));
     // The bytes are the edits, not the file: what the file holds is unknown.
     expect(byTitle("d.md")?.sourceHash).toBeUndefined();
   });

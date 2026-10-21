@@ -97,6 +97,7 @@ export async function openNonPdf(
   // What the file on disk holds, for the save's "changed since?" check. A
   // restore of unsaved edits reads only their working copy, so it is unknown.
   let sourceHash: string | undefined;
+  let unknownSource = false;
   const restoresEdits =
     Boolean(options.workingCopyCacheId) &&
     store.getState().tabs.find((tab) => tab.id === options.tabId)?.textDirty === true;
@@ -112,7 +113,11 @@ export async function openNonPdf(
       ports.recents.forget(recoveryEntry);
       ports.ui.reportWorkingCopyMissing(payload.name);
     } else {
-      sourceHash = await sha256Hex(sourcePayload.bytes);
+      // The edits began from some earlier file, not necessarily this one, so
+      // the disk vouches for them only when the copy still matches it.
+      const diskHash = await sha256Hex(sourcePayload.bytes);
+      if (diskHash === (await sha256Hex(workingCopy.bytes))) sourceHash = diskHash;
+      else unknownSource = true;
       sourcePayload = {
         ...sourcePayload,
         size: workingCopy.size,
@@ -126,7 +131,7 @@ export async function openNonPdf(
     options.workingCopyCacheId ??
     (tabSource.type !== "cache" ? sourcePayload.cacheId : undefined);
   const contentHash = await sha256Hex(sourcePayload.bytes);
-  if (textKind && !restoresEdits) sourceHash ??= contentHash;
+  if (textKind && !restoresEdits && !unknownSource) sourceHash ??= contentHash;
   const existing = options.skipDuplicateCheck
     ? null
     : await findExistingTab(ports, payload.kind, tabSource, contentHash);
