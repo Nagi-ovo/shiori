@@ -221,6 +221,26 @@ describe("what other tools wrote, kept as written", () => {
     expect(claimed).toEqual([1, 2]);
   });
 
+  // PDFium and pdf-lib both walk a /Pages node each time a /Kids lists it.
+  test("a page subtree listed twice counts twice", async () => {
+    const pdf = await PDFDocument.create();
+    const [a, b, c] = [0, 1, 2].map(() => pdf.addPage([300, 400]));
+    const root = pdf.catalog.Pages();
+    const group = pdf.context.register(pdf.context.obj({ Type: "Pages", Kids: [a!.ref, b!.ref], Count: 2, Parent: pdf.catalog.get(PDFName.of("Pages")) } as never));
+    a!.node.set(PDFName.of("Parent"), group);
+    b!.node.set(PDFName.of("Parent"), group);
+    root.set(PDFName.of("Kids"), pdf.context.obj([group, group, c!.ref]));
+    root.set(PDFName.of("Count"), pdf.context.obj(5));
+    c!.node.set(PDFName.of("Annots"), pdf.context.obj([pdf.context.register(pdf.context.obj({ Type: "Annot", Subtype: "Square", Rect: [20, 20, 120, 100], IC: [0, 0, 1] } as never))]));
+    const models = [0, 1, 2, 3, 4].map((sourceIndex) => ({ ...page, id: `p${sourceIndex}`, sourceIndex }));
+    const claimed: number[] = [];
+    const overlays = await importFileAnnotations(models, await pdf.save({ useObjectStreams: false }), NOW, {
+      onSuppress: (sourceIndex) => claimed.push(sourceIndex),
+    });
+    expect(overlays).toMatchObject([{ type: "rect", pageId: "p4", fill: "#0000ff" }]);
+    expect(claimed).toEqual([4]);
+  });
+
   test("an underline or strikeout keeps its /CA", async () => {
     const bytes = await onePage((_pdf, add) => {
       add({ Subtype: "Underline", Rect: [18, 18, 122, 42], CA: 0.5, QuadPoints: [20, 40, 120, 40, 20, 20, 120, 20] });
