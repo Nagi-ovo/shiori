@@ -83,6 +83,19 @@ export function clearOperationLog(id: string): void {
   }
 }
 
+/**
+ * Re-keys a log when its draft changes id (claimDraft). A log already under
+ * `to` belongs to that source and wins; `from` is then left alone.
+ */
+export function moveOperationLog(from: string, to: string): void {
+  if (readOperationLog(to)) return;
+  const entry = readOperationLog(from);
+  if (!entry) return;
+  if (writeOperationLog(to, entry.model, entry.lastTouched) === "written") {
+    clearOperationLog(from);
+  }
+}
+
 export function clearAllOperationLogs(): void {
   const storage = getStorage();
   if (!storage) return;
