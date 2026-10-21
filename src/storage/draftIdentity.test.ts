@@ -134,6 +134,18 @@ describe("draft identity", () => {
     expect(readOperationLog(atA)?.lastTouched).toBe(77);
   });
 
+  test("a source whose only recovery is its crash log keeps it", async () => {
+    // Path A crashed before its first autosave; a dropped copy saved later.
+    writeOperationLog(atA, model("crash-in-a"), 100);
+    await save(HASH, "dropped", 200);
+    expect(await claimDraft(HASH, atA)).toBe(atA);
+    expect(await drafts.get(atA)).toBeUndefined();
+    expect(await noteOf(HASH)).toEqual(["dropped"]);
+    expect(readOperationLog(atA)?.model.overlays.map((overlay) => overlay.id)).toEqual([
+      "crash-in-a",
+    ]);
+  });
+
   test("a draft whose web file handle was forgotten can be claimed again", async () => {
     const oldHandle = draftIdFor(HASH, { type: "webFileHandle", id: "old" });
     const newHandle = draftIdFor(HASH, { type: "webFileHandle", id: "new" });

@@ -15,11 +15,11 @@ export type DraftClaimDeps = {
 
 /**
  * Runs before a tab of a durable source reads `draftId` (see
- * draftIdentity.ts). When that draft does not exist yet, it takes over a
- * draft of the same bytes that no source can reach any more: a hash-only
- * draft (written by an older build, or by a dropped or cached copy of the
- * file) that no open tab in any window still holds, or one under a forgotten
- * web file handle. The rows move in one transaction with their revision and
+ * draftIdentity.ts). When neither that draft nor its crash log exists yet, it
+ * takes over a draft of the same bytes that no source can reach any more: a
+ * hash-only draft (written by an older build, or by a dropped or cached copy
+ * of the file) that no open tab in any window still holds, or one under a
+ * forgotten web file handle. The rows move in one transaction with their revision and
  * timestamps, then the crash-recovery log follows. The first source to open
  * the bytes wins; the next one at another path starts clean.
  *
@@ -35,7 +35,9 @@ export async function claimDraft(
   if (draftId === hash) return draftId;
   let from: string | null = null;
   try {
-    if (await hasDraft(draftId)) return draftId;
+    // A crash log alone is this source's recovery too (written before the
+    // first autosave); adopting another draft would race it by timestamp.
+    if ((await hasDraft(draftId)) || readOperationLog(draftId)) return draftId;
     from = await claimableDraftId(hash, deps);
     if (!from) return draftId;
     if (await moveDraftRows(from, draftId)) notifyChanged();
