@@ -13,6 +13,7 @@
 //! Coordinates are PDF user space, in points, y up, before the page's own
 //! rotation — the space `src/pdf/geometry/coords.ts` calls PDF space.
 
+mod document;
 pub mod encryption;
 mod fonts;
 mod geometry;
@@ -22,7 +23,8 @@ mod render;
 mod text;
 mod xref;
 
-use encryption::{EncryptionError, SourceEncryption};
+pub use document::Document;
+use encryption::EncryptionError;
 pub use fonts::{
     encode_embedded_fonts, encode_font_outlines, EmbeddedFont, FontFormat, FontOutlines,
     GlyphOutline,
@@ -38,8 +40,7 @@ use std::os::raw::c_int;
 use std::os::raw::{c_ulong, c_void};
 
 use pdfium_render::prelude::{
-    PdfiumLibraryBindings, FPDF_BOOKMARK, FPDF_DEST, FPDF_DOCUMENT, FPDF_FORMFILLINFO,
-    FPDF_FORMHANDLE, FPDF_LINK, FPDF_PAGE, FPDF_TEXTPAGE, FS_RECTF,
+    PdfiumLibraryBindings, FPDF_BOOKMARK, FPDF_DEST, FPDF_LINK, FPDF_PAGE, FPDF_TEXTPAGE, FS_RECTF,
 };
 
 pub(crate) type Lib = dyn PdfiumLibraryBindings;
@@ -186,19 +187,6 @@ impl Rect {
     }
 }
 
-/// An open PDF. Dropping it closes the document.
-pub struct Document {
-    lib: &'static Lib,
-    handle: FPDF_DOCUMENT,
-    /// Null when PDFium could not set one up; pages then draw without forms.
-    form: FPDF_FORMHANDLE,
-    _form_info: Box<FPDF_FORMFILLINFO>,
-    /// PDFium reads from this buffer for the document's whole life.
-    _bytes: Vec<u8>,
-    /// For an encrypted file, its handler unlocked, or why it cannot be reproduced.
-    encryption: Option<Result<SourceEncryption, EncryptionError>>,
-}
-
 /// What a document's encryption allows, as PDFium reports it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Security {
@@ -232,25 +220,6 @@ pub struct Metadata {
     /// "Standard" for an encrypted file: the only handler PDFium opens
     /// (any other fails to open with FPDF_ERR_SECURITY).
     pub encrypt_filter_name: Option<&'static str>,
-}
-
-// A document may move to another thread, but only the thread that owns it
-// calls into it. pdfium-render's thread-safe table locks each FFI call, so
-// calls never overlap, but it orders nothing across the several calls one
-// read takes (load page, load text page, walk, close); PDFium documents no
-// guarantee for a document shared between threads, so it is not Sync. The
-// desktop app gives each document to its one render thread.
-unsafe impl Send for Document {}
-
-impl Drop for Document {
-    fn drop(&mut self) {
-        unsafe {
-            if !self.form.is_null() {
-                self.lib.FPDFDOC_ExitFormFillEnvironment(self.form);
-            }
-            self.lib.FPDF_CloseDocument(self.handle);
-        }
-    }
 }
 
 struct Page<'a> {
