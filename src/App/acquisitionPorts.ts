@@ -14,6 +14,7 @@ import {
   canUseWebFileHandles,
   forgetWebFileHandle,
   openDocumentWithWebFileHandlePicker,
+  openDocumentsWithWebFileHandlePicker,
   openPdfWithWebFileHandlePicker,
   readDocumentFromWebFileHandle,
   readPdfFromWebFileHandle,
@@ -71,6 +72,7 @@ export function createAppAcquisition() {
     webHandles: {
       canUse: canUseWebFileHandles,
       pickDocument: () => openDocumentWithWebFileHandlePicker(),
+      pickDocuments: openDocumentsWithWebFileHandlePicker,
       pickPdf: () => openPdfWithWebFileHandlePicker(),
       readDocument: readDocumentFromWebFileHandle,
       readPdf: readPdfFromWebFileHandle,

@@ -4,14 +4,14 @@ import {
   writeBackTarget,
   writeTextDocumentBack,
 } from "../platform";
-import { putWorkspaceSource, removeWorkspaceSource } from "../storage/workspace";
+import { removeWorkspaceSource } from "../storage/workspace";
 import { workspaceStore } from "../workspace/appWorkspace";
 import { createTextSources } from "../workspace/textSources/textSources";
 import { translate } from "./translate";
 import { showTextSourceNotice } from "./workspaceNotices";
 import {
   persistWorkspaceMetadataNow,
-  protectedWorkspaceCacheIds,
+  putReservedWorkspaceSource,
   removeWorkspaceSourceIfUnreferenced,
 } from "./workspaceStorage";
 
@@ -27,7 +27,7 @@ export function createAppTextSources(onPendingChange: (pending: boolean) => void
       clear: (handle) => window.clearTimeout(handle),
     },
     cache: {
-      put: (entry) => putWorkspaceSource(entry, protectedWorkspaceCacheIds()),
+      put: (entry) => putReservedWorkspaceSource(entry),
       remove: (cacheId) => void removeWorkspaceSource(cacheId),
       removeIfUnreferenced: (cacheId) =>
         void removeWorkspaceSourceIfUnreferenced(cacheId),

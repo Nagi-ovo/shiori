@@ -44,6 +44,9 @@ import { removeWorkspaceSourceIfUnreferenced } from "./workspaceStorage";
  * would reload the tab, and so reopen the dialog, the next time it is shown.
  */
 export function makePasswordPromptRetryable(pending: PendingPassword | null): void {
+  // A dropped file's reserved cache row; one its tab or recent owns stays.
+  const cacheId = pending?.input.cacheId;
+  if (cacheId) void removeWorkspaceSourceIfUnreferenced(cacheId);
   const tabId = pending?.options.tabId;
   if (!tabId) return;
   updateTab(tabId, (tab) =>

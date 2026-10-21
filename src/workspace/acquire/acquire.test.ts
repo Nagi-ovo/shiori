@@ -63,6 +63,7 @@ function setup(
     webHandles: {
       canUse: () => on === "web",
       pickDocument: async () => null,
+      pickDocuments: async () => [],
       pickPdf: async () => {
         pickers.push("webPdf");
         return null;
@@ -151,6 +152,54 @@ describe("picking documents", () => {
     expect(intents[0]).toBeDefined();
     expect(new Set(intents).size).toBe(1);
   });
+
+  // Chromium's File System Access picker, like every other route, takes a
+  // multi-select; each file keeps its handle so its recent reopens it.
+  test("on the web, every file of a handle-picker multi-select opens, in order", async () => {
+    const { acquire, opened } = setup("web", {
+      webHandles: {
+        pickDocuments: async () => [
+          { name: "a.pdf", size: 1, bytes, webFileHandleId: "h-a" },
+          { name: "b.md", size: 1, bytes, webFileHandleId: "h-b" },
+        ],
+      },
+      open: {
+        document: async (loaded, options) => {
+          opened.push({ name: `${loaded.name}|${loaded.webFileHandleId}`, options });
+        },
+        pdf: async () => {},
+      },
+    });
+
+    await acquire.pick();
+
+    expect(opened.map((entry) => entry.name)).toEqual(["a.pdf|h-a", "b.md|h-b"]);
+    const intents = opened.map((entry) => entry.options?.foregroundIntent);
+    expect(intents[0]).toBeDefined();
+    expect(new Set(intents).size).toBe(1);
+  });
+
+  // A claimed intent sends every slower open still in flight to the
+  // background, so a picker that opens nothing must not claim one.
+  test.each([
+    ["desktop", "a cancel", []],
+    ["web", "a cancel", []],
+    ["web", "only unsupported files", [{ name: "a.exe", size: 1, bytes }]],
+  ] as const)(
+    "%s: a pick that opens nothing (%s) leaves an earlier open in front",
+    async (on, _what, files) => {
+      const { acquire, store, opened } = setup(on, {
+        platform: { pickDocuments: async () => [] },
+        webHandles: { pickDocuments: async () => [...files] },
+      });
+      const before = store.getState().navigation.foregroundIntent;
+
+      await acquire.pick();
+
+      expect(opened).toEqual([]);
+      expect(store.getState().navigation.foregroundIntent).toBe(before);
+    },
+  );
 });
 
 describe("a tab whose file could not be restored", () => {

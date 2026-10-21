@@ -59,6 +59,11 @@ async function runPdfOpen(
   const { store, engine } = ports;
   let pendingCacheId = input.cacheId;
   const abandon = () => abandonOpen(ports, options.tabId, pendingCacheId);
+  // An open that ends without its tab hands a dropped file's reserved cache
+  // row back; a row a tab or recent still points at is kept.
+  const releaseSource = () => {
+    if (pendingCacheId) ports.sources.removeIfUnreferenced(pendingCacheId);
+  };
   if (!(await ports.persistActive())) return;
   if (!shouldContinue()) return abandon();
   if (shouldActivate()) ports.ui.setError(null);
@@ -199,6 +204,7 @@ async function runPdfOpen(
     const nextTabId = options.tabId ?? nanoid();
     if (!(await ports.editors.reserveResidentSlot(nextTabId))) {
       void engine.destroy(loadedDoc);
+      releaseSource();
       if (options.tabId) {
         store.getState().updateTab(nextTabId, (tab) => ({
           ...tab,
@@ -385,6 +391,7 @@ async function runPdfOpen(
       return;
     }
     console.error(err);
+    releaseSource();
     const info = ports.ui.describeOpenError(input.name, input.size, err);
     if (options.tabId) {
       store.getState().updateTab(options.tabId, (tab) => ({

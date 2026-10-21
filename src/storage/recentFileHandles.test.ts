@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, spyOn, test } from "bun:test";
 import Dexie from "dexie";
 import {
   IDBKeyRange as FakeIDBKeyRange,
@@ -18,6 +18,38 @@ beforeAll(() => {
 });
 
 describe("recent web file handles", () => {
+  test("a document multi-select reads every picked file and reports the one that fails", async () => {
+    const { __recentFileHandlesTest } = await import("./recentFileHandles");
+    const handle = (name: string, file?: File) => ({
+      name,
+      getFile: async () => {
+        if (!file) throw new DOMException("gone", "NotFoundError");
+        return file;
+      },
+    });
+    const handles = [
+      handle("a.pdf", new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "a.pdf")),
+      handle("gone.pdf"),
+      handle("b.md", new File(["# b"], "b.md")),
+    ];
+    // Like the browser: without `multiple`, the dialog returns one file.
+    const picker = async (options?: { multiple?: boolean }) =>
+      options?.multiple ? handles : handles.slice(0, 1);
+    const failures: string[] = [];
+    // These fakes hold functions, so IndexedDB cannot clone them to remember.
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+
+    const picked =
+      await __recentFileHandlesTest.openDocumentsWithWebFileHandlePickerUsing(
+        picker as never,
+        (_error, name) => failures.push(name ?? ""),
+      );
+    warn.mockRestore();
+
+    expect(picked.map((entry) => entry.name)).toEqual(["a.pdf", "b.md"]);
+    expect(failures).toEqual(["gone.pdf"]);
+  });
+
   test("does not persist a one-off PDF insertion source handle", async () => {
     const { __recentFileHandlesTest } = await import("./recentFileHandles");
     await __recentFileHandlesTest.db.handles.clear();

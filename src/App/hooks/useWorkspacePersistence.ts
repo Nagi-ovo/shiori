@@ -1,11 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { getRecent } from "../../editor/recentDocs";
+import { protectOpenDrafts } from "../../storage/draftProtection";
 import {
   cleanupWorkspaceSources,
   saveWorkspaceState,
   type WorkspaceTabMeta,
 } from "../../storage/workspace";
+import {
+  releaseWorkspaceSource,
+  reservedWorkspaceSourceIds,
+} from "../../storage/workspaceSourceReservations";
 
 interface WorkspacePersistenceParams<T> {
   tabs: T[];
@@ -93,6 +98,16 @@ export function useWorkspacePersistence<T>({
     };
   }, []);
 
+  // Draft LRU eviction keeps the drafts of every open tab. A layout effect,
+  // so the provider is in place before App's startup draft cleanup runs.
+  useLayoutEffect(
+    () =>
+      protectOpenDrafts(() =>
+        getTabs().flatMap((tab) => toMeta(tab).hash ?? []),
+      ),
+    [getTabs, toMeta],
+  );
+
   const protectedWorkspaceCacheKey = useMemo(
     () => tabs.flatMap(cacheIdsForTab).sort().join("\0"),
     [tabs, cacheIdsForTab],
@@ -104,6 +119,12 @@ export function useWorkspacePersistence<T>({
       const protectedCacheIds = new Set(currentTabs.flatMap(cacheIdsForTab));
       for (const entry of getRecent()) {
         if (entry.cacheId) protectedCacheIds.add(entry.cacheId);
+      }
+      // A still-opening document's row is protected by its reservation until
+      // a tab or recent references it; from then on those protect it.
+      for (const id of reservedWorkspaceSourceIds()) {
+        if (protectedCacheIds.has(id)) releaseWorkspaceSource(id);
+        else protectedCacheIds.add(id);
       }
       void cleanupWorkspaceSources(protectedCacheIds);
     }, 1000);

@@ -203,6 +203,110 @@ describe("useDraftSync disabled gate", () => {
     await drafts.remove(HASH);
   });
 
+  test("suspension writes the crash-recovery log before IndexedDB finishes", async () => {
+    // pagehide (a web tab closing) may tear the page down before the async
+    // IndexedDB put is issued, so the synchronous tier must already hold the
+    // edit made inside the 250 ms op-log debounce.
+    const { useEditorStore } = await import("../store/store");
+    const { default: drafts } = await import("../../storage/drafts");
+    const { useDraftSync } = await import("./useDraftSync");
+    const { clearOperationLog, readOperationLog } = await import(
+      "../../storage/operationLog"
+    );
+    await drafts.remove(HASH);
+    clearOperationLog(HASH);
+    const originalPut = drafts.put;
+    drafts.put = () => new Promise(() => {});
+
+    try {
+      openDirtyDoc(useEditorStore);
+      const view = renderHook(() => useDraftSync(HASH, false));
+      act(() => {
+        void view.result.current.flushNow();
+      });
+      expect(
+        readOperationLog(HASH)?.model.overlays.map((item) => item.id),
+      ).toEqual(["h1"]);
+      view.unmount();
+    } finally {
+      drafts.put = originalPut;
+      clearOperationLog(HASH);
+      await drafts.remove(HASH);
+    }
+  });
+
+  // Undo back to the original deletes the saved draft, and teardown can cut
+  // that deletion short just like a put. The synchronous tier must then
+  // outrank the stale draft, or the undone highlight comes back on reopen.
+  async function saveThenUndoWithRemovalHeld() {
+    const { useEditorStore } = await import("../store/store");
+    const { default: drafts } = await import("../../storage/drafts");
+    const { useDraftSync } = await import("./useDraftSync");
+    const { clearOperationLog, readOperationLog } = await import(
+      "../../storage/operationLog"
+    );
+    await drafts.remove(HASH);
+    clearOperationLog(HASH);
+    openDirtyDoc(useEditorStore);
+    const view = renderHook(() => useDraftSync(HASH, false));
+    await act(() => view.result.current.flushNow());
+    expect(await drafts.get(HASH)).toBeTruthy();
+    expect(readOperationLog(HASH)).toBeNull();
+
+    const originalRemove = drafts.removeDraftPreservingLiveOperationReceiptsIfVersion;
+    let releaseRemoval!: () => void;
+    const held = new Promise<void>((resolve) => {
+      releaseRemoval = resolve;
+    });
+    drafts.removeDraftPreservingLiveOperationReceiptsIfVersion = async (...args) => {
+      await held;
+      return originalRemove(...args);
+    };
+    act(() => useEditorStore.getState().undo());
+    act(() => {
+      void view.result.current.flushNow();
+    });
+    const restore = async () => {
+      drafts.removeDraftPreservingLiveOperationReceiptsIfVersion = originalRemove;
+      view.unmount();
+      clearOperationLog(HASH);
+      await drafts.remove(HASH);
+    };
+    return { drafts, readOperationLog, releaseRemoval, restore };
+  }
+
+  test("suspension after Undo to the original outranks the stale draft", async () => {
+    const { chooseDraftRecovery } = await import("../../workspace/intake/recovery");
+    const { drafts, readOperationLog, restore } = await saveThenUndoWithRemovalHeld();
+    try {
+      // What the next open would restore if the page died right here.
+      const recovery = chooseDraftRecovery(
+        await drafts.get(HASH),
+        readOperationLog(HASH),
+        [page],
+        [],
+      );
+      expect(recovery?.overlays).toEqual([]);
+    } finally {
+      await restore();
+    }
+  });
+
+  test("a deletion refused by a newer draft drops the clean log suspension wrote", async () => {
+    const { drafts, readOperationLog, releaseRemoval, restore } =
+      await saveThenUndoWithRemovalHeld();
+    try {
+      const saved = await drafts.get(HASH);
+      // Another window saves the same document meanwhile; its draft wins.
+      await drafts.put({ ...saved!, lastTouched: Date.now() + 1 });
+      releaseRemoval();
+      await waitFor(() => expect(readOperationLog(HASH)).toBeNull());
+      expect(await drafts.get(HASH)).toBeTruthy();
+    } finally {
+      await restore();
+    }
+  });
+
   test("strict flush rejects when the durable draft write fails", async () => {
     const { useEditorStore } = await import("../store/store");
     const { default: drafts } = await import("../../storage/drafts");

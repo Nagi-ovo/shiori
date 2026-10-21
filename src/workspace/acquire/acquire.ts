@@ -78,6 +78,10 @@ export type AcquirePorts = {
   webHandles: {
     canUse: () => boolean;
     pickDocument: () => Promise<PickedFile | null>;
+    /** The Open picker: a multi-select, each unreadable file reported. */
+    pickDocuments: (
+      onError: (error: unknown, name?: string) => void,
+    ) => Promise<PickedFile[]>;
     pickPdf: () => Promise<PickedFile | null>;
     readDocument: (id: string) => Promise<PickedFile>;
     readPdf: (id: string) => Promise<PickedFile>;
@@ -179,6 +183,9 @@ export function createDocumentAcquisition(ports: AcquirePorts) {
         const picked = await platform.pickDocuments((error, name) =>
           ports.notify({ kind: "openFailed", error, name }),
         );
+        // A claimed intent backgrounds every slower open still in flight, so
+        // a pick that opens nothing (a cancel) must not claim one.
+        if (picked.length === 0) return;
         const foregroundIntent = ports.store.getState().claimForegroundIntent();
         for (const payload of picked) {
           await ports.open.document(payload, { foregroundIntent });
@@ -190,11 +197,18 @@ export function createDocumentAcquisition(ports: AcquirePorts) {
     }
     if (webHandlesUsable()) {
       try {
-        const picked = await webHandles.pickDocument();
-        if (!picked) return;
-        const kind = acceptedKind(picked.name);
-        if (!kind) return;
-        await ports.open.document(pickedPayload(picked, kind));
+        const picked = await webHandles.pickDocuments((error, name) =>
+          ports.notify({ kind: "openFailed", error, name }),
+        );
+        const accepted = picked.flatMap((file) => {
+          const kind = acceptedKind(file.name);
+          return kind ? [pickedPayload(file, kind)] : [];
+        });
+        if (accepted.length === 0) return;
+        const foregroundIntent = ports.store.getState().claimForegroundIntent();
+        for (const loaded of accepted) {
+          await ports.open.document(loaded, { foregroundIntent });
+        }
       } catch (error) {
         ports.notify({ kind: "openFailed", error });
       }

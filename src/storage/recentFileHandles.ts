@@ -149,18 +149,22 @@ async function openPdfWithWebFileHandlePickerUsing(
   );
 }
 
+type WebFileHandlePickOptions = {
+  persistHandle?: boolean;
+  requiredKind?: DocumentKind;
+  excludeAcceptAllOption?: boolean;
+};
+
+const DOCUMENT_PICKER_TYPES: WebFilePickerType[] = [
+  {
+    description: "Documents",
+    accept: DOCUMENT_PICKER_ACCEPT as Record<string, string[]>,
+  },
+];
+
 export async function openDocumentWithWebFileHandlePicker(
-  types: WebFilePickerType[] = [
-    {
-      description: "Documents",
-      accept: DOCUMENT_PICKER_ACCEPT as Record<string, string[]>,
-    },
-  ],
-  options: {
-    persistHandle?: boolean;
-    requiredKind?: DocumentKind;
-    excludeAcceptAllOption?: boolean;
-  } = {},
+  types: WebFilePickerType[] = DOCUMENT_PICKER_TYPES,
+  options: WebFileHandlePickOptions = {},
 ): Promise<WebFileHandleDocumentPayload | null> {
   const picker = (window as WindowWithFileSystemPicker).showOpenFilePicker;
   if (!picker) return null;
@@ -170,26 +174,65 @@ export async function openDocumentWithWebFileHandlePicker(
 async function openDocumentWithWebFileHandlePickerUsing(
   picker: WebFilePicker,
   types: WebFilePickerType[],
-  options: {
-    persistHandle?: boolean;
-    requiredKind?: DocumentKind;
-    excludeAcceptAllOption?: boolean;
-  },
+  options: WebFileHandlePickOptions,
 ): Promise<WebFileHandleDocumentPayload | null> {
-  let handles: WebFileHandle[];
+  const handles = await pickWebFileHandles(picker, types, options, false);
+  const handle = handles[0];
+  if (!handle) return null;
+  return readAndRememberPickedHandle(handle, options);
+}
+
+/**
+ * The Open command on Chromium: a multi-select, like the hidden file input,
+ * the desktop dialog and the mobile picker. Each file is read and remembered
+ * on its own; one that cannot be read is reported and the rest still open.
+ */
+export async function openDocumentsWithWebFileHandlePicker(
+  onError: (error: unknown, name?: string) => void,
+): Promise<WebFileHandleDocumentPayload[]> {
+  const picker = (window as WindowWithFileSystemPicker).showOpenFilePicker;
+  if (!picker) return [];
+  return openDocumentsWithWebFileHandlePickerUsing(picker, onError);
+}
+
+async function openDocumentsWithWebFileHandlePickerUsing(
+  picker: WebFilePicker,
+  onError: (error: unknown, name?: string) => void,
+): Promise<WebFileHandleDocumentPayload[]> {
+  const handles = await pickWebFileHandles(picker, DOCUMENT_PICKER_TYPES, {}, true);
+  const payloads: WebFileHandleDocumentPayload[] = [];
+  for (const handle of handles) {
+    try {
+      payloads.push(await readAndRememberPickedHandle(handle, {}));
+    } catch (err) {
+      onError(err, handle.name);
+    }
+  }
+  return payloads;
+}
+
+async function pickWebFileHandles(
+  picker: WebFilePicker,
+  types: WebFilePickerType[],
+  options: WebFileHandlePickOptions,
+  multiple: boolean,
+): Promise<WebFileHandle[]> {
   try {
-    handles = await picker({
-      multiple: false,
+    return await picker({
+      multiple,
       excludeAcceptAllOption: options.excludeAcceptAllOption ?? false,
       types,
     });
   } catch (err) {
-    if (isPickerAbort(err)) return null;
+    if (isPickerAbort(err)) return [];
     throw err;
   }
+}
 
-  const handle = handles[0];
-  if (!handle) return null;
+async function readAndRememberPickedHandle(
+  handle: WebFileHandle,
+  options: WebFileHandlePickOptions,
+): Promise<WebFileHandleDocumentPayload> {
   // Validate and read before persisting the capability. A cancelled, invalid,
   // or unreadable one-off source must never consume one of the recent-handle
   // slots or leave a durable browser permission behind.
@@ -395,6 +438,7 @@ async function readWebFileHandle(
 
 export const __recentFileHandlesTest = {
   openPdfWithWebFileHandlePickerUsing,
+  openDocumentsWithWebFileHandlePickerUsing,
   readWebFileHandle,
   writeTextToHandle,
   touchWebFileHandle,
