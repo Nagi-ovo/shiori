@@ -49,6 +49,8 @@ import {
 } from "./overlayGuards";
 import { contentFontFamilyCss, fontFamilyCss } from "./overlayTextStyle";
 import { LiveRevealText } from "./LiveRevealText";
+import { TextOverlayEditor } from "./TextOverlayEditor";
+import { textBoxSurface } from "./textBoxSurface";
 import {
   findActiveLiveOverlayReveal,
   liveRevealAnimationDelay,
@@ -584,9 +586,7 @@ function TextOverlayDom({
   // shift by the border width the moment the overlay is selected or edited
   // (the old vertical-nudge constants were chasing exactly this). An
   // outline occupies no layout space and still supports dashed strokes.
-  const border = isContentEdit || isCallout
-    ? "none"
-    : `1px dashed ${selected ? T.ink : "rgba(26,24,21,0.18)"}`;
+  const surface = textBoxSurface(overlay, { selected, collapsed, scale });
   const outline = contentEditing
     ? `1.5px solid ${T.accent}`
     : isContentEdit && selected
@@ -708,7 +708,7 @@ function TextOverlayDom({
         height: box.height,
         transform: `rotate(${box.totalDeg}deg)`,
         transformOrigin: "center center",
-        border,
+        border: surface.border,
         // A seal already IS overlay.color, so the card's own selected outline
         // would be invisible on it — switch to the accent ring instead.
         outline: collapsed
@@ -719,13 +719,7 @@ function TextOverlayDom({
         outlineOffset: collapsed ? 2 : undefined,
         // backgroundColor, not the `background` shorthand: shorthands are not
         // transitionable, and the collapse morph needs this to animate.
-        backgroundColor: isCallout
-          ? collapsed
-            ? overlay.color
-            : "rgba(255,253,247,0.96)"
-          : selected
-            ? "rgba(26,24,21,0.02)"
-            : "transparent",
+        backgroundColor: surface.backgroundColor,
         borderRadius: isCallout ? (collapsed ? 999 : 5) : undefined,
         boxShadow: collapsed
           ? `0 0 0 ${sealRingPx}px rgba(255,253,247,0.96), 0 2px 6px rgba(35,26,15,0.22)`
@@ -824,7 +818,7 @@ function TextOverlayDom({
               ? `translateY(${baselineShiftPx}px)`
               : undefined,
           font: fontShorthand,
-          color: overlay.color,
+          color: surface.color,
           textAlign: overlay.align,
           // Mid-line selection start: CSS text-indent applies to the first
           // formatted line only — exactly the line that starts right of the
@@ -848,64 +842,12 @@ function TextOverlayDom({
         }}
       >
         {editing ? (
-          <textarea
-            ref={textareaRef}
-            autoFocus
-            dir="auto"
-            value={overlay.text}
-            data-role="interactive"
-            data-overlay-id={overlay.id}
-            onChange={(e) => onDraftTextChange?.(e.currentTarget.value)}
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onBlur={(e) => {
-              if (e.currentTarget.dataset.escapeCommitted === "true") return;
-              if (isToolbarTextEditorForOverlay(overlay.id, e.relatedTarget)) {
-                return;
-              }
-              if (onMaybeSuppressEditDragBlur(overlay.id, e.timeStamp)) {
-                const textarea = e.currentTarget;
-                window.requestAnimationFrame(() => textarea.focus());
-                return;
-              }
-              onCommitEdit({
-                text: e.currentTarget.value,
-              } as Partial<TextOverlay | ContentTextOverlay | CalloutOverlay>);
-            }}
-            onKeyDown={(e) => {
-              if (e.key !== "Escape") return;
-              e.preventDefault();
-              e.stopPropagation();
-              e.currentTarget.dataset.escapeCommitted = "true";
-              onCommitEdit({
-                text: e.currentTarget.value,
-              } as Partial<TextOverlay | ContentTextOverlay | CalloutOverlay>);
-            }}
-            style={{
-              width: "100%",
-              // A textarea always clips at its own bounds, so the visible-
-              // overflow fix above cannot save descenders while editing —
-              // give the control bottom slack instead (transparent, no
-              // border: the extra strip is invisible).
-              height: isContentEdit ? "calc(100% + 1em)" : "100%",
-              // text-indent inherits, and Chrome applies it to EVERY line of
-              // a textarea (not just the first formatted line like the div
-              // above) — zero it here. While editing a mid-line-start edit,
-              // the first line sits flush left; the committed render and the
-              // export use the real indent.
-              textIndent: 0,
-              border: "none",
-              background: "transparent",
-              outline: "none",
-              resize: "none",
-              font: "inherit",
-              color: "inherit",
-              textAlign: "inherit",
-              padding: 0,
-              overflow: "hidden",
-              whiteSpace: "inherit",
-            }}
-            wrap={isContentEdit ? "off" : "soft"}
+          <TextOverlayEditor
+            overlay={overlay}
+            textareaRef={textareaRef}
+            onDraftTextChange={onDraftTextChange}
+            onCommitEdit={onCommitEdit}
+            onMaybeSuppressEditDragBlur={onMaybeSuppressEditDragBlur}
           />
         ) : overlay.text ? (
           <LiveRevealText
@@ -1661,15 +1603,6 @@ function unionDisplayRects(
   }
   if (!Number.isFinite(minX)) return null;
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-}
-
-function isToolbarTextEditorForOverlay(
-  overlayId: string,
-  target: EventTarget | null,
-): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  const editor = target.closest<HTMLElement>("[data-shiori-text-toolbar-editor]");
-  return editor?.dataset.overlayId === overlayId;
 }
 
 // Distance (px) the rotation handle floats above the box's top edge.
