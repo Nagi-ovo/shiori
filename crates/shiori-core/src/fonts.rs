@@ -30,8 +30,8 @@ pub struct EmbeddedFont {
     pub flags: i32,
     pub format: FontFormat,
     /// Whether the program as it is, through its own cmap and advances,
-    /// draws every probe character this dictionary maps the way the
-    /// dictionary does (`own_cmap::draws_alike`). Only then may a browser
+    /// draws every character this dictionary maps (the probe's and those
+    /// past it) the way the dictionary does (`own_cmap::draws_alike`). Only then may a browser
     /// load the program as a face; otherwise the reading layer rebuilds it.
     pub own_cmap: bool,
     pub data: Vec<u8>,
@@ -319,7 +319,7 @@ impl Document {
                             own_cmap: matches!(
                                 FontFormat::of(&data),
                                 FontFormat::TrueType | FontFormat::OpenType
-                            ) && own_cmap::draws_alike(lib, font, &data),
+                            ) && own_cmap::draws_alike(lib, font, &data, &beyond),
                             data,
                         });
                     }

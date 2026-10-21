@@ -274,3 +274,29 @@ fn dictionaries_parting_beyond_the_probe_differ() {
     assert_eq!(ids_of(&glyphs, "\u{400}"), [grave]);
     assert_eq!(font_of(&glyphs, "é").1, plain);
 }
+
+#[test]
+fn a_dictionary_parting_from_its_program_past_the_probe_is_rebuilt() {
+    // One whole Liberation Sans program under two dictionaries (audit B108):
+    // pdf-lib's own, and one whose /ToUnicode calls the glyph of "A" U+0400.
+    // The program's own cmap draws U+0400 as Ѐ, so a browser loading it as
+    // it is would set the second's text with the wrong letter.
+    let doc = core()
+        .open(fixture("shared-truetype-beyond.pdf"), None)
+        .unwrap();
+    let fonts = doc.embedded_fonts(0).unwrap();
+    let own: Vec<bool> = fonts.iter().map(|font| font.own_cmap).collect();
+    assert_eq!(own, [true, false]);
+    assert_eq!(fonts[0].data, fonts[1].data);
+    assert_ne!(fonts[0].id, fonts[1].id);
+
+    // Rebuilt, its U+0400 is the program's A.
+    let name = fonts[0].name.clone();
+    let rebuilt = doc.font_outlines(0, &[name]).unwrap();
+    let path = |id: &str, unicode: char| {
+        let font = rebuilt.iter().find(|font| font.id == id).unwrap();
+        let glyph = font.glyphs.iter().find(|g| g.unicode == unicode as u32);
+        glyph.unwrap().path.clone()
+    };
+    assert_eq!(path(&fonts[1].id, '\u{400}'), path(&fonts[0].id, 'A'));
+}
