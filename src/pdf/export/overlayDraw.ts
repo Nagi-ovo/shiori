@@ -16,6 +16,7 @@ import {
   rgb,
   setLineCap,
   setLineJoin,
+  setGraphicsState,
   setLineWidth,
   setStrokingColor,
   stroke,
@@ -295,7 +296,8 @@ function drawRect(out: PDFPage, o: RectOverlay) {
     borderColor: hexToRgb(o.color),
     borderWidth: o.strokeWidth,
     color: o.fill ? hexToRgb(o.fill) : undefined,
-    opacity: o.fill ? 1 : 0,
+    opacity: o.fill ? (o.opacity ?? 1) : 0,
+    borderOpacity: o.opacity,
   });
 }
 
@@ -322,8 +324,14 @@ function drawStamp(out: PDFPage, o: StampOverlay) {
 
 function drawInk(out: PDFPage, o: InkOverlay) {
   const color = hexToRgb(o.color);
+  out.pushOperators(pushGraphicsState());
+  // An imported stroke's /CA (a highlighter pen); none for Shiori's own.
+  if (o.opacity !== undefined && o.opacity < 1) {
+    const ctx = out.doc.context;
+    const gs = out.node.newExtGState("GS", ctx.obj({ Type: "ExtGState", CA: Math.max(0, o.opacity) }));
+    out.pushOperators(setGraphicsState(gs));
+  }
   out.pushOperators(
-    pushGraphicsState(),
     setStrokingColor(color),
     setLineWidth(o.width),
     setLineCap(LineCapStyle.Round),
