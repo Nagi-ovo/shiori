@@ -129,6 +129,8 @@ pub(super) fn validate_context(context: &LiveApiContext) -> Result<(), String> {
                 || annotation.kind.trim().is_empty()
                 || annotation.page == 0
                 || annotation.page > context.page_count
+                || is_empty(&annotation.text)
+                || is_empty(&annotation.quote)
             {
                 return Err("live-api-context-invalid".into());
             }
@@ -140,7 +142,10 @@ pub(super) fn validate_context(context: &LiveApiContext) -> Result<(), String> {
                     return Err("live-api-context-invalid".into());
                 }
                 for turn in thread {
-                    if turn.role != "user" && turn.role != "agent" {
+                    if (turn.role != "user" && turn.role != "agent")
+                        || turn.text.is_empty()
+                        || is_empty(&turn.author)
+                    {
                         return Err("live-api-context-invalid".into());
                     }
                     spent += turn.text.len() + turn.author.as_ref().map_or(0, String::len);
@@ -152,6 +157,12 @@ pub(super) fn validate_context(context: &LiveApiContext) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+// Present but empty: the CLI's isBoundedString (cli/src/liveWire.ts) rejects
+// it, untrimmed, so this matches that rule exactly rather than trimming.
+fn is_empty(value: &Option<String>) -> bool {
+    value.as_deref() == Some("")
 }
 
 pub(super) fn validate_target(target: &LiveApiTarget) -> bool {
@@ -194,6 +205,49 @@ mod tests {
 
     fn sha(byte: char) -> String {
         std::iter::repeat_n(byte, 64).collect()
+    }
+
+    fn context_with_callout(text: &str, author: Option<&str>) -> LiveApiContext {
+        LiveApiContext {
+            document_id: "document-1".into(),
+            name: "paper.pdf".into(),
+            path: None,
+            sha256: sha('a'),
+            page_topology_hash: sha('b'),
+            page_count: 1,
+            active_page: None,
+            annotation_count: 1,
+            dirty: false,
+            annotations: Some(vec![LiveApiAnnotationDigest {
+                id: "c1".into(),
+                kind: "callout".into(),
+                page: 1,
+                text: Some("Why?".into()),
+                quote: None,
+                thread: Some(vec![LiveApiThreadTurn {
+                    role: "agent".into(),
+                    author: author.map(Into::into),
+                    text: text.into(),
+                }]),
+            }]),
+            annotations_truncated: None,
+        }
+    }
+
+    // The CLI drops the whole context when any digest string it reads is
+    // empty (cli/src/liveWire.ts isBoundedString), so native must refuse to
+    // publish one rather than serve a context every `app` command rejects.
+    #[test]
+    fn context_with_an_empty_digest_string_is_rejected() {
+        assert!(validate_context(&context_with_callout("same argument", Some("Codex"))).is_ok());
+        assert!(validate_context(&context_with_callout("", None)).is_err());
+        assert!(validate_context(&context_with_callout("same argument", Some(""))).is_err());
+        let mut empty_text = context_with_callout("same argument", None);
+        empty_text.annotations.as_mut().unwrap()[0].text = Some(String::new());
+        assert!(validate_context(&empty_text).is_err());
+        let mut empty_quote = context_with_callout("same argument", None);
+        empty_quote.annotations.as_mut().unwrap()[0].quote = Some(String::new());
+        assert!(validate_context(&empty_quote).is_err());
     }
 
     #[test]
