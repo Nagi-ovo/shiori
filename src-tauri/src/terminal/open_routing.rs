@@ -211,10 +211,17 @@ fn configure_windows_open_routing(command: &mut CommandBuilder, routing: &OpenRo
         .unwrap_or_default()
         .to_ascii_lowercase();
     if program == "cmd.exe" || program == "cmd" {
-        // No quotes of our own: portable-pty adds one pair when the path has
-        // spaces, which is the form cmd's /K accepts.
+        // The path never goes into argv: portable-pty would escape our quotes
+        // as \" and add none of its own for `&`, and cmd's /K strips a single
+        // pair around `&()`. cmd expands %VAR% before it looks for operators,
+        // and the quotes inside the env value keep the path one token.
+        let script = routing.shim_dir.join("shiori-cmd-init.cmd");
+        let mut quoted = std::ffi::OsString::from("\"");
+        quoted.push(script.as_os_str());
+        quoted.push("\"");
+        command.env("SHIORI_CMD_INIT", quoted);
         command.arg("/K");
-        command.arg(routing.shim_dir.join("shiori-cmd-init.cmd"));
+        command.arg("%SHIORI_CMD_INIT%");
         return;
     }
     if program == "powershell.exe"
@@ -475,12 +482,15 @@ Set-Alias -Name start -Value Start-Process -Scope Global -Force
 mod tests {
     use super::*;
 
-    // B087: portable-pty quotes Windows arguments by CRT rules, so a quote
-    // inside one becomes \", which cmd's /K parser does not decode. The init
-    // script must go in as one bare argument (quoted once if it has spaces).
+    // B087: portable-pty quotes Windows arguments by CRT rules (a `"` inside
+    // becomes `\"`, which cmd does not decode) and only when they contain
+    // whitespace. A legal profile dir like `C:\Users\A&B (x)` then breaks
+    // `/K` either way: bare, cmd splits at `&`; quoted once, cmd strips the
+    // quotes because `&()` sit inside them. An env value that carries its own
+    // quotes is expanded before cmd looks for operators, so it stays one token.
     #[test]
-    fn cmd_exe_receives_its_init_script_as_one_unquoted_argument() {
-        let shim_dir = PathBuf::from("C:/Users/Jo Doe/AppData/Local/shiori/bin");
+    fn cmd_exe_reads_its_init_script_path_from_a_quoted_env_value() {
+        let shim_dir = PathBuf::from("C:/Users/A&B (x) Doe/AppData/Local/shiori/bin");
         let routing = OpenRouting {
             shim_dir: shim_dir.clone(),
             request_path: PathBuf::from("open.log"),
@@ -488,11 +498,12 @@ mod tests {
         let mut command = CommandBuilder::new("cmd.exe");
         configure_windows_open_routing(&mut command, &routing);
         let argv = command.get_argv();
-        assert_eq!(argv.len(), 3);
-        assert_eq!(argv[1], "/K");
+        assert_eq!(argv[1..], ["/K", "%SHIORI_CMD_INIT%"]);
+        let script = shim_dir.join("shiori-cmd-init.cmd");
+        let expected = format!("\"{}\"", script.to_string_lossy());
         assert_eq!(
-            argv[2],
-            shim_dir.join("shiori-cmd-init.cmd").into_os_string()
+            command.get_env("SHIORI_CMD_INIT"),
+            Some(std::ffi::OsStr::new(&expected))
         );
     }
 }
