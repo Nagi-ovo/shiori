@@ -96,20 +96,68 @@ function isCompleteInstall(dir, target) {
   }
 }
 
-function publishInstall(staging, dest, target) {
+// The locked step is two renames; a lock older than this was left by a run
+// killed while holding it.
+const INSTALL_LOCK_STALE_MS = 10_000;
+
+function withInstallLock(lock, isDone, critical) {
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
+    try {
+      mkdirSync(lock);
+      break;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+    // The holder may be publishing the very install this run is after.
+    if (isDone()) return;
+    try {
+      if (Date.now() - statSync(lock).mtimeMs > INSTALL_LOCK_STALE_MS) {
+        rmSync(lock, { recursive: true, force: true });
+      }
+    } catch {
+      // Released between the mkdir and the stat.
+    }
+    Atomics.wait(pause, 0, 0, 20);
+  }
+  try {
+    critical();
+  } finally {
+    rmSync(lock, { recursive: true, force: true });
+  }
+}
+
+function publishInstall(staging, dest, target, lock) {
   try {
     renameSync(staging, dest);
     return;
-  } catch (error) {
+  } catch {
     // Another run got there first, or an older runner left a partial tree.
     if (isCompleteInstall(dest, target)) return;
   }
-  rmSync(dest, { recursive: true, force: true });
-  try {
-    renameSync(staging, dest);
-  } catch (error) {
-    if (!isCompleteInstall(dest, target)) throw error;
-  }
+  // Replacing that tree is the one step that removes anything, so runs take
+  // it in turn and look again once they hold the lock: by then the tree may
+  // be the whole install of the run before. It is moved aside, not deleted
+  // in place, so dest is only ever the old tree, absent, or a whole one.
+  const done = () => isCompleteInstall(dest, target);
+  withInstallLock(lock, done, () => {
+    if (done()) return;
+    const stale = `${staging}-stale`;
+    try {
+      try {
+        renameSync(dest, stale);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      try {
+        renameSync(staging, dest);
+      } catch (error) {
+        if (!done()) throw error;
+      }
+    } finally {
+      rmSync(stale, { recursive: true, force: true });
+    }
+  });
 }
 
 export async function fetchCliManifest(api = CLI_RELEASE_API) {
@@ -177,7 +225,12 @@ export async function ensureCliBinary(options = {}) {
     }
     if (!target.startsWith("win32")) chmodSync(staged, 0o755);
     writeFileSync(join(staging, INSTALL_COMPLETE_MARKER), "");
-    publishInstall(staging, dest, target);
+    publishInstall(
+      staging,
+      dest,
+      target,
+      join(home, "cli", `.${manifest.version}.lock`),
+    );
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }

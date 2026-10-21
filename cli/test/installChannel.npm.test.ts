@@ -141,6 +141,75 @@ describe("CLI install channel: npm runner", () => {
     });
   });
 
+  // Several agents starting `npx @nagi-ovo/shiori` over a half-written
+  // version directory each extract and then replace it. Without one run at
+  // a time doing the replacing, a run deleted the tree another had just
+  // published, and the others failed on a rename into a non-empty directory.
+  // Skipped on Windows, where a scanner holding a handle can fail any rename.
+  test.skipIf(process.platform === "win32")(
+    "concurrent npm runs all recover a half-extracted version directory",
+    async () => {
+      if (!target) return;
+      await withTempDir(async (dir) => {
+        const executable = "shiori";
+        const files: Record<string, string> = { "native/shiori_core.node": "addon" };
+        for (let i = 0; i < 400; i++) files[`licenses/notice-${i}.txt`] = "notice";
+        const { server } = await serveCliArchive(
+          makeArchive(mkdtempSync(join(dir, "pkg-")), executable, files),
+          target,
+        );
+        servers.push(server);
+        const home = join(dir, ".shiori");
+        const partial = join(home, "cli", "0.1.25");
+        mkdirSync(join(partial, "licenses"), { recursive: true });
+        writeFileSync(join(partial, executable), "#!/bin/sh\necho shiori-partial\n");
+        for (let i = 0; i < 400; i++) {
+          writeFileSync(join(partial, "licenses", `notice-${i}.txt`), "notice");
+        }
+        const child = join(dir, "child.mjs");
+        writeFileSync(
+          child,
+          [
+            'import { existsSync, readFileSync } from "node:fs";',
+            'import { dirname, join } from "node:path";',
+            "const { ensureCliBinary } = await import(process.env.INSTALL_MJS);",
+            "await new Promise((r) => setTimeout(r, Number(process.env.START_AT) - Date.now()));",
+            "try {",
+            "  const binary = await ensureCliBinary({",
+            "    api: process.env.API, target: process.env.TARGET,",
+            '    env: { SHIORI_CLI_HOME: process.env.HOME_DIR, SHIORI_CLI_ALLOW_HTTP: "1" },',
+            "  });",
+            '  const whole = readFileSync(binary, "utf8").includes("shiori-ok") &&',
+            '    existsSync(join(dirname(binary), "native", "shiori_core.node"));',
+            '  console.log(whole ? "whole" : "broken");',
+            "} catch (error) {",
+            "  console.log(`threw ${error.code ?? error.message}`);",
+            "}",
+          ].join("\n"),
+        );
+        const startAt = Date.now() + 1500;
+        const runs = Array.from({ length: 6 }, () =>
+          Bun.spawn([process.execPath, child], {
+            env: {
+              ...process.env,
+              INSTALL_MJS: join(import.meta.dir, "..", "npm", "install.mjs"),
+              API: `http://127.0.0.1:${server.port}/api/cli`,
+              TARGET: target,
+              HOME_DIR: home,
+              START_AT: String(startAt),
+            },
+            stdout: "pipe",
+          }),
+        );
+        const outcomes = await Promise.all(
+          runs.map(async (run) => (await new Response(run.stdout).text()).trim()),
+        );
+        expect(outcomes).toEqual(Array(6).fill("whole"));
+      });
+    },
+    30_000,
+  );
+
   // The archive used to go through a fixed name in the shared temp
   // directory, written with a plain truncate-and-write: whatever sat at that
   // name, another user's file or a symlink to one of ours, got the bytes.
