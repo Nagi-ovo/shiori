@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream } from "pdf-lib";
+import { decodePDFRawStream, PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream } from "pdf-lib";
 import { exportPdf } from "./exportPdf";
 import { importFileAnnotations } from "../import/annotations";
 import type { Overlay, PageModel, PdfRect } from "../model/types";
@@ -47,7 +47,7 @@ function close(actual: number[] | undefined, expected: number[]) {
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
 describe("a turned box in the editable export", () => {
-  test.each(["text", "stamp"])("a %s at 30° carries the turn in its appearance", async (kind) => {
+  test.each(["rect", "text", "stamp"])("a %s at 30° carries the turn in its appearance", async (kind) => {
     const { dict } = await exported({ ...shapes[kind]!, angle: 30 } as Overlay);
     const [cos, sin] = [Math.cos(rad(30)), Math.sin(rad(30))];
     // Clockwise on screen is the negative angle in PDF's y-up space.
@@ -56,6 +56,17 @@ describe("a turned box in the editable export", () => {
     const h = RECT.w * sin + RECT.h * cos;
     close(numbers(dict.lookupMaybe(PDFName.of("Rect"), PDFArray)), [200 - w / 2, 125 - h / 2, 200 + w / 2, 125 + h / 2]);
     expect(dict.get(PDFName.of("Rotate"))).toBeUndefined();
+  });
+
+  // Its appearance replaces the one a viewer would draw from /IC and /CA.
+  test("a turned rectangle's appearance paints its fill at its opacity", async () => {
+    const { dict } = await exported({ ...shapes.rect!, angle: 30, opacity: 0.3 } as Overlay);
+    const normal = dict.lookup(PDFName.of("AP"), PDFDict).lookup(PDFName.of("N"), PDFRawStream);
+    const ops = new TextDecoder().decode(decodePDFRawStream(normal).decode());
+    expect(ops).toContain("1 1 0 rg");
+    expect(ops).toContain("/GS0 gs");
+    const gs = normal.dict.lookup(PDFName.of("Resources"), PDFDict).lookup(PDFName.of("ExtGState"), PDFDict).lookup(PDFName.of("GS0"), PDFDict);
+    expect(gs.get(PDFName.of("ca"))?.toString()).toBe("0.3");
   });
 
   test("a text box at a quarter turn also writes /Rotate", async () => {

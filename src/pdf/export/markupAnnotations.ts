@@ -34,10 +34,12 @@ import type {
   UnderlineOverlay,
 } from "../model/types";
 import {
+  freeRotation,
   hexToRgbArr,
   setShioAnchor,
   shioriAnnotationName,
   unionRects,
+  type FreeRotation,
 } from "./annotationShared";
 
 export function buildHighlight(page: PDFPage, o: HighlightOverlay): PDFRef {
@@ -241,10 +243,11 @@ export function buildStickyNote(page: PDFPage, o: NoteOverlay): PDFRef {
 export function buildSquare(page: PDFPage, o: RectOverlay): PDFRef {
   const ctx = page.doc.context;
   const color = hexToRgbArr(o.color);
+  const turn = freeRotation(o.rect, o.angle);
   const dict = ctx.obj({
     Type: "Annot",
     Subtype: "Square",
-    Rect: [o.rect.x, o.rect.y, o.rect.x + o.rect.w, o.rect.y + o.rect.h],
+    Rect: turn?.rect ?? [o.rect.x, o.rect.y, o.rect.x + o.rect.w, o.rect.y + o.rect.h],
     C: color,
     BS: ctx.obj({ W: o.strokeWidth }),
     F: 4,
@@ -255,7 +258,43 @@ export function buildSquare(page: PDFPage, o: RectOverlay): PDFRef {
   }
   if (o.comment) dict.set(PDFName.of("Contents"), commentContents(o));
   setOpacity(dict, o);
+  if (turn) dict.set(PDFName.of("AP"), ctx.obj({ N: buildTurnedSquareAppearance(page, o, turn) }));
   return ctx.register(dict);
+}
+
+// A Square has no rotation of its own, and a viewer draws one without an
+// appearance square to its /Rect. A turned one gets an appearance turned by
+// its /Matrix, drawn as viewers draw a Square: the border inside the box.
+function buildTurnedSquareAppearance(page: PDFPage, o: RectOverlay, turn: FreeRotation): PDFRef {
+  const ctx = page.doc.context;
+  const [r, g, b] = hexToRgbArr(o.color);
+  const width = Math.max(0, Math.min(o.strokeWidth, o.rect.w, o.rect.h));
+  const resources = ctx.obj({});
+  const operators = [pushGraphicsState()];
+  if (typeof o.opacity === "number" && o.opacity < 1) {
+    const alpha = Math.max(0, o.opacity);
+    resources.set(PDFName.ExtGState, ctx.obj({ GS0: ctx.obj({ Type: "ExtGState", CA: alpha, ca: alpha }) }));
+    operators.push(setGraphicsState(PDFName.of("GS0")));
+  }
+  if (o.fill) {
+    const [fr, fg, fb] = hexToRgbArr(o.fill);
+    operators.push(setFillingColor(rgb(fr, fg, fb)), rectangle(0, 0, o.rect.w, o.rect.h), fill());
+  }
+  if (width > 0) {
+    operators.push(
+      setStrokingColor(rgb(r, g, b)),
+      setLineWidth(width),
+      rectangle(width / 2, width / 2, o.rect.w - width, o.rect.h - width),
+      stroke(),
+    );
+  }
+  operators.push(popGraphicsState());
+  const stream = ctx.formXObject(operators, {
+    Resources: resources,
+    BBox: ctx.obj([0, 0, o.rect.w, o.rect.h]),
+    Matrix: ctx.obj(turn.matrix),
+  });
+  return ctx.register(stream);
 }
 
 // /CA for a translucent square or ink; none for an opaque one, as before.
