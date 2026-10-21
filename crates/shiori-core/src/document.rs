@@ -19,11 +19,15 @@ pub struct Document {
 }
 
 // A document may move to another thread, but only the thread that owns it
-// calls into it. pdfium-render's thread-safe table locks each FFI call, so
-// calls never overlap, but it orders nothing across the several calls one
-// read takes (load page, load text page, walk, close); PDFium documents no
-// guarantee for a document shared between threads, so it is not Sync. The
-// desktop app gives each document to its one render thread.
+// calls into it. pdfium-render 0.9.4's thread-safe table locks only some
+// FFI calls (FPDFText_SetCharcodes, FPDFPageObj_CreateTextObj, FPDFPage_New
+// and FPDFBitmap_CreateEx are among those it leaves open), and it orders
+// nothing across the several calls one read takes (load page, load text
+// page, walk, close); PDFium documents no guarantee for a document shared
+// between threads, so it is not Sync. Every host drives PDFium from one
+// thread: the desktop app's render thread owns every document, the web
+// build has one worker and the CLI's addon runs on the JS thread. The
+// core's Rust tests run on one thread too (.cargo/config.toml).
 unsafe impl Send for Document {}
 
 impl Drop for Document {
