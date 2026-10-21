@@ -22,6 +22,12 @@
 //!   no load is in flight, and the URL again when a load finishes (a
 //!   pushState during the load). Registered at build time; it runs on the
 //!   main thread inside the engine's callback.
+//! - [`set_dialog_labels`] (macOS): the webview shows the page's
+//!   `alert` / `confirm` / `prompt` as a sheet on its window with these
+//!   button titles, read when each dialog opens. Without labels the
+//!   webview answers them at once (`confirm` false, `prompt` null), as
+//!   upstream wry, whose UI delegate has no `runJavaScript*Panel` methods.
+//!   WebView2 and WebKitGTK show their own dialogs either way.
 
 use std::{
   collections::HashMap,
@@ -40,31 +46,44 @@ pub struct HistoryEvent {
 
 pub type HistoryHandler = Arc<dyn Fn(HistoryEvent) + Send + Sync>;
 
+/// Button titles for the page's JavaScript dialogs, in the host's language.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DialogLabels {
+  pub ok: String,
+  pub cancel: String,
+}
+
 #[derive(Default)]
 struct Hooks {
   history: Option<HistoryHandler>,
+  dialog_labels: Option<DialogLabels>,
 }
 
 static HOOKS: Mutex<Option<HashMap<String, Hooks>>> = Mutex::new(None);
 
-fn with_hooks<T>(webview_id: &str, read: impl FnOnce(Option<&mut Hooks>) -> T) -> T {
+fn with_hooks<T>(webview_id: &str, f: impl FnOnce(&mut Hooks) -> T) -> T {
   let mut hooks = HOOKS.lock().unwrap_or_else(|err| err.into_inner());
-  read(hooks.get_or_insert_with(HashMap::new).get_mut(webview_id))
+  let hooks = hooks.get_or_insert_with(HashMap::new);
+  f(hooks.entry(webview_id.to_string()).or_default())
 }
 
 /// Register (or with `None`, remove) the history handler of the webview built
 /// with this id. Takes effect for webviews built afterwards.
 pub fn set_history_handler(webview_id: &str, handler: Option<HistoryHandler>) {
-  let mut hooks = HOOKS.lock().unwrap_or_else(|err| err.into_inner());
-  hooks
-    .get_or_insert_with(HashMap::new)
-    .entry(webview_id.to_string())
-    .or_default()
-    .history = handler;
+  with_hooks(webview_id, |hooks| hooks.history = handler);
+}
+
+/// Set (or with `None`, remove) the dialog button titles of the webview with
+/// this id. Takes effect for the next dialog, also in a webview already built.
+pub fn set_dialog_labels(webview_id: &str, labels: Option<DialogLabels>) {
+  with_hooks(webview_id, |hooks| hooks.dialog_labels = labels);
 }
 
 pub(crate) fn history_handler(webview_id: &str) -> Option<HistoryHandler> {
-  with_hooks(webview_id, |hooks| {
-    hooks.and_then(|hooks| hooks.history.clone())
-  })
+  with_hooks(webview_id, |hooks| hooks.history.clone())
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn dialog_labels(webview_id: &str) -> Option<DialogLabels> {
+  with_hooks(webview_id, |hooks| hooks.dialog_labels.clone())
 }

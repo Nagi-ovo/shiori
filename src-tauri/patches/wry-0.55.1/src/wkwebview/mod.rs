@@ -9,6 +9,8 @@ mod navigation;
 #[cfg(feature = "mac-proxy")]
 mod proxy;
 #[cfg(target_os = "macos")]
+mod shiori_dialogs;
+#[cfg(target_os = "macos")]
 mod synthetic_mouse_events;
 mod util;
 
@@ -608,7 +610,7 @@ impl InnerWebView {
       webview.setNavigationDelegate(Some(proto_navigation_policy_delegate));
 
       let ui_delegate: Retained<WryWebViewUIDelegate> =
-        WryWebViewUIDelegate::new(mtm, attributes.new_window_req_handler);
+        WryWebViewUIDelegate::new(mtm, attributes.new_window_req_handler, webview_id.clone());
       let proto_ui_delegate = ProtocolObject::from_ref(&*ui_delegate);
       webview.setUIDelegate(Some(proto_ui_delegate));
 

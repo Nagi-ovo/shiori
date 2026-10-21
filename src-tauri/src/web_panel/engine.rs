@@ -8,10 +8,10 @@
 
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, Runtime};
-use wry::shiori::{set_history_handler, HistoryEvent};
+use wry::shiori::{set_dialog_labels, set_history_handler, DialogLabels, HistoryEvent};
 
 use super::navigation::{emit_web_panel_nav, record_main_frame_commit};
-use super::{lock_web_panel, WebPanelInner, WebPanelState, WEB_PANEL_LABEL};
+use super::{lock_web_panel, WebPanelDialogLabels, WebPanelInner, WebPanelState, WEB_PANEL_LABEL};
 
 // Before the panel's webview is built: wry reads the hook at build time.
 pub(super) fn hook_engine_history<R: Runtime>(app: &AppHandle<R>) {
@@ -28,6 +28,17 @@ pub(super) fn hook_engine_history<R: Runtime>(app: &AppHandle<R>) {
         }
     };
     set_history_handler(WEB_PANEL_LABEL, Some(Arc::new(handler)));
+}
+
+// The page's alert/confirm/prompt buttons, in the app's language: wry draws
+// those dialogs itself on macOS. Set on every open, as the language may have
+// changed; without labels the page's dialogs are answered at once.
+pub(super) fn set_engine_dialog_labels(labels: Option<WebPanelDialogLabels>) {
+    let labels = labels.map(|labels| DialogLabels {
+        ok: labels.ok,
+        cancel: labels.cancel,
+    });
+    set_dialog_labels(WEB_PANEL_LABEL, labels);
 }
 
 // Returns whether the address bar or Back/Forward enablement changed.

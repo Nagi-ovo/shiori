@@ -7,13 +7,18 @@ use std::{cell::RefCell, ptr::null_mut, rc::Rc};
 
 use block2::Block;
 #[cfg(target_os = "macos")]
+use objc2::runtime::Bool;
+#[cfg(target_os = "macos")]
 use objc2::DefinedClass;
 use objc2::{define_class, msg_send, rc::Retained, runtime::NSObject, MainThreadOnly};
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{NSModalResponse, NSModalResponseOK, NSOpenPanel, NSWindowDelegate};
 use objc2_foundation::{MainThreadMarker, NSObjectProtocol};
 #[cfg(target_os = "macos")]
-use objc2_foundation::{NSArray, NSURL};
+use objc2_foundation::{NSArray, NSString, NSURL};
+
+#[cfg(target_os = "macos")]
+use crate::wkwebview::shiori_dialogs::{show, DialogGate, DialogKind};
 
 #[cfg(target_os = "macos")]
 use objc2_web_kit::WKOpenPanelParameters;
@@ -84,6 +89,12 @@ pub struct WryWebViewUIDelegateIvars {
   new_window_req_handler: Option<Box<dyn Fn(String, NewWindowFeatures) -> NewWindowResponse>>,
   #[cfg(target_os = "macos")]
   new_windows: Rc<RefCell<Vec<NewWindow>>>,
+  // Shiori (src/shiori.rs): the JavaScript dialogs' labels are looked up
+  // by this id.
+  #[cfg(target_os = "macos")]
+  webview_id: String,
+  #[cfg(target_os = "macos")]
+  dialog_gate: Rc<DialogGate>,
 }
 
 define_class!(
@@ -121,6 +132,85 @@ define_class!(
           }
         }
       }
+    }
+
+    // Shiori: the page's alert / confirm / prompt (src/shiori.rs). Upstream
+    // has none of these, so WebKit dropped them: confirm() was false and
+    // prompt() null. A webview without dialog labels still answers so.
+    #[cfg(target_os = "macos")]
+    #[unsafe(method(webView:runJavaScriptAlertPanelWithMessage:initiatedByFrame:completionHandler:))]
+    fn run_javascript_alert_panel(
+      &self,
+      webview: &WryWebView,
+      message: &NSString,
+      frame: &WKFrameInfo,
+      handler: &Block<dyn Fn()>,
+    ) {
+      let handler = handler.copy();
+      let ivars = self.ivars();
+      let answer = move |_| handler.call(());
+      show(
+        &ivars.dialog_gate,
+        &ivars.webview_id,
+        webview,
+        frame,
+        message,
+        DialogKind::Alert,
+        answer,
+      );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[unsafe(method(webView:runJavaScriptConfirmPanelWithMessage:initiatedByFrame:completionHandler:))]
+    fn run_javascript_confirm_panel(
+      &self,
+      webview: &WryWebView,
+      message: &NSString,
+      frame: &WKFrameInfo,
+      handler: &Block<dyn Fn(Bool)>,
+    ) {
+      let handler = handler.copy();
+      let ivars = self.ivars();
+      let answer = move |ok: Option<Retained<NSString>>| handler.call((Bool::new(ok.is_some()),));
+      show(
+        &ivars.dialog_gate,
+        &ivars.webview_id,
+        webview,
+        frame,
+        message,
+        DialogKind::Confirm,
+        answer,
+      );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[unsafe(method(webView:runJavaScriptTextInputPanelWithPrompt:defaultText:initiatedByFrame:completionHandler:))]
+    fn run_javascript_text_input_panel(
+      &self,
+      webview: &WryWebView,
+      prompt: &NSString,
+      default_text: Option<&NSString>,
+      frame: &WKFrameInfo,
+      handler: &Block<dyn Fn(*mut NSString)>,
+    ) {
+      let handler = handler.copy();
+      let ivars = self.ivars();
+      let answer = move |text: Option<Retained<NSString>>| {
+        let text = text
+          .as_ref()
+          .map_or(null_mut(), |text| Retained::as_ptr(text) as *mut NSString);
+        handler.call((text,));
+      };
+      let kind = DialogKind::Prompt { default_text };
+      show(
+        &ivars.dialog_gate,
+        &ivars.webview_id,
+        webview,
+        frame,
+        prompt,
+        kind,
+        answer,
+      );
     }
 
     #[unsafe(method(webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:))]
@@ -265,9 +355,12 @@ impl WryWebViewUIDelegate {
   pub fn new(
     mtm: MainThreadMarker,
     new_window_req_handler: Option<Box<dyn Fn(String, NewWindowFeatures) -> NewWindowResponse>>,
+    webview_id: String,
   ) -> Retained<Self> {
     #[cfg(target_os = "ios")]
     let _new_window_req_handler = new_window_req_handler;
+    #[cfg(target_os = "ios")]
+    let _webview_id = webview_id;
 
     let delegate = mtm
       .alloc::<WryWebViewUIDelegate>()
@@ -276,6 +369,10 @@ impl WryWebViewUIDelegate {
         new_window_req_handler,
         #[cfg(target_os = "macos")]
         new_windows: Rc::new(RefCell::new(vec![])),
+        #[cfg(target_os = "macos")]
+        webview_id,
+        #[cfg(target_os = "macos")]
+        dialog_gate: Rc::default(),
       });
     unsafe { msg_send![super(delegate), init] }
   }

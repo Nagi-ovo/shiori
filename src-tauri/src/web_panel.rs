@@ -101,14 +101,13 @@ pub(crate) struct WebPanelBounds {
 }
 
 // Button labels for the page's JavaScript alert/confirm/prompt, which iOS
-// draws itself (UIAlertController) and native code has no t() for. Desktop
-// and Android show their engine's own dialogs and ignore them.
+// (UIAlertController) and macOS (NSAlert, in the vendored wry) draw
+// themselves; native code has no t(). Android, WebView2 and WebKitGTK show
+// their engine's own dialogs and ignore them.
 #[derive(Deserialize, Clone, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct WebPanelDialogLabels {
-    #[cfg_attr(not(mobile), allow(dead_code))]
     ok: String,
-    #[cfg_attr(not(mobile), allow(dead_code))]
     cancel: String,
 }
 
@@ -140,12 +139,13 @@ pub(crate) fn web_panel_open<R: Runtime>(
     url: String,
     bounds: Option<WebPanelBounds>,
     persist_session: Option<bool>,
-    _dialog_labels: Option<WebPanelDialogLabels>,
+    dialog_labels: Option<WebPanelDialogLabels>,
 ) -> Result<(), String> {
     enforce_main_webview(&caller)?;
     enforce_runtime_guard()?;
     let parsed = parse_web_url(&url)?;
     let persist_session = persist_session.unwrap_or(true);
+    engine::set_engine_dialog_labels(dialog_labels);
     // Fresh "open" intent resets history; seed it so the address bar shows
     // the target immediately (on_navigation no-ops on the matching URL).
     let recreate_for_session_mode = {
