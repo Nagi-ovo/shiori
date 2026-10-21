@@ -72,6 +72,14 @@ pub fn show(
   ) else {
     return answer(None);
   };
+  // A hidden panel (Browser rail closed, Settings open) keeps its page
+  // running, and the sheet would block the window over a page no one sees.
+  // Without a window there is nothing to attach to, and an app-modal alert
+  // would block the whole app.
+  let window = match webview.window() {
+    Some(window) if !webview.isHiddenOrHasHiddenAncestor() => window,
+    _ => return answer(None),
+  };
   if !gate.allow(Instant::now()) {
     return answer(None);
   }
@@ -108,11 +116,6 @@ pub fn show(
         .map_or_else(NSString::new, |field| field.stringValue())
     }));
   };
-  match webview.window() {
-    Some(window) => {
-      let finish = RcBlock::new(finish);
-      alert.beginSheetModalForWindow_completionHandler(&window, Some(&finish));
-    }
-    None => finish(alert.runModal()),
-  }
+  let finish = RcBlock::new(finish);
+  alert.beginSheetModalForWindow_completionHandler(&window, Some(&finish));
 }

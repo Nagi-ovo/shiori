@@ -24,9 +24,10 @@
 //!   main thread inside the engine's callback.
 //! - [`set_dialog_labels`] (macOS): the webview shows the page's
 //!   `alert` / `confirm` / `prompt` as a sheet on its window with these
-//!   button titles, read when each dialog opens. Without labels the
-//!   webview answers them at once (`confirm` false, `prompt` null), as
-//!   upstream wry, whose UI delegate has no `runJavaScript*Panel` methods.
+//!   button titles, read when each dialog opens. Without labels, or while
+//!   the webview is hidden or out of a window, it answers them at once
+//!   (`confirm` false, `prompt` null), as upstream wry, whose UI delegate
+//!   has no `runJavaScript*Panel` methods.
 //!   WebView2 and WebKitGTK show their own dialogs either way.
 
 use std::{
