@@ -306,6 +306,35 @@ describe("saving to the source file", () => {
     });
   });
 
+  test("a file the check could not read is not written, and the reader can overwrite it", async () => {
+    const writes: string[] = [];
+    const { sources, notices, tabNow } = setup(
+      markdown({ text: "mine", textDirty: true, sourceHash: "opened" }),
+      {
+        writeBack: {
+          target: (source) =>
+            source.type === "path" ? { kind: "desktopPath", path: source.path } : null,
+          write: async (_target, text, unchanged) => {
+            if (unchanged) return { status: "unverified" };
+            writes.push(text);
+            return { status: "written" };
+          },
+          saveAs: async () => ({ status: "cancelled" }),
+          requiresOrigin: true,
+        },
+      },
+    );
+
+    await sources.saveToSource("md");
+
+    expect(writes).toEqual([]);
+    expect(tabNow().textDirty).toBe(true);
+    const prompt = notices.at(-1);
+    expect(prompt).toMatchObject({ kind: "saveSourceUnverified", title: "notes.md" });
+    await (prompt as Extract<TextSourceNotice, { kind: "saveSourceUnverified" }>).overwrite();
+    expect(writes).toEqual(["mine"]);
+  });
+
   test("a clean document is not written", async () => {
     const { sources, writes, notices } = setup(markdown({ textDirty: false }));
 

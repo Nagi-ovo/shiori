@@ -247,7 +247,9 @@ export type WebFileHandleWriteResult =
   | "unsupported"
   | "permissionDenied"
   | "handleMissing"
-  | "changed";
+  | "changed"
+  // `unchanged` could not read the file, so nothing was written.
+  | "unverified";
 
 export async function writeTextToWebFileHandle(
   webFileHandleId: string,
@@ -274,12 +276,15 @@ async function writeTextToHandle(
   if (typeof handle.createWritable !== "function") return "unsupported";
   if (!(await ensurePermission(handle, "readwrite"))) return "permissionDenied";
   // Checked after the grant: the request needs the click's activation, which
-  // reading the file first could outlive. Unreadable is left to the write.
+  // reading the file first could outlive. A check that cannot read the file
+  // vouches for nothing; only a deleted file is left to the write to report.
   if (unchanged) {
-    const current = await handle
-      .getFile()
-      .then(async (file) => new Uint8Array(await file.arrayBuffer()))
-      .catch(() => null);
+    let current: Uint8Array | null = null;
+    try {
+      current = new Uint8Array(await (await handle.getFile()).arrayBuffer());
+    } catch (err) {
+      if ((err as { name?: unknown } | null)?.name !== "NotFoundError") return "unverified";
+    }
     if (current && !(await unchanged(current))) return "changed";
   }
   // Not keepExistingData: the tab holds the whole document, so the write is a

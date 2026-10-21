@@ -33,7 +33,9 @@ export type WriteBackResult =
   | { status: "missing" }
   // The file no longer holds what the caller last read or wrote (`unchanged`
   // said no), so nothing was written.
-  | { status: "changed" };
+  | { status: "changed" }
+  // `unchanged` could not read the file, so nothing was written.
+  | { status: "unverified" };
 
 /**
  * The writable origin of a document, or null when there is none.
@@ -78,12 +80,18 @@ export async function writeTextDocumentBack(
 ): Promise<WriteBackResult> {
   if (target.kind === "desktopPath") {
     if (unchanged) {
-      // A file that cannot be read is left to the write, which reports it.
+      // A check that cannot read the file vouches for nothing: the atomic
+      // write can still replace an unreadable one. Only a file that is gone
+      // is left to the write, which reports it as missing.
       const { readDocumentBytesFromPlatformPath } = await import("./open");
-      const current = await readDocumentBytesFromPlatformPath(target.path).catch(
-        () => null,
-      );
-      if (current && !(await unchanged(current.bytes))) return { status: "changed" };
+      let current: Uint8Array | null = null;
+      try {
+        current = (await readDocumentBytesFromPlatformPath(target.path))?.bytes ?? null;
+      } catch (err) {
+        const message = String(err instanceof Error ? err.message : err);
+        if (!message.includes("document-path-unavailable")) return { status: "unverified" };
+      }
+      if (current && !(await unchanged(current))) return { status: "changed" };
     }
     const { commands, unwrapCommand } = await import("./ipc");
     try {
@@ -109,6 +117,7 @@ export async function writeTextDocumentBack(
   const outcome = await writeTextToWebFileHandle(target.id, text, unchanged);
   if (outcome === "written") return { status: "written" };
   if (outcome === "changed") return { status: "changed" };
+  if (outcome === "unverified") return { status: "unverified" };
   if (outcome === "unsupported") return { status: "unsupported" };
   if (outcome === "permissionDenied") return { status: "permissionDenied" };
   return { status: "missing" };

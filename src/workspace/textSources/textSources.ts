@@ -310,11 +310,15 @@ export function createTextSources(ports: TextSourcePorts) {
             // Safari and Firefox implement only the read half of File System
             // Access. Not an error: save the other way.
             await saveAs();
-          } else if (result.status === "changed") {
+          } else if (result.status === "changed" || result.status === "unverified") {
             // Another program (an editor, git) wrote the file since Shiori
-            // read it. Replacing it silently would lose that version.
+            // read it, or Shiori cannot tell. Replacing it silently would lose
+            // that version.
             ports.notify({
-              kind: expected === undefined ? "saveSourceUnverified" : "saveSourceChanged",
+              kind:
+                result.status === "changed" && expected !== undefined
+                  ? "saveSourceChanged"
+                  : "saveSourceUnverified",
               title: tab.title,
               overwrite: () => api.saveToSource(tabId, { overwrite: true }),
             });
