@@ -1138,6 +1138,9 @@ macOS/Linux 同样产生孤儿。`.run()` 闭包只处理 `RunEvent::Opened`，�
   退出），drain 也让重入幂等；锁只在取出时短暂持有，收割在锁外做。
 - `kill_session_tree` 跨平台收割整棵树：Unix `killpg(pid,SIGHUP)`→80ms→
   `killpg(pid,SIGKILL)`（pgid==pid，因 setsid）；Windows `taskkill /T /F /PID`。
+  （2026-10 更正，audit B085：交互式 shell 把每个 job 放进自己的进程组，
+  只 killpg shell 的组会漏掉它们。现在扫描进程表，对 sid == shell pid 的每个
+  进程组都发信号，见 `src-tauri/src/terminal/reaper.rs`。）
   被 `terminal_kill`（显式关终端）和 `shutdown_cleanup`（退应用）复用。
 - 有界收割：`try_wait` 轮询上限 ~300ms，避免病态子进程卡住退出（进程退出时 OS
   兜底回收）。`libc` 改为显式声明依赖（见 2026-06-12 base64 复盘），不吃传递依赖。
