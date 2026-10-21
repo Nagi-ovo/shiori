@@ -236,6 +236,24 @@ describe("what other tools wrote, kept as written", () => {
     expect(claimed).toEqual([1, 2]);
   });
 
+  // PDFium takes a kid holding /Kids for a node even when the value is null,
+  // and a node without a /Kids array holds no page; pdf-lib's has() reads
+  // null as absent, which counted that kid as a page and shifted the next.
+  test("a kid with /Kids null takes no page number", async () => {
+    const pdf = await PDFDocument.create();
+    const [a, b] = [0, 1].map(() => pdf.addPage([300, 400]));
+    const empty = pdf.context.register(pdf.context.obj({ Type: "Page", Kids: null, MediaBox: [0, 0, 300, 400] } as never));
+    pdf.catalog.Pages().set(PDFName.of("Kids"), pdf.context.obj([a!.ref, empty, b!.ref]));
+    b!.node.set(PDFName.of("Annots"), pdf.context.obj([pdf.context.register(pdf.context.obj({ Type: "Annot", Subtype: "Square", Rect: [20, 20, 120, 100], IC: [0, 0, 1] } as never))]));
+    const models = [0, 1].map((sourceIndex) => ({ ...page, id: `p${sourceIndex}`, sourceIndex }));
+    const claimed: number[] = [];
+    const overlays = await importFileAnnotations(models, await pdf.save({ useObjectStreams: false }), NOW, {
+      onSuppress: (sourceIndex) => claimed.push(sourceIndex),
+    });
+    expect(overlays).toMatchObject([{ type: "rect", pageId: "p1", fill: "#0000ff" }]);
+    expect(claimed).toEqual([1]);
+  });
+
   // PDFium and pdf-lib both walk a /Pages node each time a /Kids lists it.
   test("a page subtree listed twice counts twice", async () => {
     const pdf = await PDFDocument.create();

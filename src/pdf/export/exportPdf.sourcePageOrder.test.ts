@@ -88,6 +88,23 @@ describe("export numbers source pages the way PDFium does", () => {
     expect(await exportedWidths(last.bytes)).toEqual([300]);
   });
 
+  // PDFium reads a kid holding /Kids as a node even when the value is null or
+  // not an array, and such a node holds no page.
+  test("a kid whose /Kids is null or not an array takes no page", async () => {
+    for (const kids of [null, 7]) {
+      const { doc, pages } = await threePages();
+      const rootRef = doc.catalog.get(PDFName.of("Pages"));
+      const empty = doc.context.register(
+        doc.context.obj({ Type: "Page", Kids: kids, MediaBox: [0, 0, 150, 150], Parent: rootRef } as never),
+      );
+      doc.catalog.Pages().set(PDFName.of("Kids"), doc.context.obj([pages[0]!.ref, empty, pages[1]!.ref, pages[2]!.ref]));
+      const source = await doc.save({ useObjectStreams: false });
+
+      const all = await exportPdf(source, modelFor([0, 1, 2]));
+      expect(await exportedWidths(all.bytes)).toEqual([100, 200, 300]);
+    }
+  });
+
   // A subtree named twice in /Kids is walked twice by pdf-lib; nested k deep
   // that lists 2^k pages, and a cyclic tree never ends. PDFium trusts the
   // root's /Count and opens either file as three pages.

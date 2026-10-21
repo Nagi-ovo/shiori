@@ -25,6 +25,15 @@ const walked = new WeakMap<PDFDocument, Array<PDFDict | null>>();
 /** PDFium's CPDF_Document::kPageMaxNum: a root /Count it trusts is below this. */
 const PDFIUM_MAX_PAGES = 0xfffff;
 
+/**
+ * Whether `dict` has a /Kids key, which makes it a node for PDFium
+ * (CPDF_Dictionary::KeyExist) whatever the value: a node whose /Kids is null
+ * or not an array holds no page. pdf-lib's has() reads a null value as absent.
+ */
+export function holdsKidsKey(dict: PDFDict): boolean {
+  return dict.get(PDFName.of("Kids"), true) !== undefined;
+}
+
 function walkPageTree(pdf: PDFDocument): Array<PDFDict | null> {
   const root = pdf.catalog.lookup(PDFName.of("Pages"));
   if (!(root instanceof PDFDict)) return [];
@@ -46,7 +55,7 @@ function walkPageTree(pdf: PDFDocument): Array<PDFDict | null> {
     const kid = top.kids.lookup(top.next++);
     if (!(kid instanceof PDFDict)) pages.push(null);
     // A kid with /Kids is a node, whatever its /Type says; one without is a page.
-    else if (!kid.has(PDFName.of("Kids"))) pages.push(kid);
+    else if (!holdsKidsKey(kid)) pages.push(kid);
     else if (!ancestors.has(kid)) {
       ancestors.add(kid);
       stack.push({ node: kid, kids: kid.lookup(PDFName.of("Kids")), next: 0 });
