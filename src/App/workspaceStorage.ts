@@ -12,6 +12,7 @@ import {
   releaseWorkspaceSource,
   reserveWorkspaceSource,
   reservedWorkspaceSourceIds,
+  workspaceSourcesOfOtherWindows,
 } from "../storage/workspaceSourceReservations";
 import { metaFromRuntimeTab, workspaceStore } from "../workspace/appWorkspace";
 import { workspaceCacheIdsForTab } from "../workspace/tabSources";
@@ -51,11 +52,17 @@ export function removeWorkspaceSourceIfUnreferenced(
   return removeWorkspaceSource(cacheId);
 }
 
-/** Cache rows a tab, a recents entry or a still-opening document points at. */
+/**
+ * Cache rows a tab, a recents entry or a still-opening document points at, in
+ * this window or another.
+ */
 export function protectedWorkspaceCacheIds(
   tabsSnapshot: WorkspaceRuntimeTab[] = workspaceStore().getState().tabs,
 ): Set<string> {
-  const ids = new Set<string>(reservedWorkspaceSourceIds());
+  const ids = new Set<string>([
+    ...reservedWorkspaceSourceIds(),
+    ...workspaceSourcesOfOtherWindows(),
+  ]);
   for (const tab of tabsSnapshot) {
     for (const cacheId of workspaceCacheIdsForTab(tab)) ids.add(cacheId);
   }
@@ -67,13 +74,17 @@ export function protectedWorkspaceCacheIds(
 
 const enqueueSourceWrite = createSerialQueue();
 
+/** The protected rows as they are whenever a deletion asks. */
+const liveProtectedWorkspaceCacheIds = {
+  has: (id: string) => protectedWorkspaceCacheIds().has(id),
+};
+
 /**
  * Writes a cache row nothing references yet. It is reserved before the write
  * so the orphan sweep and quota eviction leave it alone until a tab or recent
  * owns it or its writer gives it up (removeWorkspaceSourceIfUnreferenced).
- * Writes run one at a time: each one's admission and quota sweep use the
- * protected set taken when it starts, so a write running alongside would
- * treat the other's fresh row as unprotected and delete it.
+ * Writes in this window run one at a time; every deletion re-reads the
+ * protected rows, as another window may reserve and write one meanwhile.
  */
 export function putReservedWorkspaceSource(
   source: Parameters<typeof putWorkspaceSource>[0],
@@ -82,7 +93,7 @@ export function putReservedWorkspaceSource(
   reserveWorkspaceSource(id);
   return enqueueSourceWrite(async () => {
     try {
-      return await putWorkspaceSource({ ...source, id }, protectedWorkspaceCacheIds());
+      return await putWorkspaceSource({ ...source, id }, liveProtectedWorkspaceCacheIds);
     } catch (error) {
       releaseWorkspaceSource(id);
       throw error;

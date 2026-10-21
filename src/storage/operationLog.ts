@@ -1,4 +1,5 @@
 import type { DocumentModel } from "../pdf/model/types";
+import type { DraftWriteVersion } from "./drafts";
 
 const KEY_PREFIX = "shiori:oplog:v1:";
 
@@ -7,6 +8,10 @@ export type OperationLogEntry = {
   id: string;
   model: DocumentModel;
   lastTouched: number;
+  // The draft row its writer last read or wrote (null: none). Recovery drops
+  // a log whose row another window has saved over since. Absent in logs from
+  // older builds.
+  base?: DraftWriteVersion | null;
 };
 
 // localStorage origin quota is ~5 MB and the op-log is only a fast second
@@ -25,6 +30,7 @@ export function writeOperationLog(
   id: string,
   model: DocumentModel,
   now: number = Date.now(),
+  base?: DraftWriteVersion | null,
 ): OperationLogWriteResult {
   const storage = getStorage();
   if (!storage) return "unavailable";
@@ -35,6 +41,7 @@ export function writeOperationLog(
       id,
       model,
       lastTouched: now,
+      ...(base !== undefined ? { base } : {}),
     };
     serialized = JSON.stringify(entry);
   } catch {
@@ -67,6 +74,7 @@ export function readOperationLog(id: string): OperationLogEntry | null {
     const parsed = JSON.parse(raw) as Partial<OperationLogEntry>;
     if (parsed.version !== 1 || parsed.id !== id || !parsed.model) return null;
     if (typeof parsed.lastTouched !== "number") return null;
+    if (parsed.base !== undefined && !isVersion(parsed.base)) return null;
     return parsed as OperationLogEntry;
   } catch {
     return null;
@@ -171,6 +179,16 @@ export function pruneOperationLogs(activeIds: Set<string>): boolean {
     // ignore
   }
   return changed;
+}
+
+function isVersion(value: unknown): boolean {
+  if (value === null) return true;
+  if (typeof value !== "object") return false;
+  const { lastTouched, revision } = value as Partial<DraftWriteVersion>;
+  return (
+    typeof lastTouched === "number" &&
+    (revision === null || typeof revision === "string")
+  );
 }
 
 function keyFor(id: string): string {

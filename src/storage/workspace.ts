@@ -303,12 +303,22 @@ export function clearWorkspaceState(): void {
   }
 }
 
+/**
+ * Rows a write or sweep must keep. Asked again before each deletion: other
+ * windows reserve rows while it runs, so a set taken at the start goes stale.
+ */
+export type ProtectedSourceIds = { has(id: string): boolean };
+
+function alsoProtecting(ids: ProtectedSourceIds, id: string): ProtectedSourceIds {
+  return { has: (other) => other === id || ids.has(other) };
+}
+
 export async function putWorkspaceSource(
   source: Omit<WorkspaceSourceBlob, "id" | "savedAt"> & {
     id?: string;
     savedAt?: number;
   },
-  protectedIds: Set<string> = new Set(),
+  protectedIds: ProtectedSourceIds = new Set(),
 ): Promise<string> {
   const id = source.id ?? nanoid();
   const savedAt = source.savedAt ?? Date.now();
@@ -337,7 +347,7 @@ export async function putWorkspaceSource(
       );
     }
     await evictSourcesAfterQuotaFailure(
-      new Set([...protectedIds, id]),
+      alsoProtecting(protectedIds, id),
       row.size,
     );
     try {
@@ -350,7 +360,7 @@ export async function putWorkspaceSource(
     }
   }
   try {
-    await enforceSourceQuota(new Set([...protectedIds, id]));
+    await enforceSourceQuota(alsoProtecting(protectedIds, id));
   } catch (error) {
     // The source is already durable. A cleanup failure must not make callers
     // discard a valid cache id and report the successful write as lost.
@@ -373,7 +383,7 @@ export async function removeWorkspaceSource(id: string): Promise<void> {
 }
 
 export async function cleanupWorkspaceSources(
-  protectedIds: Set<string>,
+  protectedIds: ProtectedSourceIds,
 ): Promise<void> {
   const rows = await sourceMetadataByAge();
   const stale = rows
@@ -393,7 +403,7 @@ function emptyWorkspaceState(): WorkspaceState {
 }
 
 async function evictSourcesAfterQuotaFailure(
-  protectedIds: Set<string>,
+  protectedIds: ProtectedSourceIds,
   incomingBytes: number,
 ): Promise<void> {
   const rows = await sourceMetadataByAge();
@@ -421,7 +431,7 @@ async function evictSourcesAfterQuotaFailure(
 async function admitWorkspaceSource(
   id: string,
   incomingBytes: number,
-  protectedIds: Set<string>,
+  protectedIds: ProtectedSourceIds,
 ): Promise<void> {
   if (incomingBytes > workspaceSourceCapBytes) {
     throw new WorkspaceSourceSaveError(
@@ -449,7 +459,7 @@ async function admitWorkspaceSource(
 }
 
 async function enforceSourceQuota(
-  protectedIds: Set<string>,
+  protectedIds: ProtectedSourceIds,
   targetBytes = workspaceSourceCapBytes,
   rows?: readonly WorkspaceSourceMetadata[],
 ): Promise<void> {

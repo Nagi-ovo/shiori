@@ -23,7 +23,15 @@ import { draftContentHash, isHashOnlyDraftId } from "./draftIdentity";
  * Locks exist, each registered window holds a lock named after its key until
  * it unregisters or dies, and an expired entry whose lock is held still
  * counts. Lock state is read asynchronously and cached at each publish; the
- * sweep asks synchronously.
+ * sweep asks synchronously. Until this window's first answer arrives, an
+ * expired entry still counts (a window opened after another froze must not
+ * take it for crashed), and expired entries are removed only after an answer.
+ * An answer speaks only for entries published before it was asked: a window
+ * that froze holding an old answer must not take a newer window for crashed
+ * while its fresh query is pending.
+ *
+ * The same machinery, under another key prefix, publishes the workspace cache
+ * rows each window holds (workspaceSourceReservations.ts).
  */
 
 const KEY_PREFIX = "shiori:open-drafts:v1:";
@@ -42,6 +50,8 @@ export type DraftProtectionDeps = {
   sessionId: string;
   /** navigator.locks; null where absent (insecure origins), heartbeat only. */
   locks: Locks | null;
+  /** Namespace of the published entries; open drafts by default. */
+  keyPrefix?: string;
 };
 
 type Locks = {
@@ -66,13 +76,18 @@ function parseEntry(raw: string | null): Entry | null {
 }
 
 export function createDraftProtection(deps: DraftProtectionDeps) {
-  const ownKey = KEY_PREFIX + deps.sessionId;
+  const keyPrefix = deps.keyPrefix ?? KEY_PREFIX;
+  const ownKey = keyPrefix + deps.sessionId;
   let openDraftIds: () => Iterable<string> = () => [];
   let registered = false;
   let timer: number | null = null;
   let releaseLock: (() => void) | null = null;
-  // Keys whose window held its lock at the last query.
+  // Keys whose window held its lock at the last query, and when that query
+  // was asked: it says nothing of an entry published after it.
   let lockedKeys = new Set<string>();
+  let lockedKeysAt = Number.NEGATIVE_INFINITY;
+  // Whether lockedKeys answers for anything yet; without Web Locks it never will.
+  let locksKnown = deps.locks === null;
 
   function storage(): Storage | null {
     try {
@@ -91,12 +106,17 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
       const keys: string[] = [];
       for (let i = 0; i < store.length; i++) {
         const key = store.key(i);
-        if (key?.startsWith(KEY_PREFIX) && key !== ownKey) keys.push(key);
+        if (key?.startsWith(keyPrefix) && key !== ownKey) keys.push(key);
       }
       const now = deps.now();
       for (const key of keys) {
         const entry = parseEntry(store.getItem(key));
-        const live = entry && (Math.abs(now - entry.at) < EXPIRY_MS || lockedKeys.has(key));
+        const live =
+          entry &&
+          (Math.abs(now - entry.at) < EXPIRY_MS ||
+            !locksKnown ||
+            lockedKeys.has(key) ||
+            entry.at >= lockedKeysAt);
         visit(key, live ? entry : null);
       }
     } catch {
@@ -116,29 +136,45 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
     }
   }
 
-  function refreshLocks(): void {
+  // Re-reads lock state, then removes expired entries. A failed query keeps
+  // the last answer; with none yet, the heartbeat alone decides from then on.
+  function refreshLocksThenSweep(): void {
+    const answered = () => {
+      locksKnown = true;
+      sweepExpired();
+    };
+    const locks = deps.locks;
+    if (!locks) return sweepExpired();
+    const askedAt = deps.now();
     try {
-      deps.locks?.query().then(
-        (snapshot) => {
+      locks.query().then((snapshot) => {
+        if (askedAt >= lockedKeysAt) {
           lockedKeys = new Set((snapshot.held ?? []).flatMap((lock) => lock.name ?? []));
-        },
-        () => undefined,
-      );
+          lockedKeysAt = askedAt;
+        }
+        answered();
+      }, answered);
     } catch {
-      // Keep the last answer.
+      answered();
     }
   }
 
   function publish(): void {
     if (!registered) return;
-    refreshLocks();
+    const store = storage();
+    if (store) {
+      try {
+        store.setItem(ownKey, JSON.stringify({ at: deps.now(), ids: [...openDraftIds()] }));
+      } catch {
+        // Full or read-only storage: other windows fall back to their own tabs.
+      }
+    }
+    refreshLocksThenSweep();
+  }
+
+  function sweepExpired(): void {
     const store = storage();
     if (!store) return;
-    try {
-      store.setItem(ownKey, JSON.stringify({ at: deps.now(), ids: [...openDraftIds()] }));
-    } catch {
-      // Full or read-only storage: other windows fall back to their own tabs.
-    }
     const expired: string[] = [];
     otherEntries((key, entry) => {
       if (!entry) expired.push(key);
@@ -228,6 +264,15 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
     isDraftOpen(id: string): boolean {
       return anyOpen((openId) => openId === id);
     },
+
+    /** Every id the other live windows publish. */
+    otherWindowIds(): string[] {
+      const ids: string[] = [];
+      otherEntries((_key, entry) => {
+        if (entry) ids.push(...entry.ids);
+      });
+      return ids;
+    },
   };
 }
 
@@ -238,15 +283,21 @@ function newSessionId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-const shared = createDraftProtection({
-  storage: () => (typeof localStorage === "undefined" ? null : localStorage),
-  now: () => Date.now(),
-  setTimeout: (run, ms) => globalThis.setTimeout(run, ms) as unknown as number,
-  clearTimeout: (handle) => globalThis.clearTimeout(handle),
-  target: typeof window === "undefined" ? null : window,
-  sessionId: newSessionId(),
-  locks: (typeof navigator === "undefined" ? null : navigator.locks) ?? null,
-});
+/** This window's publisher under `keyPrefix`, over localStorage and Web Locks. */
+export function createWindowProtection(keyPrefix?: string) {
+  return createDraftProtection({
+    storage: () => (typeof localStorage === "undefined" ? null : localStorage),
+    now: () => Date.now(),
+    setTimeout: (run, ms) => globalThis.setTimeout(run, ms) as unknown as number,
+    clearTimeout: (handle) => globalThis.clearTimeout(handle),
+    target: typeof window === "undefined" ? null : window,
+    sessionId: newSessionId(),
+    locks: (typeof navigator === "undefined" ? null : navigator.locks) ?? null,
+    keyPrefix,
+  });
+}
+
+const shared = createWindowProtection();
 
 export const protectOpenDrafts = shared.protectOpenDrafts;
 export const isDraftProtected = shared.isDraftProtected;

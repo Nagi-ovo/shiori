@@ -28,6 +28,8 @@ export type PdfDraftControllerApi = Pick<
 type Props = {
   hash: string | null;
   disabled: boolean;
+  /** Whether the document on screen has nothing left to export. */
+  isExported: () => boolean;
   flushPendingTextSources: (tabId?: string) => Promise<void>;
   hasPendingTextSourceWrites: boolean;
   apiRef: MutableRefObject<PdfDraftControllerApi | null>;
@@ -44,12 +46,13 @@ const PdfDraftStateContext = createContext<DraftSyncState | null>(null);
 export function PdfDraftController({
   hash,
   disabled,
+  isExported,
   flushPendingTextSources,
   hasPendingTextSourceWrites,
   apiRef,
   children,
 }: Props) {
-  const draftState = useDraftSync(hash, disabled);
+  const draftState = useDraftSync(hash, disabled, isExported);
   const { completeNativeExitRequest } = useDraftPersistence({
     draftState,
     flushPendingTextSources,

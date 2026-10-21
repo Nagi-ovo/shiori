@@ -44,6 +44,20 @@ const noteOf = async (id: string) => {
   return draft ? draft.model.overlays.map((overlay) => overlay.id) : null;
 };
 
+type ClaimLocks = NonNullable<Parameters<typeof claimDraft>[2]>["locks"];
+
+/** navigator.locks for one origin: one holder per name, the rest wait in turn. */
+function lockManager(): NonNullable<ClaimLocks> {
+  const tails = new Map<string, Promise<unknown>>();
+  return {
+    request<T>(name: string, callback: () => Promise<T>): Promise<T> {
+      const run = (tails.get(name) ?? Promise.resolve()).then(callback);
+      tails.set(name, run.catch(() => undefined));
+      return run;
+    },
+  };
+}
+
 let releases: (() => void)[] = [];
 beforeEach(async () => {
   await __draftsTest.reset();
@@ -144,6 +158,32 @@ describe("draft identity", () => {
     expect(readOperationLog(atA)?.model.overlays.map((overlay) => overlay.id)).toEqual([
       "crash-in-a",
     ]);
+  });
+
+  test("two windows claiming the same old draft at once give it to one source", async () => {
+    // Two windows open byte-identical files at different paths at the same moment.
+    const both = async (locks: ClaimLocks | null) => {
+      await save(HASH, "legacy", 10);
+      writeOperationLog(HASH, model("unsaved"), 20);
+      await Promise.all([claimDraft(HASH, atA, { locks }), claimDraft(HASH, atB, { locks })]);
+      const owners = [atA, atB].filter((id) => readOperationLog(id) !== null);
+      const withRows = [];
+      for (const id of [atA, atB]) if (await drafts.get(id)) withRows.push(id);
+      expect(owners).toHaveLength(1);
+      expect(withRows).toEqual(owners);
+      await __draftsTest.reset();
+      localStorage.clear();
+    };
+    await both(lockManager());
+    await both(null);
+  });
+
+  test("two windows claiming the same lone crash log at once give it to one source", async () => {
+    writeOperationLog(HASH, model("unsaved"), 20);
+    const locks = lockManager();
+    await Promise.all([claimDraft(HASH, atA, { locks }), claimDraft(HASH, atB, { locks })]);
+    expect([atA, atB].filter((id) => readOperationLog(id) !== null)).toHaveLength(1);
+    expect(readOperationLog(HASH)).toBeNull();
   });
 
   test("a draft whose web file handle was forgotten can be claimed again", async () => {

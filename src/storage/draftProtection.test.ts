@@ -177,7 +177,48 @@ describe("draft protection across windows", () => {
     expect(b.protection.isDraftProtected("open-in-a")).toBe(true);
   });
 
-  test("another window's sweep clears a crashed window's entry", () => {
+  test("a window opened after another froze keeps that window's protection", async () => {
+    const w = world();
+    const a = w.makeWindow("a");
+    a.protection.protectOpenDrafts(() => ["open-in-a"]);
+    await settle();
+    a.frozen = true;
+    w.advance(TTL_MS + HEARTBEAT_MS);
+
+    // B starts with no lock answer yet: A's lapsed entry must not count as crashed.
+    const b = w.makeWindow("b");
+    b.protection.protectOpenDrafts(() => []);
+    expect(b.protection.isDraftProtected("open-in-a")).toBe(true);
+    await settle();
+    expect(b.protection.isDraftProtected("open-in-a")).toBe(true);
+    w.advance(TTL_MS);
+    await settle();
+    expect(b.protection.isDraftProtected("open-in-a")).toBe(true);
+  });
+
+  test("a lock answer older than another window's entry does not speak for it", async () => {
+    const w = world();
+    const b = w.makeWindow("b");
+    b.protection.protectOpenDrafts(() => []);
+    await settle();
+    b.frozen = true;
+
+    // A opens while B is frozen, then freezes too, past the heartbeat expiry.
+    const a = w.makeWindow("a");
+    a.protection.protectOpenDrafts(() => ["open-in-a"]);
+    await settle();
+    a.frozen = true;
+    w.advance(TTL_MS + HEARTBEAT_MS);
+
+    // B wakes holding a lock answer from before A existed.
+    b.frozen = false;
+    expect(b.protection.isDraftProtected("open-in-a")).toBe(true);
+    b.target.dispatchEvent(new window.Event("pageshow"));
+    await settle();
+    expect(b.protection.isDraftProtected("open-in-a")).toBe(true);
+  });
+
+  test("another window's sweep clears a crashed window's entry", async () => {
     const w = world();
     const a = w.makeWindow("a");
     const b = w.makeWindow("b");
@@ -187,6 +228,7 @@ describe("draft protection across windows", () => {
     const keysBefore = w.storage.length;
 
     w.advance(TTL_MS + HEARTBEAT_MS);
+    await settle();
     expect(w.storage.length).toBe(keysBefore - 1);
   });
 
@@ -268,7 +310,7 @@ describe("draft protection across windows", () => {
     expect(cramped.isDraftProtected("own")).toBe(true);
   });
 
-  test("a corrupt entry protects nothing and is swept", () => {
+  test("a corrupt entry protects nothing and is swept", async () => {
     const w = world();
     const a = w.makeWindow("a");
     a.protection.protectOpenDrafts(() => ["open-in-a"]);
@@ -287,6 +329,7 @@ describe("draft protection across windows", () => {
     }
     const c = w.makeWindow("c");
     c.protection.protectOpenDrafts(() => []);
+    await settle();
     expect(w.storage.getItem(key)).toBeNull();
   });
 });

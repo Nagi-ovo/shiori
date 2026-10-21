@@ -13,9 +13,10 @@ const { __workspaceTest, getWorkspaceSource } = await import("../storage/workspa
 const { ensureWorkspaceSource, putReservedWorkspaceSource } = await import(
   "./workspaceStorage"
 );
-const { reservedWorkspaceSourceIds } = await import(
+const { reservedWorkspaceSourceIds, WORKSPACE_SOURCE_KEY_PREFIX } = await import(
   "../storage/workspaceSourceReservations"
 );
+const { createDraftProtection } = await import("../storage/draftProtection");
 
 const source = (name: string, savedAt: number) => ({
   kind: "markdown" as const,
@@ -44,6 +45,65 @@ describe("reserved workspace source writes", () => {
     );
     expect(saved.length).toBeGreaterThan(0);
     for (const id of saved) expect(await getWorkspaceSource(id)).toBeDefined();
+  });
+
+  // Window A's tab (or its still-opening drop) points at a row this window
+  // never saw; this window's quota sweep must evict around it.
+  test("a write's quota sweep keeps a row another window holds", async () => {
+    const { putWorkspaceSource } = await import("../storage/workspace");
+    const heldElsewhere = await putWorkspaceSource(source("a.md", 1));
+    const windowA = createDraftProtection({
+      storage: () => localStorage,
+      now: Date.now,
+      setTimeout: () => 0,
+      clearTimeout: () => undefined,
+      target: null,
+      sessionId: "window-a",
+      locks: null,
+      keyPrefix: WORKSPACE_SOURCE_KEY_PREFIX,
+    });
+    const releaseA = windowA.protectOpenDrafts(() => [heldElsewhere]);
+    try {
+      __workspaceTest.setSourceCapBytes(30);
+      await putReservedWorkspaceSource(source("b.md", 2)).catch(() => undefined);
+      expect(await getWorkspaceSource(heldElsewhere)).toBeDefined();
+    } finally {
+      releaseA();
+    }
+  });
+
+  // Window B reserves and writes its row after this window's write began.
+  // Every deletion this write makes must see B's reservation, not the
+  // protected set taken when it started.
+  test("a write's quota sweep keeps a row another window reserved after it began", async () => {
+    const { putWorkspaceSource } = await import("../storage/workspace");
+    let heldByB: string[] = [];
+    const windowB = createDraftProtection({
+      storage: () => localStorage,
+      now: Date.now,
+      setTimeout: () => 0,
+      clearTimeout: () => undefined,
+      target: null,
+      sessionId: "window-b",
+      locks: null,
+      keyPrefix: WORKSPACE_SOURCE_KEY_PREFIX,
+    });
+    const closeB = windowB.protectOpenDrafts(() => heldByB);
+    try {
+      __workspaceTest.setSourceCapBytes(30);
+      const writingA = putReservedWorkspaceSource({ ...source("a.md", 2), id: "row-a" });
+      // A's write has started and taken its protected set.
+      await Promise.resolve();
+      await Promise.resolve();
+      heldByB = ["row-b"];
+      windowB.republishOpenDrafts();
+      await putWorkspaceSource({ ...source("b.md", 1), id: "row-b" }, new Set(["row-a", "row-b"]));
+      await writingA.catch(() => undefined);
+
+      expect(await getWorkspaceSource("row-b")).toBeDefined();
+    } finally {
+      closeB();
+    }
   });
 
   // Its tab would only have appeared after the password, so nothing else

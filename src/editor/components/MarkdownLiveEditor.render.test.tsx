@@ -205,6 +205,44 @@ describe("MarkdownLiveEditor integration", () => {
     expect(currentText).toBe("# Title\r\n\r\nbody\r\n");
   });
 
+  test("undo after a remount on single-line text restores the CRLF line endings", () => {
+    let currentText = "# Title\r\n\r\nbody\r\n";
+    const editor = (key: string) => (
+      <MarkdownLiveEditor
+        key={key}
+        documentId="crlf-single-line-document"
+        title="Markdown editor"
+        text={currentText}
+        zoom={1}
+        appearance={DEFAULT_MARKDOWN_APPEARANCE}
+        scrollTop={0}
+        onScrollTopChange={noop}
+        onTextChange={(text) => {
+          currentText = text;
+        }}
+      />
+    );
+    const first = render(editor("first"));
+    const firstEditor = editorView(first.container);
+    act(() => {
+      firstEditor.dispatch({
+        changes: { from: 0, to: firstEditor.state.doc.length, insert: "one line" },
+      });
+    });
+    expect(currentText).toBe("one line");
+    // Switching to Preview and back remounts the editor on single-line text.
+    first.unmount();
+
+    const second = render(editor("second"));
+    const secondEditor = editorView(second.container);
+    act(() => {
+      secondEditor.focus();
+      runEditorCommand("undo");
+    });
+
+    expect(currentText).toBe("# Title\r\n\r\nbody\r\n");
+  });
+
   test("select all keeps folded front matter in the source selection", () => {
     const text = ["---", "title: Notes", "---", "", "Body"].join("\n");
     const view = render(

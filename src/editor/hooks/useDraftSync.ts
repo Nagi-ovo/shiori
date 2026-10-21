@@ -7,10 +7,7 @@ import {
   useState,
 } from "react";
 import { useEditorStore } from "../store/store";
-import drafts, {
-  DraftSaveError,
-  type DraftWriteVersion,
-} from "../../storage/drafts";
+import drafts, { DraftSaveError } from "../../storage/drafts";
 import { isModelClean } from "../../pdf/model/clean";
 import { readStorageEstimate } from "../../platform";
 import {
@@ -19,6 +16,10 @@ import {
   writeOperationLog,
 } from "../../storage/operationLog";
 import { draftIdForPayload } from "../../storage/draftIdentity";
+import {
+  observedDraftVersion,
+  rememberDraftVersion,
+} from "../../storage/draftVersions";
 
 export type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
 
@@ -27,7 +28,7 @@ export type DraftSyncState = {
   hash: string | null;
   lastTouched: number | null;
   error: string | null;
-  errorKind: "quota" | "transient" | null;
+  errorKind: DraftSaveError["kind"] | null;
   usedBytes: number;
   realUsedBytes: number | null;
   quotaBytes: number | null;
@@ -38,13 +39,13 @@ export type DraftSyncState = {
   flushNow: () => Promise<void>;
   // Close/exit paths use the strict variant so a failed durable write keeps
   // the document and window alive. Normal autosave still reports through
-  // `status`/`error` without creating unhandled promise rejections.
+  // `status`/`error` without creating unhandled promise rejections. A save
+  // refused for another window's newer draft passes once `isExported` holds.
   flushNowOrThrow: () => Promise<void>;
 };
 
 export const SAVE_DEBOUNCE_MS = 800;
 const OPERATION_LOG_DEBOUNCE_MS = 250;
-const draftVersionByDocument = new WeakMap<object, DraftWriteVersion | null>();
 
 // Watches the current document model and persists a debounced snapshot to
 // IndexedDB whenever the user has committed at least one edit.
@@ -69,6 +70,7 @@ const draftVersionByDocument = new WeakMap<object, DraftWriteVersion | null>();
 export function useDraftSync(
   hash: string | null,
   disabled = false,
+  isExported?: () => boolean,
 ): DraftSyncState {
   const opened = useEditorStore((s) => s.opened);
   const model = useEditorStore((s) => s.model);
@@ -82,9 +84,7 @@ export function useDraftSync(
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [lastTouched, setLastTouched] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [errorKind, setErrorKind] = useState<"quota" | "transient" | null>(
-    null,
-  );
+  const [errorKind, setErrorKind] = useState<DraftSaveError["kind"] | null>(null);
   const [usedBytes, setUsedBytes] = useState<number>(0);
   const [realUsedBytes, setRealUsedBytes] = useState<number | null>(null);
   const [quotaBytes, setQuotaBytes] = useState<number | null>(null);
@@ -104,13 +104,12 @@ export function useDraftSync(
   const persistenceDraftIdRef = useRef<string | null>(draftId);
   const persistenceDocumentRef = useRef(opened?.doc ?? null);
   const persistenceReceiptsRef = useRef(completedLiveOperationIds);
-  const draftVersionRef = useRef<DraftWriteVersion | null>(
-    opened?.doc
-      ? draftVersionByDocument.has(opened.doc)
-        ? (draftVersionByDocument.get(opened.doc) ?? null)
-        : (opened.draftVersion ?? null)
-      : null,
-  );
+  const draftVersionRef = useRef(observedDraftVersion(opened, draftId));
+  // Two windows on one file share a draft id, so every save names the row this
+  // one last saw. Once a save is refused, no crash logs go there until an
+  // open reads the row again.
+  const conflictedDraftIdRef = useRef<string | null>(null);
+  const ownLogStampRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   const revisionRef = useRef(0);
   const saveDrainInFlightRef = useRef<Promise<void> | null>(null);
@@ -135,11 +134,8 @@ export function useDraftSync(
       persistenceDocumentRef.current = opened?.doc ?? null;
       persistenceStartedRef.current = false;
       persistenceReceiptsRef.current = completedLiveOperationIds;
-      draftVersionRef.current = opened?.doc
-        ? draftVersionByDocument.has(opened.doc)
-          ? (draftVersionByDocument.get(opened.doc) ?? null)
-          : (opened.draftVersion ?? null)
-        : null;
+      draftVersionRef.current = observedDraftVersion(opened, draftId);
+      if (opened?.draftVersion) conflictedDraftIdRef.current = null;
     } else if (persistenceReceiptsRef.current !== completedLiveOperationIds) {
       // A Live commit can be immediately undone before React observes a
       // non-empty undo stack. The new receipt reference still proves a real
@@ -271,7 +267,7 @@ export function useDraftSync(
           );
         if (cleanRemovalSucceeded) {
           draftVersionRef.current = null;
-          draftVersionByDocument.set(snap.opened.doc, null);
+          rememberDraftVersion(snap.opened.doc, snap.draftId, null);
         }
       } else {
         const writtenVersion = await drafts.put({
@@ -283,9 +279,12 @@ export function useDraftSync(
           history: snap.undoStack,
           completedLiveOperationIds: liveOperationReceipts,
           lastTouched: now,
+          // Another window on the same file may have saved since this one
+          // last read or wrote the row; its work must not be replaced.
+          expectedVersion: draftVersionRef.current,
         });
         draftVersionRef.current = writtenVersion;
-        draftVersionByDocument.set(snap.opened.doc, writtenVersion);
+        rememberDraftVersion(snap.opened.doc, snap.draftId, writtenVersion);
         savedDraftStampRef.current = now;
       }
 
@@ -329,6 +328,15 @@ export function useDraftSync(
     } catch (err) {
       console.error("Draft save failed:", err);
       const draftError = err instanceof DraftSaveError ? err : null;
+      if (draftError?.kind === "conflict") {
+        conflictedDraftIdRef.current = snap.draftId;
+        if (operationLogTimerRef.current !== null) {
+          window.clearTimeout(operationLogTimerRef.current);
+          operationLogTimerRef.current = null;
+        }
+        const log = readOperationLog(snap.draftId);
+        if (log && log.lastTouched === ownLogStampRef.current) clearOperationLog(snap.draftId);
+      }
       setError(draftError?.message || (err as Error).message || "unknown");
       setErrorKind(draftError?.kind ?? "transient");
       setStatus("error");
@@ -381,7 +389,14 @@ export function useDraftSync(
     if (!clean) {
       operationLogTimerRef.current = window.setTimeout(() => {
         operationLogTimerRef.current = null;
-        const result = writeOperationLog(draftId, model);
+        if (conflictedDraftIdRef.current === draftId) return;
+        ownLogStampRef.current = Date.now();
+        const result = writeOperationLog(
+          draftId,
+          model,
+          ownLogStampRef.current,
+          draftVersionRef.current,
+        );
         if (result !== "written") {
           // The op-log second tier couldn't capture this doc (too large for
           // localStorage, or storage unavailable). Don't wait out the longer
@@ -430,7 +445,11 @@ export function useDraftSync(
       window.clearTimeout(operationLogTimerRef.current);
       operationLogTimerRef.current = null;
       const { draftId: logId, model: logModel } = latestRef.current;
-      if (logId) writeOperationLog(logId, logModel);
+      if (logId && conflictedDraftIdRef.current !== logId) {
+        ownLogStampRef.current = Date.now();
+        const base = draftVersionRef.current;
+        writeOperationLog(logId, logModel, ownLogStampRef.current, base);
+      }
     } else {
       // Undo back to the original deletes the saved draft (or an older log),
       // which teardown can cut short too. A newer clean log outranks both.
@@ -439,6 +458,7 @@ export function useDraftSync(
       if (
         logId &&
         logOpened &&
+        conflictedDraftIdRef.current !== logId &&
         isModelClean(logModel, logOpened.sourcePages) &&
         (draftVersionRef.current !== null || readOperationLog(logId))
       ) {
@@ -447,16 +467,22 @@ export function useDraftSync(
           savedDraftStampRef.current + 1,
           (readOperationLog(logId)?.lastTouched ?? 0) + 1,
         );
-        writeOperationLog(logId, logModel, cleanOperationLogStampRef.current);
+        writeOperationLog(
+          logId,
+          logModel,
+          cleanOperationLogStampRef.current,
+          draftVersionRef.current,
+        );
       }
     }
     setStatus("saving");
     try {
       await drainLatestSave();
     } catch (err) {
-      if (throwOnError) throw err;
+      const refused = err instanceof DraftSaveError && err.kind === "conflict";
+      if (throwOnError && !(refused && isExported?.())) throw err;
     }
-  }, [drainLatestSave, disabled]);
+  }, [drainLatestSave, disabled, isExported]);
 
   const flushNow = useCallback(
     () => flushPendingSave(false),

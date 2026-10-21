@@ -1,4 +1,4 @@
-import type { MutableRefObject, ReactNode } from "react";
+import { useCallback, type MutableRefObject, type ReactNode } from "react";
 import { useEditorStoreApi } from "../../editor/store/store";
 import {
   useActiveWorkspaceTab,
@@ -53,10 +53,17 @@ export function PdfSessionControllers({
   const pendingRestore = useWorkspace((state) => state.session.pendingRestore);
   const deferredDraft = useWorkspace((state) => state.session.deferredDraft);
   const activeTab = useActiveWorkspaceTab();
+  // A draft save refused for another window's newer work blocks leaving the
+  // document only while this copy is unexported.
+  const isExported = useCallback(() => {
+    const kind = exportControllerRef.current?.status.kind;
+    return kind === "clean" || kind === "exported";
+  }, [exportControllerRef]);
   return (
     <PdfDraftController
       hash={activeHash}
       disabled={pendingRestore !== null || deferredDraft !== null}
+      isExported={isExported}
       flushPendingTextSources={flushPendingTextSources}
       hasPendingTextSourceWrites={hasPendingTextSourceWrites}
       apiRef={draftControllerRef}

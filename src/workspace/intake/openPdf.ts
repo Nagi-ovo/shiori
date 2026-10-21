@@ -175,9 +175,16 @@ async function runPdfOpen(
         ...(draft?.completedLiveOperationIds ?? []),
       ]),
     ].slice(-LIVE_OPERATION_RECEIPT_MAX);
-    const draftVersion = draft
-      ? { lastTouched: draft.lastTouched, revision: draft.revision ?? null }
-      : null;
+    const versionOf = (row: typeof draft | undefined) =>
+      row ? { lastTouched: row.lastTouched, revision: row.revision ?? null } : null;
+    // A resumed tab keeps the row it saw before it slept; a snapshot from an
+    // older build has none and takes the row as it is now.
+    const resumedVersion = options.runtimeSnapshot?.draftVersion;
+    const draftVersion = !options.runtimeSnapshot
+      ? versionOf(draft)
+      : resumedVersion !== undefined
+        ? resumedVersion
+        : versionOf(await ports.drafts.get(draftId));
     if (
       completedLiveOperationIds.some(
         (operationId) => !persistedReceipts.includes(operationId),

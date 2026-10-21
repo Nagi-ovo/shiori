@@ -25,9 +25,23 @@ import {
   storageErrorMessage,
 } from "./errors";
 import { sanitizeHistory } from "./draftValidation";
-import { isDraftProtected } from "./draftProtection";
+import {
+  enforceQuota,
+  evictAfterQuotaFailure,
+  legacyDraftBytesById,
+} from "./draftEviction";
+import {
+  clearEvictionNotices,
+  getEvictionNotices,
+  recordEvictions,
+} from "./draftEvictionNotices";
 
 export { subscribe, type Draft } from "./draftsDb";
+export {
+  clearEvictionNotices,
+  getEvictionNotices,
+  type EvictionNotice,
+} from "./draftEvictionNotices";
 export {
   LIVE_OPERATION_LEDGER_MAX_BYTES,
   LIVE_OPERATION_RECEIPT_MAX,
@@ -59,17 +73,29 @@ export type DraftMeta = Omit<
   storageBytes: number;
 };
 
+/** "conflict": another window saved the draft since this writer last saw it. */
 export class DraftSaveError extends Error {
-  kind: "quota" | "transient";
+  kind: "quota" | "transient" | "conflict";
 
   constructor(
-    kind: "quota" | "transient",
+    kind: "quota" | "transient" | "conflict",
     message: string,
   ) {
     super(message);
     this.name = "DraftSaveError";
     this.kind = kind;
   }
+}
+
+function isVersion(
+  row: { lastTouched: number; revision?: string | null },
+  expected: DraftWriteVersion | null,
+): boolean {
+  return (
+    !!expected &&
+    row.lastTouched === expected.lastTouched &&
+    (row.revision ?? null) === expected.revision
+  );
 }
 
 function createDraftRevision(): string {
@@ -300,24 +326,6 @@ export async function list(): Promise<DraftMeta[]> {
   }));
 }
 
-// Bytes still held by v1 rows the v2 upgrade deliberately left in place as a
-// safety copy. They are real occupied space that the app's own cap never saw,
-// so the store could exceed CAP_BYTES by the size of everything migrated and
-// hit the browser's quota earlier than the app expected.
-async function legacyDraftBytesById(): Promise<Map<string, number>> {
-  const sizes = new Map<string, number>();
-  try {
-    for (const row of await db.drafts.toArray()) {
-      const bytes = row.pdfBytes as { byteLength?: number } | undefined;
-      const size = typeof bytes?.byteLength === "number" ? bytes.byteLength : 0;
-      if (size > 0) sizes.set(row.id, size);
-    }
-  } catch {
-    // The legacy table is absent on installs that never ran schema v1.
-  }
-  return sizes;
-}
-
 async function legacyDraftBytes(): Promise<number> {
   const sizes = await legacyDraftBytesById();
   let total = 0;
@@ -351,6 +359,8 @@ export async function totalBytes(): Promise<number> {
 // Upsert a draft. Preserves createdAt if an entry with this id already exists;
 // always bumps lastTouched. Original PDF bytes are written once per hash, then
 // later autosaves update only the model-sized row and small metadata fields.
+// With `expectedVersion` (null: none seen), an existing row written by anyone
+// else since is kept and the save fails as a "conflict".
 export async function put(
   incoming: Omit<
     Draft,
@@ -359,6 +369,7 @@ export async function put(
     createdAt?: number;
     history?: HistoryEntry[];
     completedLiveOperationIds?: string[];
+    expectedVersion?: DraftWriteVersion | null;
   },
 ): Promise<DraftWriteVersion> {
   const now = Date.now();
@@ -376,7 +387,8 @@ export async function put(
     pdfByteLength,
     modelByteLength + historyByteLength + receiptByteLength,
   );
-  const writeDraft = async () => db.transaction("rw", db.pdfBlobs, db.draftModels, async () => {
+  const { expectedVersion } = incoming;
+  const writeDraft = async () => db.transaction("rw", db.pdfBlobs, db.draftModels, db.drafts, async () => {
     // Read and conditionally write under the same transaction. An eviction or
     // clear running between an earlier read and this write must not leave a
     // model row whose supposedly-existing source blob was actually deleted.
@@ -384,6 +396,12 @@ export async function put(
       db.draftModels.get(incoming.id),
       db.pdfBlobs.get(incoming.id),
     ]);
+    if (expectedVersion !== undefined) {
+      const current = existingModel ?? (await db.drafts.get(incoming.id));
+      if (current && !isVersion(current, expectedVersion)) {
+        throw new DraftSaveError("conflict", "The draft changed in another window");
+      }
+    }
     const createdAt =
       existingModel?.createdAt ??
       existingBlob?.createdAt ??
@@ -425,13 +443,15 @@ export async function put(
   try {
     await writeDraft();
   } catch (err) {
+    if (err instanceof DraftSaveError) throw err;
     if (!isQuotaExceededError(err)) {
       throw new DraftSaveError("transient", storageErrorMessage(err));
     }
-    await evictAfterQuotaFailure(incoming.id, storageBytes);
+    await evictAfterQuotaFailure(quotaCapBytes(), incoming.id, storageBytes);
     try {
       await writeDraft();
     } catch (retryErr) {
+      if (retryErr instanceof DraftSaveError) throw retryErr;
       throw new DraftSaveError(
         isQuotaExceededError(retryErr) ? "quota" : "transient",
         storageErrorMessage(retryErr),
@@ -439,7 +459,7 @@ export async function put(
     }
   }
   try {
-    await enforceQuota(incoming.id);
+    await enforceQuota(quotaCapBytes(), incoming.id);
   } catch (err) {
     // The draft row is already durably written at this point; a failing LRU
     // sweep must not be reported as a lost save.
@@ -486,15 +506,7 @@ export async function removeDraftPreservingLiveOperationReceiptsIfVersion(
       db.drafts.get(id),
     ]);
     const current = model ?? legacy;
-    if (current) {
-      if (!expected) return;
-      if (
-        current.lastTouched !== expected.lastTouched ||
-        (current.revision ?? null) !== expected.revision
-      ) {
-        return;
-      }
-    }
+    if (current && !isVersion(current, expected)) return;
     await Promise.all([
       db.drafts.delete(id),
       db.pdfBlobs.delete(id),
@@ -554,164 +566,12 @@ export async function clearAll(): Promise<void> {
 // storage pressure requires LRU eviction.
 export async function cleanup(): Promise<void> {
   const [evicted] = await Promise.all([
-    enforceQuota(),
+    enforceQuota(quotaCapBytes()),
     enforceLiveOperationLedgerQuota(),
   ]);
   const activeIds = new Set((await db.draftModels.toArray()).map((row) => row.id));
   const removedLogs = pruneOperationLogs(activeIds);
   if (evicted || removedLogs) notifyChanged();
-}
-
-// Eviction target for the retry after IndexedDB has ALREADY rejected a write
-// with QuotaExceededError.
-//
-// The old target was `0.8 * CAP_BYTES - incomingBytes`, and CAP_BYTES is a
-// hardcoded 1 GB. Whenever the origin's real quota was smaller than that —
-// a nearly full disk, or WebKit/WKWebView's per-origin ceiling — the store was
-// already under the app cap, so enforceQuota returned immediately having freed
-// nothing, the retry hit the same wall, and autosave failed permanently with a
-// single toast and no way to recover.
-//
-// Three bounds, whichever is tightest:
-//   - the app's own cap, unchanged for the normal case
-//   - the browser's reported quota, which is the limit actually being hit
-//   - a floor that always frees a fifth of what is stored, so a retry after a
-//     real failure can never be a no-op even when both numbers look fine
-//     (the browser's estimate is approximate, and other databases on this
-//     origin — shiori-workspace — consume the same budget without appearing
-//     in these rows)
-async function evictAfterQuotaFailure(
-  protectId: string,
-  incomingBytes: number,
-): Promise<boolean> {
-  const rows = await db.draftModels.toArray();
-  const stored = rows.reduce((sum, row) => sum + row.storageBytes, 0);
-
-  const byAppCap = Math.floor(quotaCapBytes() * 0.8) - incomingBytes;
-
-  // Read inline rather than through platform/metrics: that module pulls in the
-  // platform layer, which imports this one, and the cycle breaks module init.
-  let byBrowserQuota = Number.POSITIVE_INFINITY;
-  try {
-    const quota = (await navigator?.storage?.estimate?.())?.quota;
-    if (typeof quota === "number" && quota > 0) {
-      byBrowserQuota = Math.floor(quota * 0.8) - incomingBytes;
-    }
-  } catch {
-    // No estimate available (older engines, private mode): the progress floor
-    // below still guarantees the retry makes room.
-  }
-
-  const byProgress = Math.floor(stored * 0.8);
-  const target = Math.max(
-    0,
-    Math.min(byAppCap, byBrowserQuota, byProgress),
-  );
-  return enforceQuota(protectId, target);
-}
-
-// Evict oldest drafts until total bytes <= targetBytes, never the one being
-// written (`protectId`) nor one an open tab holds.
-async function enforceQuota(
-  protectId?: string,
-  targetBytes: number = quotaCapBytes(),
-): Promise<boolean> {
-  const rows = await db.draftModels.orderBy("lastTouched").toArray();
-  // Legacy v1 rows are counted here for the same reason totalBytes counts
-  // them: they occupy the origin's quota even though only the v2 tables
-  // describe the drafts. Eviction deletes both, so both come off the total.
-  const legacyBytesById = await legacyDraftBytesById();
-  let total =
-    rows.reduce((sum, r) => sum + r.storageBytes, 0) +
-    [...legacyBytesById.values()].reduce((sum, bytes) => sum + bytes, 0);
-  if (total <= targetBytes) return false;
-  const evictedNames: string[] = [];
-  for (const r of rows) {
-    if (total <= targetBytes) break;
-    if (r.id === protectId || isDraftProtected(r.id)) continue;
-    // Delete the legacy v1 row too: the v2 upgrade keeps it as a safety copy
-    // and get() falls back to it, so dropping only the v2 tables would let an
-    // evicted draft be resurrected (and make the eviction notice a lie).
-    await db.transaction("rw", db.drafts, db.pdfBlobs, db.draftModels, async () => {
-      await Promise.all([
-        db.drafts.delete(r.id),
-        db.pdfBlobs.delete(r.id),
-        db.draftModels.delete(r.id),
-      ]);
-    });
-    clearOperationLog(r.id);
-    total -= r.storageBytes + (legacyBytesById.get(r.id) ?? 0);
-    evictedNames.push(r.fileName);
-  }
-  // Surface what was dropped: silently deleting saved work is a trust killer
-  // for a local-first tool. The notice waits in localStorage until the user
-  // next opens Settings → Storage.
-  if (evictedNames.length > 0) recordEvictions(evictedNames, Date.now());
-  // Still over when protected drafts alone pass the target: keeping work the
-  // reader has open beats silently dropping it.
-  return evictedNames.length > 0;
-}
-
-// Non-blocking record of drafts dropped by LRU eviction, kept in localStorage
-// so Settings → Storage can tell the user what was cleared. Separate from the
-// drafts themselves (IndexedDB); best-effort and never blocks eviction.
-export type EvictionNotice = { fileName: string; evictedAt: number };
-
-const EVICTIONS_KEY = "shiori:draft-evictions:v1";
-const MAX_EVICTION_NOTICES = 20;
-
-function evictionStorage(): Storage | null {
-  try {
-    return typeof localStorage === "undefined" ? null : localStorage;
-  } catch {
-    return null;
-  }
-}
-
-function readEvictionNotices(storage: Storage): EvictionNotice[] {
-  try {
-    const raw = storage.getItem(EVICTIONS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (n): n is EvictionNotice =>
-        !!n &&
-        typeof (n as EvictionNotice).fileName === "string" &&
-        typeof (n as EvictionNotice).evictedAt === "number",
-    );
-  } catch {
-    return [];
-  }
-}
-
-function recordEvictions(fileNames: string[], now: number): void {
-  const storage = evictionStorage();
-  if (!storage) return;
-  try {
-    const next = [
-      ...readEvictionNotices(storage),
-      ...fileNames.map((fileName) => ({ fileName, evictedAt: now })),
-    ].slice(-MAX_EVICTION_NOTICES);
-    storage.setItem(EVICTIONS_KEY, JSON.stringify(next));
-  } catch {
-    // Best-effort: the notice is a courtesy, never block eviction on it.
-  }
-}
-
-export function getEvictionNotices(): EvictionNotice[] {
-  const storage = evictionStorage();
-  return storage ? readEvictionNotices(storage) : [];
-}
-
-export function clearEvictionNotices(): void {
-  const storage = evictionStorage();
-  if (!storage) return;
-  try {
-    storage.removeItem(EVICTIONS_KEY);
-  } catch {
-    // ignore
-  }
 }
 
 export const drafts = {
