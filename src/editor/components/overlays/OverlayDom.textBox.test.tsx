@@ -65,3 +65,12 @@ describe("a text box imported with a fill, frame and opacity", () => {
     expect(card.style.backgroundColor).toBe("transparent");
   });
 });
+
+describe("the field a text box is typed into", () => {
+  // Named for what it is, not what it says: the value is read anyway, and a
+  // name that changed on every keystroke would be re-announced while typing.
+  test("is named by the kind of box", () => {
+    const view = draw({ ...box, text: "Draft words" }, { editing: true });
+    expect(view.getByRole("textbox", { name: "Text" })).toBe(document.activeElement as HTMLElement);
+  });
+});

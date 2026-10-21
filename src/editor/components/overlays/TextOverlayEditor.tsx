@@ -2,6 +2,7 @@
 // while it is being edited. Split out of ./OverlayDom.
 
 import type { RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import type {
   CalloutOverlay,
   ContentTextOverlay,
@@ -23,10 +24,15 @@ export function TextOverlayEditor({
   onMaybeSuppressEditDragBlur: (overlayId: string, now: number) => boolean;
 }) {
   const isContentEdit = overlay.type === "contentText";
+  const { t } = useTranslation();
   return (
     <textarea
       ref={textareaRef}
       autoFocus
+      // The kind of box, as the inspector names it (describeOverlay's
+      // inspector.labels.*): the text itself is the value, and a name built
+      // from it would change, and be re-announced, on every keystroke.
+      aria-label={t(`inspector.labels.${overlay.type}`)}
       dir="auto"
       value={overlay.text}
       data-role="interactive"
