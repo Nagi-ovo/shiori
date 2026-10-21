@@ -29,6 +29,8 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          # Same ref as validate-release-version in release.yml.
+          ref: ${{ inputs.publish_to_release_repo && format('refs/tags/{0}', inputs.tag) || github.ref }}
           persist-credentials: false
 
       - name: Install Rust toolchain

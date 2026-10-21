@@ -34,6 +34,12 @@ name: release
 #   - workflow_dispatch with no `tag`, or the    → cache-warm only (build, no
 #     weekly schedule                              signing, no upload)
 #
+# What each run builds: a publishing dispatch checks out the tag named in
+# `tag`, so a re-run from `main` with fixed workflows still ships the tagged
+# code, and fails if that tag does not exist. Every other run builds the ref
+# it ran on: the pushed tag, or the dispatched branch for analysis runs (the
+# label then need not be a tag yet, as for a pre-release test APK).
+#
 # Why the schedule: GitHub scopes Actions caches per ref. A tag run can only
 # restore caches created on its own tag ref or on the default branch — never
 # another tag's. Since every release is a fresh tag and nothing else populated
@@ -88,6 +94,10 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          # Publishing builds the tag itself, even from a dispatch on main;
+          # every other run builds the ref it ran on (see the top of this
+          # file). The platform workflows check out the same ref.
+          ref: ${{ inputs.publish_to_release_repo && format('refs/tags/{0}', inputs.tag) || github.ref }}
           persist-credentials: false
 
       - name: Match release label to application version
