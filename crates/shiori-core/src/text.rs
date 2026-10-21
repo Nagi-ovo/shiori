@@ -3,7 +3,7 @@
 
 use std::os::raw::c_int;
 
-use pdfium_render::prelude::{FS_MATRIX, FS_RECTF};
+use pdfium_render::prelude::{FPDF_DOCUMENT, FS_MATRIX, FS_RECTF};
 
 use crate::fonts::font_id;
 use crate::{
@@ -102,7 +102,7 @@ impl Document {
         }
         let mut fonts = std::collections::HashMap::new();
         let raw: Vec<RawChar> = (0..count)
-            .map(|i| raw_char(self.lib, &text, i, &mut fonts))
+            .map(|i| raw_char(self.lib, self.handle, &text, i, &mut fonts))
             .collect();
         Ok(assemble(&raw))
     }
@@ -110,6 +110,7 @@ impl Document {
 
 fn raw_char(
     lib: &Lib,
+    document: FPDF_DOCUMENT,
     text: &TextPage<'_>,
     i: c_int,
     fonts: &mut std::collections::HashMap<usize, FontInfo>,
@@ -159,7 +160,7 @@ fn raw_char(
                             name: String::from_utf8_lossy(&name)
                                 .trim_end_matches('\0')
                                 .to_string(),
-                            id: font_id(lib, font),
+                            id: font_id(lib, document, font),
                             flags: flags & PDF_FONT_FLAGS,
                             ascent,
                             descent,

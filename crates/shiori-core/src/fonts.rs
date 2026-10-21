@@ -10,6 +10,7 @@ use crate::{CoreError, Document, Lib, TextPage, MAX_FORM_DEPTH, PDF_FONT_FLAGS};
 
 mod id;
 mod own_cmap;
+mod reach;
 pub(crate) use id::font_id;
 use id::font_identity;
 
@@ -29,8 +30,8 @@ pub struct EmbeddedFont {
     pub flags: i32,
     pub format: FontFormat,
     /// Whether the program as it is, through its own cmap and advances,
-    /// draws every probe character this dictionary maps the way the
-    /// dictionary does (`own_cmap::draws_alike`). Only then may a browser
+    /// draws every character this dictionary maps (the probe's and those
+    /// past it) the way the dictionary does (`own_cmap::draws_alike`). Only then may a browser
     /// load the program as a face; otherwise the reading layer rebuilds it.
     pub own_cmap: bool,
     pub data: Vec<u8>,
@@ -309,15 +310,16 @@ impl Document {
                         let Some(data) = font_program(lib, font) else {
                             continue;
                         };
+                        let beyond = reach::mapped_beyond_probe(lib, self.handle, font);
                         fonts.push(EmbeddedFont {
                             name: base_font_name(lib, font),
-                            id: font_identity(lib, font, &data),
+                            id: font_identity(lib, font, &data, &beyond),
                             flags: lib.FPDFFont_GetFlags(font) & PDF_FONT_FLAGS,
                             format: FontFormat::of(&data),
                             own_cmap: matches!(
                                 FontFormat::of(&data),
                                 FontFormat::TrueType | FontFormat::OpenType
-                            ) && own_cmap::draws_alike(lib, font, &data),
+                            ) && own_cmap::draws_alike(lib, font, &data, &beyond),
                             data,
                         });
                     }
@@ -404,7 +406,7 @@ impl Document {
                         .collect();
                     FontOutlines {
                         name,
-                        id: font_id(lib, font),
+                        id: font_id(lib, self.handle, font),
                         flags: lib.FPDFFont_GetFlags(font) & PDF_FONT_FLAGS,
                         ascent,
                         descent,

@@ -181,6 +181,25 @@ describe("shiori-core in wasm", () => {
     }
   });
 
+  test("tells apart dictionaries that share a program and part past the probe, as the native core does", () => {
+    // Three Foxit Serif dictionaries on one program; two call code 128
+    // U+0400, one drawing eacute and one egrave (audit B108).
+    const bytes = readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures/shared-program-unicode.pdf"));
+    const doc = wasm.CoreDocument.open(bytes, undefined);
+    const native = openCoreDocument(bytes);
+    try {
+      const ids = decodeEmbeddedFonts(doc.embeddedFonts(0)).map((font) => font.id);
+      expect(new Set(ids).size).toBe(3);
+      const glyphs = JSON.parse(doc.pageText(0)).glyphs as PdfiumGlyph[];
+      const drawn = (all: PdfiumGlyph[]) => all.filter((g) => g.text === "Ѐ").map((g) => g.fontId);
+      expect(drawn(glyphs)).toEqual(ids.slice(1));
+      expect(drawn(native.glyphs(0))).toEqual(ids.slice(1));
+    } finally {
+      doc.free();
+      native.close();
+    }
+  });
+
   test("rebuilds embedded fonts a browser refuses so they draw as PDFium draws them", async () => {
     // Bare CFF (as XeTeX and InDesign embed) and pdf-lib's TrueType subset,
     // rebuilt from PDFium's glyphs, then set at the runs' own positions in a

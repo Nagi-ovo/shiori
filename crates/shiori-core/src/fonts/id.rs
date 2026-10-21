@@ -12,13 +12,14 @@
 //! PDFium 7881 gives a font handle no object number and no access to its
 //! dictionary, and frees its handles with their pages. So a font's id is
 //! what it is: its program, and how its dictionary uses that program, as
-//! PDFium reports it for a fixed set of characters. The same dictionary has
-//! the same id on every page, in a reopened file and in a file merged from
-//! it, where edits saved with it in a draft find it again.
+//! PDFium reports it for a fixed set of characters and for every further
+//! character the dictionary maps (`reach`). The same dictionary has the
+//! same id on every page, in a reopened file and in a file merged from it,
+//! where edits saved with it in a draft find it again.
 
-use pdfium_render::prelude::FPDF_FONT;
+use pdfium_render::prelude::{FPDF_DOCUMENT, FPDF_FONT};
 
-use super::{font_program, GLYPH_PATH_SCALE};
+use super::{font_program, reach, GLYPH_PATH_SCALE};
 use crate::Lib;
 
 /// The characters every font is asked about: the ones the 8-bit encodings
@@ -29,7 +30,7 @@ use crate::Lib;
 /// beyond. Two dictionaries that draw all of these alike and differ only
 /// further on, as two CID fonts on one program can, keep one id. The probe
 /// is fixed, never the characters a page sets, so the id does not depend on
-/// which page is read.
+/// which page is read; what a dictionary maps beyond it is added per font.
 pub(super) const PROBE: &[std::ops::RangeInclusive<u32>] = &[
     0x20..=0x7e,
     0xa0..=0x17f,
@@ -74,13 +75,20 @@ impl Fnv {
     }
 }
 
+/// A character no font maps: each font's answer for it is its answer for a
+/// character it does not map (no outline, or its .notdef).
+pub(super) const UNMAPPED: u32 = 0xffff;
+
 /// The id of an embedded font whose program is `program`, in hex: FNV-1a 64
 /// over the program's bytes, its descriptor flags and, for each probe
 /// character, the advance its /Widths give it and the whole outline of the
 /// glyph it draws. The advance (through PDFium's lookup from Unicode back to
 /// a code) catches a dictionary that maps a character elsewhere or widens
 /// it; the outline catches one that swaps in a glyph of the same width, a
-/// mirror image included.
+/// mirror image included. Then each character of `beyond` (`reach`) the
+/// font draws, with its advance and outline, so two dictionaries that part
+/// only past the probe part here. A font that maps nothing past the probe
+/// keeps the id it had before `beyond` was added.
 ///
 /// The outline is every segment's type, point and closure in whole 1/1000
 /// em, as `glyph_outline` rebuilds it from PDFium's FreeType, so two ids are
@@ -90,7 +98,12 @@ impl Fnv {
 /// characters once per font per page read: 0.1 to 0.3 ms for a Latin font
 /// in a native release build, a few more milliseconds to hash a whole CJK
 /// program.
-pub(crate) unsafe fn font_identity(lib: &Lib, font: FPDF_FONT, program: &[u8]) -> String {
+pub(crate) unsafe fn font_identity(
+    lib: &Lib,
+    font: FPDF_FONT,
+    program: &[u8],
+    beyond: &[u32],
+) -> String {
     let mut hash = Fnv::new();
     hash.bytes(program);
     hash.int(lib.FPDFFont_GetFlags(font));
@@ -100,7 +113,26 @@ pub(crate) unsafe fn font_identity(lib: &Lib, font: FPDF_FONT, program: &[u8]) -
         hash.int(advance.round() as i32);
         glyph_shape(lib, font, unicode, &mut hash);
     }
+    let none = answer(lib, font, UNMAPPED);
+    for &unicode in beyond {
+        let (advance, shape) = answer(lib, font, unicode);
+        if (advance, shape) != none {
+            hash.int(unicode as i32);
+            hash.int(advance);
+            hash.bytes(&shape.to_le_bytes());
+        }
+    }
     format!("{:016x}", hash.0)
+}
+
+/// The advance (whole 1/1000 em) and the outline's hash (`glyph_shape`) of
+/// the glyph `font` draws for `unicode`.
+pub(super) unsafe fn answer(lib: &Lib, font: FPDF_FONT, unicode: u32) -> (i32, u64) {
+    let mut advance = 0f32;
+    lib.FPDFFont_GetGlyphWidth(font, unicode, 1000.0, &mut advance);
+    let mut hash = Fnv::new();
+    glyph_shape(lib, font, unicode, &mut hash);
+    (advance.round() as i32, hash.0)
 }
 
 /// The outline of the glyph `font` draws for `unicode`: its segment count
@@ -127,10 +159,13 @@ pub(super) unsafe fn glyph_shape(lib: &Lib, font: FPDF_FONT, unicode: u32, hash:
     }
 }
 
-/// The id of a font (`font_identity`); empty for a font the file does not
-/// embed.
-pub(crate) unsafe fn font_id(lib: &Lib, font: FPDF_FONT) -> String {
+/// The id of a font of `document` (`font_identity`); empty for a font the
+/// file does not embed.
+pub(crate) unsafe fn font_id(lib: &Lib, document: FPDF_DOCUMENT, font: FPDF_FONT) -> String {
     font_program(lib, font)
-        .map(|data| font_identity(lib, font, &data))
+        .map(|data| {
+            let beyond = reach::mapped_beyond_probe(lib, document, font);
+            font_identity(lib, font, &data, &beyond)
+        })
         .unwrap_or_default()
 }
