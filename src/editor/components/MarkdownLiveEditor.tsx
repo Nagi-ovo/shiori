@@ -59,7 +59,10 @@ type Props = {
 
 const MARKDOWN_EDITOR_CACHE_MAX_DOCUMENTS = 8;
 const MARKDOWN_EDITOR_CACHE_MAX_CHARACTERS = 4_000_000;
-const markdownEditorStateCache = new Map<string, EditorState>();
+// The line break travels with the state: a remount on single-line text cannot
+// re-derive it, and an undo there would bring the old lines back in "\n".
+type CachedMarkdownEditor = { state: EditorState; lineBreak: LineBreak };
+const markdownEditorStateCache = new Map<string, CachedMarkdownEditor>();
 
 export function MarkdownLiveEditor({
   documentId,
@@ -129,7 +132,8 @@ export function MarkdownLiveEditor({
     const host = hostRef.current;
     if (!host) return;
 
-    lineBreakRef.current = dominantLineBreak(text) ?? "\n";
+    const cached = takeCachedMarkdownEditorState(documentId);
+    lineBreakRef.current = dominantLineBreak(text) ?? cached?.lineBreak ?? "\n";
     const themeCompartment = themeCompartmentRef.current;
     const extensions: Extension[] = [
           history(),
@@ -187,10 +191,9 @@ export function MarkdownLiveEditor({
             }),
           ),
         ];
-    const cachedState = takeCachedMarkdownEditorState(documentId);
-    const initialState = cachedState
+    const initialState = cached
       ? updateEditorStateText(
-          cachedState.update({
+          cached.state.update({
             effects: StateEffect.reconfigure.of(extensions),
             annotations: Transaction.addToHistory.of(false),
           }).state,
@@ -227,7 +230,10 @@ export function MarkdownLiveEditor({
       if (sourceLineReaderRef) sourceLineReaderRef.current = null;
       window.removeEventListener(MARKDOWN_EDITOR_COMMAND_EVENT, onCommand);
       onScrollerMountRef.current?.(null);
-      cacheMarkdownEditorState(documentId, view.state);
+      cacheMarkdownEditorState(documentId, {
+        state: view.state,
+        lineBreak: lineBreakRef.current,
+      });
       view.destroy();
       if (viewRef.current === view) viewRef.current = null;
     };
@@ -461,36 +467,36 @@ function flushPendingExternalText(
   knownEditorTextRef.current = pending;
 }
 
-function takeCachedMarkdownEditorState(documentId?: string): EditorState | null {
+function takeCachedMarkdownEditorState(documentId?: string): CachedMarkdownEditor | null {
   if (!documentId) return null;
-  const state = markdownEditorStateCache.get(documentId) ?? null;
+  const cached = markdownEditorStateCache.get(documentId) ?? null;
   markdownEditorStateCache.delete(documentId);
-  return state;
+  return cached;
 }
 
 function cacheMarkdownEditorState(
   documentId: string | undefined,
-  state: EditorState,
+  entry: CachedMarkdownEditor,
 ): void {
-  if (!documentId || state.doc.length > MARKDOWN_EDITOR_CACHE_MAX_CHARACTERS) {
+  if (!documentId || entry.state.doc.length > MARKDOWN_EDITOR_CACHE_MAX_CHARACTERS) {
     return;
   }
   markdownEditorStateCache.delete(documentId);
-  markdownEditorStateCache.set(documentId, state);
+  markdownEditorStateCache.set(documentId, entry);
 
   let cachedCharacters = 0;
   for (const cached of markdownEditorStateCache.values()) {
-    cachedCharacters += cached.doc.length;
+    cachedCharacters += cached.state.doc.length;
   }
   while (
     markdownEditorStateCache.size > MARKDOWN_EDITOR_CACHE_MAX_DOCUMENTS ||
     cachedCharacters > MARKDOWN_EDITOR_CACHE_MAX_CHARACTERS
   ) {
     const oldest = markdownEditorStateCache.entries().next().value as
-      | [string, EditorState]
+      | [string, CachedMarkdownEditor]
       | undefined;
     if (!oldest) break;
     markdownEditorStateCache.delete(oldest[0]);
-    cachedCharacters -= oldest[1].doc.length;
+    cachedCharacters -= oldest[1].state.doc.length;
   }
 }
