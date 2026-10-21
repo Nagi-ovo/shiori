@@ -14,10 +14,20 @@
 // (a navigation swaps the realm behind the same WindowProxy). Each realm gets
 // the same hooks, so grandchildren are covered too.
 //
-// Not covered, where the engine ignores `webrtc 'block'`: a srcdoc child whose
-// own scripts run before its load event, and a realm reached between a DOM
-// call this list misses and the next mutation microtask. None of it is
-// browser-verified (probe: a run document that builds a nested about:blank
+// A srcdoc child is a new opaque origin (it inherits the run frame's sandbox),
+// so the parent cannot reach it, and its own scripts run before its load
+// event. So the srcdoc itself gets the guard's own script tag in front:
+// buildRunnableHtml prefixes every static srcdoc, and the guard prefixes one
+// set through the srcdoc setter, setAttribute or setAttributeNS. The tag is
+// derived from document.currentScript, so it carries itself to grandchildren
+// and matches the run CSP (a data: URL on desktop, the nonce on web).
+//
+// Not covered: a srcdoc written by an HTML-parsing route (innerHTML,
+// insertAdjacentHTML, document.write, setHTMLUnsafe, a template or a
+// declarative shadow root) or through an Attr node; and a realm reached
+// between a DOM call this list misses and the next mutation microtask. No
+// engine is known to enforce `webrtc 'block'`, so nothing backs these up.
+// None of it is browser-verified (probe: a run document that builds a nested about:blank
 // frame and opens a data channel from it against its own STUN host, with the
 // network panel open). Like the other frame scripts, it must never contain the
 // literal script-closing sequence.
@@ -35,6 +45,10 @@ export const WEBRTC_GUARD = `(function () {
   var apply = Reflect.apply;
   var lengthDescriptor = describe(runWindow, "length");
   var lengthOf = lengthDescriptor && lengthDescriptor.get;
+  var copyArgs = Array.prototype.slice;
+  var indexOf = String.prototype.indexOf;
+  var toLower = String.prototype.toLowerCase;
+  var srcdocPrefix = scriptTagOf(runDocument.currentScript);
   var RTC = ["RTCPeerConnection", "webkitRTCPeerConnection", "mozRTCPeerConnection"];
   var FRAME_ELEMENTS = ["HTMLIFrameElement", "HTMLFrameElement", "HTMLObjectElement"];
   var INSERTS = [
@@ -49,6 +63,18 @@ export const WEBRTC_GUARD = `(function () {
   var wrapped = typeof WeakSet === "function" ? new WeakSet() : null;
   var wrappedHas = wrapped && WeakSet.prototype.has;
   var wrappedAdd = wrapped && WeakSet.prototype.add;
+  function scriptTagOf(script) {
+    try {
+      var close = "<" + "/script>";
+      if (script.src) return '<script src="' + script.src.replace(/&/g, "&amp;").replace(/"/g, "&quot;") + '">' + close;
+      var nonce = script.nonce ? ' nonce="' + script.nonce.replace(/&/g, "&amp;").replace(/"/g, "&quot;") + '"' : "";
+      return "<script" + nonce + ">" + script.textContent + close;
+    } catch (e) { return ""; }
+  }
+  function guardedSrcdoc(value) {
+    var text = "" + value;
+    return apply(indexOf, text, [srcdocPrefix]) === 0 ? text : srcdocPrefix + text;
+  }
   function claimed(w) {
     var d = describe(w, RTC[0]);
     return !!d && d.value === undefined && d.writable === false;
@@ -90,15 +116,20 @@ export const WEBRTC_GUARD = `(function () {
     try { var ctor = w[name]; return ctor && ctor.prototype ? ctor.prototype : null; }
     catch (e) { return null; }
   }
-  function wrap(proto, name, kind, after) {
+  function wrap(proto, name, kind, after, before) {
     var desc = describe(proto, name);
     var original = desc && desc[kind];
     if (typeof original !== "function" || !desc.configurable) return;
     if (wrapped && apply(wrappedHas, wrapped, [original])) return;
     var replacement = function () {
+      var args = arguments;
+      if (before) {
+        args = apply(copyArgs, arguments, []);
+        try { before(this, args); } catch (e) {}
+      }
       var result;
-      try { result = apply(original, this, arguments); }
-      finally { try { after(result); } catch (e) {} }
+      try { result = apply(original, this, args); }
+      finally { if (after) { try { after(result); } catch (e) {} } }
       return result;
     };
     if (wrapped) apply(wrappedAdd, wrapped, [replacement]);
@@ -116,6 +147,9 @@ export const WEBRTC_GUARD = `(function () {
       if (!frameProto) continue;
       try { wrap(frameProto, "contentWindow", "get", harden); } catch (e) {}
       try { wrap(frameProto, "contentDocument", "get", hardenView); } catch (e) {}
+    }
+    if (srcdocPrefix) {
+      try { hookSrcdoc(w); } catch (e) {}
     }
     var embedProto = prototypeOf(w, "HTMLEmbedElement");
     if (embedProto) {
@@ -135,6 +169,33 @@ export const WEBRTC_GUARD = `(function () {
     }
     try { new w.MutationObserver(sweep).observe(d, { childList: true, subtree: true }); } catch (e) {}
     try { d.addEventListener("load", sweep, true); } catch (e) {}
+  }
+  function hookSrcdoc(w) {
+    var frameProto = prototypeOf(w, "HTMLIFrameElement");
+    var elementProto = prototypeOf(w, "Element");
+    var localName = elementProto && describe(elementProto, "localName");
+    var localNameOf = localName && localName.get;
+    function isFrame(element) {
+      return !!localNameOf && apply(localNameOf, element, []) === "iframe";
+    }
+    if (frameProto) {
+      wrap(frameProto, "srcdoc", "set", null, function (self, args) {
+        if (args.length) args[0] = guardedSrcdoc(args[0]);
+      });
+    }
+    if (!elementProto) return;
+    // Each name is coerced once and passed on as that string, so an object
+    // whose toString changes between calls cannot slip past the check.
+    wrap(elementProto, "setAttribute", "value", null, function (self, args) {
+      if (args.length < 2) return;
+      args[0] = "" + args[0];
+      if (apply(toLower, args[0], []) === "srcdoc" && isFrame(self)) args[1] = guardedSrcdoc(args[1]);
+    });
+    wrap(elementProto, "setAttributeNS", "value", null, function (self, args) {
+      if (args.length < 3 || (args[0] !== null && args[0] !== undefined && args[0] !== "")) return;
+      args[1] = "" + args[1];
+      if (args[1] === "srcdoc" && isFrame(self)) args[2] = guardedSrcdoc(args[2]);
+    });
   }
   harden(runWindow, runDocument);
 })();`;

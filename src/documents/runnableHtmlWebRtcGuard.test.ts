@@ -20,7 +20,8 @@ type Realm = {
   fireLoad: () => void;
 };
 
-type FakeFrame = { realm: Realm };
+type FakeElement = { kind: string; attrs: Record<string, string> };
+type FakeFrame = FakeElement & { realm: Realm };
 
 const defineOwn = Object.defineProperty;
 const framesOf = new WeakMap<object, Realm[]>();
@@ -33,7 +34,30 @@ function fakeRealm(): Realm {
   const frames: Realm[] = [];
   const observers: Array<() => void> = [];
   const loadListeners: Array<() => void> = [];
-  const frameProto: Record<string, unknown> = {};
+  const elementProto: Record<string, unknown> = {
+    setAttribute(this: FakeElement, name: string, value: string) {
+      this.attrs[name.toLowerCase()] = value;
+    },
+    setAttributeNS(this: FakeElement, ns: string | null, name: string, value: string) {
+      this.attrs[ns ? `${ns}|${name}` : name] = value;
+    },
+  };
+  Object.defineProperty(elementProto, "localName", {
+    configurable: true,
+    get(this: FakeElement) {
+      return this.kind;
+    },
+  });
+  const frameProto: Record<string, unknown> = Object.create(elementProto);
+  Object.defineProperty(frameProto, "srcdoc", {
+    configurable: true,
+    get(this: FakeElement) {
+      return this.attrs.srcdoc ?? "";
+    },
+    set(this: FakeElement, value: string) {
+      this.attrs.srcdoc = value;
+    },
+  });
   Object.defineProperty(frameProto, "contentWindow", {
     configurable: true,
     get(this: FakeFrame) {
@@ -47,6 +71,7 @@ function fakeRealm(): Realm {
     localStorage: storage,
     sessionStorage: storage,
     HTMLIFrameElement: { prototype: frameProto },
+    Element: { prototype: elementProto },
     Node: {
       prototype: {
         appendChild(node: FakeFrame) {
@@ -96,7 +121,11 @@ function fakeRealm(): Realm {
 
 function frameOf(owner: Record<string | number, unknown>, child: Realm) {
   const ctor = owner.HTMLIFrameElement as { prototype: object };
-  return Object.assign(Object.create(ctor.prototype), { realm: child });
+  return Object.assign(Object.create(ctor.prototype), {
+    realm: child,
+    kind: "iframe",
+    attrs: {},
+  });
 }
 
 function appendFrame(parent: Realm, child: Realm) {
@@ -106,7 +135,11 @@ function appendFrame(parent: Realm, child: Realm) {
   return node.prototype.appendChild.call({}, frameOf(parent.win, child));
 }
 
-function runShim(top: Realm) {
+// The script element the shim runs from, as document.currentScript sees it.
+type RunScript = { src: string; nonce?: string; textContent?: string };
+
+function runShim(top: Realm, currentScript?: RunScript) {
+  (top.win.document as { currentScript?: RunScript }).currentScript = currentScript;
   new Function("window", "document", STORAGE_SHIM)(top.win, top.win.document);
 }
 
@@ -215,6 +248,66 @@ describe("run frame WebRTC guard in nested frames", () => {
     // Read between the insertion and the guard's sweep, or never.
     expect(typeof leaked).not.toBe("function");
     expect(rtcOf(child)).toEqual([undefined, undefined]);
+  });
+
+  test("a srcdoc set from script runs the guard before its own scripts", () => {
+    const user = "<script>new RTCPeerConnection()</script>";
+    const external = { src: "data:text/javascript;charset=utf-8,guard" };
+    const inline = { src: "", nonce: "n0nce", textContent: "guard()" };
+    const cases: Array<[RunScript, string]> = [
+      [external, `<script src="${external.src}"></script>`],
+      [inline, `<script nonce="n0nce">guard()</script>`],
+    ];
+    for (const [currentScript, prefix] of cases) {
+      const top = fakeRealm();
+      runShim(top, currentScript);
+      type Settable = FakeFrame & {
+        srcdoc: string;
+        setAttribute: (name: string, value: string) => void;
+        setAttributeNS: (ns: string | null, name: string, value: string) => void;
+      };
+      const frame = frameOf(top.win, fakeRealm()) as Settable;
+
+      frame.srcdoc = user;
+      expect(frame.attrs.srcdoc).toBe(prefix + user);
+      const current = frame.srcdoc;
+      frame.srcdoc = current;
+      expect(frame.attrs.srcdoc).toBe(prefix + user);
+      frame.setAttribute("SRCDOC", user);
+      expect(frame.attrs.srcdoc).toBe(prefix + user);
+      frame.setAttributeNS(null, "srcdoc", user);
+      expect(frame.attrs.srcdoc).toBe(prefix + user);
+
+      const div = Object.assign(Object.create(frameOf(top.win, fakeRealm())), {
+        kind: "div",
+        attrs: {},
+      }) as Settable;
+      div.setAttribute("srcdoc", user);
+      expect(div.attrs.srcdoc).toBe(user);
+    }
+  });
+
+  test("a srcdoc in the document runs the guard before its own scripts", () => {
+    const user = "new RTCPeerConnection()";
+    const toUrl = (source: string) =>
+      `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}`;
+    const parse = (html: string) => new window.DOMParser().parseFromString(html, "text/html");
+    for (const options of [{ externalizeScript: toUrl }, {}]) {
+      const { html } = buildRunnableHtml(
+        `<iframe srcdoc="<script>${user}</script>"></iframe>`,
+        options,
+      );
+      const srcdoc = parse(html).querySelector("iframe")?.getAttribute("srcdoc") ?? "";
+      const scripts = Array.from(parse(srcdoc).querySelectorAll("script"));
+      const src = scripts[0]?.getAttribute("src");
+      const first = src
+        ? decodeURIComponent(src.slice(src.indexOf(",") + 1))
+        : scripts[0]?.textContent;
+
+      expect(first).toBe(STORAGE_SHIM);
+      expect(scripts.map((script) => script.textContent).at(-1)).toBe(user);
+      expect(scripts).toHaveLength(2);
+    }
   });
 
   test("WebRTC is removed where a window refuses non-configurable properties", () => {
