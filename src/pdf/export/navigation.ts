@@ -7,18 +7,23 @@ import {
   PDFNull,
   PDFNumber,
   PDFObject,
-  PDFRawStream,
   PDFRef,
   PDFString,
   PDFStream,
 } from "pdf-lib";
-
-type CloneState = {
-  clonedObjects: Map<PDFObject, PDFObject>;
-  clonedRefs: Map<string, PDFRef>;
-  sourcePageRefTags: Set<string>;
-  pageRefMap: Map<string, PDFRef>;
-};
+import {
+  asArray,
+  copyCatalogEntry,
+  createCloneState,
+  cloneObject,
+  isName,
+  lookupDict,
+  resolveObject,
+  seedObjectMapping,
+  type CloneState,
+} from "./pdfObjectClone";
+import { copyDocumentCatalogEntries } from "./catalogEntries";
+import { preserveAcroForm } from "./acroForm";
 
 export type PreserveCatalogOptions = {
   // True when the export keeps every source page, once, in source order.
@@ -54,23 +59,7 @@ export function preserveNavigationCatalogEntries(
   if (options.documentFiles === "preserve") {
     copyDocumentFileEntries(source, dest, state);
   }
-  // Export rebuilds the catalog from scratch (PDFDocument.create), so anything
-  // not copied here is silently dropped from the user's file. These are the
-  // entries whose loss is user-visible: /Lang and the structure tree carry
-  // accessibility, /OpenAction the initial view, /Metadata the XMP twin of the
-  // Info dict, /PageLabels the front-matter numbering (i, ii, iii...).
-  copyCatalogEntry(source, dest, state, "Lang");
-  copyCatalogEntry(source, dest, state, "OpenAction");
-  copyCatalogEntry(source, dest, state, "Metadata");
-  if (options.pagesUnchanged) {
-    copyCatalogEntry(source, dest, state, "PageLabels");
-    // /MarkInfo without /StructTreeRoot advertises a tagged PDF that has no
-    // tags, which is worse for assistive tech than an untagged file, so the
-    // two move together.
-    if (copyCatalogEntry(source, dest, state, "StructTreeRoot")) {
-      copyCatalogEntry(source, dest, state, "MarkInfo");
-    }
-  }
+  copyDocumentCatalogEntries(source, dest, state, options.pagesUnchanged);
   preserveAcroForm(source, dest, state);
   const destinationIndexByRef = new Map(
     dest.getPages().map((page, index) => [page.ref.toString(), index]),
@@ -632,20 +621,6 @@ function fileSpecInventoryEqual(
   });
 }
 
-function createCloneState(
-  source: PDFDocument,
-  pageRefMap: Map<string, PDFRef>,
-): CloneState {
-  return {
-    clonedObjects: new Map(),
-    clonedRefs: new Map(),
-    sourcePageRefTags: new Set(
-      source.getPages().map((page) => page.ref.toString()),
-    ),
-    pageRefMap,
-  };
-}
-
 type DestinationValidity = "valid" | "invalid" | "unknown";
 
 type NameTreeSummary = {
@@ -1018,98 +993,6 @@ function destinationName(value: PDFObject): string | null {
   return null;
 }
 
-// /AcroForm cannot go through cloneObject: its /Fields point at the widget
-// annotations pdf-lib already copied with the pages, so a fresh deep clone
-// would produce a second, disconnected copy of every field — the page would
-// show one widget while the form dictionary described another. Instead keep
-// the form's own settings (/DA, /DR, /NeedAppearances, /SigFlags, /Q) and
-// rebuild /Fields from the widgets that actually landed on exported pages.
-// Fields whose widgets were not exported drop out, which is the correct
-// outcome for a partial export.
-function preserveAcroForm(
-  source: PDFDocument,
-  dest: PDFDocument,
-  state: CloneState,
-) {
-  const acroFormKey = PDFName.of("AcroForm");
-  const sourceForm = lookupDict(source, source.catalog.get(acroFormKey));
-  if (!sourceForm) return;
-
-  const fields = collectFieldRootsFromPages(dest);
-  if (fields.length === 0) return;
-
-  const clonedForm = PDFDict.withContext(dest.context);
-  for (const [key, value] of sourceForm.entries()) {
-    if (key.asString() === "/Fields") continue;
-    const cloned = cloneObject(source, dest, state, value);
-    if (cloned) clonedForm.set(key, cloned);
-  }
-
-  const fieldArray = PDFArray.withContext(dest.context);
-  for (const ref of fields) fieldArray.push(ref);
-  clonedForm.set(PDFName.of("Fields"), fieldArray);
-  dest.catalog.set(acroFormKey, clonedForm);
-}
-
-// Walks every exported page's /Annots for widget annotations and returns the
-// root of each one's field hierarchy (a widget merged with its field is its
-// own root). Order follows page order so the rebuilt /Fields reads naturally.
-function collectFieldRootsFromPages(dest: PDFDocument): PDFRef[] {
-  const roots: PDFRef[] = [];
-  const seen = new Set<string>();
-  const parentKey = PDFName.of("Parent");
-  const subtypeKey = PDFName.of("Subtype");
-
-  for (const page of dest.getPages()) {
-    const annots = asArray(dest, page.node.get(ANNOTS_KEY));
-    if (!annots) continue;
-    for (let i = 0; i < annots.size(); i++) {
-      const element = annots.get(i);
-      if (!(element instanceof PDFRef)) continue;
-      const annot = lookupDict(dest, element);
-      if (!annot) continue;
-      if (annot.get(subtypeKey)?.toString() !== "/Widget") continue;
-
-      let rootRef: PDFRef = element;
-      let current = annot;
-      // Bounded walk: a malformed file can point /Parent back at itself.
-      const visited = new Set<string>([element.toString()]);
-      for (let depth = 0; depth < 32; depth++) {
-        const parent = current.get(parentKey);
-        if (!(parent instanceof PDFRef)) break;
-        const tag = parent.toString();
-        if (visited.has(tag)) break;
-        visited.add(tag);
-        const parentDict = lookupDict(dest, parent);
-        if (!parentDict) break;
-        rootRef = parent;
-        current = parentDict;
-      }
-
-      const rootTag = rootRef.toString();
-      if (seen.has(rootTag)) continue;
-      seen.add(rootTag);
-      roots.push(rootRef);
-    }
-  }
-
-  return roots;
-}
-
-function copyCatalogEntry(
-  source: PDFDocument,
-  dest: PDFDocument,
-  state: CloneState,
-  key: string,
-): boolean {
-  const name = PDFName.of(key);
-  const original = source.catalog.get(name);
-  const cloned = cloneObject(source, dest, state, original);
-  if (!cloned) return false;
-  dest.catalog.set(name, cloned);
-  return true;
-}
-
 function copyNamesEntry(
   source: PDFDocument,
   dest: PDFDocument,
@@ -1276,59 +1159,6 @@ function seedArrayEntryMappings(
       destArray!.get(i),
     );
   }
-}
-
-function seedObjectMapping(
-  source: PDFDocument,
-  dest: PDFDocument,
-  state: CloneState,
-  sourceValue: PDFObject | undefined,
-  destValue: PDFObject | undefined,
-) {
-  const seen = new Set<PDFObject>();
-  const seed = (
-    nextSource: PDFObject | undefined,
-    nextDest: PDFObject | undefined,
-  ) => {
-    if (!nextSource || !nextDest) return;
-    if (nextSource instanceof PDFRef && nextDest instanceof PDFRef) {
-      if (!state.clonedRefs.has(nextSource.toString())) {
-        state.clonedRefs.set(nextSource.toString(), nextDest);
-      }
-    }
-    const sourceObject = resolveObject(source, nextSource);
-    const destObject = resolveObject(dest, nextDest);
-    if (!sourceObject || !destObject) return;
-
-    const sameContainerType =
-      (sourceObject instanceof PDFStream && destObject instanceof PDFStream) ||
-      (sourceObject instanceof PDFDict && destObject instanceof PDFDict) ||
-      (sourceObject instanceof PDFArray && destObject instanceof PDFArray);
-    if (!sameContainerType) return;
-    const existing = state.clonedObjects.get(sourceObject);
-    if (existing && existing !== destObject) return;
-    if (!existing) state.clonedObjects.set(sourceObject, destObject);
-    if (seen.has(sourceObject)) return;
-    seen.add(sourceObject);
-
-    if (sourceObject instanceof PDFStream && destObject instanceof PDFStream) {
-      seed(sourceObject.dict, destObject.dict);
-      return;
-    }
-    if (sourceObject instanceof PDFDict && destObject instanceof PDFDict) {
-      for (const [key, value] of sourceObject.entries()) {
-        seed(value, destObject.get(key));
-      }
-      return;
-    }
-    if (sourceObject instanceof PDFArray && destObject instanceof PDFArray) {
-      const count = Math.min(sourceObject.size(), destObject.size());
-      for (let i = 0; i < count; i += 1) {
-        seed(sourceObject.get(i), destObject.get(i));
-      }
-    }
-  };
-  seed(sourceValue, destValue);
 }
 
 // One internal Link annotation whose destination array names a page directly
@@ -1501,118 +1331,10 @@ function destinationArray(
   return asArray(doc, action.get(ACTION_DEST_KEY));
 }
 
-function asArray(
-  doc: PDFDocument,
-  value: PDFObject | undefined,
-): PDFArray | undefined {
-  if (!value) return undefined;
-  const resolved = value instanceof PDFRef ? doc.context.lookup(value) : value;
-  return resolved instanceof PDFArray ? resolved : undefined;
-}
-
-function lookupDict(
-  doc: PDFDocument,
-  value: PDFObject | undefined,
-): PDFDict | undefined {
-  const resolved = resolveObject(doc, value);
-  return resolved instanceof PDFDict ? resolved : undefined;
-}
-
-function resolveObject(
-  doc: PDFDocument,
-  value: PDFObject | undefined,
-): PDFObject | undefined {
-  if (!value) return undefined;
-  if (!(value instanceof PDFRef)) return value;
-  try {
-    return doc.context.lookup(value);
-  } catch {
-    return undefined;
-  }
-}
-
-function isName(
-  doc: PDFDocument,
-  value: PDFObject | undefined,
-  expected: string,
-): boolean {
-  const resolved = resolveObject(doc, value);
-  return resolved instanceof PDFName && resolved.decodeText() === expected;
-}
-
 function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
   if (left.byteLength !== right.byteLength) return false;
   for (let i = 0; i < left.byteLength; i += 1) {
     if (left[i] !== right[i]) return false;
   }
   return true;
-}
-
-function cloneObject(
-  source: PDFDocument,
-  dest: PDFDocument,
-  state: CloneState,
-  object: PDFObject | undefined,
-): PDFObject | undefined {
-  if (!object) return undefined;
-  if (object instanceof PDFRef) {
-    return cloneRef(source, dest, state, object);
-  }
-  if (object instanceof PDFDict) {
-    const cached = state.clonedObjects.get(object);
-    if (cached) return cached;
-    const cloned = PDFDict.withContext(dest.context);
-    state.clonedObjects.set(object, cloned);
-    for (const [key, value] of object.entries()) {
-      const next = cloneObject(source, dest, state, value);
-      if (next) cloned.set(key, next);
-    }
-    return cloned;
-  }
-  if (object instanceof PDFArray) {
-    const cached = state.clonedObjects.get(object);
-    if (cached) return cached;
-    const cloned = PDFArray.withContext(dest.context);
-    state.clonedObjects.set(object, cloned);
-    for (let i = 0; i < object.size(); i++) {
-      const next = cloneObject(source, dest, state, object.get(i));
-      cloned.push(next ?? dest.context.obj(null));
-    }
-    return cloned;
-  }
-  if (object instanceof PDFStream) {
-    const cached = state.clonedObjects.get(object);
-    if (cached) return cached;
-    const clonedDict = PDFDict.withContext(dest.context);
-    const cloned = PDFRawStream.of(clonedDict, new Uint8Array(object.getContents()));
-    state.clonedObjects.set(object, cloned);
-    for (const [key, value] of object.dict.entries()) {
-      const next = cloneObject(source, dest, state, value);
-      if (next) clonedDict.set(key, next);
-    }
-    return cloned;
-  }
-  return object.clone();
-}
-
-function cloneRef(
-  source: PDFDocument,
-  dest: PDFDocument,
-  state: CloneState,
-  ref: PDFRef,
-): PDFObject {
-  const tag = ref.toString();
-  const mappedPageRef = state.pageRefMap.get(tag);
-  if (mappedPageRef) return mappedPageRef;
-  if (state.sourcePageRefTags.has(tag)) return dest.context.obj(null);
-  const cached = state.clonedRefs.get(tag);
-  if (cached) return cached;
-  const dereferenced = source.context.lookup(ref);
-  if (!dereferenced) return dest.context.obj(null);
-  const clonedRef = dest.context.nextRef();
-  state.clonedRefs.set(tag, clonedRef);
-  const clonedObject = cloneObject(source, dest, state, dereferenced);
-  if (!clonedObject) return dest.context.obj(null);
-  dest.context.assign(clonedRef, clonedObject);
-  return clonedRef;
 }
