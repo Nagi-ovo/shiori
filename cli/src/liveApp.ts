@@ -207,8 +207,8 @@ export async function annotateLiveApp(
 /**
  * Whether a result accounts for exactly what the spec asked for. An overlay
  * spec gets one id per entry and adds at most that many. A calloutReply spec
- * appends turns to existing callouts instead (src/live/liveApiBridge.ts): its
- * ids are the distinct callouts replied to, in spec order, while `added`
+ * appends turns to existing callouts instead (src/live/liveAnnotationPrepare.ts):
+ * its ids are the distinct callouts replied to, in spec order, while `added`
  * counts turns, so two replies to one callout are added 2 with a single id.
  */
 function resultAccountsForSpec(

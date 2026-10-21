@@ -104,7 +104,7 @@ describe("app annotate", () => {
 
   test("accepts several replies to one callout, and their retry", async () => {
     // A reply spec's ids are the callouts it replied to, while `added` counts
-    // the turns (src/live/liveApiBridge.ts): two replies to c1 come back as
+    // the turns (src/live/liveAnnotationPrepare.ts): two replies to c1 come back as
     // added 2 with one id. Checking that against "one id per spec entry"
     // reported an outcome-unknown write that had landed, and the prescribed
     // retry (added 0, still one id) failed the same way forever.
