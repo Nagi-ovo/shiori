@@ -319,14 +319,24 @@ function createRunNonce(): string {
 
 // Template contents count too: the browser's parser turns
 // <template shadowrootmode> into a live shadow root (DOMParser does not), and
-// a page can clone any template into the document.
+// a page can clone any template into the document. So does a srcdoc inside a
+// srcdoc: the child's own parser inserts it, out of the child's reach.
 function prefixSrcdocFrames(root: ParentNode, scriptTag: () => string) {
   for (const template of Array.from(root.querySelectorAll("template"))) {
     prefixSrcdocFrames((template as HTMLTemplateElement).content, scriptTag);
   }
   for (const frame of Array.from(root.querySelectorAll("iframe[srcdoc]"))) {
-    frame.setAttribute("srcdoc", scriptTag() + (frame.getAttribute("srcdoc") ?? ""));
+    const srcdoc = prefixNestedSrcdoc(frame.getAttribute("srcdoc") ?? "", scriptTag);
+    frame.setAttribute("srcdoc", scriptTag() + srcdoc);
   }
+}
+
+function prefixNestedSrcdoc(srcdoc: string, scriptTag: () => string): string {
+  // Only an <iframe or <template tag can open a frame; others stay verbatim.
+  if (!/<(iframe|template)/i.test(srcdoc)) return srcdoc;
+  const doc = new window.DOMParser().parseFromString(srcdoc, "text/html");
+  prefixSrcdocFrames(doc, scriptTag);
+  return `<!doctype html>${doc.documentElement.outerHTML}`;
 }
 
 function escapeAttribute(value: string): string {

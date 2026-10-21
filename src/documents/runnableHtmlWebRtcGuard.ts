@@ -24,7 +24,9 @@
 //
 // Not covered: a srcdoc written by an HTML-parsing route (innerHTML,
 // insertAdjacentHTML, document.write, setHTMLUnsafe, a template or a
-// declarative shadow root) or through an Attr node; and a realm reached
+// declarative shadow root) or through an Attr node; a srcdoc nested inside a
+// srcdoc set from script (only the static ones are prefixed at every depth,
+// in buildRunnableHtml); and a realm reached
 // between a DOM call this list misses and the next mutation microtask. No
 // engine is known to enforce `webrtc 'block'`, so nothing backs these up.
 // None of it is browser-verified (probe: a run document that builds a nested about:blank

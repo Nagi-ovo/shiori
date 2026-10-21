@@ -362,6 +362,24 @@ describe("run frame WebRTC guard in nested frames", () => {
     }
   });
 
+  test("a srcdoc nested in a srcdoc runs the guard before its own scripts", () => {
+    // The child's own parser inserts the grandchild, which is again an opaque
+    // origin the child cannot reach.
+    const user = "new RTCPeerConnection()";
+    const parse = (html: string) => new window.DOMParser().parseFromString(html, "text/html");
+    const inner = `<iframe srcdoc="<script>${user}</script>"></iframe>`;
+    const raw = `<iframe srcdoc="${inner.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}"></iframe>`;
+    const { html } = buildRunnableHtml(raw);
+    const childSrcdoc = parse(html).querySelector("iframe")?.getAttribute("srcdoc") ?? "";
+    const child = parse(childSrcdoc);
+    const grandchildSrcdoc = child.querySelector("iframe")?.getAttribute("srcdoc") ?? "";
+    const scripts = Array.from(parse(grandchildSrcdoc).querySelectorAll("script"));
+
+    expect(child.querySelector("script")?.textContent).toBe(STORAGE_SHIM);
+    expect(scripts[0]?.textContent).toBe(STORAGE_SHIM);
+    expect(scripts.at(-1)?.textContent).toBe(user);
+  });
+
   test("WebRTC is removed where a window refuses non-configurable properties", () => {
     const top = fakeRealm();
     const strict = new Proxy(top.win, {
