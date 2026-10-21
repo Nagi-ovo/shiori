@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
-use pdfium_render::prelude::{Pdfium, FPDF_FORMFILLINFO};
+use pdfium_render::prelude::{Pdfium, FPDF_DOCUMENT, FPDF_FORMFILLINFO};
 
 use crate::encryption::SourceEncryption;
 use crate::{CoreError, Document, Lib};
@@ -20,6 +20,37 @@ const FPDF_ERR_FILE: u64 = 2;
 const FPDF_ERR_FORMAT: u64 = 3;
 const FPDF_ERR_PASSWORD: u64 = 4;
 const FPDF_ERR_SECURITY: u64 = 5;
+
+/// A PDF with no pages.
+const BLANK: &[u8] = b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n\
+2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\nxref\n0 3\n0000000000 65535 f \n\
+0000000009 00000 n \n0000000058 00000 n \ntrailer\n<< /Size 3 /Root 1 0 R >>\n\
+startxref\n110\n%%EOF\n";
+
+/// Runs `read` on an empty document of its own, closed afterwards; None when
+/// PDFium cannot load one. Loaded, not FPDF_CreateNewDocument: on wasm32
+/// pdfium-render frees `document_ptr_{handle}` on every close and never drops
+/// the key, so a new document at a closed one's address would free that
+/// buffer twice, while a load writes the key afresh.
+pub(crate) fn with_blank_document<T>(
+    lib: &Lib,
+    read: impl FnOnce(FPDF_DOCUMENT) -> T,
+) -> Option<T> {
+    let handle = {
+        let _guard = OPEN.lock().unwrap_or_else(|poison| poison.into_inner());
+        unsafe { lib.FPDF_LoadMemDocument64(BLANK, None) }
+    };
+    if handle.is_null() {
+        #[cfg(target_arch = "wasm32")]
+        unsafe {
+            lib.FPDF_CloseDocument(handle)
+        };
+        return None;
+    }
+    let value = read(handle);
+    unsafe { lib.FPDF_CloseDocument(handle) };
+    Some(value)
+}
 
 pub struct Core {
     lib: &'static Lib,

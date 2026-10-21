@@ -269,13 +269,16 @@ fn a_page_takes_the_boxes_its_page_tree_hands_down() {
     let content = format!("<< /Length {} >>\nstream\n{band}\nendstream", band.len());
     let bytes = hand_made_pdf(&[
         "<< /Type /Catalog /Pages 2 0 R >>",
-        "<< /Type /Pages /Kids [3 0 R 4 0 R 6 0 R 8 0 R] /Count 4 /MediaBox [0 0 595 842] >>",
+        "<< /Type /Pages /Kids [3 0 R 4 0 R 6 0 R 8 0 R 9 0 R 10 0 R] /Count 6 /MediaBox [0 0 595 842] >>",
         "<< /Type /Page /Parent 2 0 R /Contents 7 0 R >>",
         "<< /Type /Pages /Parent 2 0 R /Kids [5 0 R] /Count 1 /CropBox [10 20 310 420] >>",
         "<< /Type /Page /Parent 4 0 R >>",
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 0 0] >>",
         &content,
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] /CropBox [400 400 500 500] >>",
+        "<< /Type /Page /Parent 2 0 R /CropBox [900 900 1000 1000] >>",
+        "<< /Type /Pages /Parent 2 0 R /Kids [11 0 R] /Count 1 /CropBox [900 900 1000 1000] >>",
+        "<< /Type /Page /Parent 10 0 R >>",
     ]);
     let doc = core().open(bytes, None).unwrap();
     let size = |index| {
@@ -288,9 +291,37 @@ fn a_page_takes_the_boxes_its_page_tree_hands_down() {
     assert_eq!(size(2), (0.0, 0.0, 612.0, 792.0), "empty media box");
     // Ignored, as pdf.js does, rather than an empty page.
     assert_eq!(size(3), (0.0, 0.0, 200.0, 300.0), "crop box off the page");
+    // The same, with the media box handed down from the root.
+    assert_eq!(
+        size(4),
+        (0.0, 0.0, 595.0, 842.0),
+        "own crop off an inherited media box"
+    );
+    assert_eq!(
+        size(5),
+        (0.0, 0.0, 595.0, 842.0),
+        "both boxes inherited, disjoint"
+    );
     // The page is drawn at that size, not stretched into Letter: the band
     // along its bottom 20 pt fills the bitmap's last 20 rows.
     let page = doc.render(0, whole(0, 1.0, 595, 842)).unwrap();
     assert!(any_in(&page, 595, (100, 826, 500, 840), is_dark), "band");
     assert!(!any_in(&page, 595, (100, 760, 500, 818), is_dark));
+}
+
+#[test]
+fn a_crop_box_off_a_page_with_no_media_box_leaves_letter() {
+    // No media box anywhere, so US Letter; the crop box misses it and is
+    // ignored, not taken for the media box.
+    let bytes = hand_made_pdf(&[
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /CropBox [900 900 1000 1000] >>",
+    ]);
+    let doc = core().open(bytes, None).unwrap();
+    let g = doc.page_geometry(0).unwrap();
+    assert_eq!(
+        (g.origin_x, g.origin_y, g.width, g.height),
+        (0.0, 0.0, 612.0, 792.0)
+    );
 }
