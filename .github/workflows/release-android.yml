@@ -9,14 +9,18 @@ on:
   workflow_call:
     inputs:
       tag:
+        # Empty on a tag push.
         type: string
-        required: true
+        required: false
+        default: ''
       publish_to_release_repo:
         type: boolean
         required: true
       android_artifacts:
+        # Empty on a tag push.
         type: string
-        required: true
+        required: false
+        default: ''
 
 permissions: {}
 
