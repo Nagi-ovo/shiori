@@ -119,10 +119,9 @@ export function useDraftSync(
   const persistenceDocumentRef = useRef(opened?.doc ?? null);
   const persistenceReceiptsRef = useRef(completedLiveOperationIds);
   const draftVersionRef = useRef(observedDraftVersion(opened, draftId));
-  // Two windows on one file share its draft id (a remembered web file
-  // handle). While another window holds it, a save must not replace a row
-  // this one never saw; after a refusal, this draft id gets no more saves or
-  // crash logs from here, so the other window's work stays what reopens.
+  // Two windows on one web file handle share a draft id. While another holds
+  // it, a save must not replace a row this one never saw; once refused, no
+  // saves or crash logs go there until an open reads the row again.
   const conflictedDraftIdRef = useRef<string | null>(null);
   const ownLogStampRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
@@ -150,6 +149,7 @@ export function useDraftSync(
       persistenceStartedRef.current = false;
       persistenceReceiptsRef.current = completedLiveOperationIds;
       draftVersionRef.current = observedDraftVersion(opened, draftId);
+      if (opened?.draftVersion) conflictedDraftIdRef.current = null;
     } else if (persistenceReceiptsRef.current !== completedLiveOperationIds) {
       // A Live commit can be immediately undone before React observes a
       // non-empty undo stack. The new receipt reference still proves a real

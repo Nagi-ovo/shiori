@@ -508,14 +508,10 @@ describe("useDraftSync disabled gate", () => {
         model: { pages: [page], overlays: [highlight(overlayId)] },
         lastTouched: Date.now(),
       });
+    const noop = () => 0;
     const windowA = createDraftProtection({
-      storage: () => localStorage,
-      now: Date.now,
-      setTimeout: () => 0,
-      clearTimeout: () => undefined,
-      target: null,
-      sessionId: "window-a",
-      locks: null,
+      storage: () => localStorage, now: Date.now, setTimeout: noop, clearTimeout: noop,
+      target: null, sessionId: "window-a", locks: null,
     });
     const releaseA = windowA.protectOpenDrafts(() => [id]);
     const consoleError = spyOn(console, "error").mockImplementation(() => {});
@@ -560,6 +556,12 @@ describe("useDraftSync disabled gate", () => {
       expect(await overlays()).toEqual(["a-2"]);
       // Its crash log must not outrank A's draft on the next open either.
       expect(readOperationLog(id)).toBeNull();
+
+      // Reopened from A's latest draft, it logs edits again.
+      openInThisWindow(await saveInWindowA("a-3"));
+      act(() => useEditorStore.getState().commit({ overlays: [highlight("b-3")] }));
+      await act(() => Bun.sleep(400));
+      expect(readOperationLog(id)).not.toBeNull();
     } finally {
       view.unmount();
       releaseA();
