@@ -27,7 +27,7 @@
 
 ### Find and text
 
-- **Find matches phrases split by a line wrap.** Chinese and Japanese phrases across a wrap and words hyphenated across lines are found, and a match no longer runs into the next column or paragraph or stops halfway through an emoji or accented letter.
+- **Find matches phrases split by a line wrap.** Chinese and Japanese phrases across a wrap and words hyphenated across lines are found, and a match no longer runs into the next column or paragraph or stops halfway through an emoji, an accented letter, or a character in Hebrew, Arabic, Thai, Hindi and similar scripts.
 - **Right-to-left text such as Hebrew and Arabic, and rotated text, can be searched and selected properly.** Stray spaces and line breaks used to appear inside words.
 
 ### Reading and pages
@@ -46,6 +46,7 @@
 ### Drafts and recovery
 
 - **Cleanup no longer deletes documents you have open.** When storage runs low, annotation drafts of open tabs (in other windows too) are protected, and documents still opening, such as several PDFs dropped at once or one waiting for its password, are no longer lost.
+- **Two copies of the same PDF in different places keep their own annotations.** Editing both used to lose one copy's annotations after a restart. Closing the page right after undoing back to the original also no longer brings an undone annotation back now and then.
 - **The last few edits before you close a web tab are saved, and undo history is still there when you reopen.**
 
 ### Web
@@ -60,8 +61,8 @@
 ### Browser panel
 
 - **Pages ask before handing off to another app, such as mail, phone, messages or maps.**
-- **Back and the address bar are more accurate.** Back no longer greys out after you follow links back and forth, and frames inside a page no longer change the address bar or history.
-- **On iPhone and iPad, links that open a new window and a page's dialogs work.** On Android, a temporary session no longer mixes with your saved logins, and if the system WebView can't keep them apart, Shiori says so.
+- **Back and the address bar are more accurate.** Back no longer greys out after you follow links back and forth, and frames inside a page no longer change the address bar or history. When a page goes back, forward or changes its address by itself, the buttons and address bar follow.
+- **On the Mac, a page's dialogs now appear; on iPhone and iPad, links that open a new window and a page's dialogs work too.** On Android, a temporary session no longer mixes with your saved logins, and if the system WebView can't keep them apart, Shiori says so.
 
 ### Terminal
 
