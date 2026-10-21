@@ -32,27 +32,34 @@ struct WebPanelNav {
     error: Option<String>,
 }
 
-// A mailto: link in the panel opens the mail client. Any page can also
-// navigate to one from script, as often as it likes and without a click, and
-// this runs inside the navigation policy callback on the UI thread: a
-// `setInterval(() => location = "mailto:...", 200)` opened a compose window
-// per tick and stalled Shiori on every `open`. So the hand-off waits on the
-// blocking pool, and attempts arriving in a burst open the client once.
 #[cfg(not(mobile))]
-pub(super) fn route_non_web_panel_navigation(raw: &str) {
+#[derive(Serialize, Clone)]
+struct ExternalOpenRequest {
+    url: String,
+}
+
+// A mailto: link in the panel is for the mail client. Any page can also
+// navigate to one from script, as often as it likes and without a click, so
+// this never opens it: it asks the main webview to (`web-panel-external-open`),
+// which asks the user first (BrowserPanel.tsx). Attempts arriving in a burst
+// raise one request. The emit hops off this policy callback's stack, as every
+// emit in create.rs does.
+#[cfg(not(mobile))]
+pub(super) fn route_non_web_panel_navigation<R: Runtime>(app: &AppHandle<R>, raw: &str) {
     static GATE: std::sync::Mutex<ExternalOpenGate> =
         std::sync::Mutex::new(ExternalOpenGate::new());
-    let lower = raw.trim().to_ascii_lowercase();
-    if !lower.starts_with("mailto:") {
+    let url = raw.trim();
+    if !url.to_ascii_lowercase().starts_with("mailto:") {
         return;
     }
     let mut gate = GATE.lock().unwrap_or_else(|err| err.into_inner());
     if !external_open_allowed(&mut gate, Instant::now()) {
         return;
     }
-    let url = raw.to_string();
-    tauri::async_runtime::spawn_blocking(move || {
-        let _ = crate::system_open::open_external_url_impl(url);
+    let app = app.clone();
+    let url = url.to_string();
+    tauri::async_runtime::spawn(async move {
+        let _ = emit_to_main(&app, "web-panel-external-open", ExternalOpenRequest { url });
     });
 }
 
@@ -78,9 +85,10 @@ impl ExternalOpenGate {
 }
 
 // Every attempt restarts the quiet period, so a loop keeps being refused for
-// as long as it runs, while a click after a pause goes through. Each open
-// doubles the quiet period a later one needs (back to 2 s after ten silent
-// minutes): a fixed 2 s let a loop ticking every 2.1 s open Mail every tick.
+// as long as it runs (no stream of consent prompts), while a click after a
+// pause goes through. Each request doubles the quiet period a later one
+// needs (back to 2 s after ten silent minutes): a fixed 2 s let a loop
+// ticking every 2.1 s through on every tick.
 #[cfg_attr(mobile, allow(dead_code))]
 fn external_open_allowed(gate: &mut ExternalOpenGate, now: Instant) -> bool {
     let idle = gate

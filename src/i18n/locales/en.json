@@ -627,16 +627,28 @@
   "browser": {
     "title": "Browser",
     "addressPlaceholder": "Search or enter address",
+    "address": "Address",
     "back": "Back",
     "forward": "Forward",
     "reload": "Reload",
     "copyLink": "Copy link",
     "copied": "Link copied",
     "openExternal": "Open in system browser",
+    "dialog": {
+      "ok": "OK",
+      "cancel": "Cancel"
+    },
+    "externalOpen": {
+      "title": "Open in another app?",
+      "message": "A page in the Browser panel wants to open {{url}}.",
+      "open": "Open",
+      "cancel": "Cancel"
+    },
     "resize": "Drag to resize browser",
     "empty": "Run `open https://…` in the terminal, or type an address above.",
     "unavailable": "The browser panel is only available in the desktop app.",
-    "loadFailed": "Couldn't load this page. Check the address, then reload."
+    "loadFailed": "Couldn't load this page. Check the address, then reload.",
+    "temporaryUnsupported": "This device's Android System WebView can't keep a temporary session apart from your saved logins. Turn on Keep browser logins in Settings, or update Android System WebView."
   },
   "export": {
     "title": "Export PDF",

@@ -24,6 +24,16 @@ pub struct OpenPayload {
     pub bounds: Option<WebPanelBounds>,
     pub persist_session: bool,
     pub user_agent: String,
+    pub dialog_labels: Option<DialogLabels>,
+}
+
+/// Localized buttons for the page's JavaScript alert/confirm/prompt, which
+/// the iOS side draws itself and cannot translate.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DialogLabels {
+    pub ok: String,
+    pub cancel: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -70,4 +80,25 @@ pub struct WebPanelNav {
     pub can_go_back: bool,
     pub can_go_forward: bool,
     pub error: Option<String>,
+}
+
+/// What the native `navState` returns: the `web-panel-nav` payload, plus a
+/// mailto:, tel: or other hand-off link the page asked for since the last
+/// poll. The native side never opens those itself (a page can request them
+/// from script without a tap); the poll re-emits them as
+/// `web-panel-external-open` and the main webview asks the user.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavStateReply {
+    #[serde(flatten)]
+    pub nav: WebPanelNav,
+    #[serde(default)]
+    pub external_open: Option<String>,
+}
+
+/// Payload of `web-panel-external-open`, the same on desktop and mobile.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalOpenRequest {
+    pub url: String,
 }

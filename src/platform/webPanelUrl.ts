@@ -34,3 +34,27 @@ export function resolveAddressBarInput(raw: string): string | null {
   }
   return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
 }
+
+// Schemes a page in the Browser panel may hand to another app, and only once
+// the user agrees (src/editor/components/browserExternalOpen.ts). Desktop
+// reports only mailto:. The tablet plugins report tel: and their platform's
+// own communication links: Android sms:/smsto:/geo:, iOS sms:/facetime:/
+// facetime-audio:/maps:. src-tauri/capabilities/mobile.json scopes the opener
+// to exactly these.
+export const WEB_PANEL_HANDOFF_SCHEMES = [
+  "mailto",
+  "tel",
+  "sms",
+  "smsto",
+  "geo",
+  "facetime",
+  "facetime-audio",
+  "maps",
+] as const;
+
+const HANDOFF_SCHEME_PATTERN = /^([a-z][a-z0-9+.-]*):/i;
+
+export function isWebPanelHandoffUrl(url: string): boolean {
+  const scheme = HANDOFF_SCHEME_PATTERN.exec(url)?.[1]?.toLowerCase();
+  return !!scheme && (WEB_PANEL_HANDOFF_SCHEMES as readonly string[]).includes(scheme);
+}

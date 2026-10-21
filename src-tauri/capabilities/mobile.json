@@ -9,7 +9,17 @@
     "mobile-app-commands",
     "dialog:default",
     "fs:read-files",
-    "opener:allow-open-url",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "sms:*" },
+        { "url": "smsto:*" },
+        { "url": "geo:*" },
+        { "url": "facetime:*" },
+        { "url": "facetime-audio:*" },
+        { "url": "maps:*" }
+      ]
+    },
     "opener:allow-open-path",
     "opener:allow-default-urls"
   ]

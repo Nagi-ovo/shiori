@@ -12,7 +12,6 @@
 package app.tauri.shioribrowser
 
 import android.app.Activity
-import android.content.Intent
 import android.graphics.Bitmap
 import android.view.View
 import android.view.ViewGroup
@@ -60,6 +59,8 @@ class SetBoundsArgs {
 }
 
 private const val TEMP_PROFILE_PREFIX = "shiori-browser-temporary"
+// Matched by BrowserPanel.tsx, which tells the user why the panel stayed empty.
+private const val TEMPORARY_UNSUPPORTED = "web-panel-temporary-unsupported"
 
 @TauriPlugin
 class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
@@ -79,6 +80,9 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
     private var navCanGoBack = false
     private var navCanGoForward = false
     private var navError: String? = null
+    // A mailto:/tel:/sms:/smsto:/geo: link the page asked for, reported once
+    // by navState.
+    private var navExternalOpen: String? = null
 
     override fun load(webView: WebView) {
         this.tauriWebView = webView
@@ -148,9 +152,9 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
         // CookieManager.getInstance() is process-global, so the old approach
         // (refuse and delete every cookie) erased the persistent logins,
         // blocked all sign-ins, and left localStorage/IndexedDB shared.
-        // setProfile must precede any other use of the view. Without MULTI_PROFILE (old WebView) the
-        // panel falls back to the shared default profile rather than
-        // destroying it.
+        // setProfile must precede any other use of the view. `open` refuses a
+        // temporary session without MULTI_PROFILE, so the check here is only
+        // a guard.
         val isolated = !persist && WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)
         if (isolated) {
             WebViewCompat.setProfile(wv, newTempProfile())
@@ -189,8 +193,17 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun open(invoke: Invoke) {
         val args = invoke.parseArgs(OpenArgs::class.java)
+        val persist = args.persistSession ?: true
+        // Without MULTI_PROFILE a temporary session could only run in the
+        // shared default profile: the saved logins would show up in it and
+        // whatever it stores would outlive it. Refuse it and let the panel
+        // say so, rather than quietly breaking the setting's promise.
+        if (!persist && !WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+            invoke.reject(TEMPORARY_UNSUPPORTED)
+            return
+        }
         activity.runOnUiThread {
-            val wv = ensureWebView(args.persistSession ?: true, args.userAgent)
+            val wv = ensureWebView(persist, args.userAgent)
             args.bounds?.let { wv.layoutParams = layoutParams(it) }
             wv.visibility = View.VISIBLE
             wv.bringToFront()
@@ -264,6 +277,7 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
             navCanGoBack = false
             navCanGoForward = false
             navError = null
+            navExternalOpen = null
         }
         invoke.resolve()
     }
@@ -277,6 +291,8 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
             ret.put("canGoBack", navCanGoBack)
             ret.put("canGoForward", navCanGoForward)
             navError?.let { ret.put("error", it) }
+            navExternalOpen?.let { ret.put("externalOpen", it) }
+            navExternalOpen = null
         }
         invoke.resolve(ret)
     }
@@ -298,8 +314,12 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
         // panel's on_navigation allowlist (src-tauri/src/lib.rs parse_web_url,
         // which accepts only http/https). Without this a link/redirect to file:
         // could read local files inside the panel, and intent:/custom app schemes
-        // could deep-link out of Shiori. http(s) + content schemes load in-view;
-        // communication schemes hand off to the system; everything else (file:,
+        // could deep-link out of Shiori. http(s) + content schemes load in-view.
+        // Communication schemes (mailto:, tel:, sms:, smsto:, geo:) are never
+        // opened from here, since a page can request them from script without
+        // a tap: they are reported to the main webview, which asks the user
+        // and opens them through the opener plugin (scoped to these in
+        // src-tauri/capabilities/mobile.json). Everything else (file:,
         // intent:, app schemes) is refused.
         override fun shouldOverrideUrlLoading(
             view: WebView?,
@@ -309,11 +329,7 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
             return when (url.scheme?.lowercase()) {
                 "http", "https", "about", "blob", "data" -> false // let WebView load it
                 "mailto", "tel", "sms", "smsto", "geo" -> {
-                    try {
-                        activity.startActivity(Intent(Intent.ACTION_VIEW, url))
-                    } catch (_: Exception) {
-                        // No handler installed — drop silently, same as desktop.
-                    }
+                    synchronized(navLock) { navExternalOpen = url.toString() }
                     true // handled; don't load in the WebView
                 }
                 else -> true // file:, intent:, app schemes — refuse

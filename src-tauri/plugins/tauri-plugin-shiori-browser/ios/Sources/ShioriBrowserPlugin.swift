@@ -20,11 +20,18 @@ struct Bounds: Decodable {
   let height: Double
 }
 
+// Localized buttons for the page's JavaScript dialogs (native code has no t()).
+struct DialogLabels: Decodable {
+  let ok: String
+  let cancel: String
+}
+
 struct OpenArgs: Decodable {
   let url: String
   let bounds: Bounds?
   let persistSession: Bool?
   let userAgent: String?
+  let dialogLabels: DialogLabels?
 }
 
 struct NavigateArgs: Decodable {
@@ -45,13 +52,15 @@ struct ShareFileResult: Encodable {
   let completed: Bool
 }
 
-// Encodable mirror of the frozen `web-panel-nav` payload.
+// Encodable mirror of the frozen `web-panel-nav` payload, plus `externalOpen`,
+// which the Rust poll strips off and re-emits as `web-panel-external-open`.
 struct NavStatePayload: Encodable {
   let url: String?
   let loading: Bool
   let canGoBack: Bool
   let canGoForward: Bool
   let error: String?
+  let externalOpen: String?
 }
 
 private struct NavSnapshot {
@@ -60,6 +69,9 @@ private struct NavSnapshot {
   var canGoBack: Bool = false
   var canGoForward: Bool = false
   var error: String? = nil
+  // A mailto:/tel:/sms:/facetime:/maps: link the page asked for, reported
+  // once by navState.
+  var externalOpen: String? = nil
 }
 
 class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
@@ -70,6 +82,8 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
   private var webView: WKWebView?
   private weak var tauriWebView: WKWebView?
   private var currentPersist = true
+  // Fallback only — the frontend passes t() labels with every open.
+  private var dialogLabels = DialogLabels(ok: "OK", cancel: "Cancel")
 
   private let navLock = NSLock()
   private var nav = NavSnapshot()
@@ -125,6 +139,7 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
   @objc public func open(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(OpenArgs.self)
     DispatchQueue.main.async {
+      if let labels = args.dialogLabels { self.dialogLabels = labels }
       let wv = self.ensureWebView(persistSession: args.persistSession ?? true, userAgent: args.userAgent)
       if let b = args.bounds {
         wv.frame = self.frame(from: b)
@@ -241,6 +256,7 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
   @objc public func navState(_ invoke: Invoke) {
     self.navLock.lock()
     let snap = self.nav
+    self.nav.externalOpen = nil
     self.navLock.unlock()
     invoke.resolve(
       NavStatePayload(
@@ -248,7 +264,8 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
         loading: snap.loading,
         canGoBack: snap.canGoBack,
         canGoForward: snap.canGoForward,
-        error: snap.error))
+        error: snap.error,
+        externalOpen: snap.externalOpen))
   }
 
   // Always called on the main thread (delegate callbacks + the command blocks),
@@ -276,8 +293,12 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
   // only http/https). Without this a link or script redirect to `file:` could
   // read local files inside the panel, and `tel:`/custom app schemes could
   // deep-link out of Shiori. http(s) + WebKit-internal/content schemes proceed;
-  // communication schemes hand off to the system opener; everything else (file:,
-  // javascript:, app schemes) is refused outright.
+  // Communication schemes (mailto:, tel:, sms:, facetime:, facetime-audio:,
+  // maps:) are never opened from here, since a page can request them from
+  // script without a tap: they are reported to the main webview, which asks
+  // the user and opens them through the opener plugin (scoped to these in
+  // src-tauri/capabilities/mobile.json). Everything else (file:, javascript:,
+  // app schemes) is refused outright.
   func webView(
     _ webView: WKWebView,
     decidePolicyFor navigationAction: WKNavigationAction,
@@ -292,7 +313,9 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
       decisionHandler(.allow)
     case "mailto", "tel", "sms", "facetime", "facetime-audio", "maps":
       decisionHandler(.cancel)
-      DispatchQueue.main.async { UIApplication.shared.open(url) }
+      self.navLock.lock()
+      self.nav.externalOpen = url.absoluteString
+      self.navLock.unlock()
     default:
       decisionHandler(.cancel)
     }
@@ -318,6 +341,59 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
       webView.load(navigationAction.request)
     }
     return nil
+  }
+
+  // JavaScript alert/confirm/prompt. Without these WebKit answers for the
+  // user: alert() shows nothing, confirm() is false and prompt() is null, so
+  // `if (confirm(...)) submit()` never submits. Each path calls the
+  // completion handler exactly once, or the page's script stays blocked.
+  func webView(
+    _ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+    initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void
+  ) {
+    let alert = UIAlertController(
+      title: frame.securityOrigin.host, message: message, preferredStyle: .alert)
+    alert.addAction(UIAlertAction(title: dialogLabels.ok, style: .default) { _ in completionHandler() })
+    if !presentDialog(alert) { completionHandler() }
+  }
+
+  func webView(
+    _ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+    initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void
+  ) {
+    let alert = UIAlertController(
+      title: frame.securityOrigin.host, message: message, preferredStyle: .alert)
+    alert.addAction(
+      UIAlertAction(title: dialogLabels.cancel, style: .cancel) { _ in completionHandler(false) })
+    alert.addAction(UIAlertAction(title: dialogLabels.ok, style: .default) { _ in completionHandler(true) })
+    if !presentDialog(alert) { completionHandler(false) }
+  }
+
+  func webView(
+    _ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
+    defaultText: String?, initiatedByFrame frame: WKFrameInfo,
+    completionHandler: @escaping (String?) -> Void
+  ) {
+    let alert = UIAlertController(
+      title: frame.securityOrigin.host, message: prompt, preferredStyle: .alert)
+    alert.addTextField { field in field.text = defaultText }
+    alert.addAction(
+      UIAlertAction(title: dialogLabels.cancel, style: .cancel) { _ in completionHandler(nil) })
+    alert.addAction(
+      UIAlertAction(title: dialogLabels.ok, style: .default) { [weak alert] _ in
+        completionHandler(alert?.textFields?.first?.text ?? "")
+      })
+    if !presentDialog(alert) { completionHandler(nil) }
+  }
+
+  // Present over whatever is on top (a share sheet may be up). False when
+  // there is nowhere to present, so the caller answers for the user.
+  private func presentDialog(_ alert: UIAlertController) -> Bool {
+    guard var top = self.manager.viewController else { return false }
+    while let presented = top.presentedViewController { top = presented }
+    if top is UIAlertController { return false }
+    top.present(alert, animated: true, completion: nil)
+    return true
   }
 
   func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {

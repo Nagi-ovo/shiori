@@ -94,6 +94,18 @@ pub(crate) struct WebPanelBounds {
     height: f64,
 }
 
+// Button labels for the page's JavaScript alert/confirm/prompt, which iOS
+// draws itself (UIAlertController) and native code has no t() for. Desktop
+// and Android show their engine's own dialogs and ignore them.
+#[derive(Deserialize, Clone, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WebPanelDialogLabels {
+    #[cfg_attr(not(mobile), allow(dead_code))]
+    ok: String,
+    #[cfg_attr(not(mobile), allow(dead_code))]
+    cancel: String,
+}
+
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct WebPanelOpenRequest {
@@ -122,6 +134,7 @@ pub(crate) fn web_panel_open<R: Runtime>(
     url: String,
     bounds: Option<WebPanelBounds>,
     persist_session: Option<bool>,
+    _dialog_labels: Option<WebPanelDialogLabels>,
 ) -> Result<(), String> {
     enforce_main_webview(&caller)?;
     enforce_runtime_guard()?;
@@ -184,9 +197,10 @@ pub(crate) fn web_panel_open<R: Runtime>(
     url: String,
     bounds: Option<WebPanelBounds>,
     persist_session: Option<bool>,
+    dialog_labels: Option<WebPanelDialogLabels>,
 ) -> Result<(), String> {
     use tauri_plugin_shiori_browser::{
-        OpenPayload, ShioriBrowserExt, WebPanelBounds as PluginBounds,
+        DialogLabels, OpenPayload, ShioriBrowserExt, WebPanelBounds as PluginBounds,
     };
     enforce_main_webview(&caller)?;
     enforce_runtime_guard()?;
@@ -203,6 +217,10 @@ pub(crate) fn web_panel_open<R: Runtime>(
             persist_session: persist_session.unwrap_or(true),
             // Single source of truth for the iPhone-Safari UA, same as desktop.
             user_agent: WEB_PANEL_USER_AGENT.to_string(),
+            dialog_labels: dialog_labels.map(|labels| DialogLabels {
+                ok: labels.ok,
+                cancel: labels.cancel,
+            }),
         })
         .map_err(|err| err.to_string())
 }

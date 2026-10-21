@@ -14,9 +14,9 @@
 // Remote pages are NOT granted Shiori's file/pdf/terminal commands — that
 // isolation lives in the webview's scoped capability on the Rust side.
 
-import { CAPABILITIES } from "./index";
+import { CAPABILITIES, IS_TAURI_MOBILE } from "./index";
 import { openExternalUrl } from "./external";
-import { isWebPanelUrl } from "./webPanelUrl";
+import { isWebPanelHandoffUrl, isWebPanelUrl } from "./webPanelUrl";
 
 export { isWebPanelUrl, resolveAddressBarInput } from "./webPanelUrl";
 
@@ -41,6 +41,10 @@ export type WebPanelNavState = {
   error: string | null;
 };
 
+// Buttons for the page's JavaScript alert/confirm/prompt. iOS draws those
+// dialogs itself and has no t(); the other engines show their own.
+export type WebPanelDialogLabels = { ok: string; cancel: string };
+
 // Open `url` in the embedded panel. Non-http(s) URLs fall back to the
 // system browser. On the web build there is no native panel, so every URL
 // opens in a new browser tab.
@@ -48,6 +52,7 @@ export async function openUrlInWebPanel(
   url: string,
   bounds?: WebPanelBounds | null,
   persistSession = true,
+  dialogLabels: WebPanelDialogLabels | null = null,
 ): Promise<void> {
   if (!isWebPanelUrl(url)) {
     await openUrlInSystemBrowser(url);
@@ -59,7 +64,7 @@ export async function openUrlInWebPanel(
   }
   const { commands, unwrapCommand } = await import("./ipc");
   unwrapCommand(
-    await commands.webPanelOpen(url, bounds ?? null, persistSession),
+    await commands.webPanelOpen(url, bounds ?? null, persistSession, dialogLabels),
   );
 }
 
@@ -139,4 +144,50 @@ export async function listenWebPanelOpenRequest(
   return listen<{ url: string }>("web-panel-open", (event) => {
     handler(event.payload.url);
   });
+}
+
+// A page in the panel navigated to a mailto: link (or, on mobile, tel:, sms:
+// and the like: WEB_PANEL_HANDOFF_SCHEMES).
+// The native side cancels it and reports it here instead of opening it, so
+// the user can be asked first (src/editor/components/browserExternalOpen.ts).
+export async function listenWebPanelExternalOpen(
+  handler: (url: string) => void,
+): Promise<() => void> {
+  if (!CAPABILITIES.embeddedBrowserPanel) return () => undefined;
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<{ url: string }>("web-panel-external-open", (event) => {
+    handler(event.payload.url);
+  });
+}
+
+export type ExternalOpenPromptText = {
+  title: string;
+  message: string;
+  open: string;
+  cancel: string;
+};
+
+// A native dialog, not a DOM modal: the panel's webview is an OS layer that
+// would sit on top of anything the page renders.
+export async function askToOpenExternally(text: ExternalOpenPromptText): Promise<boolean> {
+  const { ask } = await import("@tauri-apps/plugin-dialog");
+  return ask(text.message, {
+    title: text.title,
+    kind: "warning",
+    okLabel: text.open,
+    cancelLabel: text.cancel,
+  });
+}
+
+// Open a link the user agreed to hand off. Desktop only ever reports mailto:
+// (open_external_url accepts it); mobile goes through the opener plugin,
+// scoped to the hand-off schemes in src-tauri/capabilities/mobile.json.
+export async function openWebPanelExternalUrl(url: string): Promise<void> {
+  if (!isWebPanelHandoffUrl(url)) throw new Error("unsupported-external-url");
+  if (IS_TAURI_MOBILE) {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+    return;
+  }
+  await openExternalUrl(url);
 }
