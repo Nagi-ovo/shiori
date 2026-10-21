@@ -74,7 +74,9 @@ async function twoWindowsOnOneHandle() {
         [page],
       );
     });
-  const view = renderHook(() => useDraftSync(HASH, false));
+  // Whether this window's copy is exported, as the export status reports it.
+  const exportState = { exported: false };
+  const view = renderHook(() => useDraftSync(HASH, false, () => exportState.exported));
   const flush = async () => {
     let failure: unknown = null;
     await act(async () => {
@@ -100,7 +102,7 @@ async function twoWindowsOnOneHandle() {
     await drafts.remove(id);
   };
   return {
-    id, view, saveInWindowA, closeWindowA, openInThisWindow, edit, flush, editAndFlush, overlays, dispose,
+    id, view, exportState, saveInWindowA, closeWindowA, openInThisWindow, edit, flush, editAndFlush, overlays, dispose,
   };
 }
 
@@ -152,6 +154,30 @@ describe("useDraftSync across windows", () => {
 
       expect(await w.editAndFlush("b-1")).not.toBeNull();
       expect(w.view.result.current.errorKind).toBe("conflict");
+      expect(await w.overlays()).toEqual(["a-2"]);
+    } finally {
+      await w.dispose();
+    }
+  });
+
+  // Close, tab switch and quit all wait on the strict flush. After a refusal
+  // its retry is refused too; once this copy is exported, leaving loses
+  // nothing and must go through, still without touching the other's row.
+  test("a refused window can leave its copy once it is exported", async () => {
+    const w = await twoWindowsOnOneHandle();
+    try {
+      w.openInThisWindow(await w.saveInWindowA("a-1"));
+      await w.saveInWindowA("a-2");
+      expect(await w.editAndFlush("b-1")).not.toBeNull();
+      expect(await w.flush()).not.toBeNull();
+
+      w.exportState.exported = true;
+      expect(await w.flush()).toBeNull();
+      expect(await w.overlays()).toEqual(["a-2"]);
+
+      // A new edit is unexported again: leaving would lose it.
+      w.exportState.exported = false;
+      expect(await w.editAndFlush("b-2")).not.toBeNull();
       expect(await w.overlays()).toEqual(["a-2"]);
     } finally {
       await w.dispose();

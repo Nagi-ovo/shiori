@@ -39,7 +39,8 @@ export type DraftSyncState = {
   flushNow: () => Promise<void>;
   // Close/exit paths use the strict variant so a failed durable write keeps
   // the document and window alive. Normal autosave still reports through
-  // `status`/`error` without creating unhandled promise rejections.
+  // `status`/`error` without creating unhandled promise rejections. A save
+  // refused for another window's newer draft passes once `isExported` holds.
   flushNowOrThrow: () => Promise<void>;
 };
 
@@ -69,6 +70,7 @@ const OPERATION_LOG_DEBOUNCE_MS = 250;
 export function useDraftSync(
   hash: string | null,
   disabled = false,
+  isExported?: () => boolean,
 ): DraftSyncState {
   const opened = useEditorStore((s) => s.opened);
   const model = useEditorStore((s) => s.model);
@@ -466,9 +468,10 @@ export function useDraftSync(
     try {
       await drainLatestSave();
     } catch (err) {
-      if (throwOnError) throw err;
+      const refused = err instanceof DraftSaveError && err.kind === "conflict";
+      if (throwOnError && !(refused && isExported?.())) throw err;
     }
-  }, [drainLatestSave, disabled]);
+  }, [drainLatestSave, disabled, isExported]);
 
   const flushNow = useCallback(
     () => flushPendingSave(false),

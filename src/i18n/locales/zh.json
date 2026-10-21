@@ -314,7 +314,7 @@
     "saveTransientFailedToast": "草稿保存失败。",
     "saveTransientFailedDetail": "请稍后再试。",
     "saveConflictToast": "此文档已在另一个窗口中更改。",
-    "saveConflictDetail": "为保留另一个窗口的修改，这里的编辑不再保存为草稿。如需保留这份副本，请先导出，再重新打开文件。",
+    "saveConflictDetail": "为保留另一个窗口的修改，这里的编辑不再保存为草稿。请先导出这份副本，再关闭并重新打开文件。",
     "saved": "已保存",
     "storageTooltip": "本地草稿占用 / 上限",
     "restoreTitle": "继续编辑会覆盖未加载的草稿",
