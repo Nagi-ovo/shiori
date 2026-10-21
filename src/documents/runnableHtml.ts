@@ -28,7 +28,8 @@
 //   `webrtc 'block'` for any engine that implements it (none is known to),
 //   and the frame scripts remove the RTCPeerConnection constructors from the
 //   run frame, every child frame it can reach, and every srcdoc child they
-//   can prefix (runnableHtmlWebRtcGuard.ts).
+//   can prefix (runnableHtmlWebRtcGuard.ts). Declarative shadow DOM is off in
+//   run mode because parser-created roots bypass the guard’s attachShadow hooks.
 //
 // A small bridge script is injected before user scripts to report content
 // height back to the host, forward zoom gestures, and surface runtime errors
@@ -317,13 +318,15 @@ function createRunNonce(): string {
   );
 }
 
-// Template contents count too: the browser's parser turns
-// <template shadowrootmode> into a live shadow root (DOMParser does not), and
-// a page can clone any template into the document. So does a srcdoc inside a
-// srcdoc: the child's own parser inserts it, out of the child's reach.
+// Keep declarative templates inert, including nested templates and srcdocs.
+// Their contents still need guarding because a page can clone them later.
 function prefixSrcdocFrames(root: ParentNode, scriptTag: () => string) {
   for (const template of Array.from(root.querySelectorAll("template"))) {
-    prefixSrcdocFrames((template as HTMLTemplateElement).content, scriptTag);
+    for (const name of template.getAttributeNames()) {
+      if (name.startsWith("shadowroot")) template.removeAttribute(name);
+    }
+    const content = (template as HTMLTemplateElement).content;
+    if (content) prefixSrcdocFrames(content, scriptTag);
   }
   for (const frame of Array.from(root.querySelectorAll("iframe[srcdoc]"))) {
     const srcdoc = prefixNestedSrcdoc(frame.getAttribute("srcdoc") ?? "", scriptTag);

@@ -2,6 +2,7 @@ import "../test/setupDom";
 import { beforeAll, describe, expect, test } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
+import { shadowBrowserRoutes } from "../test/runnableHtmlShadowFixtures";
 import { browserFixture, browserModes, browserRoutes, type BrowserProbe } from "../test/runnableHtmlBrowserFixtures";
 
 // Browser execution is opt-in; happy-dom cannot establish first-script timing.
@@ -10,7 +11,7 @@ import { browserFixture, browserModes, browserRoutes, type BrowserProbe } from "
 // DOM + fixture + invocation are persisted under test-artifacts/b027/<phase>/.
 const enabled = process.env.SHIORI_BROWSER_TEST === "1";
 const chrome = process.env.SHIORI_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const KNOWN_OPEN = new Set(["parserOpenShadow", "adoptedOpenShadow", "adoptedClosedShadow", "svgParsingContext"]);
+const KNOWN_OPEN = new Set<string>();
 let reports: BrowserProbe[] = [];
 let missing: string[] = [];
 
@@ -22,11 +23,13 @@ describe.skipIf(!enabled)("run frame WebRTC first-script isolation in Chromium",
     const fixturePath = resolve(directory, "fixture.html");
     await Bun.write(fixturePath, fixture.html);
     await Bun.write(resolve(directory, "README.txt"),
+      (process.env.B027_EXPERIMENTAL_HTML === "1" ? "B027_EXPERIMENTAL_HTML=1 " : "") +
       "SHIORI_BROWSER_TEST=1 B027_PHASE=" + (process.env.B027_PHASE ?? "latest") +
       " bun test src/documents/runnableHtmlWebRtcGuard.browser.test.ts\n" +
       "Uses installed Chromium, opaque sandbox=allow-scripts frames, production buildRunnableHtml, " +
       "and each nested child's first script. Peer connections use iceServers:[] and close immediately.\n");
     const processHandle = Bun.spawn([chrome, "--headless=new", "--disable-gpu",
+      ...(process.env.B027_EXPERIMENTAL_HTML === "1" ? ["--enable-blink-features=NewHTMLSettingMethods"] : []),
       "--no-first-run", "--no-default-browser-check", "--disable-background-networking",
       `--user-data-dir=${resolve(directory, "chrome-profile")}`,
       "--dump-dom", "--virtual-time-budget=20000", `file://${fixturePath}`],
@@ -70,6 +73,10 @@ describe.skipIf(!enabled)("run frame WebRTC first-script isolation in Chromium",
         const report = reports.find((entry) => entry.id === id);
         expect(report?.complete).toBe(true);
         expect(report?.routeError).toBeUndefined();
+        if (["parserOpenShadow", "adoptedOpenShadow", "adoptedClosedShadow"].includes(route) || route in shadowBrowserRoutes) {
+          expect(report?.shadowRootProduced).toBe(false);
+          expect(report?.childScriptRan).toBe(route === "dynamicSrcdocShadow");
+        }
         expect(report?.available).toEqual([]);
         expect(report?.constructed).toEqual([]);
       });

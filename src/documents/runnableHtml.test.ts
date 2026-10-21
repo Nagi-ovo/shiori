@@ -481,3 +481,27 @@ describe("approved remote origins", () => {
     expect(headers).toMatch(/^\/\*\n(?:[ \t]+.*\n)*?[ \t]+Content-Security-Policy: frame-src 'self' blob:\s*$/m);
   });
 });
+
+// Failure cases: open/closed roots, mixed-case attributes, nested templates,
+// and child documents must stay inert while keeping their content available.
+test("run mode keeps declarative shadow content in inert templates", () => {
+  const attributes = 'SHADOWROOTMODE="open" shadowrootdelegatesfocus ' +
+    'shadowrootclonable shadowrootserializable shadowrootslotassignment="manual" ' +
+    'shadowrootcustomelementregistry shadowrootreferencetarget="target"';
+  const markup = '<div><template ' + attributes + ' data-keep="yes">' +
+    '<p>content</p><template shadowrootmode="closed"><b>nested</b></template>' +
+    '</template></div>';
+  const doc = parseHtml(buildRunnableHtml(markup + '<iframe srcdoc="' +
+    markup.replaceAll('&', '&amp;').replaceAll('"', '&quot;') + '"></iframe>').html);
+  function check(root: Document) {
+    const template = root.querySelector('template')!;
+    expect(template.getAttribute('data-keep')).toBe('yes');
+    expect(template.content.querySelector('p')?.textContent).toBe('content');
+    expect(template.getAttributeNames().filter(name => name.startsWith('shadowroot'))).toEqual([]);
+    const nested = template.content.querySelector('template')!;
+    expect(nested.hasAttribute('shadowrootmode')).toBe(false);
+    expect(nested.content.querySelector('b')?.textContent).toBe('nested');
+  }
+  check(doc);
+  check(parseHtml(doc.querySelector('iframe')!.getAttribute('srcdoc')!));
+});
