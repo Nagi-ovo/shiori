@@ -4,9 +4,22 @@ Current state and next steps only. History lives in `git log`, `CHANGELOG.md`
 and `docs/POSTMORTEMS.md` — when an item here is done, delete it rather than
 marking it done.
 
-Last reconciled against reality: **2026-10-20**.
+Last reconciled against reality: **2026-10-21**.
 
 ## Current state
+
+- **The 2026-10-20 audit fixes are on local `main`, not pushed** (2026-10-21):
+  112 of 119 fixed (`docs/AUDIT-2026-10-20.md`, `CHANGELOG.md` `[未发布]`
+  lists what is left). Gates green on the merge: verify, test:core,
+  src-tauri cargo test, `tauri build`. Waiting on Jesse: push, and whether
+  the audit doc's exploit detail stays public (B027 is only partly fixed);
+  B034 draft identity (hash + source, with a migration, or dedupe tabs by
+  content); decisions on B022/B023 (native back-forward on three engines),
+  B027 (forbid nested frames in run mode?), B081 macOS main-webview dialogs,
+  B108 shared-program fonts. Android/iOS/Windows changes are unverified on
+  device. Worktrees `../shiori-fix/*`, `../shiori-fu/*` (and their
+  `fix/*`, `fu/*`, `audit-fixes` branches) can go once Jesse agrees;
+  `.jj/` and the jj skill are still on disk.
 
 - **Shiori is open source** (2026-10-18). `Nagi-ovo/shiori` is the public
   source repo (formerly `shiori-releases`; releases, tags and the updater's
