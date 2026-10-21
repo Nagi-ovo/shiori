@@ -9,17 +9,19 @@ Last reconciled against reality: **2026-10-21**.
 ## Current state
 
 - **The 2026-10-20 audit fixes are on local `main`, not pushed** (2026-10-21):
-  117 of 119 fixed; B027 (run-mode isolation, tightened and re-probed in
-  Chrome, review says more hardening is possible) and B108 (font identity is
-  limited to what PDFium's public API exposes) are partly fixed, B102 is not
-  a bug. `CHANGELOG.md` `[未发布]` has the detail. Gates green on main:
-  verify, test:core, src-tauri cargo test, `tauri build`. B034 changed draft
-  keys to hash + source (fact 4), with a one-time adoption of hash-only
-  drafts. Waiting on Jesse: push, and whether the audit doc's exploit detail
-  stays public. Android/iOS/Windows/Linux changes are unverified on device.
-  Worktrees `../shiori-fix/*`, `../shiori-fu/*` (and their `fix/*`, `fu/*`,
-  `fu2/*`, `audit-fixes` branches) can go once Jesse agrees; `.jj/` and the
-  jj skill are still on disk.
+  all 119 handled; B102 is not a bug. Every fix was then reviewed by Codex
+  gpt-6-astra (sol for the parts it had missed) and the 28 findings answered
+  (`CHANGELOG.md` `[未发布]` → 复审补修). Partly fixed, listed under 未完成:
+  B027 (run-mode isolation; further hardening was cut short by a safety
+  classifier and needs its own session or a human review), B108 (font ids,
+  limited by PDFium 7881), B088 (link hops within one panel session need
+  wry gesture signals), B034 (a refused window must export before leaving;
+  discard or second-draft is Jesse's call). Gates green on main: verify
+  (2440), test:core, src-tauri cargo test, `tauri build`. Waiting on Jesse:
+  push, and whether the audit doc's exploit detail stays public.
+  Android/iOS/Windows/Linux changes are unverified on device. Worktrees
+  `../shiori-fix/*`, `../shiori-fu/*` (branches `fix/*`, `fu*/*`,
+  `audit-fixes`) and `_cargo-target` can go once Jesse agrees.
 
 - **Shiori is open source** (2026-10-18). `Nagi-ovo/shiori` is the public
   source repo (formerly `shiori-releases`; releases, tags and the updater's

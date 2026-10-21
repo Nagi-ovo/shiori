@@ -8,7 +8,7 @@
 - **Layers hidden by default stay hidden after export, and form calculations keep working.** A worksheet's answer layer no longer shows up in the export or in print, and right-to-left books keep their reading direction and two-page layout.
 - **Rotated text boxes, stamps, rectangles, signatures and images keep their angle in the export.** The same goes for sidebar thumbnails and Small file exports.
 - **Small file exports keep images and signatures, and the document's title and author.** Placed images and signatures now show in the sidebar thumbnails too.
-- **Exporting an edit to the original text really removes the old text from the file.** In the rare cases where it can't, Shiori warns you before exporting: the old text is covered, but it can still be found and copied.
+- **Exporting an edit to the original text removes the old text from the page content.** In the rare cases where it can't, Shiori warns you before exporting: the old text is covered, but it can still be found and copied.
 
 ### Annotation import and export
 
@@ -47,6 +47,8 @@
 
 - **Cleanup no longer deletes documents you have open.** When storage runs low, annotation drafts of open tabs (in other windows too) are protected, and documents still opening, such as several PDFs dropped at once or one waiting for its password, are no longer lost.
 - **Two copies of the same PDF in different places keep their own annotations.** Editing both used to lose one copy's annotations after a restart. Closing the page right after undoing back to the original also no longer brings an undone annotation back now and then.
+- **Editing one file in two windows no longer overwrites either window's work.** The window that saves second asks you to export its changes, then close and reopen.
+- **On Windows, the minimize, maximize and close buttons stay clickable while Settings is open.** A rotated sticky note keeps its angle through export and reopen, and undo after switching a CRLF Markdown file between preview and editing no longer changes its line endings.
 - **The last few edits before you close a web tab are saved, and undo history is still there when you reopen.**
 
 ### Web
