@@ -55,6 +55,9 @@ export function WindowCaption({
   return (
     <div
       className="shioriPrintHide"
+      // Dialogs leave this subtree out of their inert background: these are
+      // the window's only caption buttons, and they sit above every backdrop.
+      data-shiori-stays-live=""
       style={{
         position: "fixed",
         top: 0,

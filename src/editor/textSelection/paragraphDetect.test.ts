@@ -183,6 +183,18 @@ describe("paragraph detection", () => {
     expect(blocks.every((b) => b.confidence === "low")).toBe(true);
   });
 
+  test("three rows of aligned wide table cells are not column paragraphs", () => {
+    // Three rows clear the line floor and the cells end on one right edge,
+    // yet nothing ends a paragraph: every row is as full as the last.
+    const runs = [100, 112, 124].flatMap((y, row) => [
+      run(`left cell${row}`, 50, y, 150),
+      run(`right cell${row}`, 250, y, 150),
+    ]);
+    const blocks = detectParagraphs(runs, 1);
+    expect(blocks.length).toBeGreaterThan(0);
+    expect(blocks.every((b) => b.confidence === "low")).toBe(true);
+  });
+
   test("excludes rotated runs (box height far from font size)", () => {
     // A 10pt run whose display box is 200 tall — a rotated margin stamp.
     const rotated = run("arXiv:2603.19312v2", 20, 300, 15, 10, { h: 200 });

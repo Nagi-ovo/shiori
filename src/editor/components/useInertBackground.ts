@@ -19,8 +19,9 @@ import { useEffect, type RefObject } from "react";
 // already marked underneath.
 //
 // A sibling carrying `data-shiori-stays-live` is left alone: the toast host
-// paints above every dialog, and inerting it silenced its live regions and
-// disarmed its buttons while it was still on screen.
+// and the Windows caption buttons paint above every dialog, and inerting them
+// silenced live regions and disarmed buttons still on screen (an undecorated
+// window could not be closed with a dialog open).
 export function useInertBackground(
   ref: RefObject<HTMLElement | null>,
   enabled: boolean,
