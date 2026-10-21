@@ -471,7 +471,11 @@ generated: boolean; fontName: string; fontFlags: number;
 /**
  * Page units at this glyph's size; descent is negative.
  */
-ascent: number; descent: number }
+ascent: number; descent: number;
+/**
+ * A line-end hyphen PDFium recognised as hyphenation.
+ */
+hyphen: boolean }
 /**
  * A link annotation: its /Rect `[left, bottom, right, top]` and either a
  * destination in this document or a URL.

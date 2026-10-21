@@ -14,14 +14,27 @@ const ROOT = join(import.meta.dir, "../../..");
 const GENERATED = join(ROOT, "src/pdf/engine/wasm/generated");
 const FIXTURE = readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures/text.pdf"));
 let wasm: WasmCore;
+/** PDFium's heap, caught as its module instantiates. */
+let pdfiumMemory: WebAssembly.Memory | undefined;
 
 beforeAll(async () => {
-  wasm = await loadWasmCore({
-    pdfium: readFileSync(join(GENERATED, "pdfium.wasm")),
-    core: readFileSync(join(GENERATED, "shiori_core_wasm_bg.wasm")),
-    fonts: [{ file: "NotoSansSC-Regular.otf", bytes: readFileSync(join(ROOT, "src/assets/fonts/NotoSansSC-Regular.otf")) }],
-    require: createRequire(import.meta.url),
-  });
+  const instantiate = WebAssembly.instantiate;
+  WebAssembly.instantiate = (async (...args: Parameters<typeof instantiate>) => {
+    const result = await instantiate(...args);
+    const { exports } = result instanceof WebAssembly.Instance ? result : result.instance;
+    if ("FPDF_LoadMemDocument64" in exports && exports.memory instanceof WebAssembly.Memory) pdfiumMemory = exports.memory;
+    return result;
+  }) as typeof instantiate;
+  try {
+    wasm = await loadWasmCore({
+      pdfium: readFileSync(join(GENERATED, "pdfium.wasm")),
+      core: readFileSync(join(GENERATED, "shiori_core_wasm_bg.wasm")),
+      fonts: [{ file: "NotoSansSC-Regular.otf", bytes: readFileSync(join(ROOT, "src/assets/fonts/NotoSansSC-Regular.otf")) }],
+      require: createRequire(import.meta.url),
+    });
+  } finally {
+    WebAssembly.instantiate = instantiate;
+  }
 });
 
 describe("shiori-core in wasm", () => {
@@ -30,10 +43,15 @@ describe("shiori-core in wasm", () => {
     const native = openCoreDocument(FIXTURE);
     try {
       expect(fromWasm.pageCount()).toBe(native.pageCount());
+      let hyphens = 0;
       for (let index = 0; index < native.pageCount(); index += 1) {
-        const glyphs = JSON.parse(fromWasm.pageText(index)).glyphs as Array<{ text: string; origin: number[]; end: number[] }>;
+        const glyphs = JSON.parse(fromWasm.pageText(index)).glyphs as Array<{ text: string; origin: number[]; end: number[]; hyphen?: boolean }>;
         const expected = native.glyphs(index);
         expect(glyphs.map((g) => g.text)).toEqual(expected.map((g) => g.text));
+        // The reading layer ends a line at a hyphen PDFium flags, which is
+        // how find and anchors rejoin a word hyphenated across lines.
+        expect(glyphs.map((g) => g.hyphen)).toEqual(expected.map((g) => g.hyphen));
+        hyphens += expected.filter((g) => g.hyphen).length;
         glyphs.forEach((g, i) => {
           for (const k of [0, 1]) {
             expect(Math.abs(g.origin[k]! - expected[i]!.origin[k]!)).toBeLessThan(1e-3);
@@ -41,11 +59,26 @@ describe("shiori-core in wasm", () => {
           }
         });
       }
+      expect(hyphens).toBeGreaterThan(0);
       expect(JSON.parse(fromWasm.outline())).toHaveLength(2);
     } finally {
       fromWasm.free();
       native.close();
     }
+  });
+
+  test("a failed open leaves no copy of the file in PDFium's heap", () => {
+    // Every wrong password and every damaged file: pdfium-render copies the
+    // bytes into PDFium's heap for each load, and only closing frees them.
+    const damaged = new Uint8Array(8 << 20);
+    damaged.set(Buffer.from("%PDF-1.7\n"));
+    const heap = () => pdfiumMemory!.buffer.byteLength;
+    expect(() => wasm.CoreDocument.open(damaged, undefined)).toThrow("damaged");
+    const before = heap();
+    for (let i = 0; i < 12; i += 1) {
+      expect(() => wasm.CoreDocument.open(damaged, undefined)).toThrow("damaged");
+    }
+    expect(heap() - before).toBeLessThan(damaged.length);
   });
 
   test("draws a page with embedded fonts pixel for pixel as the native core does", async () => {
