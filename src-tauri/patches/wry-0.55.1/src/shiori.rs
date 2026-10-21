@@ -19,8 +19,8 @@
 //!   page load reports. macOS: WebKit's private
 //!   `_webView:navigation:didSameDocumentNavigation:`; Windows:
 //!   `SourceChanged` with `IsNewDocument` false; Linux: `notify::uri` while
-//!   no load is in flight, and the URL again when a load finishes (a
-//!   pushState during the load). Registered at build time; it runs on the
+//!   no load is provisional (started, not committed), and the URL again when
+//!   a load finishes. Registered at build time; it runs on the
 //!   main thread inside the engine's callback.
 //! - [`set_dialog_labels`] (macOS): the webview shows the page's
 //!   `alert` / `confirm` / `prompt` as a sheet on its window with these

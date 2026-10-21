@@ -504,24 +504,36 @@ impl InnerWebView {
           None
         });
       }
-      // The uri also moves when a new load starts, before is-loading does,
-      // so look once the signal's other state has settled: a change with no
-      // load in flight stayed within the document.
+      // The uri also moves while a new load is provisional (started, maybe
+      // redirected, not yet committed). Any other change stayed within the
+      // document. Not `is_loading()`: it stays true past the commit until
+      // every image and iframe is done, so a hash change or pushState then
+      // would wait for that, for good behind a request that never ends. The
+      // uri notify can come before load-changed STARTED, so look once both
+      // have been dispatched.
+      let provisional = Rc::new(std::cell::Cell::new(false));
       let same_document_handler = handler.clone();
+      let uri_provisional = provisional.clone();
       webview.connect_uri_notify(move |webview| {
         let webview = webview.clone();
         let handler = same_document_handler.clone();
+        let provisional = uri_provisional.clone();
         gtk::glib::idle_add_local_once(move || {
-          if !webview.is_loading() {
+          if !provisional.get() {
             handler(shiori_same_document_event(&webview));
           }
         });
       });
-      // A pushState while the page was still loading.
-      webview.connect_load_changed(move |webview, load_event| {
-        if load_event == LoadEvent::Finished {
+      webview.connect_load_changed(move |webview, load_event| match load_event {
+        LoadEvent::Started => provisional.set(true),
+        LoadEvent::Committed => provisional.set(false),
+        // Also ends a provisional load that failed. Report the URL again in
+        // case a change was held back meanwhile.
+        LoadEvent::Finished => {
+          provisional.set(false);
           handler(shiori_same_document_event(webview));
         }
+        _ => (),
       });
     }
 
