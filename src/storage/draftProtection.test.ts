@@ -8,6 +8,7 @@ import { createDraftProtection, protectOpenDrafts } from "./draftProtection";
  * - window A has a document open; window B's quota sweep evicts its draft;
  * - A crashed (no pagehide) and its entry protects drafts forever;
  * - A is alive but hidden and throttled, and its entry lapses anyway;
+ * - A is frozen (no timers at all, page still open) and is taken for crashed;
  * - A closed or went into the back/forward cache and still protects;
  * - A opened or closed a tab and B keeps the old set;
  * - storage is blocked, full or throws, and protection (or the app) breaks;
@@ -31,11 +32,29 @@ function memoryStorage(): Storage {
   };
 }
 
-/** A clock for each window over one shared wall time. */
-function world() {
+/**
+ * A clock for each window over one shared wall time, and one lock manager. A
+ * crashed window's locks are gone; a frozen one keeps them but runs nothing.
+ */
+function world({ webLocks = true } = {}) {
   let now = 1_000_000;
   const storage = memoryStorage();
   const windows: ReturnType<typeof makeWindow>[] = [];
+  const held = new Map<string, { crashed: boolean }>();
+  function lockManager(owner: () => { crashed: boolean }) {
+    return {
+      request(name: string, callback: () => Promise<void>) {
+        held.set(name, owner());
+        return callback().finally(() => held.delete(name));
+      },
+      query: () =>
+        Promise.resolve({
+          held: [...held]
+            .filter(([, win]) => !win.crashed)
+            .map(([name]) => ({ name })),
+        }),
+    };
+  }
   function makeWindow(sessionId: string) {
     const timers = new Map<number, { due: number; run: () => void }>();
     let next = 1;
@@ -53,8 +72,9 @@ function world() {
       clearTimeout: (handle) => void timers.delete(handle),
       target,
       sessionId,
+      locks: webLocks ? lockManager(() => win) : null,
     });
-    const win = { protection, target, timers, throttle, crashed: false };
+    const win = { protection, target, timers, throttle, crashed: false, frozen: false };
     windows.push(win);
     return win;
   }
@@ -63,7 +83,7 @@ function world() {
     for (;;) {
       let due: { win: (typeof windows)[number]; handle: number; at: number } | null = null;
       for (const win of windows) {
-        if (win.crashed) continue;
+        if (win.crashed || win.frozen) continue;
         for (const [handle, timer] of win.timers) {
           if (timer.due <= until && (!due || timer.due < due.at)) {
             due = { win, handle, at: timer.due };
@@ -81,6 +101,9 @@ function world() {
   return { storage, makeWindow, advance, now: () => now };
 }
 
+/** Lets pending lock queries answer. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 describe("draft protection across windows", () => {
   test("a draft open in another window is protected", () => {
     const w = world();
@@ -95,7 +118,8 @@ describe("draft protection across windows", () => {
   });
 
   test("a live window stays protected long past the expiry, even throttled", () => {
-    const w = world();
+    // Without Web Locks (plain http origins) the heartbeat alone has to hold.
+    const w = world({ webLocks: false });
     const a = w.makeWindow("a");
     const b = w.makeWindow("b");
     a.throttle.minDelayMs = 60_000;
@@ -104,17 +128,37 @@ describe("draft protection across windows", () => {
     expect(b.protection.isDraftProtected("open-in-a")).toBe(true);
   });
 
-  test("a crashed window stops protecting once its entry expires", () => {
+  test("a crashed window stops protecting once its entry expires", async () => {
     const w = world();
     const a = w.makeWindow("a");
     const b = w.makeWindow("b");
     a.protection.protectOpenDrafts(() => ["open-in-a"]);
+    b.protection.protectOpenDrafts(() => []);
     a.crashed = true;
 
     w.advance(TTL_MS - HEARTBEAT_MS);
+    await settle();
     expect(b.protection.isDraftProtected("open-in-a")).toBe(true);
     w.advance(2 * HEARTBEAT_MS);
+    await settle();
     expect(b.protection.isDraftProtected("open-in-a")).toBe(false);
+  });
+
+  test("a frozen window keeps its protection however long it sleeps", async () => {
+    // Browsers freeze background tabs: no timers run, yet the page is open.
+    const w = world();
+    const a = w.makeWindow("a");
+    const b = w.makeWindow("b");
+    a.protection.protectOpenDrafts(() => ["open-in-a"]);
+    b.protection.protectOpenDrafts(() => []);
+    await settle();
+    a.frozen = true;
+
+    for (let i = 0; i < 6; i++) {
+      w.advance(TTL_MS);
+      await settle();
+    }
+    expect(b.protection.isDraftProtected("open-in-a")).toBe(true);
   });
 
   test("another window's sweep clears a crashed window's entry", () => {
@@ -184,6 +228,7 @@ describe("draft protection across windows", () => {
       clearTimeout: () => undefined,
       target: new window.EventTarget(),
       sessionId: "blocked",
+      locks: null,
     });
     const release = blocked.protectOpenDrafts(() => ["own"]);
     expect(blocked.isDraftProtected("own")).toBe(true);
@@ -201,6 +246,7 @@ describe("draft protection across windows", () => {
       clearTimeout: () => undefined,
       target: new window.EventTarget(),
       sessionId: "cramped",
+      locks: null,
     });
     cramped.protectOpenDrafts(() => ["own"]);
     expect(cramped.isDraftProtected("own")).toBe(true);
@@ -258,6 +304,7 @@ describe("draft eviction honours other windows", () => {
       clearTimeout: (handle) => window.clearTimeout(handle),
       target: new window.EventTarget(),
       sessionId: "other-window",
+      locks: null,
     });
     releaseOther = otherWindow.protectOpenDrafts(() => ["pinned"]);
     __draftsTest.setQuotaCapBytes(3500);

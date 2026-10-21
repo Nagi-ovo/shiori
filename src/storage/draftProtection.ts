@@ -15,6 +15,13 @@
  * window must not lapse. A crashed window pins its drafts for at most that
  * long. A window publishes at once when it registers, whenever its set of
  * open drafts changes, and whenever the reader leaves it (blur, hidden).
+ *
+ * A frozen tab (Chrome, mobile browsers) runs no timers at all yet is still
+ * open, so a lapsed heartbeat alone cannot tell it from a crash. Where Web
+ * Locks exist, each registered window holds a lock named after its key until
+ * it unregisters or dies, and an expired entry whose lock is held still
+ * counts. Lock state is read asynchronously and cached at each publish; the
+ * sweep asks synchronously.
  */
 
 const KEY_PREFIX = "shiori:open-drafts:v1:";
@@ -31,6 +38,13 @@ export type DraftProtectionDeps = {
   /** Receives blur, visibilitychange, pagehide and pageshow. */
   target: EventTarget | null;
   sessionId: string;
+  /** navigator.locks; null where absent (insecure origins), heartbeat only. */
+  locks: Locks | null;
+};
+
+type Locks = {
+  request(name: string, callback: () => Promise<void>): Promise<unknown>;
+  query(): Promise<{ held?: { name?: string }[] }>;
 };
 
 type Entry = { at: number; ids: string[] };
@@ -54,6 +68,9 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
   let openDraftIds: () => Iterable<string> = () => [];
   let registered = false;
   let timer: number | null = null;
+  let releaseLock: (() => void) | null = null;
+  // Keys whose window held its lock at the last query.
+  let lockedKeys = new Set<string>();
 
   function storage(): Storage | null {
     try {
@@ -77,15 +94,42 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
       const now = deps.now();
       for (const key of keys) {
         const entry = parseEntry(store.getItem(key));
-        visit(key, entry && Math.abs(now - entry.at) < EXPIRY_MS ? entry : null);
+        const live = entry && (Math.abs(now - entry.at) < EXPIRY_MS || lockedKeys.has(key));
+        visit(key, live ? entry : null);
       }
     } catch {
       // Storage went away mid-read: only this window's own drafts are known.
     }
   }
 
+  function holdLock(): void {
+    const locks = deps.locks;
+    if (!locks || releaseLock) return;
+    // Resolvable before the grant, so a stop() that wins the race still frees it.
+    const held = new Promise<void>((resolve) => (releaseLock = resolve));
+    try {
+      locks.request(ownKey, () => held).catch(() => undefined);
+    } catch {
+      // No lock: this window is heartbeat-only for the others.
+    }
+  }
+
+  function refreshLocks(): void {
+    try {
+      deps.locks?.query().then(
+        (snapshot) => {
+          lockedKeys = new Set((snapshot.held ?? []).flatMap((lock) => lock.name ?? []));
+        },
+        () => undefined,
+      );
+    } catch {
+      // Keep the last answer.
+    }
+  }
+
   function publish(): void {
     if (!registered) return;
+    refreshLocks();
     const store = storage();
     if (!store) return;
     try {
@@ -134,6 +178,8 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
     timer = null;
     if (registered) listen(false);
     registered = false;
+    releaseLock?.();
+    releaseLock = null;
     withdraw();
   }
 
@@ -142,6 +188,7 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
       stop();
       openDraftIds = provider;
       registered = true;
+      holdLock();
       listen(true);
       beat();
       return () => {
@@ -180,6 +227,7 @@ const shared = createDraftProtection({
   clearTimeout: (handle) => globalThis.clearTimeout(handle),
   target: typeof window === "undefined" ? null : window,
   sessionId: newSessionId(),
+  locks: (typeof navigator === "undefined" ? null : navigator.locks) ?? null,
 });
 
 export const protectOpenDrafts = shared.protectOpenDrafts;

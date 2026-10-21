@@ -157,6 +157,7 @@ describe("workspace persistence scheduling", () => {
       clearTimeout: () => undefined,
       target: null,
       sessionId: "other-window",
+      locks: null,
     });
     const view = render(<Harness tabs={[]} />);
     try {
