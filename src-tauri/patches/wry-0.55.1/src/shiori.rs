@@ -13,9 +13,15 @@
 //!
 //! - [`set_history_handler`]: told whenever the engine's own back/forward
 //!   availability changes (macOS: KVO on `canGoBack` / `canGoForward`;
-//!   Windows: `HistoryChanged`; Linux: the back-forward list's `changed`).
-//!   Registered at build time; it runs on the main thread inside the
-//!   engine's callback.
+//!   Windows: `HistoryChanged`; Linux: the back-forward list's `changed`),
+//!   and of every same-document navigation (a fragment jump, pushState,
+//!   replaceState, Back/Forward between entries of one document), which no
+//!   page load reports. macOS: WebKit's private
+//!   `_webView:navigation:didSameDocumentNavigation:`; Windows:
+//!   `SourceChanged` with `IsNewDocument` false; Linux: `notify::uri` while
+//!   no load is in flight, and the URL again when a load finishes (a
+//!   pushState during the load). Registered at build time; it runs on the
+//!   main thread inside the engine's callback.
 
 use std::{
   collections::HashMap,
@@ -23,8 +29,11 @@ use std::{
 };
 
 /// The engine's session history after a change.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HistoryEvent {
+  /// The main frame's URL after a navigation within its document; `None`
+  /// when only back/forward availability changed.
+  pub same_document_url: Option<String>,
   pub can_go_back: bool,
   pub can_go_forward: bool,
 }

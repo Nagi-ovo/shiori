@@ -670,9 +670,27 @@ impl InnerWebView {
       )?;
     }
 
-    // Shiori: the engine's back/forward availability (src/shiori.rs). Raised
-    // after SourceChanged and ContentLoading, and for Back/Forward too.
+    // Shiori: the engine's back/forward availability and same-document
+    // navigations (src/shiori.rs). HistoryChanged is raised after
+    // SourceChanged and ContentLoading, and for Back/Forward too.
     if let Some(handler) = attributes.id.and_then(crate::shiori::history_handler) {
+      let same_document_handler = handler.clone();
+      webview.add_SourceChanged(
+        &SourceChangedEventHandler::create(Box::new(move |webview, args| {
+          let (Some(webview), Some(args)) = (webview, args) else {
+            return Ok(());
+          };
+          let mut is_new_document = BOOL::default();
+          args.IsNewDocument(&mut is_new_document)?;
+          if !is_new_document.as_bool() {
+            let mut event = Self::shiori_history_event(&webview)?;
+            event.same_document_url = Some(Self::url_from_webview(&webview)?);
+            same_document_handler(event);
+          }
+          Ok(())
+        })),
+        token,
+      )?;
       webview.add_HistoryChanged(
         &HistoryChangedEventHandler::create(Box::new(move |webview, _| {
           let Some(webview) = webview else {
@@ -1365,6 +1383,7 @@ impl InnerWebView {
       webview.CanGoForward(&mut can_go_forward)?;
     }
     Ok(crate::shiori::HistoryEvent {
+      same_document_url: None,
       can_go_back: can_go_back.as_bool(),
       can_go_forward: can_go_forward.as_bool(),
     })

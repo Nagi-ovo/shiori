@@ -8,8 +8,8 @@ use tauri::{
 };
 
 use super::navigation::{
-    emit_web_panel_nav, record_main_frame_commit, record_same_document_navigation,
-    route_non_web_panel_navigation, web_panel_allows_navigation,
+    emit_web_panel_nav, record_main_frame_commit, route_non_web_panel_navigation,
+    web_panel_allows_navigation,
 };
 use super::{
     apply_web_panel_bounds, lock_web_panel, WebPanelBounds, WebPanelState, WEB_PANEL_LABEL,
@@ -31,25 +31,14 @@ pub(super) fn create_web_panel<R: Runtime>(
     let builder = WebviewBuilder::new(WEB_PANEL_LABEL, WebviewUrl::External(url))
         .user_agent(WEB_PANEL_USER_AGENT)
         .incognito(!persist_session)
-        // Policy. This fires for subframes too, so it records only a jump
-        // within the current page, which no page load reports.
+        // Policy only. It fires for subframes too, so it records nothing;
+        // a jump within the page reaches the panel from the engine
+        // (engine.rs).
         .on_navigation(move |url| {
             let target = url.as_str();
             if !web_panel_allows_navigation(target) {
                 route_non_web_panel_navigation(&policy_app, target);
                 return false;
-            }
-            let recorded = {
-                let state = policy_app.state::<WebPanelState>();
-                let mut inner = lock_web_panel(&state);
-                record_same_document_navigation(&mut inner, target)
-            };
-            if recorded {
-                // Off this callback's stack, as in on_page_load below.
-                let emit_app = policy_app.clone();
-                tauri::async_runtime::spawn(async move {
-                    emit_web_panel_nav(&emit_app, false, None);
-                });
             }
             true
         })

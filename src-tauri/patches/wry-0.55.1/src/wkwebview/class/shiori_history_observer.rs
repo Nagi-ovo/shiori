@@ -43,18 +43,19 @@ define_class!(
       _change: Option<&NSDictionary<NSKeyValueChangeKey, AnyObject>>,
       _context: *mut c_void,
     ) {
-      (self.ivars().handler)(history_event(&self.ivars().object));
+      (self.ivars().handler)(history_event(&*self.ivars().object));
     }
   }
 
   unsafe impl NSObjectProtocol for ShioriHistoryObserver {}
 );
 
-pub(crate) fn history_event(webview: &WryWebView) -> HistoryEvent {
+pub(crate) fn history_event<T: objc2::Message>(webview: &T) -> HistoryEvent {
   unsafe {
     let can_go_back: Bool = msg_send![webview, canGoBack];
     let can_go_forward: Bool = msg_send![webview, canGoForward];
     HistoryEvent {
+      same_document_url: None,
       can_go_back: can_go_back.as_bool(),
       can_go_forward: can_go_forward.as_bool(),
     }

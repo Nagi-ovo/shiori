@@ -488,6 +488,7 @@ impl InnerWebView {
     // current item moves.
     if let Some(handler) = attributes.id.and_then(crate::shiori::history_handler) {
       if let Some(list) = webview.back_forward_list() {
+        let handler = handler.clone();
         list.connect_local("changed", false, move |args| {
           use webkit2gtk::{BackForwardList, BackForwardListExt};
           if let Some(list) = args
@@ -495,6 +496,7 @@ impl InnerWebView {
             .and_then(|list| list.get::<BackForwardList>().ok())
           {
             handler(crate::shiori::HistoryEvent {
+              same_document_url: None,
               can_go_back: list.back_item().is_some(),
               can_go_forward: list.forward_item().is_some(),
             });
@@ -502,6 +504,25 @@ impl InnerWebView {
           None
         });
       }
+      // The uri also moves when a new load starts, before is-loading does,
+      // so look once the signal's other state has settled: a change with no
+      // load in flight stayed within the document.
+      let same_document_handler = handler.clone();
+      webview.connect_uri_notify(move |webview| {
+        let webview = webview.clone();
+        let handler = same_document_handler.clone();
+        gtk::glib::idle_add_local_once(move || {
+          if !webview.is_loading() {
+            handler(shiori_same_document_event(&webview));
+          }
+        });
+      });
+      // A pushState while the page was still loading.
+      webview.connect_load_changed(move |webview, load_event| {
+        if load_event == LoadEvent::Finished {
+          handler(shiori_same_document_event(webview));
+        }
+      });
     }
 
     // window creation handler
@@ -1266,5 +1287,14 @@ mod ffi {
       result: *mut gio::ffi::GAsyncResult,
       error: *mut *mut glib::ffi::GError,
     ) -> *mut glib::ffi::GList;
+  }
+}
+
+// Shiori (src/shiori.rs).
+fn shiori_same_document_event(webview: &WebView) -> crate::shiori::HistoryEvent {
+  crate::shiori::HistoryEvent {
+    same_document_url: webview.uri().map(|uri| uri.to_string()),
+    can_go_back: webview.can_go_back(),
+    can_go_forward: webview.can_go_forward(),
   }
 }

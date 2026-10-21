@@ -571,7 +571,9 @@ impl InnerWebView {
         };
 
       // Shiori: the engine's back/forward availability (src/shiori.rs)
-      let shiori_history_observer = crate::shiori::history_handler(&webview_id)
+      let shiori_history = crate::shiori::history_handler(&webview_id);
+      let shiori_history_observer = shiori_history
+        .clone()
         .map(|handler| ShioriHistoryObserver::new(webview.clone(), handler));
 
       let pending_scripts = Arc::new(Mutex::new(Some(Vec::new())));
@@ -598,6 +600,7 @@ impl InnerWebView {
         download_delegate.clone(),
         attributes.on_page_load_handler,
         pl_attrs.on_web_content_process_terminate_handler,
+        shiori_history,
         mtm,
       );
 
