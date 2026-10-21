@@ -42,6 +42,8 @@ struct Glyph {
     angle: f32,
     generated: bool,
     font_name: String,
+    /// The font's program id; empty for a font the file does not embed.
+    font_id: String,
     font_flags: i32,
     ascent: f32,
     descent: f32,
@@ -171,6 +173,7 @@ impl CoreDocument {
                     angle: ch.angle,
                     generated: ch.generated,
                     font_name: ch.font_name,
+                    font_id: ch.font_id,
                     font_flags: ch.font_flags,
                     ascent: ch.ascent,
                     descent: ch.descent,
@@ -234,7 +237,8 @@ impl CoreDocument {
     }
 
     /// The named embedded fonts rebuilt from this page's glyphs, as
-    /// `encode_font_outlines` JSON; `names` is a JSON array of BaseFont names.
+    /// `encode_font_outlines` JSON, each with its program id; `names` is a
+    /// JSON array of BaseFont names.
     #[wasm_bindgen(js_name = fontOutlines)]
     pub fn font_outlines(&self, index: u32, names: &str) -> Result<Vec<u8>, JsValue> {
         let names: Vec<String> =

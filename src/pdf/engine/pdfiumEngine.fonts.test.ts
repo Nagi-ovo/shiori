@@ -27,7 +27,7 @@ const core = {
   ),
   close: mock(() => undefined),
   security: mock(async () => ({ revision: null, permissions: 0xffffffff, userPermissions: 0xffffffff })),
-  pageFonts: mock(async () => new Uint8Array()),
+  pageFonts: mock((async () => new Uint8Array()) as (doc: number, page: number) => Promise<Uint8Array>),
   fontOutlines: mock((async () => new Uint8Array()) as (doc: number, page: number, names: string[]) => Promise<Uint8Array>),
   pageText: mock(helloText),
 };
@@ -157,12 +157,118 @@ describe("pdfiumEngine fonts", () => {
       else delete (document as { fonts?: unknown }).fonts;
     }
   });
+
+  // Two papers merged into one file, each embedding its own subset of the
+  // same font (audit B108): page 0 sets "Hi" in one Calibri, page 1 "Ho" in
+  // the other. PDFium names both "Calibri"; the core tells them apart by id.
+  const twoSubsets = (fontName: string) =>
+    (async (_doc: number, page: number) => ({
+      glyphs: [...["Hi", "Ho"][page]!].map((text, i) => ({
+        text,
+        origin: [72 + 6 * i, 700] as [number, number],
+        end: [78 + 6 * i, 700] as [number, number],
+        fontSize: 12,
+        angle: 0,
+        generated: false,
+        fontName,
+        fontId: ["1a", "2b"][page],
+        fontFlags: 32,
+        ascent: 9,
+        descent: -3,
+      })),
+      lang: null,
+    })) as unknown as typeof core.pageText;
+
+  test("two programs under one font name each get their own face", async () => {
+    await withFontStubs(async (added) => {
+      core.pageText.mockImplementation(twoSubsets("Calibri"));
+      core.pageFonts.mockImplementation(async (_doc: number, page: number) =>
+        packFonts([{ name: "Calibri", id: ["1a", "2b"][page], format: "truetype", data: [0, 1, 0, 0, 40 + page] }]),
+      );
+      const { doc } = await engine.load(new Uint8Array([7]), {});
+      const first = await engine.pageText(doc, 0);
+      const second = await engine.pageText(doc, 1);
+      const families = [first.faceFamilies.get("f0"), second.faceFamilies.get("f0")];
+      expect(families[0]).toMatch(/^shiori-pdf-/);
+      expect(families[1]).toMatch(/^shiori-pdf-/);
+      expect(families[1]).not.toBe(families[0]);
+      expect(added).toEqual(families);
+      // What edit boxes and their glyph warnings are keyed by differs too.
+      expect(second.fontNames.get("f0")).not.toBe(first.fontNames.get("f0"));
+    });
+  });
+
+  test("two rebuilt programs under one font name keep their own glyphs", async () => {
+    await withFontStubs(async (added) => {
+      core.pageText.mockImplementation(twoSubsets("CMR10"));
+      core.pageFonts.mockImplementation(async (_doc: number, page: number) =>
+        packFonts([{ name: "CMR10", id: ["1a", "2b"][page], format: "cff", data: [1, 0, 4, 2] }]),
+      );
+      core.fontOutlines.mockImplementation(async (_doc, page) =>
+        new TextEncoder().encode(
+          JSON.stringify([
+            {
+              name: "CMR10",
+              id: ["1a", "2b"][page],
+              flags: 32,
+              ascent: 700,
+              descent: -200,
+              glyphs: [...["Hi", "Ho"][page]!].map((ch) => [ch.codePointAt(0), 500, "M0 0L500 0L500 700Z"]),
+            },
+          ]),
+        ),
+      );
+      const { doc } = await engine.load(new Uint8Array([7]), {});
+      const first = (await engine.pageText(doc, 0)).faceFamilies.get("f0");
+      const second = (await engine.pageText(doc, 1)).faceFamilies.get("f0");
+      expect(second).not.toBe(first);
+      // The second program draws its own H, not the first one's.
+      expect(added).toEqual([`${first} U+48,U+69`, `${second} U+48,U+6F`]);
+      expect(core.fontOutlines).toHaveBeenCalledTimes(2);
+    });
+  });
 });
 
+/**
+ * Runs `body` with FontFace and document.fonts stubbed; `added` lists each
+ * face added, as its family and any unicode-range.
+ */
+async function withFontStubs(body: (added: string[]) => Promise<void>): Promise<void> {
+  const added: string[] = [];
+  const previousFontFace = (globalThis as { FontFace?: unknown }).FontFace;
+  const previousFonts = Object.getOwnPropertyDescriptor(document, "fonts");
+  (globalThis as { FontFace?: unknown }).FontFace = class {
+    constructor(
+      readonly family: string,
+      readonly data: unknown,
+      readonly descriptors?: { unicodeRange?: string },
+    ) {}
+    load() {
+      return Promise.resolve(this);
+    }
+  };
+  type Face = { family: string; descriptors?: { unicodeRange?: string } };
+  Object.defineProperty(document, "fonts", {
+    configurable: true,
+    value: {
+      add: (face: Face) =>
+        added.push([face.family, face.descriptors?.unicodeRange].filter(Boolean).join(" ")),
+      delete: () => true,
+    },
+  });
+  try {
+    await body(added);
+  } finally {
+    (globalThis as { FontFace?: unknown }).FontFace = previousFontFace;
+    if (previousFonts) Object.defineProperty(document, "fonts", previousFonts);
+    else delete (document as { fonts?: unknown }).fonts;
+  }
+}
+
 /** shiori-core's font container: u32 length, a JSON listing, the programs. */
-function packFonts(fonts: Array<{ name: string; format: string; data: number[] }>): Uint8Array {
+function packFonts(fonts: Array<{ name: string; id?: string; format: string; data: number[] }>): Uint8Array {
   const header = new TextEncoder().encode(
-    JSON.stringify(fonts.map(({ name, format, data }) => ({ name, flags: 32, format, length: data.length }))),
+    JSON.stringify(fonts.map(({ name, id, format, data }) => ({ name, id, flags: 32, format, length: data.length }))),
   );
   const out = new Uint8Array(4 + header.length + fonts.reduce((sum, font) => sum + font.data.length, 0));
   new DataView(out.buffer).setUint32(0, header.length, true);

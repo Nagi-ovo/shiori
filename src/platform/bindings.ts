@@ -467,7 +467,12 @@ angle: number;
 /**
  * A space or line break PDFium inferred; nothing is drawn.
  */
-generated: boolean; fontName: string; fontFlags: number;
+generated: boolean; fontName: string;
+/**
+ * The font's program id, which tells apart fonts named alike; empty for
+ * a font the file does not embed.
+ */
+fontId: string; fontFlags: number;
 /**
  * Page units at this glyph's size; descent is negative.
  */

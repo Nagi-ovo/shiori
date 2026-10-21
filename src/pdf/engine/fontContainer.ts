@@ -1,7 +1,9 @@
 /** A font program a page draws with, as the file embeds it (shiori-core's EmbeddedFont). */
 export type PdfEmbeddedFont = {
-  /** BaseFont, without a subset prefix, as the text layer names it. */
+  /** BaseFont as the text layer names it. */
   name: string;
+  /** The program's id, as the text layer's glyphs carry it (./fontKey.ts). */
+  id?: string;
   flags: number;
   format: "truetype" | "opentype" | "cff" | "type1" | "unknown";
   data: Uint8Array;
@@ -9,7 +11,7 @@ export type PdfEmbeddedFont = {
 
 /**
  * Unpacks shiori-core's `encode_embedded_fonts`: a u32 little-endian length,
- * that much JSON listing each font's name, flags, format and length, then
+ * that much JSON listing each font's name, id, flags, format and length, then
  * the programs in order.
  */
 export function decodeEmbeddedFonts(bytes: Uint8Array): PdfEmbeddedFont[] {

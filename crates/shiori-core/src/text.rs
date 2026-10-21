@@ -5,6 +5,7 @@ use std::os::raw::c_int;
 
 use pdfium_render::prelude::{FS_MATRIX, FS_RECTF};
 
+use crate::fonts::font_id;
 use crate::{
     decode, normalized, same_point, CoreError, Document, Lib, Rect, TextPage, BOX_SLACK_PT,
     PDF_FONT_FLAGS,
@@ -32,9 +33,13 @@ pub struct TextChar {
     pub generated: bool,
     /// A line-end hyphen PDFium recognised as hyphenation. `text` is "-".
     pub hyphen: bool,
-    /// The font's name as the file gives it (PDFium drops a subset prefix), and
+    /// The font's name as the file gives it (PDFium drops a Type 1 font's
+    /// subset prefix and keeps a TrueType or CID font's), and
     /// its descriptor flags (PDF 32000 table 123: 1 fixed pitch, 2 serif, …).
     pub font_name: String,
+    /// The font's program id (`fonts::program_id`), which tells apart
+    /// fonts named alike; empty for a font the file does not embed.
+    pub font_id: String,
     pub font_flags: i32,
     /// The font's ascent and descent at this glyph's size, in page units
     /// along the glyph's up direction (descent is negative).
@@ -62,6 +67,7 @@ struct RawChar {
 #[derive(Clone, Default)]
 struct FontInfo {
     name: String,
+    id: String,
     flags: i32,
     /// Ascent and descent per unit of font size.
     ascent: f32,
@@ -153,6 +159,7 @@ fn raw_char(
                             name: String::from_utf8_lossy(&name)
                                 .trim_end_matches('\0')
                                 .to_string(),
+                            id: font_id(lib, font),
                             flags: flags & PDF_FONT_FLAGS,
                             ascent,
                             descent,
@@ -239,6 +246,7 @@ fn assemble(raw: &[RawChar]) -> Vec<TextChar> {
             generated: first.generated,
             hyphen: first.hyphen,
             font_name: first.font.name.clone(),
+            font_id: first.font.id.clone(),
             font_flags: first.font.flags,
             ascent: first.font.ascent * first.font_size,
             descent: first.font.descent * first.font_size,

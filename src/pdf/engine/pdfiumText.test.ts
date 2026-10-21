@@ -6,7 +6,7 @@ import type { PdfTextItem } from "./text";
 
 // Glyphs the way shiori-core reports them: 12 pt, each letter 6 pt wide,
 // Helvetica's descriptor (ascent 9, descent -3 at 12 pt) unless overridden.
-type Font = Pick<PdfiumGlyph, "fontName" | "fontFlags" | "ascent" | "descent" | "fontSize">;
+type Font = Pick<PdfiumGlyph, "fontName" | "fontId" | "fontFlags" | "ascent" | "descent" | "fontSize">;
 const helvetica: Font = { fontName: "Helvetica", fontFlags: 32, ascent: 9, descent: -3, fontSize: 12 };
 const courier: Font = { fontName: "Courier", fontFlags: 33, ascent: 9, descent: -3, fontSize: 12 };
 
@@ -97,6 +97,21 @@ describe("pageTextFromPdfiumGlyphs", () => {
     const families = items.map((item) => text.content.styles[item.fontName]!.fontFamily);
     expect(families).toEqual(["sans-serif", "monospace"]);
     expect(items.map((item) => text.fontNames.get(item.fontName))).toEqual(["Helvetica", "Courier"]);
+  });
+
+  test("two programs under one font name stay two fonts", () => {
+    // Merged files whose subsets of one font PDFium names alike (audit B108).
+    const subset = (fontId: string): Font => ({ ...helvetica, fontName: "Calibri", fontId });
+    const text = pageTextFromPdfiumGlyphs(
+      [...word("Say", 72, 700, subset("1a")), ...word("ls", 90, 700, subset("2b"))],
+      null,
+    );
+    const items = text.content.items as PdfTextItem[];
+    expect(items.map((item) => item.str)).toEqual(["Say", "ls"]);
+    const names = items.map((item) => text.fontNames.get(item.fontName)!);
+    expect(names[1]).not.toBe(names[0]);
+    // Still the font's name to whatever reads it as one.
+    expect(names.every((name) => name.startsWith("Calibri"))).toBe(true);
   });
 
   test("text on a turned baseline keeps its direction", () => {

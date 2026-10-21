@@ -7,7 +7,10 @@ export type PdfPageText = {
   content: PdfPageTextContent;
   /** Null when the engine could not place glyphs (selection falls back to runs). */
   glyphs: PdfTextGlyph[] | null;
-  /** `content.styles` key → the font's BaseFont name, where known. */
+  /**
+   * `content.styles` key → the font's BaseFont name, where known, keyed by
+   * its program when the file embeds it (./fontKey.ts).
+   */
   fontNames: Map<string, string>;
   /**
    * `content.styles` key → the CSS family of the document's own font, for

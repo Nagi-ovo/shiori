@@ -14,9 +14,12 @@ use crate::{CoreError, Document, Lib, TextPage, MAX_FORM_DEPTH, PDF_FONT_FLAGS};
 /// so edits to existing text can be set in the document's own font.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EmbeddedFont {
-    /// The BaseFont name as PDFium reports it, a subset prefix ("ABCDEF+")
-    /// dropped, the same name the text layer's glyphs carry.
+    /// The BaseFont name as PDFium reports it, the same name the text layer's
+    /// glyphs carry: PDFium drops a Type 1 font's subset prefix ("ABCDEF+")
+    /// and keeps a TrueType or CID font's.
     pub name: String,
+    /// The program's identity (`program_id`), as the glyphs carry it.
+    pub id: String,
     /// Descriptor flags (PDF 32000 table 123).
     pub flags: i32,
     pub format: FontFormat,
@@ -64,8 +67,9 @@ impl FontFormat {
 /// layer builds a face from these outlines instead.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FontOutlines {
-    /// The BaseFont name, as `EmbeddedFont::name`.
+    /// The BaseFont name and program id, as `EmbeddedFont`'s.
     pub name: String,
+    pub id: String,
     pub flags: i32,
     /// Ascent and descent in 1/1000 em, descent negative.
     pub ascent: f32,
@@ -89,7 +93,7 @@ pub struct GlyphOutline {
 pub(crate) const MAX_OUTLINE_GLYPHS: usize = 8192;
 
 /// JSON for a host that moves bytes (Tauri IPC, the web worker):
-/// `[{name, flags, ascent, descent, glyphs: [[unicode, advance, path]]}]`.
+/// `[{name, id, flags, ascent, descent, glyphs: [[unicode, advance, path]]}]`.
 /// src/pdf/engine/fontOutlines.ts reads it.
 pub fn encode_font_outlines(fonts: &[FontOutlines]) -> Vec<u8> {
     let mut out = String::from("[");
@@ -98,8 +102,9 @@ pub fn encode_font_outlines(fonts: &[FontOutlines]) -> Vec<u8> {
             out.push(',');
         }
         out.push_str(&format!(
-            "{{\"name\":{},\"flags\":{},\"ascent\":{},\"descent\":{},\"glyphs\":[",
+            "{{\"name\":{},\"id\":{},\"flags\":{},\"ascent\":{},\"descent\":{},\"glyphs\":[",
             json_string(&font.name),
+            json_string(&font.id),
             font.flags,
             font.ascent.round(),
             font.descent.round()
@@ -123,7 +128,7 @@ pub fn encode_font_outlines(fonts: &[FontOutlines]) -> Vec<u8> {
 
 /// Packs fonts for a host that moves bytes, not objects (Tauri IPC, the web
 /// worker): a u32 little-endian length, that many bytes of JSON listing each
-/// font's `name`, `flags`, `format` and `length`, then every program in
+/// font's `name`, `id`, `flags`, `format` and `length`, then every program in
 /// order. src/pdf/engine/fontContainer.ts reads it.
 pub fn encode_embedded_fonts(fonts: &[EmbeddedFont]) -> Vec<u8> {
     let mut header = String::from("[");
@@ -132,8 +137,9 @@ pub fn encode_embedded_fonts(fonts: &[EmbeddedFont]) -> Vec<u8> {
             header.push(',');
         }
         header.push_str(&format!(
-            "{{\"name\":{},\"flags\":{},\"format\":\"{}\",\"length\":{}}}",
+            "{{\"name\":{},\"id\":{},\"flags\":{},\"format\":\"{}\",\"length\":{}}}",
             json_string(&font.name),
+            json_string(&font.id),
             font.flags,
             font.format.as_str(),
             font.data.len()
@@ -165,7 +171,52 @@ fn json_string(text: &str) -> String {
     out
 }
 
-/// A font's BaseFont name, a subset prefix dropped (PDFium's own).
+/// The program a font embeds, as the file stores it (decoded), or None for
+/// a font the file does not embed.
+pub(crate) unsafe fn font_program(lib: &Lib, font: FPDF_FONT) -> Option<Vec<u8>> {
+    if lib.FPDFFont_GetIsEmbedded(font) != 1 {
+        return None;
+    }
+    let mut size = 0;
+    lib.FPDFFont_GetFontData(font, std::ptr::null_mut(), 0, &mut size);
+    if size == 0 {
+        return None;
+    }
+    let mut data = vec![0u8; size];
+    if lib.FPDFFont_GetFontData(font, data.as_mut_ptr(), size, &mut size) == 0 {
+        return None;
+    }
+    data.truncate(size);
+    Some(data)
+}
+
+/// Tells apart fonts PDFium names alike. Two papers merged into one file
+/// often embed two subsets of one font, both "Calibri" once PDFium drops
+/// their subset tags, and a face built from one lacks the other's glyphs.
+/// PDFium gives a font handle no object number, and its handles are freed
+/// with their pages, so the identity is the program itself: FNV-1a 64 over
+/// its bytes, in hex. The same program has the same id on every page, in a
+/// reopened file and in a file merged from it, where edits saved with it in
+/// a draft find it again. Hashing reads the program once per font per page
+/// read: microseconds for a subset, a few milliseconds for a whole CJK font.
+pub(crate) fn program_id(data: &[u8]) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for &byte in data {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// The id of a font's program (`program_id`); empty for a font the file
+/// does not embed.
+pub(crate) unsafe fn font_id(lib: &Lib, font: FPDF_FONT) -> String {
+    font_program(lib, font)
+        .map(|data| program_id(&data))
+        .unwrap_or_default()
+}
+
+/// A font's BaseFont name as PDFium reports it (see `EmbeddedFont::name`).
 pub(crate) unsafe fn base_font_name(lib: &Lib, font: FPDF_FONT) -> String {
     let len = lib.FPDFFont_GetBaseFontName(font, std::ptr::null_mut(), 0);
     let mut name = vec![0u8; len];
@@ -267,31 +318,15 @@ impl Document {
                     }
                     FPDF_PAGEOBJ_TEXT => {
                         let font = lib.FPDFTextObj_GetFont(object);
-                        if font.is_null()
-                            || !seen.insert(font as usize)
-                            || lib.FPDFFont_GetIsEmbedded(font) != 1
-                        {
+                        if font.is_null() || !seen.insert(font as usize) {
                             continue;
                         }
-                        let mut size = 0;
-                        lib.FPDFFont_GetFontData(font, std::ptr::null_mut(), 0, &mut size);
-                        if size == 0 {
+                        let Some(data) = font_program(lib, font) else {
                             continue;
-                        }
-                        let mut data = vec![0u8; size];
-                        if lib.FPDFFont_GetFontData(font, data.as_mut_ptr(), size, &mut size) == 0 {
-                            continue;
-                        }
-                        data.truncate(size);
-                        let len = lib.FPDFFont_GetBaseFontName(font, std::ptr::null_mut(), 0);
-                        let mut name = vec![0u8; len];
-                        if len > 0 {
-                            lib.FPDFFont_GetBaseFontName(font, name.as_mut_ptr().cast(), len);
-                        }
+                        };
                         fonts.push(EmbeddedFont {
-                            name: String::from_utf8_lossy(&name)
-                                .trim_end_matches('\0')
-                                .to_string(),
+                            name: base_font_name(lib, font),
+                            id: program_id(&data),
                             flags: lib.FPDFFont_GetFlags(font) & PDF_FONT_FLAGS,
                             format: FontFormat::of(&data),
                             data,
@@ -305,8 +340,9 @@ impl Document {
     }
 
     /// The named embedded fonts rebuilt from their glyphs, for the characters
-    /// this page sets in each (see `FontOutlines`). A font FreeType could not
-    /// load is drawn with a substitute and is left out, as in `embedded_fonts`.
+    /// this page sets in each (see `FontOutlines`): every program under a
+    /// name asked for, told apart by id. A font FreeType could not load is
+    /// drawn with a substitute and is left out, as in `embedded_fonts`.
     pub fn font_outlines(
         &self,
         index: u32,
@@ -379,6 +415,7 @@ impl Document {
                         .collect();
                     FontOutlines {
                         name,
+                        id: font_id(lib, font),
                         flags: lib.FPDFFont_GetFlags(font) & PDF_FONT_FLAGS,
                         ascent,
                         descent,

@@ -5,6 +5,7 @@ import type {
   PdfTextItem,
   PdfTextStyle,
 } from "./text";
+import { fontKey } from "./fontKey";
 import type { PdfPageText } from "./types";
 
 /**
@@ -23,6 +24,11 @@ export type PdfiumGlyph = {
   /** A space or line break PDFium inferred; nothing is drawn. */
   generated: boolean;
   fontName: string;
+  /**
+   * The font's program id, which tells apart fonts named alike; empty or
+   * absent for a font the file does not embed.
+   */
+  fontId?: string;
   /** PDF font descriptor flags. */
   fontFlags: number;
   /** Page units at this glyph's size; descent is negative. */
@@ -239,7 +245,8 @@ class PageTextBuilder {
   #styleOf(glyph: PdfiumGlyph, size: number): string {
     const ascent = glyph.ascent / size;
     const descent = glyph.descent / size;
-    const identity = [glyph.fontName, glyph.fontFlags, ascent.toFixed(4), descent.toFixed(4)].join("\u0000");
+    const font = fontKey(glyph.fontName, glyph.fontId);
+    const identity = [font, glyph.fontFlags, ascent.toFixed(4), descent.toFixed(4)].join("\u0000");
     let key = this.#styleKeys.get(identity);
     if (key === undefined) {
       key = `f${this.#styleKeys.size}`;
@@ -251,7 +258,7 @@ class PageTextBuilder {
         descent,
         vertical: false,
       };
-      if (glyph.fontName) this.#fontNames.set(key, glyph.fontName);
+      if (glyph.fontName) this.#fontNames.set(key, font);
     }
     return key;
   }

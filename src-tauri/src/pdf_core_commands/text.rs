@@ -25,6 +25,9 @@ struct PdfCoreGlyph {
     /// A space or line break PDFium inferred; nothing is drawn.
     generated: bool,
     font_name: String,
+    /// The font's program id, which tells apart fonts named alike; empty for
+    /// a font the file does not embed.
+    font_id: String,
     font_flags: i32,
     /// Page units at this glyph's size; descent is negative.
     ascent: f32,
@@ -67,6 +70,7 @@ pub(crate) async fn pdf_core_page_text<R: Runtime>(
                     angle: ch.angle,
                     generated: ch.generated,
                     font_name: ch.font_name,
+                    font_id: ch.font_id,
                     font_flags: ch.font_flags,
                     ascent: ch.ascent,
                     descent: ch.descent,

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PageModel } from "../../pdf/model/types";
+import { fontKey } from "../../pdf/engine/fontKey";
 import { createPdfEditorStore } from "./store";
 
 // What can go wrong with the record of the document's own fonts, which edit
@@ -9,6 +10,11 @@ import { createPdfEditorStore } from "./store";
 //   faces are destroyed. Kept across the swap, the old character coverage
 //   tells the warning a character is covered when the new face lacks it, so
 //   the edit box draws it in a fallback font with no warning.
+// - two programs under one font name (two papers merged into one file, each
+//   with its own subset): pooled, an edit in one paper's text draws with the
+//   other's face, and the warning counts the other's characters (B108).
+// - a draft saved before fonts were keyed by their program names the font
+//   alone; its edit box must still find the font's face.
 
 const page = (id: string, sourceIndex: number): PageModel => ({
   id,
@@ -42,5 +48,18 @@ describe("PDF font registry", () => {
 
     expect(store.getState().pdfFontFaces).toEqual({ CMR10: "shiori-pdf-2-0" });
     expect([...store.getState().pdfFontChars.CMR10!]).toEqual(["a"]);
+  });
+
+  test("two programs under one name keep their own face and characters", () => {
+    const store = createPdfEditorStore();
+    store.getState().registerPdfFontFaces([
+      { baseFontName: fontKey("Calibri", "1a"), faceFamily: "shiori-pdf-a", chars: "Hi" },
+      { baseFontName: fontKey("Calibri", "2b"), faceFamily: "shiori-pdf-b", chars: "Ho" },
+    ]);
+    const { pdfFontFaces, pdfFontChars } = store.getState();
+    expect(pdfFontFaces[fontKey("Calibri", "2b")]).toBe("shiori-pdf-b");
+    expect([...pdfFontChars[fontKey("Calibri", "2b")]!]).toEqual(["H", "o"]);
+    // An edit saved by name alone finds the first face under it, as it did.
+    expect(pdfFontFaces.Calibri).toBe("shiori-pdf-a");
   });
 });

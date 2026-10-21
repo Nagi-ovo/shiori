@@ -11,6 +11,7 @@
 // ignored entirely; an estimated baseline would poison every downstream
 // consumer.
 
+import { fontKeyName } from "../../pdf/engine/fontKey";
 import type { DisplayRect, TextRunDisplayBounds } from "./highlightRects";
 
 // Thresholds in POINTS (multiplied by the display scale internally).
@@ -104,8 +105,9 @@ const MATH_FONT_BASE =
 
 export function isMathFontName(name: string | undefined): boolean {
   if (!name) return false;
-  // Strip the "ABCDEF+" subset-tag prefix embedded fonts carry.
-  const base = name.replace(/^[A-Z]{6}\+/, "").toLowerCase();
+  // Strip the "ABCDEF+" subset-tag prefix embedded fonts carry, and the
+  // program id the reading layer keys them by.
+  const base = fontKeyName(name).replace(/^[A-Z]{6}\+/, "").toLowerCase();
   if (MATH_FONT_BASE.test(base)) return true;
   return /math|symbol/.test(base);
 }
