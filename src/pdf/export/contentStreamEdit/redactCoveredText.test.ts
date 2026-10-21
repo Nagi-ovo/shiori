@@ -173,6 +173,38 @@ describe("page text redaction with editor-built cover rects", () => {
     expect(report.cleanRects).toEqual([false]);
   });
 
+  test.each([
+    ["on another line", 690],
+    ["on the same baseline", 700],
+  ])("keeps a slightly larger glyph %s behind dashes under their ink cover", async (_, baseline) => {
+    // A 29pt "W" (advance 14.5pt) over two of eight 24pt hyphens: its box is
+    // only a little taller than theirs, and most of it is outside the cover.
+    const page = await pageWithContent(
+      `BT /F1 29 Tf 130 ${baseline} Td (W) Tj ET BT /F1 24 Tf 100 700 Td (--------) Tj ET`,
+      ARIAL_DESCRIPTOR,
+    );
+    const band = { ascent: 7.275, descent: -5.155 };
+
+    const report = redactCoveredTextOnPage(page, [editorCoverRect(96, band)]);
+
+    expect(report.removedCount).toBe(8);
+    expect(report.cleanRects).toEqual([false]);
+  });
+
+  test("keeps dashes on two overlapping lines that each span the cover", async () => {
+    // Two rows of hyphens a point apart: either could be the selected run.
+    const page = await pageWithContent(
+      "BT /F1 24 Tf 100 700 Td (--------) Tj 0 -1 Td (--------) Tj ET",
+      ARIAL_DESCRIPTOR,
+    );
+    const band = { ascent: 7.275, descent: -5.155 };
+
+    const report = redactCoveredTextOnPage(page, [editorCoverRect(96, band)]);
+
+    expect(report.removedCount).toBe(0);
+    expect(report.cleanRects).toEqual([false]);
+  });
+
   test("keeps a large heading glyph behind a cover whose own text is unplaced", async () => {
     // The body line is in a font the walk cannot measure, so nothing holds a
     // core band in the cover; the W still only fills a third of its width.

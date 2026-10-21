@@ -215,31 +215,42 @@ function hugSlack(rect: PdfRect): number {
   return 0.8 + Math.max(3, 0.25 * Math.abs(rect.h));
 }
 
-// A hugged glyph drawn over a smaller hugged one, with a clearly taller box,
-// belongs to another layer of text (a heading or drop cap behind a row of
-// dashes): the thin cover only grazes it, so it is not part of the run.
-const LARGER_BOX_RATIO = 1.25;
-
-function withoutLargerOverlapping(hugged: GlyphPlacement[]): GlyphPlacement[] {
+// A hugged glyph drawn over a shorter hugged one belongs to another layer
+// of text (a heading or drop cap behind a row of dashes): the thin cover
+// only grazes it, so it is not part of the run.
+function withoutTallerOverlapping(hugged: GlyphPlacement[]): GlyphPlacement[] {
   const boxes = hugged.map((glyph) => quadBounds(glyph.quad));
   return hugged.filter((_, index) => {
     const box = boxes[index]!;
     const height = box.maxY - box.minY;
     return !boxes.some(
       (other) =>
-        other.maxY - other.minY < height / LARGER_BOX_RATIO &&
+        other.maxY - other.minY < height - HIT_EPSILON &&
         other.minX < box.maxX - HIT_EPSILON &&
         other.maxX > box.minX + HIT_EPSILON,
     );
   });
 }
 
+// Hugged glyphs split by baseline: one line of text each.
+function byBaseline(hugged: GlyphPlacement[]): GlyphPlacement[][] {
+  const lines: GlyphPlacement[][] = [];
+  for (const glyph of hugged) {
+    const y = glyph.coreQuad[0].y;
+    const line = lines.find((l) => Math.abs(l[0]!.coreQuad[0].y - y) <= HIT_EPSILON);
+    if (line) line.push(glyph);
+    else lines.push([glyph]);
+  }
+  return lines;
+}
+
 // Per rect, the glyphs it removes. A rect removes every glyph whose core
 // band it holds. A rect that holds no core band may be an ink-bounds cover
 // of glyphs that float off the baseline; it removes the glyphs it hugs
-// (rectHugsUprightGlyph), but only when together they span the rect, so a
-// cover over a much larger glyph (a heading, a watermark) keeps it, and
-// never a much larger glyph overlapping the hugged run.
+// (rectHugsUprightGlyph) on the one line whose hugged glyphs span the
+// rect, so a cover over a much larger glyph (a heading, a watermark) keeps
+// it, as it keeps a taller glyph overlapping the run, glyphs on other lines
+// and, when two lines span it, both.
 function removalsByRect(
   glyphs: GlyphPlacement[],
   coverRects: PdfRect[],
@@ -247,17 +258,17 @@ function removalsByRect(
   return coverRects.map((rect) => {
     const core = glyphs.filter((glyph) => quadInsideRect(glyph.coreQuad, rect));
     if (core.length > 0) return new Set(core);
-    const hugged = withoutLargerOverlapping(
+    const hugged = withoutTallerOverlapping(
       glyphs.filter((glyph) => rectHugsUprightGlyph(rect, glyph.quad)),
     );
-    if (hugged.length === 0) return new Set();
     const rb = rectBounds(rect);
-    const minX = Math.min(...hugged.map((glyph) => quadBounds(glyph.quad).minX));
-    const maxX = Math.max(...hugged.map((glyph) => quadBounds(glyph.quad).maxX));
     const slack = hugSlack(rect);
-    return minX <= rb.minX + slack && maxX >= rb.maxX - slack
-      ? new Set(hugged)
-      : new Set();
+    const spanning = byBaseline(hugged).filter((line) => {
+      const minX = Math.min(...line.map((glyph) => quadBounds(glyph.quad).minX));
+      const maxX = Math.max(...line.map((glyph) => quadBounds(glyph.quad).maxX));
+      return minX <= rb.minX + slack && maxX >= rb.maxX - slack;
+    });
+    return spanning.length === 1 ? new Set(spanning[0]) : new Set();
   });
 }
 
