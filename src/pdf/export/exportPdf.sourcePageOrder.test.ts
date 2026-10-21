@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { PDFDocument, PDFName, type PDFPage } from "pdf-lib";
+import { PDFDict, PDFDocument, PDFName, type PDFPage, type PDFRef } from "pdf-lib";
 import { exportPdf } from "./exportPdf";
 import type { DocumentModel } from "../model/types";
 
@@ -86,5 +86,34 @@ describe("export numbers source pages the way PDFium does", () => {
 
     const last = await exportPdf(source, modelFor([2]));
     expect(await exportedWidths(last.bytes)).toEqual([300]);
+  });
+
+  // A subtree named twice in /Kids is walked twice by pdf-lib; nested k deep
+  // that lists 2^k pages, and a cyclic tree never ends. PDFium trusts the
+  // root's /Count and opens either file as three pages.
+  async function repeatedSubtree(depth: number, cyclic = false): Promise<Uint8Array> {
+    const { doc, pages } = await threePages();
+    const rootRef = doc.catalog.get(PDFName.of("Pages"));
+    let child: PDFRef = pages[0]!.ref;
+    for (let level = 0; level < depth; level += 1) {
+      child = doc.context.register(
+        doc.context.obj({ Kids: [child, child], Count: 1, Parent: rootRef } as never),
+      );
+    }
+    if (cyclic) {
+      doc.context.lookup(child, PDFDict).set(PDFName.of("Kids"), doc.context.obj([pages[0]!.ref, child]));
+    }
+    doc.catalog.Pages().set(PDFName.of("Kids"), doc.context.obj([child, pages[1]!.ref, pages[2]!.ref]));
+    doc.catalog.Pages().set(PDFName.of("Count"), doc.context.obj(3));
+    return doc.save({ useObjectStreams: false });
+  }
+
+  test("a page tree that repeats a subtree past the page limit is refused, not walked", async () => {
+    for (const source of [await repeatedSubtree(12), await repeatedSubtree(1, true)]) {
+      await expect(exportPdf(source, modelFor([0, 1, 2]))).rejects.toMatchObject({
+        name: "PdfOpenError",
+        kind: "tooManyPages",
+      });
+    }
   });
 });

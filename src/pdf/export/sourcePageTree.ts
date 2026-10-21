@@ -8,6 +8,7 @@ import {
   type PDFDocument,
   type PDFObject,
 } from "pdf-lib";
+import { MAX_PDF_PAGES, PdfOpenError, assertPdfWithinPageLimit } from "../openPolicy";
 
 /**
  * Make pdf-lib read a source's page tree the way PDFium numbers it, so that
@@ -23,8 +24,10 @@ import {
  * with /Type set so the copy written to the export is a real page.
  *
  * Must run before the first getPages() on `pdf`, which caches its result.
+ * Throws the open policy's tooManyPages error rather than let getPages() walk
+ * a tree that lists more pages than Shiori opens, or a cyclic one.
  * Still apart from PDFium: a /Kids entry that is not a dictionary takes a
- * page number there and none here, and a cyclic tree.
+ * page number there and none here.
  */
 export function alignPageTreeWithPdfium(pdf: PDFDocument): void {
   const rootEntry = pdf.catalog.get(PDFName.of("Pages"));
@@ -43,6 +46,41 @@ export function alignPageTreeWithPdfium(pdf: PDFDocument): void {
       if (node instanceof PDFPageTree) stack.push(node);
     }
   }
+  assertBoundedPageWalk(pdf);
+}
+
+/**
+ * pdf-lib's getPages() walks a subtree once for every /Kids entry naming it:
+ * one shared subtree nested k deep lists 2^k pages, and a cycle never ends.
+ * PDFium trusts the root's /Count and stops there, so such a file opens. Count
+ * the walk without taking it, each node once, and refuse past the page limit.
+ */
+function assertBoundedPageWalk(pdf: PDFDocument): void {
+  const root = pdf.catalog.lookup(PDFName.of("Pages"));
+  if (!(root instanceof PDFPageTree)) return;
+  const counted = new Map<PDFDict, number>();
+  const open = new Set<PDFDict>();
+  const listed = (node: PDFPageTree): number => {
+    const known = counted.get(node);
+    if (known !== undefined) return known;
+    if (open.has(node)) {
+      throw new PdfOpenError("tooManyPages", "PDF page tree is cyclic");
+    }
+    open.add(node);
+    let total = 0;
+    const kids = node.lookup(PDFName.of("Kids"));
+    if (kids instanceof PDFArray) {
+      for (let i = 0; i < kids.size() && total <= MAX_PDF_PAGES; i += 1) {
+        const kid = pdf.context.lookup(kids.get(i));
+        if (kid instanceof PDFPageTree) total += listed(kid);
+        else if (kid instanceof PDFPageLeaf) total += 1;
+      }
+    }
+    open.delete(node);
+    counted.set(node, total);
+    return total;
+  };
+  assertPdfWithinPageLimit(listed(root));
 }
 
 /** `dict` as PDFium reads it, put where `entry` points. */
