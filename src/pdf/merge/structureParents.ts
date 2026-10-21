@@ -10,8 +10,8 @@ const APPEARANCE_STATES = ["N", "R", "D"].map((key) => PDFName.of(key));
  * inserted page's /StructParents (and its annotations' /StructParent) would
  * index into the base document's ParentTree and hand its marked content to
  * unrelated base structure elements. Untagged is honest; aliased is not.
- * Form XObjects carry the same keys, so the walk follows the page's
- * resources, nested form resources and annotation appearance streams.
+ * Form and image XObjects carry the same keys, so the walk follows the
+ * page's resources, nested form resources and annotation appearance streams.
  */
 export function dropStructureParents(document: PDFDocument, page: PDFDict) {
   const visited = new Set<PDFObject>();
@@ -61,7 +61,13 @@ function dropFromForm(
 ) {
   if (visited.has(stream)) return;
   visited.add(stream);
-  if (!isName(document, stream.dict.get(PDFName.of("Subtype")), "Form")) return;
+  const subtype = stream.dict.get(PDFName.of("Subtype"));
+  if (isName(document, subtype, "Image")) {
+    // A tagged image is itself a structural content item (/StructParent).
+    stream.dict.delete(STRUCT_PARENT);
+    return;
+  }
+  if (!isName(document, subtype, "Form")) return;
   stream.dict.delete(STRUCT_PARENT);
   stream.dict.delete(STRUCT_PARENTS);
   dropFromResources(document, stream.dict.get(PDFName.of("Resources")), visited);

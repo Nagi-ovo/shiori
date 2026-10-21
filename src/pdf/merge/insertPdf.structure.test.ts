@@ -34,7 +34,7 @@ describe("insertPdfPages with tagged PDFs", () => {
     expect(loaded.getPage(0).node.lookup(PDFName.of("StructParents"), PDFNumber).asNumber()).toBe(0);
   });
 
-  test("tagged form XObjects on inserted pages drop their structure keys too", async () => {
+  test("tagged form and image XObjects on inserted pages drop their structure keys too", async () => {
     const base = await PDFDocument.create();
     const basePage = base.addPage([300, 300]);
     basePage.node.set(PDFName.of("StructParents"), PDFNumber.of(0));
@@ -56,11 +56,20 @@ describe("insertPdfPages with tagged PDFs", () => {
     const outer = form({ StructParents: 0, Resources: { XObject: { Inner: nested } } });
     // A form that draws itself must not hang the walk.
     const looped = form({ StructParent: 1 });
+    // A tagged image is a structural content item with its own key.
+    const image = incoming.context.register(incoming.context.stream(new Uint8Array([0, 0, 0]), {
+      Type: "XObject", Subtype: "Image", Width: 1, Height: 1,
+      ColorSpace: "DeviceRGB", BitsPerComponent: 8, StructParent: 1,
+    }));
+    incoming.context.lookup(nested, PDFStream).dict.set(
+      PDFName.of("Resources"),
+      incoming.context.obj({ XObject: { Img: image } }),
+    );
     incoming.context.lookup(looped, PDFStream).dict.set(
       PDFName.of("Resources"),
       incoming.context.obj({ XObject: { Self: looped } }),
     );
-    page.node.set(PDFName.of("Resources"), incoming.context.obj({ XObject: { Outer: outer, Loop: looped } }));
+    page.node.set(PDFName.of("Resources"), incoming.context.obj({ XObject: { Outer: outer, Loop: looped, Img: image } }));
     const appearance = form({ StructParent: 1 });
     const note = incoming.context.obj({
       Type: "Annot", Subtype: "Square", Rect: [10, 10, 50, 50],
@@ -76,12 +85,15 @@ describe("insertPdfPages with tagged PDFs", () => {
     const innerCopy = outerCopy.lookup(PDFName.of("Resources"), PDFDict)
       .lookup(PDFName.of("XObject"), PDFDict).lookup(PDFName.of("Inner"), PDFStream).dict;
     const loopCopy = xobjects.lookup(PDFName.of("Loop"), PDFStream).dict;
+    const imageCopy = xobjects.lookup(PDFName.of("Img"), PDFStream).dict;
+    const nestedImageCopy = innerCopy.lookup(PDFName.of("Resources"), PDFDict)
+      .lookup(PDFName.of("XObject"), PDFDict).lookup(PDFName.of("Img"), PDFStream).dict;
     const noteCopy = inserted.lookup(PDFName.of("Annots"), PDFArray).lookup(0, PDFDict);
     const appearances = noteCopy.lookup(PDFName.of("AP"), PDFDict);
     const normalCopy = appearances.lookup(PDFName.of("N"), PDFStream).dict;
     const downCopy = appearances.lookup(PDFName.of("D"), PDFDict).lookup(PDFName.of("On"), PDFStream).dict;
 
-    for (const dict of [outerCopy, innerCopy, loopCopy, normalCopy, downCopy]) {
+    for (const dict of [outerCopy, innerCopy, loopCopy, normalCopy, downCopy, imageCopy, nestedImageCopy]) {
       expect(dict.get(PDFName.of("StructParents"))).toBeUndefined();
       expect(dict.get(PDFName.of("StructParent"))).toBeUndefined();
     }
