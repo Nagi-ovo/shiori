@@ -11,8 +11,8 @@ name: release
 #   - Android: signed .aab (Google Play) + signed .apk (direct install/testing)
 #
 # Binaries are attached to this repository's GitHub release for the tag,
-# uploaded with the job's own GITHUB_TOKEN. Only the jobs that publish get
-# `contents: write`.
+# uploaded with the job's own GITHUB_TOKEN. Only the jobs that create the
+# release or upload to it get `contents: write`.
 #
 # Signing material (the Tauri updater key and the Android upload keystore)
 # lives in the `release` environment, so only jobs that declare
@@ -74,9 +74,11 @@ permissions: {}
 
 jobs:
   validate-release-version:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # write: creates the draft release the platform jobs upload to.
+      contents: write
     steps:
       - name: Checkout source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -84,7 +86,6 @@ jobs:
           persist-credentials: false
 
       - name: Match release label to application version
-        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
         env:
           MANUAL_TAG: ${{ inputs.tag }}
           PUSHED_REF: ${{ github.ref }}
@@ -99,6 +100,28 @@ jobs:
           if [ "$tag" != "v$version" ] && [[ "$tag" != "v$version-"* ]]; then
             echo "Release label $tag does not match application version $version"
             exit 1
+          fi
+
+      # The one creator: every uploading job needs this job. When each
+      # created it on a miss, two could both miss; under set -eu the loser
+      # failed before uploading, or both succeeded and left two drafts for
+      # one tag with the assets split between them.
+      - name: Create the draft release
+        if: (github.event_name == 'push' || inputs.publish_to_release_repo == true) && !(inputs.android_only && inputs.android_artifacts == 'aab')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MANUAL_TAG: ${{ inputs.tag }}
+          PUSHED_REF: ${{ github.ref }}
+        run: |
+          set -eu
+          tag="${MANUAL_TAG:-${PUSHED_REF#refs/tags/}}"
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --draft \
+              --prerelease \
+              --title "Shiori $tag" \
+              --notes "Beta build. macOS binaries uploaded separately by the maintainer."
           fi
 
   warm-cache:
@@ -126,7 +149,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: stable
+          toolchain: 1.95.0
           targets: wasm32-unknown-unknown
 
       - name: Cache wasm-bindgen CLI
@@ -202,7 +225,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: stable
+          toolchain: 1.95.0
           targets: wasm32-unknown-unknown
 
       # scripts/pdfium/build-wasm.ts (run by `bun run build`) installs the
@@ -339,17 +362,6 @@ jobs:
         run: |
           set -eu
 
-          # Create a draft release if one doesn't already exist for this tag. Local mac build usually creates it first;
-          # this is the fallback path for CI-only releases.
-          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$TAG" \
-              --repo "$GITHUB_REPOSITORY" \
-              --draft \
-              --prerelease \
-              --title "Shiori $TAG" \
-              --notes "Beta build. macOS binaries uploaded separately by the maintainer."
-          fi
-
           # Collect Windows artifacts. Tauri 2 with createUpdaterArtifacts
           # writes the updater signature next to the .msi itself
           # (Shiori_..._en-US.msi.sig) — there's no separate .nsis.zip
@@ -401,7 +413,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: stable
+          toolchain: 1.95.0
           targets: wasm32-unknown-unknown
 
       # scripts/pdfium/build-wasm.ts (run by `bun run build`) installs the
@@ -508,18 +520,6 @@ jobs:
         run: |
           set -eu
 
-          # Idempotent release-create. Mac job or the Windows job usually
-          # creates the release first; this is the fallback for Linux-first
-          # runs.
-          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$TAG" \
-              --repo "$GITHUB_REPOSITORY" \
-              --draft \
-              --prerelease \
-              --title "Shiori $TAG" \
-              --notes "Beta build."
-          fi
-
           # Linux artifacts. The .AppImage.sig is what the auto-updater
           # downloads alongside the AppImage to verify Ed25519 before
           # swapping the binary; the .deb has no updater path (deb is for
@@ -584,7 +584,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: stable
+          toolchain: 1.95.0
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,wasm32-unknown-unknown
 
       # scripts/pdfium/build-wasm.ts (run by `bun run build`) installs the
@@ -847,15 +847,6 @@ jobs:
           TAG: ${{ steps.tag.outputs.name }}
         run: |
           set -eu
-
-          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$TAG" \
-              --repo "$GITHUB_REPOSITORY" \
-              --draft \
-              --prerelease \
-              --title "Shiori $TAG" \
-              --notes "Beta build."
-          fi
 
           shopt -s globstar nullglob
           apk_files=(src-tauri/gen/android/app/build/channel-artifacts/direct/**/*.apk)

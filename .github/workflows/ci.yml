@@ -39,11 +39,15 @@ jobs:
           persist-credentials: false
 
       # test:core runs cargo fmt and clippy, which the minimal profile leaves
-      # out; `bun run build` compiles shiori-core to wasm.
+      # out; `bun run build` compiles shiori-core to wasm. The toolchain is
+      # pinned, at the same version in release.yml, cli-release.yml and
+      # cli-verify.yml, so a new stable release cannot change the compiler
+      # (or clippy's lints) under a signed build or between two runs of one
+      # tag. Bump all of them together.
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: stable
+          toolchain: 1.95.0
           targets: wasm32-unknown-unknown
           components: clippy, rustfmt
 

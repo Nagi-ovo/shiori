@@ -43,8 +43,35 @@ on:
 permissions: {}
 
 jobs:
+  # cli/pack.ts names each archive from cli/package.json, and /api/cli reads
+  # the version from those names. A tag ahead of the package would publish
+  # the old version under the new tag and use the tag up, so a mismatch stops
+  # the run before any leg builds.
+  validate-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Match the tag to cli/package.json
+        env:
+          MANUAL_TAG: ${{ inputs.tag }}
+          PUSHED_REF: ${{ github.ref }}
+        run: |
+          set -eu
+          tag="${MANUAL_TAG:-${PUSHED_REF#refs/tags/}}"
+          version="$(jq -r .version cli/package.json)"
+          if [ "$tag" != "cli-v$version" ]; then
+            echo "Tag $tag does not match cli/package.json version $version (expected cli-v$version)"
+            exit 1
+          fi
+
   pack:
     name: ${{ matrix.target }}
+    needs: validate-version
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     # The macOS signing and notarization secrets live in this environment.
@@ -53,11 +80,13 @@ jobs:
     environment: release
     permissions:
       contents: read
-    # Mapped to job env because a step `if:` cannot read `secrets` directly.
-    # A fork, or this repo before the certificate is configured, still builds —
-    # it just gets the ad-hoc signature instead.
+    # A step `if:` cannot read `secrets` directly, so the job env carries
+    # only whether the certificate exists; the p12 itself reaches the import
+    # step alone, not every leg's install, build scripts and actions. A fork,
+    # or this repo before the certificate is configured, still builds — it
+    # just gets the ad-hoc signature instead.
     env:
-      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      HAS_MACOS_CERT: ${{ secrets.MACOS_CERT_P12 != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -90,16 +119,14 @@ jobs:
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
 
-      - name: Test CLI contracts
-        run: bun test cli/test
-
       # Ad-hoc is the floor arm64 macOS needs to execute at all; it carries no
       # identity, so a browser-downloaded archive (which gets quarantined)
       # still trips "Apple cannot check it for malicious software". This puts
       # the real Developer ID on it when the certificate is available.
       - name: Import the Developer ID certificate
-        if: matrix.target == 'darwin-arm64' && env.MACOS_CERT_P12 != ''
+        if: matrix.target == 'darwin-arm64' && env.HAS_MACOS_CERT == 'true'
         env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
@@ -122,7 +149,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: stable
+          toolchain: 1.95.0
 
       - name: Cache Rust build (deps + registry)
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -135,8 +162,13 @@ jobs:
           SHIORI_CLI_SIGN_IDENTITY: ${{ matrix.target == 'darwin-arm64' && secrets.MACOS_SIGN_IDENTITY || '' }}
         run: bun run cli:build
 
+      # After the build: tests that open PDFs (cli/test/core) read through
+      # the shiori-core addon it compiled and the PDFium it fetched.
+      - name: Test CLI contracts
+        run: bun test cli/test
+
       - name: Verify the signature
-        if: matrix.target == 'darwin-arm64' && env.MACOS_CERT_P12 != ''
+        if: matrix.target == 'darwin-arm64' && env.HAS_MACOS_CERT == 'true'
         run: |
           set -eu
           codesign --verify --strict --verbose=2 cli/dist/darwin-arm64/shiori
@@ -157,7 +189,7 @@ jobs:
       # online; that is enough for the browser-download path, and the curl and
       # PowerShell installers never set quarantine in the first place.
       - name: Notarize the macOS executable
-        if: matrix.target == 'darwin-arm64' && env.MACOS_CERT_P12 != ''
+        if: matrix.target == 'darwin-arm64' && env.HAS_MACOS_CERT == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
