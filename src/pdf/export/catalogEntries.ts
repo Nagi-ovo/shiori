@@ -1,4 +1,11 @@
-import { PDFDict, PDFName, type PDFDocument, type PDFObject } from "pdf-lib";
+import {
+  PDFDict,
+  PDFName,
+  type PDFDocument,
+  type PDFObject,
+  type PDFPage,
+  type PDFRef,
+} from "pdf-lib";
 import {
   asArray,
   copyCatalogEntry,
@@ -54,8 +61,10 @@ export function copyDocumentCatalogEntries(
 // identity, so the layers the copied pages already reference are mapped
 // onto their copies first; a fresh clone would hide a different object.
 // Annotations name layers too (a widget's /OC, or its appearance's
-// resources), so each copied annotation is paired with its source: the
-// copier keeps /Annots order and the export only appends its own after them.
+// resources), so each copied annotation is paired with its source by its
+// /Annots position as copyPages left it (recordCopiedAnnotations): later
+// passes drop links to left-out pages and append the export's own
+// annotations, so the live array no longer lines up with the source.
 function copyOptionalContent(
   source: PDFDocument,
   dest: PDFDocument,
@@ -75,9 +84,25 @@ function copyOptionalContent(
       page.node.getInheritableAttribute(resourcesKey),
       destPage.get(resourcesKey),
     );
-    seedAnnotationLayers(source, dest, state, page.node, destPage);
+    seedAnnotationLayers(source, dest, state, page.node, copied, destPage);
   }
   copyCatalogEntry(source, dest, state, "OCProperties");
+}
+
+const copiedAnnotations = new WeakMap<PDFDocument, Map<string, PDFObject[]>>();
+
+// Call right after copyPages, before anything adds or removes annotations:
+// the copier keeps each page's /Annots in source order, one for one.
+export function recordCopiedAnnotations(
+  dest: PDFDocument,
+  copiedPages: readonly PDFPage[],
+) {
+  const byPage = new Map<string, PDFObject[]>();
+  for (const page of copiedPages) {
+    const annots = asArray(dest, page.node.get(PDFName.of("Annots")));
+    if (annots) byPage.set(page.ref.toString(), annots.asArray());
+  }
+  copiedAnnotations.set(dest, byPage);
 }
 
 function seedAnnotationLayers(
@@ -85,17 +110,19 @@ function seedAnnotationLayers(
   dest: PDFDocument,
   state: CloneState,
   sourcePage: PDFDict,
+  destRef: PDFRef,
   destPage: PDFDict,
 ) {
   const annotsKey = PDFName.of("Annots");
   const subtypeKey = PDFName.of("Subtype");
   const sourceAnnots = asArray(source, sourcePage.get(annotsKey));
-  const destAnnots = asArray(dest, destPage.get(annotsKey));
+  const recorded = copiedAnnotations.get(dest)?.get(destRef.toString());
+  const destAnnots = recorded ?? asArray(dest, destPage.get(annotsKey))?.asArray();
   if (!sourceAnnots || !destAnnots) return;
-  if (destAnnots.size() < sourceAnnots.size()) return;
+  if (destAnnots.length < sourceAnnots.size()) return;
   for (let index = 0; index < sourceAnnots.size(); index += 1) {
     const from = lookupDict(source, sourceAnnots.get(index));
-    const to = lookupDict(dest, destAnnots.get(index));
+    const to = lookupDict(dest, destAnnots[index]);
     const subtype = from && resolveName(source, from.get(subtypeKey));
     if (!from || !to || !subtype) continue;
     if (!isName(dest, to.get(subtypeKey), subtype)) continue;
