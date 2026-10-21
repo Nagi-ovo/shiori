@@ -1,7 +1,8 @@
 // Consent for links a Browser panel page wants to hand to another app
-// (mailto:, and tel: on mobile). The native side no longer opens them: any
-// page could do that from script, without a click, in a loop. It reports the
-// request instead, and this asks the user first, as a browser would.
+// (mailto:, and on mobile tel:, sms: and the like). The native side no
+// longer opens them: any page could do that from script, without a click, in
+// a loop. It reports the request instead, and this asks the user first, as a
+// browser would.
 
 export type ExternalOpenDeps = {
   // Resolves true when the user agrees to open `url`.

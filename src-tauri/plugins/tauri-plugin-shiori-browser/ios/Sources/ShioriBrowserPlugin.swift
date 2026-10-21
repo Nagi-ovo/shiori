@@ -69,7 +69,8 @@ private struct NavSnapshot {
   var canGoBack: Bool = false
   var canGoForward: Bool = false
   var error: String? = nil
-  // A mailto:/tel: link the page asked for, reported once by navState.
+  // A mailto:/tel:/sms:/facetime:/maps: link the page asked for, reported
+  // once by navState.
   var externalOpen: String? = nil
 }
 
@@ -292,10 +293,11 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
   // only http/https). Without this a link or script redirect to `file:` could
   // read local files inside the panel, and `tel:`/custom app schemes could
   // deep-link out of Shiori. http(s) + WebKit-internal/content schemes proceed;
-  // mailto:/tel: are never opened from here, since a page can request them from
-  // script without a tap: they are reported to the main webview, which asks the
-  // user and opens them through the opener plugin (whose default scope is
-  // exactly mailto:/tel:). Everything else (sms:, maps:, file:, javascript:,
+  // Communication schemes (mailto:, tel:, sms:, facetime:, facetime-audio:,
+  // maps:) are never opened from here, since a page can request them from
+  // script without a tap: they are reported to the main webview, which asks
+  // the user and opens them through the opener plugin (scoped to these in
+  // src-tauri/capabilities/mobile.json). Everything else (file:, javascript:,
   // app schemes) is refused outright.
   func webView(
     _ webView: WKWebView,
@@ -309,7 +311,7 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
     switch scheme {
     case "http", "https", "about", "blob", "data":
       decisionHandler(.allow)
-    case "mailto", "tel":
+    case "mailto", "tel", "sms", "facetime", "facetime-audio", "maps":
       decisionHandler(.cancel)
       self.navLock.lock()
       self.nav.externalOpen = url.absoluteString

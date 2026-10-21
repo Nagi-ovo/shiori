@@ -80,7 +80,8 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
     private var navCanGoBack = false
     private var navCanGoForward = false
     private var navError: String? = null
-    // A mailto:/tel: link the page asked for, reported once by navState.
+    // A mailto:/tel:/sms:/smsto:/geo: link the page asked for, reported once
+    // by navState.
     private var navExternalOpen: String? = null
 
     override fun load(webView: WebView) {
@@ -314,11 +315,12 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
         // which accepts only http/https). Without this a link/redirect to file:
         // could read local files inside the panel, and intent:/custom app schemes
         // could deep-link out of Shiori. http(s) + content schemes load in-view.
-        // mailto:/tel: are never opened from here, since a page can request them
-        // from script without a tap: they are reported to the main webview,
-        // which asks the user and opens them through the opener plugin (whose
-        // default scope is exactly mailto:/tel:). Everything else (sms:, geo:,
-        // file:, intent:, app schemes) is refused.
+        // Communication schemes (mailto:, tel:, sms:, smsto:, geo:) are never
+        // opened from here, since a page can request them from script without
+        // a tap: they are reported to the main webview, which asks the user
+        // and opens them through the opener plugin (scoped to these in
+        // src-tauri/capabilities/mobile.json). Everything else (file:,
+        // intent:, app schemes) is refused.
         override fun shouldOverrideUrlLoading(
             view: WebView?,
             request: WebResourceRequest?
@@ -326,7 +328,7 @@ class ShioriBrowserPlugin(private val activity: Activity) : Plugin(activity) {
             val url = request?.url ?: return false
             return when (url.scheme?.lowercase()) {
                 "http", "https", "about", "blob", "data" -> false // let WebView load it
-                "mailto", "tel" -> {
+                "mailto", "tel", "sms", "smsto", "geo" -> {
                     synchronized(navLock) { navExternalOpen = url.toString() }
                     true // handled; don't load in the WebView
                 }

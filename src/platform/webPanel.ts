@@ -16,7 +16,7 @@
 
 import { CAPABILITIES, IS_TAURI_MOBILE } from "./index";
 import { openExternalUrl } from "./external";
-import { isWebPanelUrl } from "./webPanelUrl";
+import { isWebPanelHandoffUrl, isWebPanelUrl } from "./webPanelUrl";
 
 export { isWebPanelUrl, resolveAddressBarInput } from "./webPanelUrl";
 
@@ -146,7 +146,8 @@ export async function listenWebPanelOpenRequest(
   });
 }
 
-// A page in the panel navigated to a mailto: link (or, on mobile, tel:).
+// A page in the panel navigated to a mailto: link (or, on mobile, tel:, sms:
+// and the like: WEB_PANEL_HANDOFF_SCHEMES).
 // The native side cancels it and reports it here instead of opening it, so
 // the user can be asked first (src/editor/components/browserExternalOpen.ts).
 export async function listenWebPanelExternalOpen(
@@ -178,13 +179,11 @@ export async function askToOpenExternally(text: ExternalOpenPromptText): Promise
   });
 }
 
-const PANEL_EXTERNAL_URL = /^(mailto|tel):/i;
-
 // Open a link the user agreed to hand off. Desktop only ever reports mailto:
 // (open_external_url accepts it); mobile goes through the opener plugin,
-// whose default scope covers mailto: and tel:.
+// scoped to the hand-off schemes in src-tauri/capabilities/mobile.json.
 export async function openWebPanelExternalUrl(url: string): Promise<void> {
-  if (!PANEL_EXTERNAL_URL.test(url)) throw new Error("unsupported-external-url");
+  if (!isWebPanelHandoffUrl(url)) throw new Error("unsupported-external-url");
   if (IS_TAURI_MOBILE) {
     const { openUrl } = await import("@tauri-apps/plugin-opener");
     await openUrl(url);

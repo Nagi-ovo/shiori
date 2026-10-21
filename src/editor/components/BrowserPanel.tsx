@@ -172,8 +172,8 @@ export const BrowserPanel = memo(function BrowserPanel({
     };
   }, [shouldShow, request?.nonce, reportBounds]);
 
-  // A page asked to hand a mailto:/tel: link to another app. Ask first; a
-  // request arriving while the rail is closed is dropped.
+  // A page asked to hand a mailto:, tel: or sms: link to another app. Ask
+  // first; a request arriving while the rail is closed is dropped.
   useEffect(() => {
     const prompt = createExternalOpenPrompt({
       ask: (target) =>

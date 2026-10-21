@@ -83,10 +83,10 @@ pub struct WebPanelNav {
 }
 
 /// What the native `navState` returns: the `web-panel-nav` payload, plus a
-/// mailto:/tel: link the page asked for since the last poll. The native side
-/// never opens those itself (a page can request them from script without a
-/// tap); the poll re-emits them as `web-panel-external-open` and the main
-/// webview asks the user.
+/// mailto:, tel: or other hand-off link the page asked for since the last
+/// poll. The native side never opens those itself (a page can request them
+/// from script without a tap); the poll re-emits them as
+/// `web-panel-external-open` and the main webview asks the user.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NavStateReply {
