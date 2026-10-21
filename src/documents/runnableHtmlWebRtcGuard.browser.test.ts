@@ -10,7 +10,7 @@ import { browserFixture, browserModes, browserRoutes, type BrowserProbe } from "
 // DOM + fixture + invocation are persisted under test-artifacts/b027/<phase>/.
 const enabled = process.env.SHIORI_BROWSER_TEST === "1";
 const chrome = process.env.SHIORI_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const KNOWN_OPEN = new Set(["parserOpenShadow", "adoptedOpenShadow", "adoptedClosedShadow", "svgParsingContext"]);
+const KNOWN_OPEN = new Set(["parserOpenShadow", "adoptedOpenShadow", "adoptedClosedShadow"]);
 let reports: BrowserProbe[] = [];
 let missing: string[] = [];
 

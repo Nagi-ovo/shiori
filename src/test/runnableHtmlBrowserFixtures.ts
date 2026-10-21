@@ -37,6 +37,60 @@ export const browserRoutes: Record<string, string> = {
       throw new Error('SVG sibling structure corrupted: ' + svg.innerHTML);
     }
     host.insertAdjacentHTML('beforeend', tag);`,
+  svgSrcdocParsingContext: `const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    host.appendChild(svg);
+    svg.setHTMLUnsafe('<circle/><foreignObject><div><template shadowrootmode="closed">' +
+      tag + '</template></div></foreignObject><rect/>');
+    if (svg.children.length !== 3 || svg.children[1].localName !== 'foreignObject' ||
+      svg.children[2].localName !== 'rect' || svg.children[1].namespaceURI !== svg.namespaceURI) {
+      throw new Error('SVG srcdoc context corrupted: ' + svg.innerHTML);
+    }`,
+  mathMlParsingContext: `const math = document.createElementNS('http://www.w3.org/1998/Math/MathML', 'math');
+    host.appendChild(math); math.setHTMLUnsafe('<mi data-label="srcdoc"/><mn/>');
+    if (math.children.length !== 2 || math.children[1].localName !== 'mn' ||
+      math.children[0].namespaceURI !== 'http://www.w3.org/1998/Math/MathML') {
+      throw new Error('MathML sibling structure corrupted: ' + math.innerHTML);
+    }
+    const annotation = document.createElementNS(math.namespaceURI, 'annotation-xml');
+    annotation.setAttribute('encoding', 'text/html'); math.appendChild(annotation);
+    annotation.setHTMLUnsafe(tag);`,
+  htmlParsingContext: `const html = document.createElement('html');
+    html.setHTMLUnsafe('<head><title>srcdoc</title></head><body>' + tag + '</body>');
+    if (html.children.length !== 2 || html.children[0].localName !== 'head' ||
+      html.children[1].localName !== 'body') throw new Error('HTML document structure corrupted');
+    const table = host.appendChild(document.createElement('table'));
+    table.setHTMLUnsafe('<tbody><tr><td data-label="srcdoc">cell</td></tr></tbody>');
+    if (table.querySelector('tbody > tr > td')?.textContent !== 'cell') throw new Error('Table context lost');
+    host.appendChild(html);`,
+  rawTextParsingContext: `const markup = '<iframe srcdoc="user">&amp;<b>text</b></iframe>';
+    for (const name of ['script', 'style', 'xmp']) {
+      const target = document.createElement(name); target.setHTMLUnsafe(markup);
+      if (target.textContent !== markup) throw new Error(name + ' text corrupted');
+    }
+    host.insertAdjacentHTML('beforeend', tag);`,
+  ancestorFormParsingContext: `const form = host.appendChild(document.createElement('form'));
+    const target = form.appendChild(document.createElement('div'));
+    target.setHTMLUnsafe('<form data-label="srcdoc"><input></form>' + tag);
+    if (target.querySelector('form') || !target.querySelector('input')) {
+      throw new Error('Ancestor form context lost');
+    }`,
+  elementDeclarativeShadow: `host.setHTMLUnsafe('<div><template shadowrootmode="closed">' +
+    '<div><template shadowrootmode="closed">' + tag + '</template></div></template></div>');`,
+  shadowRootDeclarativeShadow: `const root = host.attachShadow({mode:'closed'});
+    root.setHTMLUnsafe('<div><template shadowrootmode="closed">' + tag + '</template></div>');`,
+  contextualBuiltinsPoison: `const root = host.attachShadow({mode:'closed'});
+    const poison = () => { throw new Error('page builtin called'); };
+    Document.prototype.createRange = poison;
+    Document.prototype.createElement = poison;
+    Range.prototype.selectNodeContents = poison;
+    Range.prototype.createContextualFragment = poison;
+    Node.prototype.appendChild = poison;
+    RegExp.prototype.test = poison;
+    for (const [proto, name] of [[ShadowRoot.prototype, 'host'],
+      [Element.prototype, 'namespaceURI'], [Element.prototype, 'localName']]) {
+      Object.defineProperty(proto, name, {get:poison});
+    }
+    root.setHTMLUnsafe('<div><template shadowrootmode="closed">' + tag + '</template></div>');`,
 };
 
 export type BrowserProbe = {

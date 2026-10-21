@@ -64,6 +64,13 @@ export const WEBRTC_GUARD = `(function () {
   var queryDocument = runWindow.Document && runWindow.Document.prototype.querySelectorAll;
   var rootOf = nodeProto && nodeProto.getRootNode;
   var createElement = runWindow.Document && runWindow.Document.prototype.createElement;
+  var createRange = runWindow.Document && runWindow.Document.prototype.createRange;
+  var rangeProto = runWindow.Range && runWindow.Range.prototype;
+  var selectContents = rangeProto && rangeProto.selectNodeContents;
+  var parseFragment = rangeProto && rangeProto.createContextualFragment;
+  var appendChild = nodeProto && nodeProto.appendChild;
+  var shadowHostOf = getterOf(runWindow.ShadowRoot && runWindow.ShadowRoot.prototype, "host");
+  var namespaceOf = getterOf(elementProto, "namespaceURI");
   var localNameOf = getterOf(elementProto, "localName");
   var nodeTypeOf = getterOf(nodeProto, "nodeType");
   var templateContentOf = getterOf(templateProto, "content");
@@ -159,7 +166,10 @@ export const WEBRTC_GUARD = `(function () {
   function prefixDeep(fragment) {
     prefixWithin(fragment);
     var templates;
-    try { templates = apply(queryFragment, fragment, ["template"]); } catch (e) { return; }
+    try {
+      var query = apply(nodeTypeOf, fragment, []) === 1 ? queryElement : queryFragment;
+      templates = apply(query, fragment, ["template"]);
+    } catch (e) { return; }
     for (var i = 0, count = listLength(templates); i < count; i++) {
       try { prefixDeep(apply(templateContentOf, itemAt(templates, i), [])); } catch (e) {}
     }
@@ -167,14 +177,28 @@ export const WEBRTC_GUARD = `(function () {
   function prefixMarkup(self, args) {
     if (!args.length || !srcdocPrefix || !createElement || !innerHtml || !templateContentOf || !queryFragment) return;
     args[0] = "" + args[0];
-    // Re-parsing through a template loses the destination's parsing context
-    // (SVG and MathML children), so only markup that can carry a srcdoc is
-    // rewritten; everything else reaches the native method untouched.
-    if (!/srcdoc/i.test(args[0])) return;
-    var template = apply(createElement, runDocument, ["template"]);
-    apply(innerHtml.set, template, [args[0]]);
-    prefixDeep(apply(templateContentOf, template, []));
-    args[0] = apply(innerHtml.get, template, []);
+    if (apply(indexOf, apply(toLower, args[0], []), ["srcdoc"]) < 0) return;
+    // Range keeps the destination's namespace and ancestor parsing context;
+    // a shadow root uses its host. Declarative shadow templates stay inert
+    // here, so prefixDeep can reach them before setHTMLUnsafe activates them.
+    var context = apply(nodeTypeOf, self, []) === 11 ? apply(shadowHostOf, self, []) : self;
+    // Range substitutes body for an HTML html context; innerHTML does not.
+    var htmlContext = apply(localNameOf, context, []) === "html" &&
+      apply(namespaceOf, context, []) === "http://www.w3.org/1999/xhtml";
+    var container = apply(createElement, runDocument, [htmlContext ? "html" : "template"]);
+    var content = htmlContext ? container : apply(templateContentOf, container, []);
+    if (htmlContext) apply(innerHtml.set, container, [args[0]]);
+    else {
+      var range = apply(createRange, runDocument, []);
+      apply(selectContents, range, [context]);
+      apply(appendChild, content, [apply(parseFragment, range, [args[0]])]);
+    }
+    // Raw-text contexts contain no frames; serializing their text through a
+    // template would escape it and change the destination's literal content.
+    var query = htmlContext ? queryElement : queryFragment;
+    if (!listLength(apply(query, content, ["iframe[srcdoc], template"]))) return;
+    prefixDeep(content);
+    args[0] = apply(innerHtml.get, container, []);
   }
   // Past this many added nodes in one batch, one query per observed root is
   // cheaper than one per node: a deep insertion queues a record per level,
