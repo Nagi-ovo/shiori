@@ -57,7 +57,14 @@ Developer 证书变了（比如续期）才需要改它。
   `release` environment；没配时 macOS 产物退回 ad-hoc 签名。
 - `release` environment 的部署规则要放行 `v*`、`cli-v*` tag 和 `main`：
   修 workflow 后用 `workflow_dispatch`（`tag=vX.Y.Z`、
-  `publish_to_release_repo=true`）补发时，跑的是 `main`。
+  `publish_to_release_repo=true`）补发时，run 挂在 `main` 上、用 `main` 的
+  workflow 文件，但各 job 检出并构建的是 tag 本身的代码（tag 必须已推到远端）。
+  不发布的分析 run 仍构建发起 dispatch 的那个分支。同一个 tag 的 run 共用一个
+  concurrency 组，后来的排队等前一个跑完，不会交错 `--clobber` 同一批资产。
+  前提是两个 run 都带这个组：run 读的是它自己那个 commit 的 `release.yml`，
+  加组之前打的 tag（以及对它的 re-run）不会排队，补发前先等它跑完或取消它。
+  三个平台 job 在 `release-{windows,linux,android}.yml` 里，由 `release.yml`
+  以 reusable workflow 调用。
 - 所有第三方 action 都钉在 commit SHA 上（后面注释版本号），由 Dependabot
   每周提 PR 升级。
 

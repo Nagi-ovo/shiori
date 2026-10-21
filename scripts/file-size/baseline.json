@@ -1,5 +1,4 @@
 {
-  ".github/workflows/release.yml": 38617,
   "cli/build.ts": 26214,
   "cli/src/main.ts": 74064,
   "cli/test/annotate.test.ts": 37998,

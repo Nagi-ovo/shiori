@@ -196,14 +196,18 @@ collaborators with push access). The quota is metered in
 GB-hours per billing month: deleting every artifact stops the growth but
 refunds nothing, so uploads stay refused until the month resets. If a tag run still fails, fix the
 workflow on `main` and re-run with `workflow_dispatch` (`tag=vX.Y.Z`,
-`publish_to_release_repo=true`) rather than moving the tag. That run builds
-`main`, not the tag: release.yml's checkouts take no `ref`, and the version
-check compares only the tag to `tauri.conf.json`. So first confirm the
-remote `main` the dispatch will build carries no app change since the tag,
-`git fetch origin && git diff --quiet vX.Y.Z origin/main -- . ':(exclude).github'`
-(a local `main` can be behind or ahead of it); if it does, stop and
-ask the user, since Windows, Linux and Android would ship `main`'s code under
-a tag whose macOS build is the tag's. A test APK for device checks
+`publish_to_release_repo=true`) rather than moving the tag. That run takes
+the workflow files from `main` but checks out the tag for every build, so
+Windows, Linux and Android ship the tagged code even when `main` has moved
+on; the tag must already exist on the remote, or the run fails at checkout.
+Only a publishing dispatch builds the tag: an analysis dispatch (publishing
+off) builds the branch it was started from. Runs of one tag share a
+concurrency group, so the dispatch waits for a tag run still in progress
+instead of clobbering its assets; cancel the old run only if it is stuck.
+The wait needs both runs to carry the group, and a run takes it from its own
+commit's release.yml: a tag cut before the group existed (and any re-run of
+its jobs) does not queue, so let that run finish or cancel it first. A
+test APK for device checks
 comes from a dispatch with `android_only=true`, `android_artifacts=apk`,
 publishing off; it lands in a `qa-android-<run>` draft.
 

@@ -1,0 +1,344 @@
+name: release-android
+
+# The Android release job, called by release.yml, which holds the triggers,
+# the job gates and the input descriptions. `inputs` here are the call's:
+# release.yml passes its dispatch inputs through (empty / false on a tag
+# push), while `github.*` stays the caller's event.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        # Empty on a tag push.
+        type: string
+        required: false
+        default: ''
+      publish_to_release_repo:
+        type: boolean
+        required: true
+      android_artifacts:
+        # Empty on a tag push.
+        type: string
+        required: false
+        default: ''
+
+permissions: {}
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    environment: release
+    # The direct APK and the Play AAB build on separate runners: back to back
+    # they took 7.7 + 12.8 min (v26.9.26). Neither leg cancels the other, so
+    # a failure keeping the AAB no longer holds back the APK upload.
+    name: build-android (${{ matrix.artifact }})
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact: ${{ fromJSON(inputs.android_artifacts == 'apk' && '["apk"]' || inputs.android_artifacts == 'aab' && '["aab"]' || '["apk","aab"]') }}
+    permissions:
+      # write: uploads the APK to the release, and keeps the AAB / a test APK
+      # in draft releases (see "Post test APK").
+      contents: write
+    env:
+      ANDROID_API_LEVEL: "36"
+      ANDROID_BUILD_TOOLS_VERSION: "35.0.1"
+      ANDROID_NDK_VERSION: "28.2.13676358"
+      ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+      ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+      ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+      ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+    # Which legs run: empty on tag push -> both (full release).
+    # workflow_dispatch can pick 'apk' (direct arm64 only, skips the two
+    # extra ABIs the AAB needs) or 'aab' (Play Console only).
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # Same ref as validate-release-version in release.yml.
+          ref: ${{ inputs.publish_to_release_repo && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: 1.95.0
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,wasm32-unknown-unknown
+
+      # scripts/pdfium/build-wasm.ts (run by `bun run build`) installs the
+      # pinned wasm-bindgen CLI into vendor/tools on a miss.
+      - name: Cache wasm-bindgen CLI
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: vendor/tools
+          key: wasm-bindgen-0.2.129-${{ runner.os }}-${{ runner.arch }}
+
+      # Both legs read one cache; the AAB leg compiles a superset (all four
+      # ABIs, aarch64 included), so only it saves, and only from main (see
+      # release-windows.yml).
+      - name: Cache Rust build (deps + registry)
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            src-tauri -> target
+            crates/shiori-core-wasm -> target
+          shared-key: "tauri-android-release"
+          save-if: ${{ matrix.artifact == 'aab' && github.ref == 'refs/heads/main' && inputs.publish_to_release_repo != true }}
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.12
+
+      - name: Install JS dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK
+        # v3 installed the legacy `tools` package by default, which the SDK
+        # repository no longer serves (sdkmanager exits 1, 2026-09-25). v4
+        # installs only platform-tools; the next step installs the rest.
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+
+      - name: Set up Gradle (cache Gradle Home / deps / Kotlin DSL / transforms)
+        # The Tauri Android build drives Gradle under the hood; Swatinem/rust-cache
+        # only covers the Rust side. This caches the Gradle layer: wrapper dist,
+        # AndroidX/Kotlin deps, Kotlin DSL accessors, and artifact transforms.
+        # Like the Rust cache, cross-tag reuse needs a default-branch warm: the
+        # cache is written from `main` (including workflow_dispatch runs from main,
+        # e.g. apk-only hotfixes) and restored from there on tag releases.
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+
+      - name: Install Android build packages
+        run: |
+          set -eu
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API_LEVEL}" \
+            "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+          yes | sdkmanager --licenses >/dev/null
+
+      - name: Restore Android upload keystore
+        run: |
+          set -eu
+
+          missing=0
+          for name in \
+            ANDROID_UPLOAD_KEYSTORE_BASE64 \
+            ANDROID_UPLOAD_KEYSTORE_PASSWORD \
+            ANDROID_UPLOAD_KEY_ALIAS \
+            ANDROID_UPLOAD_KEY_PASSWORD
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required GitHub Actions secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+          printf '%s' "$ANDROID_UPLOAD_KEYSTORE_BASE64" \
+            | base64 --decode > src-tauri/gen/android/shiori-upload.jks
+
+          {
+            printf 'storeFile=shiori-upload.jks\n'
+            printf 'storePassword=%s\n' "$ANDROID_UPLOAD_KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$ANDROID_UPLOAD_KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$ANDROID_UPLOAD_KEY_PASSWORD"
+          } > src-tauri/gen/android/key.properties
+
+      - name: Clear stale Android outputs from restored cache
+        run: rm -rf src-tauri/gen/android/app/build/outputs
+
+      - name: Build signed Android direct APK
+        if: matrix.artifact == 'apk'
+        run: |
+          set -eu
+          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}"
+          export NDK_HOME="$ANDROID_NDK_HOME"
+          export SHIORI_ANDROID_DISTRIBUTION="direct-apk"
+          VERSION="$(sed -nE 's/.*"version": "([^"]+)".*/\1/p' src-tauri/tauri.conf.json | head -1)"
+          if [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)([-+].*)?$ ]]; then
+            expected_code=$((BASH_REMATCH[1] * 1000000 + BASH_REMATCH[2] * 1000 + BASH_REMATCH[3]))
+          else
+            echo "Invalid semver version for Android versionCode derivation: $VERSION"
+            exit 1
+          fi
+
+          bun run tauri android build --ci --apk --target aarch64
+
+          shopt -s globstar nullglob
+          apk_files=(src-tauri/gen/android/app/build/outputs/**/*.apk)
+          if [ ${#apk_files[@]} -eq 0 ]; then
+            echo "No direct Android APK found under src-tauri/gen/android/app/build/outputs/"
+            exit 1
+          fi
+
+          aapt="${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS_VERSION}/aapt"
+          mkdir -p src-tauri/gen/android/app/build/channel-artifacts/direct
+          for f in "${apk_files[@]}"; do
+            badging="$("$aapt" dump badging "$f")"
+            if [[ "$badging" != *"versionName='$VERSION'"* ]]; then
+              echo "Android APK versionName mismatch in $f; expected $VERSION"
+              echo "$badging"
+              exit 1
+            fi
+            if [[ "$badging" != *"versionCode='$expected_code'"* ]]; then
+              echo "Android APK versionCode mismatch in $f; expected $expected_code for $VERSION"
+              echo "$badging"
+              exit 1
+            fi
+            base="$(basename "$f")"
+            cp "$f" "src-tauri/gen/android/app/build/channel-artifacts/direct/Shiori_${VERSION}_android-direct_${base}"
+          done
+
+      - name: Build signed Android Google Play AAB
+        if: matrix.artifact == 'aab'
+        run: |
+          set -eu
+          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}"
+          export NDK_HOME="$ANDROID_NDK_HOME"
+          export SHIORI_ANDROID_DISTRIBUTION="google-play"
+          VERSION="$(sed -nE 's/.*"version": "([^"]+)".*/\1/p' src-tauri/tauri.conf.json | head -1)"
+
+          rm -rf src-tauri/gen/android/app/build/outputs
+          # No i686: 32-bit x86 is left to old emulators, and each ABI is a
+          # full Rust build. x86_64 stays for Chromebooks, armv7 for older
+          # phones.
+          bun run tauri android build --ci --aab --target aarch64 armv7 x86_64
+
+          shopt -s globstar nullglob
+          aab_files=(src-tauri/gen/android/app/build/outputs/**/*.aab)
+          if [ ${#aab_files[@]} -eq 0 ]; then
+            echo "No Google Play Android AAB found under src-tauri/gen/android/app/build/outputs/"
+            exit 1
+          fi
+
+          mkdir -p src-tauri/gen/android/app/build/channel-artifacts/google-play
+          for f in "${aab_files[@]}"; do
+            base="$(basename "$f")"
+            cp "$f" "src-tauri/gen/android/app/build/channel-artifacts/google-play/Shiori_${VERSION}_google-play_${base}"
+          done
+
+      - name: Upload Android workflow artifacts
+        # Analysis runs only, like the Windows upload (see release-windows.yml),
+        # and only their AAB: their APK goes to the draft release below. A
+        # release keeps its AAB in a draft release and ships the APK with the
+        # release.
+        if: matrix.artifact == 'aab' && (github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.publish_to_release_repo != true)
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: shiori-android
+          retention-days: 3
+          path: src-tauri/gen/android/app/build/channel-artifacts/**/*.aab
+          if-no-files-found: ignore
+
+      - name: Post test APK to a draft release
+        # Device checks (RELEASE-CHECKS A0.13) need an installable APK without
+        # cutting a release. Drafts are visible only to collaborators with push
+        # access, and release assets do not count against the Actions artifact
+        # quota.
+        if: matrix.artifact == 'apk' && (github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.publish_to_release_repo != true)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          shopt -s globstar nullglob
+          apks=(src-tauri/gen/android/app/build/channel-artifacts/**/*.apk)
+          if [ ${#apks[@]} -eq 0 ]; then
+            echo "No APK to post"
+            exit 0
+          fi
+          tag="qa-android-${RUN_ID}"
+          gh release create "$tag" "${apks[@]}" \
+            --repo "$GITHUB_REPOSITORY" --draft --prerelease \
+            --target "$SHA" \
+            --title "QA: Android test APK (${SHA:0:8})" \
+            --notes "Test build from run ${RUN_ID} at ${SHA}, for device checks. Not a release."
+
+      - name: Keep the Play Console AAB in a draft release
+        # The AAB is not published anywhere; until now it lived only in the
+        # workflow artifact, which a full storage quota refuses.
+        if: matrix.artifact == 'aab' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.publish_to_release_repo == true))
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MANUAL_TAG: ${{ inputs.tag }}
+          PUSHED_REF: ${{ github.ref }}
+        run: |
+          set -eu
+          # The commit this AAB was built from: the tag's, not github.sha,
+          # which is main's head on a publishing dispatch.
+          SHA="$(git rev-parse HEAD)"
+          shopt -s globstar nullglob
+          aabs=(src-tauri/gen/android/app/build/channel-artifacts/**/*.aab)
+          if [ ${#aabs[@]} -eq 0 ]; then
+            echo "No AAB built"
+            exit 0
+          fi
+          release_tag="${MANUAL_TAG:-${PUSHED_REF#refs/tags/}}"
+          draft="play-aab-${release_tag}"
+          if gh release view "$draft" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$draft" "${aabs[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$draft" "${aabs[@]}" \
+              --repo "$GITHUB_REPOSITORY" --draft --prerelease \
+              --target "$SHA" \
+              --title "Play Console AAB for ${release_tag}" \
+              --notes "Google Play upload bundle for ${release_tag}. Not a public release."
+          fi
+
+      - name: Resolve release tag
+        id: tag
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.publish_to_release_repo == true)
+        env:
+          MANUAL_TAG: ${{ inputs.tag }}
+          PUSHED_REF: ${{ github.ref }}
+        run: |
+          set -eu
+          if [ -n "${MANUAL_TAG:-}" ]; then
+            TAG_NAME="$MANUAL_TAG"
+          else
+            TAG_NAME="${PUSHED_REF#refs/tags/}"
+          fi
+          if ! [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Rejected tag: $TAG_NAME"
+            echo "Must match ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$"
+            exit 1
+          fi
+          echo "name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Android artifacts to the release
+        # Only the direct APK is published with the release; the AAB leg keeps
+        # its bundle in a draft release (collaborators only) instead.
+        if: matrix.artifact == 'apk' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.publish_to_release_repo == true))
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -eu
+
+          shopt -s globstar nullglob
+          apk_files=(src-tauri/gen/android/app/build/channel-artifacts/direct/**/*.apk)
+
+          if [ ${#apk_files[@]} -eq 0 ]; then
+            echo "No direct Android APK found under src-tauri/gen/android/app/build/channel-artifacts/direct/"
+            exit 1
+          fi
+
+          for f in "${apk_files[@]}"; do
+            echo "Uploading $f to $TAG"
+            gh release upload "$TAG" "$f" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          done
