@@ -178,3 +178,89 @@ describe("the file annotation reader", () => {
     expect(reported.map((annotation) => annotation.subtype)).toEqual(["FreeText", "FreeText", "FreeText", "FreeText"]);
   });
 });
+
+describe("what other tools wrote, kept as written", () => {
+  test("a direct /Annots square keeps its /IC fill", async () => {
+    const bytes = await onePage((_pdf, add) => {
+      add({ Subtype: "Square", Rect: [20, 20, 120, 100], C: [1, 0, 0], IC: [0, 0, 1] }, true);
+    });
+    const { overlays } = await importFile(bytes);
+    expect(overlays).toMatchObject([{ type: "rect", id: "pdf-annotation-0-annot_p0_1", fill: "#0000ff" }]);
+  });
+
+  // Acrobat, on a /Rotate 90 page, writes a FreeText with /Rotate 90 and a
+  // tall /Rect so its text reads upright: one 200 pt line, not a 30 pt column.
+  test("a FreeText's own /Rotate turns its text box, not just the page", async () => {
+    const bytes = await onePage((_pdf, add) => {
+      add({ Subtype: "FreeText", Rect: [100, 100, 130, 300], Rotate: 90, DA: PDFString.of("/Helv 12 Tf 0 g"), Contents: PDFString.of("Upright") });
+      add({ Subtype: "FreeText", Rect: [20, 20, 120, 60], Rotate: 180, DA: PDFString.of("/Helv 12 Tf 0 g"), Contents: PDFString.of("Flipped") });
+    });
+    const { overlays } = await importFile(bytes);
+    expect(overlays).toMatchObject([
+      { type: "text", text: "Upright", rect: { x: 15, y: 185, w: 200, h: 30 }, angle: 270 },
+      { type: "text", text: "Flipped", rect: { x: 20, y: 20, w: 100, h: 40 }, angle: 180 },
+    ]);
+  });
+
+  // PDFium counts a page tree leaf without /Type /Page; pdf-lib's getPages()
+  // drops it, which shifted every later page's annotations up by one.
+  test("a page without /Type keeps its place in the page order", async () => {
+    const pdf = await PDFDocument.create();
+    const pages = [0, 1, 2].map(() => pdf.addPage([300, 400]));
+    pages[0]!.node.delete(PDFName.of("Type"));
+    const annotate = (index: number, entries: Record<string, unknown>) =>
+      pages[index]!.node.set(PDFName.of("Annots"), pdf.context.obj([pdf.context.register(pdf.context.obj({ Type: "Annot", ...entries } as never))]));
+    annotate(1, { Subtype: "Highlight", Rect: [20, 20, 120, 40], QuadPoints: [20, 40, 120, 40, 20, 20, 120, 20] });
+    annotate(2, { Subtype: "Square", Rect: [20, 20, 120, 100], IC: [0, 0, 1] });
+    const models = [0, 1, 2].map((sourceIndex) => ({ ...page, id: `p${sourceIndex}`, sourceIndex }));
+    const claimed: number[] = [];
+    const overlays = await importFileAnnotations(models, await pdf.save({ useObjectStreams: false }), NOW, {
+      onSuppress: (sourceIndex) => claimed.push(sourceIndex),
+    });
+    expect(overlays).toMatchObject([{ type: "highlight", pageId: "p1" }, { type: "rect", pageId: "p2", fill: "#0000ff" }]);
+    expect(claimed).toEqual([1, 2]);
+  });
+
+  // PDFium and pdf-lib both walk a /Pages node each time a /Kids lists it.
+  test("a page subtree listed twice counts twice", async () => {
+    const pdf = await PDFDocument.create();
+    const [a, b, c] = [0, 1, 2].map(() => pdf.addPage([300, 400]));
+    const root = pdf.catalog.Pages();
+    const group = pdf.context.register(pdf.context.obj({ Type: "Pages", Kids: [a!.ref, b!.ref], Count: 2, Parent: pdf.catalog.get(PDFName.of("Pages")) } as never));
+    a!.node.set(PDFName.of("Parent"), group);
+    b!.node.set(PDFName.of("Parent"), group);
+    root.set(PDFName.of("Kids"), pdf.context.obj([group, group, c!.ref]));
+    root.set(PDFName.of("Count"), pdf.context.obj(5));
+    c!.node.set(PDFName.of("Annots"), pdf.context.obj([pdf.context.register(pdf.context.obj({ Type: "Annot", Subtype: "Square", Rect: [20, 20, 120, 100], IC: [0, 0, 1] } as never))]));
+    const models = [0, 1, 2, 3, 4].map((sourceIndex) => ({ ...page, id: `p${sourceIndex}`, sourceIndex }));
+    const claimed: number[] = [];
+    const overlays = await importFileAnnotations(models, await pdf.save({ useObjectStreams: false }), NOW, {
+      onSuppress: (sourceIndex) => claimed.push(sourceIndex),
+    });
+    expect(overlays).toMatchObject([{ type: "rect", pageId: "p4", fill: "#0000ff" }]);
+    expect(claimed).toEqual([4]);
+  });
+
+  test("an underline or strikeout keeps its /CA", async () => {
+    const bytes = await onePage((_pdf, add) => {
+      add({ Subtype: "Underline", Rect: [18, 18, 122, 42], CA: 0.5, QuadPoints: [20, 40, 120, 40, 20, 20, 120, 20] });
+      add({ Subtype: "StrikeOut", Rect: [18, 58, 122, 82], CA: 0.25, QuadPoints: [20, 80, 120, 80, 20, 60, 120, 60] });
+      add({ Subtype: "StrikeOut", Rect: [18, 98, 122, 122], CA: 0, QuadPoints: [20, 120, 120, 120, 20, 100, 120, 100] });
+    });
+    const { overlays } = await importFile(bytes);
+    expect(overlays).toMatchObject([
+      { type: "underline", opacity: 0.5 },
+      { type: "strikethrough", opacity: 0.25 },
+      { type: "strikethrough", opacity: 0 },
+    ]);
+  });
+
+  // The listing hands colours over as bytes, so a channel of 1 is 1/255.
+  test("a colour channel that comes to 1 of 255 stays dark", async () => {
+    const bytes = await onePage((_pdf, add) => {
+      add({ Subtype: "Underline", Rect: [18, 18, 122, 42], C: [1 / 255, 50 / 255, 100 / 255], QuadPoints: [20, 40, 120, 40, 20, 20, 120, 20] });
+    });
+    const { overlays } = await importFile(bytes);
+    expect(overlays).toMatchObject([{ type: "underline", color: "#013264" }]);
+  });
+});

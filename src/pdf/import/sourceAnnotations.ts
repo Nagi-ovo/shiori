@@ -2,16 +2,17 @@ import {
   PDFArray,
   PDFDict,
   PDFDocument,
-  PDFHexString,
   PDFName,
   PDFNumber,
   PDFObject,
   PDFRawStream,
   PDFRef,
-  PDFString,
-  decodePDFRawStream,
   pdfDocEncodingDecode,
 } from "pdf-lib";
+import { freeTextAppearance } from "./appearanceStream";
+import { latin1, lookup, rgbColor } from "./pdfjsValues";
+import { richTextRoot } from "./richText";
+import { sourcePageDicts } from "./sourcePages";
 
 /**
  * A page's annotations read straight from the file with pdf-lib, in the shape
@@ -58,14 +59,14 @@ export function readSourceAnnotations(
   strict = false,
 ): SourceAnnotation[] | null {
   if (pdf.isEncrypted) return null;
-  const page = pdf.getPages()[pageIndex];
+  const page = sourcePageDicts(pdf)[pageIndex];
   if (!page) {
     if (strict) throw new Error(`pdf-lib finds no page ${pageIndex + 1} in the page tree`);
     return [];
   }
   let annots: PDFArray | undefined;
   try {
-    annots = page.node.Annots();
+    annots = page.lookupMaybe(PDFName.of("Annots"), PDFArray);
   } catch (error) {
     if (strict) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -135,6 +136,7 @@ function readAnnotation(
       break;
     case "FreeText":
       data.defaultAppearanceData = freeTextAppearance(dict, appearance, acroFormDA);
+      data.rotation = annotationRotation(dict);
       break;
     case "Square":
       // Without an appearance pdf.js draws one and sets the rect to its
@@ -149,6 +151,13 @@ function readAnnotation(
       break;
     case "Highlight":
       data.opacity = opacityOrOne(dict);
+      break;
+    // pdf.js reads /CA only for Ink and Highlight, where its `|| 1` turns 0
+    // into 1; Shiori draws underlines and strikeouts with it too, so they keep
+    // it as written, 0 included.
+    case "Underline":
+    case "StrikeOut":
+      data.opacity = opacityAsWritten(dict);
       break;
   }
   if (QUAD_SUBTYPES.has(subtype)) data.quadPoints = quadPoints(dict);
@@ -218,26 +227,6 @@ function readMarkup(dict: PDFDict, data: SourceAnnotation): void {
   }
 }
 
-function lookup<T extends PDFObject>(
-  dict: PDFDict,
-  key: string,
-  // pdf-lib's object classes have private constructors; instanceof only
-  // needs the prototype.
-  type: { prototype: T },
-): T | undefined {
-  const value = dict.lookup(PDFName.of(key));
-  return value instanceof (type as unknown as typeof PDFObject) ? (value as T) : undefined;
-}
-
-/** A PDF string's bytes as a JS string of char codes 0–255, as pdf.js holds it. */
-function latin1(value: PDFObject | undefined): string | undefined {
-  if (!(value instanceof PDFString || value instanceof PDFHexString)) return undefined;
-  const bytes = value.asBytes();
-  let out = "";
-  for (let i = 0; i < bytes.length; i += 1) out += String.fromCharCode(bytes[i]!);
-  return out;
-}
-
 /** pdf.js's `_parseStringHelper`: a text string, decoded; "" when absent. */
 function textObject(value: PDFObject | undefined): { str: string; dir: string } {
   const raw = latin1(value);
@@ -300,47 +289,6 @@ function normalRect(array: PDFArray | undefined): number[] | null {
   return [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)];
 }
 
-/**
- * pdf.js's getRgbColor on /C: no array → the black default, none → null,
- * 1 / 3 / 4 components → gray / RGB / CMYK, into a Uint8ClampedArray.
- */
-function rgbColor(
-  value: PDFObject | undefined,
-  fallback: Uint8ClampedArray | null = new Uint8ClampedArray(3),
-): Uint8ClampedArray | null {
-  if (!(value instanceof PDFArray)) return fallback;
-  const components: number[] = [];
-  for (let i = 0; i < value.size(); i += 1) {
-    const item = value.lookup(i);
-    components.push(item instanceof PDFNumber ? item.asNumber() : Number.NaN);
-  }
-  if (components.length === 0) return null;
-  const rgb = fallback ?? new Uint8ClampedArray(3);
-  if (components.length === 1) grayToRgb(components, rgb);
-  else if (components.length === 3) rgbToRgb(components, rgb);
-  else if (components.length === 4) cmykToRgb(components, rgb);
-  return rgb;
-}
-
-function grayToRgb(src: readonly number[], dest: Uint8ClampedArray): void {
-  const c = src[0]! * 255;
-  dest[0] = dest[1] = dest[2] = c;
-}
-
-function rgbToRgb(src: readonly number[], dest: Uint8ClampedArray): void {
-  dest[0] = src[0]! * 255;
-  dest[1] = src[1]! * 255;
-  dest[2] = src[2]! * 255;
-}
-
-/** pdf.js's DeviceCMYK polynomial (Apache-2.0, see THIRD_PARTY_NOTICES.md). */
-function cmykToRgb(src: readonly number[], dest: Uint8ClampedArray): void {
-  const [c, m, y, k] = src as [number, number, number, number];
-  dest[0] = 255 + c * (-4.387332384609988 * c + 54.48615194189176 * m + 18.82290502165302 * y + 212.25662451639585 * k + -285.2331026137004) + m * (1.7149763477362134 * m - 5.6096736904047315 * y + -17.873870861415444 * k - 5.497006427196366) + y * (-2.5217340131683033 * y - 21.248923337353073 * k + 17.5119270841813) + k * (-21.86122147463605 * k - 189.48180835922747);
-  dest[1] = 255 + c * (8.841041422036149 * c + 60.118027045597366 * m + 6.871425592049007 * y + 31.159100130055922 * k + -79.2970844816548) + m * (-15.310361306967817 * m + 17.575251261109482 * y + 131.35250912493976 * k - 190.9453302588951) + y * (4.444339102852739 * y + 9.8632861493405 * k - 24.86741582555878) + k * (-20.737325471181034 * k - 187.80453709719578);
-  dest[2] = 255 + c * (0.8842522430003296 * c + 8.078677503112928 * m + 30.89978309703729 * y - 0.23883238689178934 * k + -14.183576799673286) + m * (10.49593273432072 * m + 63.02378494754052 * y + 50.606957656360734 * k - 112.23884253719248) + y * (0.03296041114873217 * y + 115.60384449646641 * k + -193.58209356861505) + k * (-22.33816807309886 * k - 180.12613974708367);
-}
-
 /** pdf.js's AnnotationBorderStyle width, from /BS, else /Border, else 0. */
 function borderWidth(dict: PDFDict, rect: readonly number[]): number {
   const clamp = (width: number) => {
@@ -389,10 +337,24 @@ function borderWidthOf(data: SourceAnnotation): number {
   return (data.borderStyle as { width: number }).width;
 }
 
+/** pdf.js's setRotation: /Rotate as 0, 90, 180 or 270; anything else is 0. */
+function annotationRotation(dict: PDFDict): number {
+  const value = dict.lookup(PDFName.of("Rotate"));
+  const angle = value instanceof PDFNumber ? value.asNumber() : 0;
+  if (!Number.isInteger(angle) || angle % 90 !== 0) return 0;
+  return ((angle % 360) + 360) % 360;
+}
+
 function opacityOrOne(dict: PDFDict): number {
   const ca = dict.lookup(PDFName.of("CA"));
   const value = ca instanceof PDFNumber ? ca.asNumber() : 0;
   return value || 1;
+}
+
+function opacityAsWritten(dict: PDFDict): number {
+  const ca = dict.lookup(PDFName.of("CA"));
+  const value = ca instanceof PDFNumber ? ca.asNumber() : 1;
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1;
 }
 
 /** pdf.js's getQuadPoints: each quad as its axis-aligned box, or null if unusable. */
@@ -443,275 +405,4 @@ function normalAppearance(dict: PDFDict): PDFRawStream | null {
   if (!state) return null;
   const chosen = normal.lookup(PDFName.of(state));
   return chosen instanceof PDFRawStream ? chosen : null;
-}
-
-type FreeTextAppearance = { fontSize: number; fontName: string; fontColor: Uint8ClampedArray };
-
-/**
- * FreeText's /DA (inherited, else the AcroForm's), and when the annotation
- * has an appearance, the font size and colour its stream actually sets.
- */
-function freeTextAppearance(
-  dict: PDFDict,
-  appearance: PDFRawStream | null,
-  acroFormDA: string | undefined,
-): FreeTextAppearance {
-  let da: string | undefined;
-  const seen = new Set<PDFDict>();
-  for (let node: PDFDict | undefined = dict; node && !seen.has(node); node = lookup(node, "Parent", PDFDict)) {
-    seen.add(node);
-    const value = node.lookup(PDFName.of("DA"));
-    if (value !== undefined) {
-      da = latin1(value);
-      break;
-    }
-  }
-  da ??= acroFormDA;
-  const result = parseDefaultAppearance(da ?? "");
-  if (appearance) {
-    const drawn = parseAppearanceStream(appearance);
-    result.fontColor = drawn.fontColor;
-    result.fontSize = drawn.fontSize || 10;
-  } else {
-    result.fontSize ||= 10;
-  }
-  return result;
-}
-
-type Operation = { op: string; args: unknown[] };
-type NameToken = { name: string };
-
-// Operand counts of the operators read here (pdf.js's OP_MAP); pdf.js skips
-// an operator given too few and keeps the last ones when given too many.
-const ARITY: Record<string, number> = {
-  Tf: 2, rg: 3, g: 1, k: 4, cs: 1, Tm: 6, q: 0, Q: 0,
-  Tj: 1, TJ: 1, "'": 1, '"': 3,
-};
-const VARIABLE_ARITY: Record<string, number> = { sc: 4, scn: 33 };
-
-/** The operators of a content stream, operands attached; strings, arrays and dicts opaque. */
-function* operations(source: string): Generator<Operation> {
-  let args: unknown[] = [];
-  let i = 0;
-  const n = source.length;
-  const isWhite = (c: string) => c === " " || c === "\n" || c === "\r" || c === "\t" || c === "\f" || c === "\0";
-  const isDelim = (c: string) => "()<>[]{}/%".includes(c);
-  while (i < n) {
-    const c = source[i]!;
-    if (isWhite(c)) {
-      i += 1;
-    } else if (c === "%") {
-      while (i < n && source[i] !== "\n" && source[i] !== "\r") i += 1;
-    } else if (c === "/") {
-      let j = i + 1;
-      while (j < n && !isWhite(source[j]!) && !isDelim(source[j]!)) j += 1;
-      args.push({ name: source.slice(i + 1, j).replaceAll(/#([0-9a-fA-F]{2})/g, (_, h: string) => String.fromCharCode(parseInt(h, 16))) } satisfies NameToken);
-      i = j;
-    } else if (c === "(") {
-      let depth = 1;
-      i += 1;
-      while (i < n && depth > 0) {
-        if (source[i] === "\\") i += 1;
-        else if (source[i] === "(") depth += 1;
-        else if (source[i] === ")") depth -= 1;
-        i += 1;
-      }
-      args.push("");
-    } else if (c === "<" && source[i + 1] === "<") {
-      let depth = 1;
-      i += 2;
-      while (i < n && depth > 0) {
-        if (source[i] === "<" && source[i + 1] === "<") { depth += 1; i += 2; }
-        else if (source[i] === ">" && source[i + 1] === ">") { depth -= 1; i += 2; }
-        else i += 1;
-      }
-      args.push({});
-    } else if (c === "<") {
-      const end = source.indexOf(">", i);
-      i = end < 0 ? n : end + 1;
-      args.push("");
-    } else if (c === "[") {
-      let depth = 1;
-      i += 1;
-      while (i < n && depth > 0) {
-        if (source[i] === "(") {
-          let d = 1;
-          i += 1;
-          while (i < n && d > 0) {
-            if (source[i] === "\\") i += 1;
-            else if (source[i] === "(") d += 1;
-            else if (source[i] === ")") d -= 1;
-            i += 1;
-          }
-          continue;
-        }
-        if (source[i] === "[") depth += 1;
-        else if (source[i] === "]") depth -= 1;
-        i += 1;
-      }
-      args.push([]);
-    } else if (c === "]" || c === ">" || c === ")" || c === "{" || c === "}") {
-      i += 1;
-    } else {
-      let j = i;
-      while (j < n && !isWhite(source[j]!) && !isDelim(source[j]!)) j += 1;
-      const word = source.slice(i, j);
-      i = j;
-      if (/^[+-]?(\d+\.?\d*|\.\d+)$/.test(word)) {
-        args.push(Number(word));
-      } else if (word === "true" || word === "false" || word === "null") {
-        args.push(word === "true" ? true : word === "false" ? false : null);
-      } else if (word === "BI") {
-        // An inline image: skip its data to EI.
-        const end = source.indexOf("EI", i);
-        i = end < 0 ? n : end + 2;
-        args = [];
-      } else {
-        const fixed = ARITY[word];
-        const variable = VARIABLE_ARITY[word];
-        if (fixed !== undefined) {
-          if (args.length >= fixed) yield { op: word, args: args.slice(args.length - fixed) };
-        } else if (variable !== undefined) {
-          yield { op: word, args: args.slice(-variable) };
-        } else {
-          yield { op: word, args };
-        }
-        args = [];
-      }
-    }
-  }
-}
-
-const nameOf = (value: unknown): string | null =>
-  value && typeof value === "object" && "name" in value ? (value as NameToken).name : null;
-
-function setFillColor(op: string, args: unknown[], dest: Uint8ClampedArray, space: number): void {
-  const values = args.map((arg) => (typeof arg === "number" ? arg : Number.NaN));
-  if (op === "rg") rgbToRgb(values, dest);
-  else if (op === "g") grayToRgb(values, dest);
-  else if (op === "k") cmykToRgb(values, dest);
-  else if (space === 1) grayToRgb(values, dest);
-  else if (space === 3) rgbToRgb(values, dest);
-  else if (space === 4) cmykToRgb(values, dest);
-}
-
-/** pdf.js's parseDefaultAppearance: the last font, size and fill colour outside q … Q. */
-function parseDefaultAppearance(da: string): FreeTextAppearance {
-  const result: FreeTextAppearance = { fontSize: 0, fontName: "", fontColor: new Uint8ClampedArray(3) };
-  let depth = 0;
-  for (const { op, args } of operations(da)) {
-    if (op === "q") depth += 1;
-    else if (op === "Q") depth = Math.max(0, depth - 1);
-    if (depth !== 0 || op === "q" || op === "Q") continue;
-    if (op === "Tf") {
-      const name = nameOf(args[0]);
-      if (name !== null) result.fontName = name;
-      if (typeof args[1] === "number" && args[1] > 0) result.fontSize = args[1];
-    } else if (op === "rg" || op === "g" || op === "k") {
-      setFillColor(op, args, result.fontColor, 0);
-    }
-  }
-  return result;
-}
-
-/**
- * pdf.js's parseAppearanceStream: the font size (through the text matrix)
- * and fill colour in force when the first text is shown.
- */
-function parseAppearanceStream(stream: PDFRawStream): { fontSize: number; fontColor: Uint8ClampedArray } {
-  let bytes: Uint8Array;
-  try {
-    bytes = decodePDFRawStream(stream).decode();
-  } catch {
-    return { fontSize: 0, fontColor: new Uint8ClampedArray(3) };
-  }
-  let source = "";
-  for (let i = 0; i < bytes.length; i += 1) source += String.fromCharCode(bytes[i]!);
-  const resources = lookup(stream.dict, "Resources", PDFDict);
-  type State = { scale: number; fontSize: number; fontColor: Uint8ClampedArray; space: number };
-  let state: State = { scale: 1, fontSize: 0, fontColor: new Uint8ClampedArray(3), space: 1 };
-  const stack: State[] = [];
-  for (const { op, args } of operations(source)) {
-    if (op === "q") stack.push({ ...state, fontColor: state.fontColor.slice() });
-    else if (op === "Q") state = stack.pop() ?? state;
-    else if (op === "Tm") state.scale *= Math.hypot(args[0] as number, args[1] as number);
-    else if (op === "Tf") {
-      if (typeof args[1] === "number" && args[1] > 0) state.fontSize = args[1] * state.scale;
-    } else if (op === "cs") {
-      state.space = colorSpaceComponents(nameOf(args[0]), resources);
-    } else if (op === "sc" || op === "scn" || op === "rg" || op === "g" || op === "k") {
-      setFillColor(op, args, state.fontColor, state.space);
-    } else if (op === "Tj" || op === "TJ" || op === "'" || op === '"') {
-      break;
-    }
-  }
-  return { fontSize: state.fontSize, fontColor: state.fontColor };
-}
-
-/** Components of a fill colour space: device spaces by name, others by /N. */
-function colorSpaceComponents(name: string | null, resources: PDFDict | undefined): number {
-  if (name === "DeviceGray" || name === "G") return 1;
-  if (name === "DeviceRGB" || name === "RGB") return 3;
-  if (name === "DeviceCMYK" || name === "CMYK") return 4;
-  if (!name || !resources) return 1;
-  const spaces = lookup(resources, "ColorSpace", PDFDict);
-  const space = spaces?.lookup(PDFName.of(name));
-  if (space instanceof PDFName) return colorSpaceComponents(space.decodeText(), undefined);
-  if (space instanceof PDFArray) {
-    const family = space.lookup(0);
-    const familyName = family instanceof PDFName ? family.decodeText() : null;
-    if (familyName === "ICCBased") {
-      const profile = space.lookup(1);
-      const components = profile instanceof PDFRawStream ? profile.dict.lookup(PDFName.of("N")) : undefined;
-      if (components instanceof PDFNumber) return components.asNumber();
-    }
-    if (familyName === "CalGray") return 1;
-    if (familyName === "CalRGB" || familyName === "Lab") return 3;
-  }
-  return 1;
-}
-
-// pdf.js keeps only these CSS properties of rich text (xhtml.js VALID_STYLES).
-const RICH_TEXT_STYLES = new Set([
-  "color", "font", "font-family", "font-size", "font-stretch", "font-style", "font-weight",
-  "margin", "margin-bottom", "margin-left", "margin-right", "margin-top", "letter-spacing",
-  "line-height", "orphans", "page-break-after", "page-break-before", "page-break-inside",
-  "tab-interval", "tab-stop", "text-align", "text-decoration", "text-indent", "vertical-align",
-  "widows", "kerning-mode",
-]);
-
-/**
- * The root style of /RC, the one part of pdf.js's rich-text tree the importer
- * reads. pdf.js has no font finder for annotation rich text, so it drops
- * `font-family` and keeps the `font` shorthand; so does this.
- */
-function richTextRoot(rc: string | undefined): { html: { attributes: { style: Record<string, string> } } } | null {
-  if (!rc) return null;
-  const body = rc.replace(/^\s*(?:<\?[\s\S]*?\?>\s*|<!--[\s\S]*?-->\s*|<!DOCTYPE[^>]*>\s*)*/i, "");
-  const tag = /^<([A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)((?:\s+[^\s=>/]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*\/?>/.exec(body);
-  if (!tag) return null;
-  const style: Record<string, string> = {};
-  if (tag[2] === "body" || tag[2] === "xhtml") {
-    const attribute = /(?:^|\s)style\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(tag[3] ?? "");
-    const css = xmlUnescape(attribute?.[1] ?? attribute?.[2] ?? "");
-    for (const declaration of css.split(";")) {
-      const [rawKey, rawValue] = declaration.split(":", 2);
-      const key = rawKey?.trim();
-      if (!key || rawValue === undefined || !RICH_TEXT_STYLES.has(key) || key === "font-family") continue;
-      style[key.replaceAll(/-([a-zA-Z])/g, (_, x: string) => x.toUpperCase())] = rawValue.trim();
-    }
-  }
-  return { html: { attributes: { style } } };
-}
-
-function xmlUnescape(text: string): string {
-  return text.replaceAll(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/g, (_, entity: string) => {
-    if (entity === "amp") return "&";
-    if (entity === "lt") return "<";
-    if (entity === "gt") return ">";
-    if (entity === "quot") return '"';
-    if (entity === "apos") return "'";
-    const code = entity[1] === "x" ? parseInt(entity.slice(2), 16) : parseInt(entity.slice(1), 10);
-    return String.fromCodePoint(code);
-  });
 }

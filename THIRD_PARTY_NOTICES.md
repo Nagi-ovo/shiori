@@ -143,7 +143,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 (`src/display/text_layer.js`, mozilla/pdf.js), Copyright Mozilla Foundation,
 licensed under the Apache License 2.0. The port folds page rotation into the
 span layout and takes Shiori's engine-neutral page text.
-`src/pdf/import/sourceAnnotations.ts` follows PDF.js's annotation parsing
+`src/pdf/import/sourceAnnotations.ts`, with `appearanceStream.ts`,
+`pdfjsValues.ts` and `richText.ts` beside it, follows PDF.js's annotation parsing
 (`src/core/annotation.js`, `default_appearance.js`, `colorspace.js`,
 `core_utils.js`) and carries its DeviceCMYK conversion polynomial and
 `stringToPDFString` decoding, under the same copyright and license. Shiori
