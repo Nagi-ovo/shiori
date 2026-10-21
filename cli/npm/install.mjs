@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
@@ -9,8 +9,9 @@ import {
   renameSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
 export const CLI_RELEASE_API = "https://shiori.nagi.fun/api/cli";
@@ -92,34 +93,82 @@ function isCompleteInstall(dir, target) {
   }
 }
 
-// The locked step is two renames; a lock older than this was left by a run
-// killed while holding it.
+// The locked step is two renames. A lock this old whose holder cannot be
+// checked (no owner record yet, or another machine sharing the home) was
+// left by a run killed while holding it.
 const INSTALL_LOCK_STALE_MS = 10_000;
+// A holder on this machine that is still alive keeps its lock this long,
+// however long it is held up: past it, the pid has more likely been reused
+// by an unrelated process than the run is still in its two renames.
+const LIVE_HOLDER_STALE_MS = 10 * 60_000;
 
+function lockOwnerFile(lock) {
+  return join(lock, "owner");
+}
+
+function isAbandonedLock(lock) {
+  const age = Date.now() - statSync(lock).mtimeMs;
+  let owner = null;
+  try {
+    owner = JSON.parse(readFileSync(lockOwnerFile(lock), "utf8"));
+  } catch {
+    // Not written yet, or the lock went away.
+  }
+  if (owner?.host === hostname() && Number.isInteger(owner.pid) && owner.pid > 0) {
+    try {
+      process.kill(owner.pid, 0);
+    } catch (error) {
+      if (error.code === "ESRCH") return true;
+    }
+    return age > LIVE_HOLDER_STALE_MS;
+  }
+  return age > INSTALL_LOCK_STALE_MS;
+}
+
+// `critical` gets a check that this run still holds the lock and returns
+// false when it found it did not, so the run waits its turn again. A run
+// moves nothing aside and removes no lock unless that check passes right
+// before: a run taken over after all by another, resuming, must not undo
+// what the other one published. The check and the step after it are two
+// calls apart; with no shared OS lock to take, that gap stays.
 function withInstallLock(lock, isDone, critical) {
   const pause = new Int32Array(new SharedArrayBuffer(4));
+  const owner = JSON.stringify({ host: hostname(), pid: process.pid, token: randomUUID() });
+  const holds = () => {
+    try {
+      return readFileSync(lockOwnerFile(lock), "utf8") === owner;
+    } catch {
+      return false;
+    }
+  };
   for (;;) {
+    let acquired = false;
     try {
       mkdirSync(lock);
-      break;
+      acquired = true;
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
+    }
+    if (acquired) {
+      try {
+        writeFileSync(lockOwnerFile(lock), owner);
+        if (critical(holds)) return;
+      } catch (error) {
+        // Losing the lock before the owner record landed is a lost turn.
+        if (holds() || error.code !== "ENOENT") throw error;
+      } finally {
+        if (holds()) rmSync(lock, { recursive: true, force: true });
+      }
+      continue;
     }
     // The holder may be publishing the very install this run is after.
     if (isDone()) return;
     try {
-      if (Date.now() - statSync(lock).mtimeMs > INSTALL_LOCK_STALE_MS) {
-        rmSync(lock, { recursive: true, force: true });
-      }
+      if (isAbandonedLock(lock)) rmSync(lock, { recursive: true, force: true });
     } catch {
       // Released between the mkdir and the stat.
     }
     Atomics.wait(pause, 0, 0, 20);
-  }
-  try {
-    critical();
-  } finally {
-    rmSync(lock, { recursive: true, force: true });
   }
 }
 
@@ -136,8 +185,9 @@ function publishInstall(staging, dest, target, lock) {
   // be the whole install of the run before. It is moved aside, not deleted
   // in place, so dest is only ever the old tree, absent, or a whole one.
   const done = () => isCompleteInstall(dest, target);
-  withInstallLock(lock, done, () => {
-    if (done()) return;
+  withInstallLock(lock, done, (holds) => {
+    if (done()) return true;
+    if (!holds()) return false;
     const stale = `${staging}-stale`;
     try {
       try {
@@ -153,6 +203,7 @@ function publishInstall(staging, dest, target, lock) {
     } finally {
       rmSync(stale, { recursive: true, force: true });
     }
+    return true;
   });
 }
 

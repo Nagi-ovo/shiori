@@ -133,3 +133,44 @@ export function curlInstallerEnv(dir: string, port: number | undefined) {
     TERM: "dumb",
   };
 }
+
+// One `npx @nagi-ovo/shiori` in a process of its own, starting at `startAt`
+// (ms since the epoch). It prints "whole" when the tree it got back holds
+// the real executable and the engine addon.
+export function spawnNpmRun(
+  dir: string,
+  run: { api: string; target: string; home: string; startAt?: number },
+) {
+  const child = join(dir, "npm-run.mjs");
+  writeFileSync(
+    child,
+    [
+      'import { existsSync, readFileSync } from "node:fs";',
+      'import { dirname, join } from "node:path";',
+      "const { ensureCliBinary } = await import(process.env.INSTALL_MJS);",
+      "await new Promise((r) => setTimeout(r, Math.max(0, Number(process.env.START_AT) - Date.now())));",
+      "try {",
+      "  const binary = await ensureCliBinary({",
+      "    api: process.env.API, target: process.env.TARGET,",
+      '    env: { SHIORI_CLI_HOME: process.env.HOME_DIR, SHIORI_CLI_ALLOW_HTTP: "1" },',
+      "  });",
+      '  const whole = readFileSync(binary, "utf8").includes("shiori-ok") &&',
+      '    existsSync(join(dirname(binary), "native", "shiori_core.node"));',
+      '  console.log(whole ? "whole" : "broken");',
+      "} catch (error) {",
+      "  console.log(`threw ${error.code ?? error.message}`);",
+      "}",
+    ].join("\n"),
+  );
+  return Bun.spawn([process.execPath, child], {
+    env: {
+      ...process.env,
+      INSTALL_MJS: join(import.meta.dir, "..", "npm", "install.mjs"),
+      API: run.api,
+      TARGET: run.target,
+      HOME_DIR: run.home,
+      START_AT: String(run.startAt ?? 0),
+    },
+    stdout: "pipe",
+  });
+}

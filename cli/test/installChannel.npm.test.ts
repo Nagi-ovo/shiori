@@ -5,10 +5,13 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
+import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { detectCliInstallTarget } from "../distribution";
 import { ensureCliBinary } from "../npm/install.mjs";
@@ -16,6 +19,7 @@ import {
   makeArchive,
   makeTruncatedArchive,
   serveCliArchive,
+  spawnNpmRun,
   withTempDir,
 } from "./installChannelFixtures";
 
@@ -199,45 +203,75 @@ describe("CLI install channel: npm runner", () => {
         for (let i = 0; i < 400; i++) {
           writeFileSync(join(partial, "licenses", `notice-${i}.txt`), "notice");
         }
-        const child = join(dir, "child.mjs");
-        writeFileSync(
-          child,
-          [
-            'import { existsSync, readFileSync } from "node:fs";',
-            'import { dirname, join } from "node:path";',
-            "const { ensureCliBinary } = await import(process.env.INSTALL_MJS);",
-            "await new Promise((r) => setTimeout(r, Number(process.env.START_AT) - Date.now()));",
-            "try {",
-            "  const binary = await ensureCliBinary({",
-            "    api: process.env.API, target: process.env.TARGET,",
-            '    env: { SHIORI_CLI_HOME: process.env.HOME_DIR, SHIORI_CLI_ALLOW_HTTP: "1" },',
-            "  });",
-            '  const whole = readFileSync(binary, "utf8").includes("shiori-ok") &&',
-            '    existsSync(join(dirname(binary), "native", "shiori_core.node"));',
-            '  console.log(whole ? "whole" : "broken");',
-            "} catch (error) {",
-            "  console.log(`threw ${error.code ?? error.message}`);",
-            "}",
-          ].join("\n"),
-        );
         const startAt = Date.now() + 1500;
         const runs = Array.from({ length: 6 }, () =>
-          Bun.spawn([process.execPath, child], {
-            env: {
-              ...process.env,
-              INSTALL_MJS: join(import.meta.dir, "..", "npm", "install.mjs"),
-              API: `http://127.0.0.1:${server.port}/api/cli`,
-              TARGET: target,
-              HOME_DIR: home,
-              START_AT: String(startAt),
-            },
-            stdout: "pipe",
+          spawnNpmRun(dir, {
+            api: `http://127.0.0.1:${server.port}/api/cli`,
+            target,
+            home,
+            startAt,
           }),
         );
         const outcomes = await Promise.all(
           runs.map(async (run) => (await new Response(run.stdout).text()).trim()),
         );
         expect(outcomes).toEqual(Array(6).fill("whole"));
+      });
+    },
+    30_000,
+  );
+
+  // A run holding the replace lock can be held up past the lock's age
+  // limit: stopped, swapped out, or asleep with the laptop. Another run
+  // used to take the lock over then, publish, and launch, and the first one,
+  // resuming, moved that published tree aside under it. While the holder is
+  // alive its lock stands. The owner record below is what a holding run
+  // writes; it is the contract between runs.
+  test.skipIf(process.platform === "win32")(
+    "npm runner waits out a live holder of an old replace lock",
+    async () => {
+      if (!target) return;
+      await withTempDir(async (dir) => {
+        const { server } = await serveCliArchive(
+          makeArchive(mkdtempSync(join(dir, "pkg-")), "shiori", {
+            "native/shiori_core.node": "addon",
+          }),
+          target,
+        );
+        servers.push(server);
+        const home = join(dir, ".shiori");
+        const partial = join(home, "cli", "0.1.25");
+        mkdirSync(partial, { recursive: true });
+        writeFileSync(join(partial, "shiori"), "#!/bin/sh\necho shiori-partial\n");
+        const holder = Bun.spawn([process.execPath, "-e", "setTimeout(() => {}, 60000)"]);
+        const lock = join(home, "cli", ".0.1.25.lock");
+        mkdirSync(lock);
+        writeFileSync(
+          join(lock, "owner"),
+          JSON.stringify({ host: hostname(), pid: holder.pid, token: "held" }),
+        );
+        const minuteAgo = new Date(Date.now() - 60_000);
+        utimesSync(lock, minuteAgo, minuteAgo);
+
+        const run = spawnNpmRun(dir, {
+          api: `http://127.0.0.1:${server.port}/api/cli`,
+          target,
+          home,
+        });
+        try {
+          const staged = async () => {
+            while (!readdirSync(join(home, "cli")).some((name) => name.includes("-staging-"))) {
+              await Bun.sleep(10);
+            }
+          };
+          await Promise.race([run.exited, staged()]);
+          await Bun.sleep(500);
+          expect(readFileSync(join(partial, "shiori"), "utf8")).toContain("shiori-partial");
+        } finally {
+          holder.kill();
+          await holder.exited;
+        }
+        expect((await new Response(run.stdout).text()).trim()).toBe("whole");
       });
     },
     30_000,
