@@ -40,6 +40,11 @@ export const PARAGRAPH_DETECT = {
   // (all but the last) are at least this × font size wide; narrower ones
   // are table cells.
   columnLineMinFontRatio: 12,
+  // ...and only with wrapping to show for it: this many lines, the body
+  // ones ending within this × font size of the block's right edge. Wide
+  // table cells stacked row on row show neither.
+  columnMinLines: 3,
+  columnRightEdgeFontRatio: 2,
   // Alignment: edge stability = MAD <= max(edgeStabilityPt, edgeStabilityWidthRatio × block width).
   edgeStabilityPt: 2,
   edgeStabilityWidthRatio: 0.01,
@@ -232,15 +237,20 @@ function xOverlap(a: DetectedLine, b: DetectedLine): number {
   return Math.min(a.right, b.right) - Math.max(a.x, b.x);
 }
 
-// Split-off segments make a text column only when they fill column-width
-// lines; a block of narrow ones is a table column.
+// Split-off segments make a text column only when they wrap: several
+// column-width lines filled to one right edge. Anything less may be a
+// table column, whose cells are separate texts.
 function splitSegmentsAreTableCells(lines: DetectedLine[], scale: number): boolean {
   if (!lines.some((line) => line.columnSplit)) return false;
-  const bodyLines = lines.length > 1 ? lines.slice(0, -1) : lines;
+  if (lines.length < PARAGRAPH_DETECT.columnMinLines) return true;
+  const bodyLines = lines.slice(0, -1);
+  const right = Math.max(...bodyLines.map((line) => line.right));
   return bodyLines.some(
     (line) =>
       line.width <
-      PARAGRAPH_DETECT.columnLineMinFontRatio * line.fontSizePt * scale,
+        PARAGRAPH_DETECT.columnLineMinFontRatio * line.fontSizePt * scale ||
+      right - line.right >
+        PARAGRAPH_DETECT.columnRightEdgeFontRatio * line.fontSizePt * scale,
   );
 }
 

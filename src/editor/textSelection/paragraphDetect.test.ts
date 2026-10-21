@@ -165,6 +165,20 @@ describe("paragraph detection", () => {
     expect(blocks.some((b) => b.confidence === "low")).toBe(true);
   });
 
+  test("wide table cells are not editable as column paragraphs", () => {
+    // 15em-wide cells clear the column width floor, but nothing shows the
+    // two rows of a column are one wrapped paragraph.
+    const runs = [
+      run("left cell", 50, 100, 150),
+      run("right cell", 250, 100, 150),
+      run("left cell2", 50, 112, 150),
+      run("right cell2", 250, 112, 150),
+    ];
+    const blocks = detectParagraphs(runs, 1);
+    expect(blocks.length).toBeGreaterThan(0);
+    expect(blocks.every((b) => b.confidence === "low")).toBe(true);
+  });
+
   test("excludes rotated runs (box height far from font size)", () => {
     // A 10pt run whose display box is 200 tall — a rotated margin stamp.
     const rotated = run("arXiv:2603.19312v2", 20, 300, 15, 10, { h: 200 });
