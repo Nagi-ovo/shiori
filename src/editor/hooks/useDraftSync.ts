@@ -391,7 +391,12 @@ export function useDraftSync(
         operationLogTimerRef.current = null;
         if (conflictedDraftIdRef.current === draftId) return;
         ownLogStampRef.current = Date.now();
-        const result = writeOperationLog(draftId, model, ownLogStampRef.current);
+        const result = writeOperationLog(
+          draftId,
+          model,
+          ownLogStampRef.current,
+          draftVersionRef.current,
+        );
         if (result !== "written") {
           // The op-log second tier couldn't capture this doc (too large for
           // localStorage, or storage unavailable). Don't wait out the longer
@@ -442,7 +447,8 @@ export function useDraftSync(
       const { draftId: logId, model: logModel } = latestRef.current;
       if (logId && conflictedDraftIdRef.current !== logId) {
         ownLogStampRef.current = Date.now();
-        writeOperationLog(logId, logModel, ownLogStampRef.current);
+        const base = draftVersionRef.current;
+        writeOperationLog(logId, logModel, ownLogStampRef.current, base);
       }
     } else {
       // Undo back to the original deletes the saved draft (or an older log),
@@ -461,7 +467,12 @@ export function useDraftSync(
           savedDraftStampRef.current + 1,
           (readOperationLog(logId)?.lastTouched ?? 0) + 1,
         );
-        writeOperationLog(logId, logModel, cleanOperationLogStampRef.current);
+        writeOperationLog(
+          logId,
+          logModel,
+          cleanOperationLogStampRef.current,
+          draftVersionRef.current,
+        );
       }
     }
     setStatus("saving");

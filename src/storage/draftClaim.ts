@@ -89,7 +89,10 @@ async function claimUnlocked(
     // and still be undone. If it cannot land, nothing moves, so the rows and
     // the newest edits stay under one id.
     const log = readOperationLog(from);
-    if (log && writeOperationLog(draftId, log.model, log.lastTouched) !== "written") {
+    if (
+      log &&
+      writeOperationLog(draftId, log.model, log.lastTouched, log.base) !== "written"
+    ) {
       return from;
     }
     let moved: MoveResult;

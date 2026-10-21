@@ -48,22 +48,52 @@ export type DraftRecovery = {
   completedLiveOperationIds: string[];
 };
 
+// Whether a log's writer last saw this very row. Logs from older builds name
+// no row and are trusted as before.
+function logIsBasedOn(
+  base: { lastTouched: number; revision: string | null } | null | undefined,
+  draft: { lastTouched: number; revision?: string | null },
+): boolean {
+  if (base === undefined) return true;
+  return (
+    base !== null &&
+    base.lastTouched === draft.lastTouched &&
+    base.revision === (draft.revision ?? null)
+  );
+}
+
 /**
  * Picks what to restore on open: the operation log when it is newer than the
- * saved draft (its model post-dates the draft, so the draft's own model
- * becomes the newest undo step beneath it), else the draft. Page boxes come
- * from the freshly parsed file.
+ * saved draft and was written on top of it (its model post-dates the draft,
+ * so the draft's own model becomes the newest undo step beneath it), else
+ * the draft. A log written over an older row, which another window has saved
+ * over since, loses to that window's draft. Page boxes come from the freshly
+ * parsed file.
  */
 export function chooseDraftRecovery(
   draft:
-    | { lastTouched: number; model: DocumentModel; history: HistoryEntry[] }
+    | {
+        lastTouched: number;
+        revision?: string | null;
+        model: DocumentModel;
+        history: HistoryEntry[];
+      }
     | null
     | undefined,
-  operationLog: { lastTouched: number; model: DocumentModel } | null,
+  operationLog: {
+    lastTouched: number;
+    model: DocumentModel;
+    base?: { lastTouched: number; revision: string | null } | null;
+  } | null,
   freshPages: PageModel[],
   completedLiveOperationIds: string[],
 ): DraftRecovery | null {
-  if (operationLog && (!draft || operationLog.lastTouched > draft.lastTouched)) {
+  if (
+    operationLog &&
+    (!draft ||
+      (operationLog.lastTouched > draft.lastTouched &&
+        logIsBasedOn(operationLog.base, draft)))
+  ) {
     return {
       lastTouched: operationLog.lastTouched,
       pages: reconcileRecoveredPagesWithSource(

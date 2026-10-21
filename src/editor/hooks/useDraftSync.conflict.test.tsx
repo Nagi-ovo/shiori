@@ -183,4 +183,26 @@ describe("useDraftSync across windows", () => {
       await w.dispose();
     }
   });
+
+  // The crash log lands at 250 ms, before the 800 ms save that would find
+  // the conflict. A crash between the two must not let it outrank A's draft.
+  test("a crash log written before the refusal does not outrank the other's draft", async () => {
+    const { readOperationLog } = await import("../../storage/operationLog");
+    const { default: drafts } = await import("../../storage/drafts");
+    const { chooseDraftRecovery } = await import("../../workspace/intake/recovery");
+    const w = await twoWindowsOnOneHandle();
+    try {
+      w.openInThisWindow(await w.saveInWindowA("a-1"));
+      await w.saveInWindowA("a-2");
+      w.edit("b-1");
+      await act(() => Bun.sleep(400));
+      expect(readOperationLog(w.id)).not.toBeNull();
+
+      // The browser crashes here; the next open picks what to restore.
+      const recovery = chooseDraftRecovery(await drafts.get(w.id), readOperationLog(w.id), [page], []);
+      expect(recovery?.overlays.map((o) => o.id)).toEqual(["a-2"]);
+    } finally {
+      await w.dispose();
+    }
+  });
 });
