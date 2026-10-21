@@ -55,6 +55,28 @@ import { SignatureDialog } from "./SignatureDialog";
 import { isSignatureOverlay } from "./overlays/overlayGuards";
 import { ROTATE_SNAP_DEG } from "./OverlayLayer";
 import { typedZoom, zoomStepDown, zoomStepUp } from "../viewport/zoomCommands";
+import {
+  HIGHLIGHT_COLORS,
+  NOTE_COLORS,
+  RECT_COLORS,
+  TEXT_LINE_COLORS,
+  iconForDrawTool,
+  iconForSignTool,
+  iconForTextMarkupTool,
+  isDrawToolId,
+  isSignToolId,
+  isTextMarkupToolId,
+  type DrawToolId,
+  type SignToolId,
+  type TextMarkupToolId,
+} from "./inspectorOptions";
+import {
+  DrawModePicker,
+  MarkupModePicker,
+  RectFillPicker,
+  SignModePicker,
+  StampKindPicker,
+} from "./InspectorPickers";
 
 const FONT_OPTIONS: Array<FontPickerOption<FontFamily>> = [
   {
@@ -86,15 +108,6 @@ const FONT_OPTIONS: Array<FontPickerOption<FontFamily>> = [
 
 const TEXT_FONT_SIZE_MAX = 144;
 const STAMP_WIDTH_OPTIONS = [1, 1.8, 3, 5];
-// Annotation preset palettes, tuned toward vintage stationery — fountain
-// pen inks (oxblood, sepia-black, Prussian blue, forest, plum) for lines
-// and letterpress/riso tints (mustard, apricot, sage, dusty blue, mauve)
-// for fills. The first entry of each set is the long-standing default hex,
-// kept so existing annotDefaults still match a swatch.
-const RECT_DEFAULT_COLOR = "#b13a2e";
-const RECT_COLORS = [RECT_DEFAULT_COLOR, "#2b2620", "#3d5942", "#8a6134"];
-const TEXT_LINE_COLORS = ["#b13a2e", "#2b2620", "#33506e", "#3d5942", "#6d4a67"];
-const HIGHLIGHT_COLORS = ["#f4d674", "#e8a37a", "#aac296", "#a9bdd6", "#cdb2cc"];
 
 /**
  * Zoom readout that doubles as an editable field: shows `117%`, and on click
@@ -202,9 +215,6 @@ function ZoomField({
     </button>
   );
 }
-const NOTE_COLORS = ["#f7e9a8", "#ecc9a5", "#cbdcc0", "#c3d2e4", "#dcc9dc"];
-const TEXT_MARKUP_TOOLS = ["highlight", "underline", "strikethrough"] as const;
-type TextMarkupToolId = (typeof TEXT_MARKUP_TOOLS)[number];
 
 const TOOLS: Array<{
   id: ToolId | "markup" | "draw" | "sign";
@@ -219,250 +229,6 @@ const TOOLS: Array<{
   { id: "callout", i18nKey: "tools.callout", hint: "C", Icon: Ic.callout },
   { id: "text", i18nKey: "tools.text", hint: "T", Icon: Ic.text },
 ];
-
-function isTextMarkupToolId(tool: ToolId): tool is TextMarkupToolId {
-  return TEXT_MARKUP_TOOLS.includes(tool as TextMarkupToolId);
-}
-
-function iconForTextMarkupTool(tool: TextMarkupToolId): typeof Ic.cursor {
-  if (tool === "underline") return Ic.underline;
-  if (tool === "strikethrough") return Ic.strikethrough;
-  return Ic.highlight;
-}
-
-// Freehand ink and rectangle share one "draw" toolbar slot (like the markup
-// group), with a mode picker in the inspector to switch between them.
-const DRAW_TOOLS = ["ink", "rect"] as const;
-type DrawToolId = (typeof DRAW_TOOLS)[number];
-
-function isDrawToolId(tool: ToolId): tool is DrawToolId {
-  return DRAW_TOOLS.includes(tool as DrawToolId);
-}
-
-function iconForDrawTool(tool: DrawToolId): typeof Ic.cursor {
-  return tool === "rect" ? Ic.rect : Ic.ink;
-}
-
-function DrawModePicker({
-  value,
-  onChange,
-}: {
-  value: DrawToolId;
-  onChange: (value: DrawToolId) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      aria-label={t("inspector.fields.drawMode")}
-      style={{ display: "inline-flex", alignItems: "center", gap: 3 }}
-    >
-      {DRAW_TOOLS.map((mode) => {
-        const Icon = iconForDrawTool(mode);
-        const active = value === mode;
-        return (
-          <button
-            key={mode}
-            type="button"
-            title={t(`tools.${mode}`)}
-            aria-pressed={active}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onChange(mode)}
-            style={{
-              width: 32,
-              height: 32,
-              padding: 0,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "1px solid transparent",
-              borderRadius: 6,
-              background: active ? T.ink : "transparent",
-              color: active ? T.cream : T.ink2,
-              cursor: "pointer",
-            }}
-          >
-            <Icon />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// Signature and stamp share one "sign" toolbar slot (like the markup and
-// draw groups), with a mode picker in the inspector to switch between
-// placing a saved signature and stamping a seal.
-const SIGN_TOOLS = ["signature", "stamp"] as const;
-type SignToolId = (typeof SIGN_TOOLS)[number];
-
-function isSignToolId(tool: ToolId): tool is SignToolId {
-  return SIGN_TOOLS.includes(tool as SignToolId);
-}
-
-function iconForSignTool(tool: SignToolId): typeof Ic.cursor {
-  return tool === "stamp" ? Ic.stamp : Ic.signature;
-}
-
-function SignModePicker({
-  value,
-  onChange,
-}: {
-  value: SignToolId;
-  onChange: (value: SignToolId) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      aria-label={t("inspector.fields.signMode")}
-      style={{ display: "inline-flex", alignItems: "center", gap: 3 }}
-    >
-      {SIGN_TOOLS.map((mode) => {
-        const Icon = iconForSignTool(mode);
-        const active = value === mode;
-        return (
-          <button
-            key={mode}
-            type="button"
-            title={t(`tools.${mode}`)}
-            aria-pressed={active}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onChange(mode)}
-            style={{
-              width: 32,
-              height: 32,
-              padding: 0,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "1px solid transparent",
-              borderRadius: 6,
-              background: active ? T.ink : "transparent",
-              color: active ? T.cream : T.ink2,
-              cursor: "pointer",
-            }}
-          >
-            <Icon />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function RectFillPicker({
-  value,
-  recent,
-  onChange,
-  onCommit,
-}: {
-  value: string | null;
-  recent: string[];
-  onChange: (value: string | null) => void;
-  onCommit?: (value: string) => void;
-}) {
-  const { t } = useTranslation();
-  const fillLabel = t("inspector.fields.fill");
-  const noneLabel = t("inspector.fields.fillNone");
-  const selected = value === null;
-
-  return (
-    <div
-      aria-label={fillLabel}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-      }}
-    >
-      <button
-        type="button"
-        title={noneLabel}
-        aria-label={noneLabel}
-        onClick={() => onChange(null)}
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: "50%",
-          background: T.surface,
-          cursor: "pointer",
-          border: `1.5px solid ${selected ? T.ink : T.rule}`,
-          padding: 0,
-          boxShadow: selected ? `0 0 0 2px ${T.paper}` : "none",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <span
-          aria-hidden
-          style={{
-            position: "absolute",
-            left: -3,
-            top: 9,
-            width: 28,
-            height: 2,
-            background: T.ink,
-            transform: "rotate(-45deg)",
-            transformOrigin: "center",
-          }}
-        />
-      </button>
-      <ExpandableColorPicker
-        options={RECT_COLORS}
-        value={value ?? RECT_DEFAULT_COLOR}
-        selectedValue={value}
-        recent={recent}
-        onChange={(c) => onChange(c)}
-        onCommit={onCommit}
-      />
-    </div>
-  );
-}
-
-function MarkupModePicker({
-  value,
-  onChange,
-}: {
-  value: TextMarkupToolId;
-  onChange: (value: TextMarkupToolId) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      aria-label={t("inspector.fields.markupMode")}
-      style={{ display: "inline-flex", alignItems: "center", gap: 3 }}
-    >
-      {TEXT_MARKUP_TOOLS.map((mode) => {
-        const Icon = iconForTextMarkupTool(mode);
-        const active = value === mode;
-        return (
-          <button
-            key={mode}
-            type="button"
-            title={t(`tools.${mode}`)}
-            aria-pressed={active}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onChange(mode)}
-            style={{
-              width: 32,
-              height: 32,
-              padding: 0,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "1px solid transparent",
-              borderRadius: 6,
-              background: active ? T.ink : "transparent",
-              color: active ? T.cream : T.ink2,
-              cursor: "pointer",
-            }}
-          >
-            <Icon />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 export function ContextualToolbar() {
   const { t } = useTranslation();
@@ -1645,56 +1411,6 @@ function TextContentEditor({
       }}
       wrap="off"
     />
-  );
-}
-
-function StampKindPicker({
-  value,
-  onChange,
-}: {
-  value: "check" | "cross";
-  onChange: (kind: "check" | "cross") => void;
-}) {
-  const options: Array<{ value: "check" | "cross"; label: string }> = [
-    { value: "check", label: "✓" },
-    { value: "cross", label: "✗" },
-  ];
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 0,
-        border: `1px solid ${T.rule}`,
-        borderRadius: 6,
-        background: T.surface,
-        overflow: "hidden",
-      }}
-    >
-      {options.map((option, i) => {
-        const active = option.value === value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onChange(option.value)}
-            style={{
-              width: 30,
-              height: 28,
-              border: "none",
-              borderLeft: i === 0 ? "none" : `1px solid ${T.rule}`,
-              background: active ? T.ink : "transparent",
-              color: active ? T.cream : T.ink2,
-              cursor: "pointer",
-              font: `600 15px/1 ${T.sans}`,
-              padding: 0,
-            }}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
   );
 }
 
