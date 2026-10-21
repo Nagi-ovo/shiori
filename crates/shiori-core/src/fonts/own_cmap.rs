@@ -19,6 +19,7 @@ use std::os::raw::c_int;
 use pdfium_render::prelude::FPDF_FONT;
 
 use super::id::{answer, PROBE, UNMAPPED};
+use crate::open::with_blank_document;
 use crate::Lib;
 
 // fpdf_edit.h
@@ -46,17 +47,16 @@ pub(crate) unsafe fn draws_alike(
     let Ok(size) = u32::try_from(program.len()) else {
         return false;
     };
-    let doc = lib.FPDF_CreateNewDocument();
-    if doc.is_null() {
-        return false;
-    }
-    let own = lib.FPDFText_LoadFont(doc, program.as_ptr(), size, FPDF_FONT_TRUETYPE, 1);
-    let alike = !own.is_null() && same_glyphs(lib, font, own, beyond);
-    if !own.is_null() {
-        lib.FPDFFont_Close(own);
-    }
-    lib.FPDF_CloseDocument(doc);
-    alike
+    // A blank document loaded, not created: `with_blank_document` says why.
+    with_blank_document(lib, |doc| {
+        let own = lib.FPDFText_LoadFont(doc, program.as_ptr(), size, FPDF_FONT_TRUETYPE, 1);
+        let alike = !own.is_null() && same_glyphs(lib, font, own, beyond);
+        if !own.is_null() {
+            lib.FPDFFont_Close(own);
+        }
+        alike
+    })
+    .unwrap_or(false)
 }
 
 unsafe fn same_glyphs(lib: &Lib, font: FPDF_FONT, own: FPDF_FONT, beyond: &[u32]) -> bool {
