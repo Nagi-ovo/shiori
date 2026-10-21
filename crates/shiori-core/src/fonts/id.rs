@@ -21,12 +21,38 @@ use pdfium_render::prelude::FPDF_FONT;
 use super::{font_program, GLYPH_PATH_SCALE};
 use crate::Lib;
 
-/// The characters every font is asked about: printable ASCII, where the
-/// encodings that share one program (text, small caps, old-style figures,
-/// symbols) mostly part. Two dictionaries that draw these alike and differ
-/// only further on keep one id. The probe is fixed, never the characters a
-/// page sets, so the id does not depend on which page is read.
-const PROBE: std::ops::RangeInclusive<u32> = 0x20..=0x7e;
+/// The characters every font is asked about: the ones the 8-bit encodings
+/// simple fonts use (WinAnsi, MacRoman, Standard, pdfTeX's ligatures) can
+/// reach, where the dictionaries that share one program (text, small caps,
+/// old-style figures, accented letters, symbols) part. Printable ASCII,
+/// Latin-1 and Latin Extended-A, then the punctuation, accents and symbols
+/// beyond. Two dictionaries that draw all of these alike and differ only
+/// further on, as two CID fonts on one program can, keep one id. The probe
+/// is fixed, never the characters a page sets, so the id does not depend on
+/// which page is read.
+const PROBE: &[std::ops::RangeInclusive<u32>] = &[
+    0x20..=0x7e,
+    0xa0..=0x17f,
+    0x192..=0x192,
+    0x2c6..=0x2dd,
+    0x3a9..=0x3a9,
+    0x3c0..=0x3c0,
+    0x2013..=0x2044,
+    0x20ac..=0x20ac,
+    0x2122..=0x2122,
+    0x2202..=0x2202,
+    0x2206..=0x2206,
+    0x220f..=0x220f,
+    0x2211..=0x2211,
+    0x221a..=0x221a,
+    0x221e..=0x221e,
+    0x222b..=0x222b,
+    0x2248..=0x2248,
+    0x2260..=0x2260,
+    0x2264..=0x2265,
+    0x25ca..=0x25ca,
+    0xfb00..=0xfb06,
+];
 
 /// FNV-1a 64.
 struct Fnv(u64);
@@ -60,14 +86,15 @@ impl Fnv {
 /// em, as `glyph_outline` rebuilds it from PDFium's FreeType, so two ids are
 /// equal when the rebuilt probe glyphs are. An upgrade of either that moves
 /// a point across a rounding boundary changes the id and leaves a draft's
-/// edit in a fallback face. Hashing reads the program and asks about 95
-/// characters once per font per page read: microseconds for a subset, a few
-/// milliseconds for a whole CJK font.
+/// edit in a fallback face. Hashing reads the program and asks about 420
+/// characters once per font per page read: 0.1 to 0.3 ms for a Latin font
+/// in a native release build, a few more milliseconds to hash a whole CJK
+/// program.
 pub(crate) unsafe fn font_identity(lib: &Lib, font: FPDF_FONT, program: &[u8]) -> String {
     let mut hash = Fnv::new();
     hash.bytes(program);
     hash.int(lib.FPDFFont_GetFlags(font));
-    for unicode in PROBE {
+    for unicode in PROBE.iter().cloned().flatten() {
         let mut advance = 0f32;
         lib.FPDFFont_GetGlyphWidth(font, unicode, 1000.0, &mut advance);
         hash.int(advance.round() as i32);

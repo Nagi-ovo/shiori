@@ -190,3 +190,25 @@ fn dictionaries_drawing_mirrored_glyphs_differ() {
     assert_eq!(path(&greater, '<'), path(&plain, '>'));
     assert_ne!(path(&greater, '<'), path(&plain, '<'));
 }
+
+#[test]
+fn dictionaries_parting_beyond_ascii_differ() {
+    // Two dictionaries share Foxit Serif and agree on all of ASCII; one
+    // draws "é" with the program's eacute, the other with its egrave (audit
+    // B108). Latin-1 is where 8-bit encodings that share a program part
+    // beyond ASCII, so the id must see it.
+    let doc = core()
+        .open(fixture("shared-program-beyond.pdf"), None)
+        .unwrap();
+    let glyphs = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    let [plain, grave] = <[String; 2]>::try_from(ids_of(&glyphs, "é")).unwrap();
+    assert_ne!(plain, grave);
+
+    let rebuilt = doc.font_outlines(0, &["FoxitSerif".to_string()]).unwrap();
+    let path = |id: &str, unicode: char| {
+        let font = rebuilt.iter().find(|font| font.id == id).unwrap();
+        let glyph = font.glyphs.iter().find(|g| g.unicode == unicode as u32);
+        glyph.unwrap().path.clone()
+    };
+    assert_eq!(path(&grave, 'é'), path(&plain, 'è'));
+}
