@@ -124,11 +124,10 @@ export const BrowserPanel = memo(function BrowserPanel({
     if (request.nonce === servedWebPanelNonce) return;
     servedWebPanelNonce = request.nonce;
     const raf = requestAnimationFrame(() => {
-      void openUrlInWebPanel(
-        request.url,
-        measure(),
-        browserPersistSession,
-      ).catch((err: unknown) => {
+      void openUrlInWebPanel(request.url, measure(), browserPersistSession, {
+        ok: t("browser.dialog.ok"),
+        cancel: t("browser.dialog.cancel"),
+      }).catch((err: unknown) => {
         setWebPanel({
           loading: false,
           error: err instanceof Error ? err.message : String(err),
@@ -136,7 +135,7 @@ export const BrowserPanel = memo(function BrowserPanel({
       });
     });
     return () => cancelAnimationFrame(raf);
-  }, [shouldShow, request, measure, browserPersistSession, setWebPanel]);
+  }, [shouldShow, request, measure, browserPersistSession, setWebPanel, t]);
 
   // Pin the webview to the host rect while it should be visible; otherwise
   // hide it (keeping the page alive). Re-runs on each navigation request so

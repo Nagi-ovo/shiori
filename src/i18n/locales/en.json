@@ -634,6 +634,10 @@
     "copyLink": "Copy link",
     "copied": "Link copied",
     "openExternal": "Open in system browser",
+    "dialog": {
+      "ok": "OK",
+      "cancel": "Cancel"
+    },
     "externalOpen": {
       "title": "Open in another app?",
       "message": "A page in the Browser panel wants to open {{url}}.",

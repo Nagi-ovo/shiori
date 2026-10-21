@@ -20,11 +20,18 @@ struct Bounds: Decodable {
   let height: Double
 }
 
+// Localized buttons for the page's JavaScript dialogs (native code has no t()).
+struct DialogLabels: Decodable {
+  let ok: String
+  let cancel: String
+}
+
 struct OpenArgs: Decodable {
   let url: String
   let bounds: Bounds?
   let persistSession: Bool?
   let userAgent: String?
+  let dialogLabels: DialogLabels?
 }
 
 struct NavigateArgs: Decodable {
@@ -74,6 +81,8 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
   private var webView: WKWebView?
   private weak var tauriWebView: WKWebView?
   private var currentPersist = true
+  // Fallback only — the frontend passes t() labels with every open.
+  private var dialogLabels = DialogLabels(ok: "OK", cancel: "Cancel")
 
   private let navLock = NSLock()
   private var nav = NavSnapshot()
@@ -129,6 +138,7 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
   @objc public func open(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(OpenArgs.self)
     DispatchQueue.main.async {
+      if let labels = args.dialogLabels { self.dialogLabels = labels }
       let wv = self.ensureWebView(persistSession: args.persistSession ?? true, userAgent: args.userAgent)
       if let b = args.bounds {
         wv.frame = self.frame(from: b)
@@ -329,6 +339,59 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
       webView.load(navigationAction.request)
     }
     return nil
+  }
+
+  // JavaScript alert/confirm/prompt. Without these WebKit answers for the
+  // user: alert() shows nothing, confirm() is false and prompt() is null, so
+  // `if (confirm(...)) submit()` never submits. Each path calls the
+  // completion handler exactly once, or the page's script stays blocked.
+  func webView(
+    _ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+    initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void
+  ) {
+    let alert = UIAlertController(
+      title: frame.securityOrigin.host, message: message, preferredStyle: .alert)
+    alert.addAction(UIAlertAction(title: dialogLabels.ok, style: .default) { _ in completionHandler() })
+    if !presentDialog(alert) { completionHandler() }
+  }
+
+  func webView(
+    _ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+    initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void
+  ) {
+    let alert = UIAlertController(
+      title: frame.securityOrigin.host, message: message, preferredStyle: .alert)
+    alert.addAction(
+      UIAlertAction(title: dialogLabels.cancel, style: .cancel) { _ in completionHandler(false) })
+    alert.addAction(UIAlertAction(title: dialogLabels.ok, style: .default) { _ in completionHandler(true) })
+    if !presentDialog(alert) { completionHandler(false) }
+  }
+
+  func webView(
+    _ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
+    defaultText: String?, initiatedByFrame frame: WKFrameInfo,
+    completionHandler: @escaping (String?) -> Void
+  ) {
+    let alert = UIAlertController(
+      title: frame.securityOrigin.host, message: prompt, preferredStyle: .alert)
+    alert.addTextField { field in field.text = defaultText }
+    alert.addAction(
+      UIAlertAction(title: dialogLabels.cancel, style: .cancel) { _ in completionHandler(nil) })
+    alert.addAction(
+      UIAlertAction(title: dialogLabels.ok, style: .default) { [weak alert] _ in
+        completionHandler(alert?.textFields?.first?.text ?? "")
+      })
+    if !presentDialog(alert) { completionHandler(nil) }
+  }
+
+  // Present over whatever is on top (a share sheet may be up). False when
+  // there is nowhere to present, so the caller answers for the user.
+  private func presentDialog(_ alert: UIAlertController) -> Bool {
+    guard var top = self.manager.viewController else { return false }
+    while let presented = top.presentedViewController { top = presented }
+    if top is UIAlertController { return false }
+    top.present(alert, animated: true, completion: nil)
+    return true
   }
 
   func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {

@@ -41,6 +41,10 @@ export type WebPanelNavState = {
   error: string | null;
 };
 
+// Buttons for the page's JavaScript alert/confirm/prompt. iOS draws those
+// dialogs itself and has no t(); the other engines show their own.
+export type WebPanelDialogLabels = { ok: string; cancel: string };
+
 // Open `url` in the embedded panel. Non-http(s) URLs fall back to the
 // system browser. On the web build there is no native panel, so every URL
 // opens in a new browser tab.
@@ -48,6 +52,7 @@ export async function openUrlInWebPanel(
   url: string,
   bounds?: WebPanelBounds | null,
   persistSession = true,
+  dialogLabels: WebPanelDialogLabels | null = null,
 ): Promise<void> {
   if (!isWebPanelUrl(url)) {
     await openUrlInSystemBrowser(url);
@@ -59,7 +64,7 @@ export async function openUrlInWebPanel(
   }
   const { commands, unwrapCommand } = await import("./ipc");
   unwrapCommand(
-    await commands.webPanelOpen(url, bounds ?? null, persistSession),
+    await commands.webPanelOpen(url, bounds ?? null, persistSession, dialogLabels),
   );
 }
 

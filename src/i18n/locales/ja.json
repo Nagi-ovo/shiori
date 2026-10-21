@@ -628,6 +628,10 @@
     "copyLink": "リンクをコピー",
     "copied": "リンクをコピーしました",
     "openExternal": "システムブラウザで開く",
+    "dialog": {
+      "ok": "OK",
+      "cancel": "キャンセル"
+    },
     "externalOpen": {
       "title": "別のアプリで開きますか？",
       "message": "ブラウザパネルのページが {{url}} を開こうとしています。",

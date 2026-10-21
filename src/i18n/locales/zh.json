@@ -628,6 +628,10 @@
     "copyLink": "复制链接",
     "copied": "已复制链接",
     "openExternal": "在系统浏览器中打开",
+    "dialog": {
+      "ok": "好",
+      "cancel": "取消"
+    },
     "externalOpen": {
       "title": "要用其他应用打开吗？",
       "message": "浏览器面板中的网页想要打开 {{url}}。",

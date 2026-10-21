@@ -151,9 +151,9 @@ async openExternalTerminal(terminalId: string, workingDirectory: string | null) 
     else return { status: "error", error: e  as any };
 }
 },
-async webPanelOpen(url: string, bounds: WebPanelBounds | null, persistSession: boolean | null) : Promise<Result<null, string>> {
+async webPanelOpen(url: string, bounds: WebPanelBounds | null, persistSession: boolean | null, dialogLabels: WebPanelDialogLabels | null) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("web_panel_open", { url, bounds, persistSession }) };
+    return { status: "ok", data: await TAURI_INVOKE("web_panel_open", { url, bounds, persistSession, dialogLabels }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -514,6 +514,7 @@ export type SystemFontFamily = { family: string; aliases: string[]; monospaced: 
 export type TerminalSpawnInfo = { sessionId: string; cwd: string }
 export type TextDocumentImageResource = { dataUrl: string; mime: string; size: number }
 export type WebPanelBounds = { x: number; y: number; width: number; height: number }
+export type WebPanelDialogLabels = { ok: string; cancel: string }
 
 /** tauri-specta globals **/
 

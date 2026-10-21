@@ -24,6 +24,16 @@ pub struct OpenPayload {
     pub bounds: Option<WebPanelBounds>,
     pub persist_session: bool,
     pub user_agent: String,
+    pub dialog_labels: Option<DialogLabels>,
+}
+
+/// Localized buttons for the page's JavaScript alert/confirm/prompt, which
+/// the iOS side draws itself and cannot translate.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DialogLabels {
+    pub ok: String,
+    pub cancel: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
