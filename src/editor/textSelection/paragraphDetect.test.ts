@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { fontKey } from "../../pdf/engine/fontKey";
 import type { TextRunDisplayBounds } from "./highlightRects";
 import {
   detectParagraphs,
@@ -150,6 +151,9 @@ describe("paragraph detection", () => {
     expect(isMathFontName("SymbolMT")).toBe(true);
     expect(isMathFontName("KAXVBH+CMR10")).toBe(false);
     expect(isMathFontName("NimbusRomNo9L-ReguItal")).toBe(false);
+    // An embedded font, as the reading layer keys it by its program.
+    expect(isMathFontName(fontKey("CMMI10", "afa7e7fb38a5d77b"))).toBe(true);
+    expect(isMathFontName(fontKey("CMR10", "afa7e7fb38a5d77b"))).toBe(false);
     expect(isMathFontName("Cambria")).toBe(false);
     expect(isMathFontName(undefined)).toBe(false);
   });

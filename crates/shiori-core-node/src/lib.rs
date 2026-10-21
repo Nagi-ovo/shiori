@@ -44,6 +44,9 @@ pub struct Glyph {
     pub generated: bool,
     pub hyphen: bool,
     pub font_name: String,
+    /// The font's program id, which tells apart fonts named alike (two
+    /// subsets of one font); empty for a font the file does not embed.
+    pub font_id: String,
     /// PDF font descriptor flags (1 fixed pitch, 2 serif, 64 italic, …).
     pub font_flags: i32,
     /// Page units at this glyph's size; descent is negative.
@@ -156,6 +159,7 @@ impl CoreDocument {
                 generated: ch.generated,
                 hyphen: ch.hyphen,
                 font_name: ch.font_name.clone(),
+                font_id: ch.font_id.clone(),
                 font_flags: ch.font_flags,
                 ascent: f64::from(ch.ascent),
                 descent: f64::from(ch.descent),

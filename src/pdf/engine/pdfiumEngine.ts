@@ -20,6 +20,7 @@ import { releaseCanvasBackingStore } from "../render/canvasMemory";
 import { retainPdfSourceBytes } from "../render/pdfByteOwnership";
 import { decodeEmbeddedFonts } from "./fontContainer";
 import { addOutlineFontFace, loadEmbeddedFontFace } from "./fontFaces";
+import { fontKey } from "./fontKey";
 import { decodeFontOutlines } from "./fontOutlines";
 import { pageGeometryFromPdfium } from "./pdfiumGeometry";
 import { pageTextFromPdfiumGlyphs } from "./pdfiumText";
@@ -79,7 +80,10 @@ type CoreDoc = {
   pages: PdfPageGeometry[];
   /** "unknown" when PDFium could not report it: never read as unencrypted. */
   security: PdfSecurity | null | "unknown";
-  /** Embedded fonts by BaseFont name: the face's CSS family, or null. */
+  /**
+   * Embedded fonts by font key (name and program, ./fontKey.ts): the face's
+   * CSS family, or null.
+   */
   faces: Map<string, string | null>;
   /**
    * Embedded fonts the browser cannot load as filed, rebuilt from PDFium's
@@ -109,11 +113,12 @@ export function createPdfiumEngine(core: PdfCoreBridge, label = "PDFium 7881"): 
   const rebuildFonts = async (
     entry: CoreDoc,
     sourceIndex: number,
-    glyphs: ReadonlyArray<{ text: string; fontName: string; generated: boolean }>,
+    glyphs: ReadonlyArray<{ text: string; fontName: string; fontId?: string; generated: boolean }>,
   ): Promise<void> => {
+    // The core rebuilds by name: every program under it, each with its id.
     const wanted = new Set<string>();
     for (const glyph of glyphs) {
-      const rebuilt = glyph.generated ? undefined : entry.rebuilt.get(glyph.fontName);
+      const rebuilt = glyph.generated ? undefined : entry.rebuilt.get(fontKey(glyph.fontName, glyph.fontId));
       if (!rebuilt) continue;
       for (const ch of glyph.text) {
         const unicode = ch.codePointAt(0)!;
@@ -130,13 +135,14 @@ export function createPdfiumEngine(core: PdfCoreBridge, label = "PDFium 7881"): 
     }
     await Promise.all(
       fonts.map(async (font) => {
-        const rebuilt = entry.rebuilt.get(font.name);
+        const key = fontKey(font.name, font.id);
+        const rebuilt = entry.rebuilt.get(key);
         if (!rebuilt) return;
         // Pages read concurrently: claim the characters before loading.
         const fresh = font.glyphs.filter(([unicode]) => !rebuilt.asked.has(unicode));
         for (const [unicode] of font.glyphs) rebuilt.asked.add(unicode);
         for (const glyph of glyphs) {
-          if (glyph.fontName === font.name && !glyph.generated) {
+          if (fontKey(glyph.fontName, glyph.fontId) === key && !glyph.generated) {
             for (const ch of glyph.text) rebuilt.asked.add(ch.codePointAt(0)!);
           }
         }
@@ -312,19 +318,27 @@ export function createPdfiumEngine(core: PdfCoreBridge, label = "PDFium 7881"): 
       const text = pageTextFromPdfiumGlyphs(read.glyphs, read.lang);
       if (options?.textOnly) return text;
       // The document's own fonts, so edits to existing text can be set in
-      // them: fetched once per font, the first page that draws with it.
+      // them: fetched once per font, the first page that draws with it. A
+      // font is its name and program: two subsets PDFium names alike are two.
       const unseen = [...new Set(text.fontNames.values())].filter(
-        (name) => !entry.faces.has(name) && !entry.rebuilt.has(name),
+        (key) => !entry.faces.has(key) && !entry.rebuilt.has(key),
       );
       if (unseen.length > 0) {
         try {
           const fonts = decodeEmbeddedFonts(await core.pageFonts(entry.id, sourceIndex));
           await Promise.all(
             fonts.map(async (font) => {
+              // The page's other fonts come back too: one seen before keeps
+              // its family and the glyphs already rebuilt in it. Pages read
+              // concurrently, so the check holds again after the load.
+              const key = fontKey(font.name, font.id);
+              const known = () => entry.faces.has(key) || entry.rebuilt.has(key);
+              if (known()) return;
               const family = await loadEmbeddedFontFace(font);
-              if (family) entry.faces.set(font.name, family);
+              if (known()) return;
+              if (family) entry.faces.set(key, family);
               else {
-                entry.rebuilt.set(font.name, {
+                entry.rebuilt.set(key, {
                   family: `shiori-pdf-${entry.id}-${entry.rebuilt.size}`,
                   asked: new Set(),
                   loaded: false,
@@ -335,16 +349,16 @@ export function createPdfiumEngine(core: PdfCoreBridge, label = "PDFium 7881"): 
         } catch (error) {
           console.warn("PDFium could not read a page's fonts", error);
         }
-        for (const name of unseen) {
-          if (!entry.faces.has(name) && !entry.rebuilt.has(name)) entry.faces.set(name, null);
+        for (const key of unseen) {
+          if (!entry.faces.has(key) && !entry.rebuilt.has(key)) entry.faces.set(key, null);
         }
         options?.checkAbort?.();
       }
       await rebuildFonts(entry, sourceIndex, read.glyphs);
       options?.checkAbort?.();
-      for (const [style, name] of text.fontNames) {
-        const rebuilt = entry.rebuilt.get(name);
-        const family = rebuilt?.loaded ? rebuilt.family : entry.faces.get(name);
+      for (const [style, key] of text.fontNames) {
+        const rebuilt = entry.rebuilt.get(key);
+        const family = rebuilt?.loaded ? rebuilt.family : entry.faces.get(key);
         if (family) text.faceFamilies.set(style, family);
       }
       return text;

@@ -7,7 +7,9 @@ import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, PDFHexString, PDFName } from "pdf-lib";
 import { openCoreDocument } from "../../../cli/src/coreEngine";
 import { decodeEmbeddedFonts } from "../../../src/pdf/engine/fontContainer";
+import { fontKey } from "../../../src/pdf/engine/fontKey";
 import { buildOutlineFont, decodeFontOutlines } from "../../../src/pdf/engine/fontOutlines";
+import { pageTextFromPdfiumGlyphs, type PdfiumGlyph } from "../../../src/pdf/engine/pdfiumText";
 import { loadWasmCore, type WasmCore } from "../../../src/pdf/engine/wasm/loadCore";
 
 const ROOT = join(import.meta.dir, "../../..");
@@ -153,6 +155,24 @@ describe("shiori-core in wasm", () => {
       expect(fonts[0]!.name.startsWith("LiberationSans")).toBe(true);
       expect(Buffer.from(fonts[0]!.data.subarray(0, 4)).toString("latin1")).toBe("true");
       expect(Buffer.from(fonts[0]!.data).includes("glyf")).toBe(true);
+    } finally {
+      doc.free();
+    }
+  });
+
+  test("tells two subsets under one name apart, in the glyphs and the programs alike", () => {
+    // Two subsets of Liberation Sans, both "AAAAAA+LiberationSans", as the
+    // first fonts of two merged word-processor exports are (audit B108).
+    const doc = wasm.CoreDocument.open(readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures/font-subsets.pdf")), undefined);
+    try {
+      const text = pageTextFromPdfiumGlyphs(JSON.parse(doc.pageText(0)).glyphs as PdfiumGlyph[], null);
+      const keys = [...new Set(text.fontNames.values())];
+      expect(keys).toHaveLength(2);
+      // The faces the engine loads or rebuilds are found by the same keys.
+      const programs = decodeEmbeddedFonts(doc.embeddedFonts(0));
+      expect(programs.map((font) => fontKey(font.name, font.id))).toEqual(keys);
+      const rebuilt = decodeFontOutlines(doc.fontOutlines(0, JSON.stringify([programs[0]!.name])));
+      expect(rebuilt.map((font) => fontKey(font.name, font.id))).toEqual(keys);
     } finally {
       doc.free();
     }

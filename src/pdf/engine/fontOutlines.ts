@@ -3,8 +3,9 @@
  * `FontOutlines`): what a page sets in it, in 1/1000 em, y up.
  */
 export type PdfFontOutlines = {
-  /** BaseFont, without a subset prefix, as the text layer names it. */
+  /** BaseFont and program id, as `PdfEmbeddedFont`'s. */
   name: string;
+  id?: string;
   flags: number;
   ascent: number;
   descent: number;

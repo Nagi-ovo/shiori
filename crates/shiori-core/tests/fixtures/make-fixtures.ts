@@ -19,6 +19,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  PDFDict,
   PDFDocument,
   PDFHexString,
   PDFName,
@@ -338,3 +339,30 @@ fontsPage.drawText("Helvetica", { x: 20, y: 50, size: 20, font: helvetica });
 const fontsOut = join(dirname(fileURLToPath(import.meta.url)), "embedded-fonts.pdf");
 writeFileSync(fontsOut, await fonts.save({ useObjectStreams: false }));
 console.log(fontsOut);
+
+// font-subsets.pdf: one page, "Liberation" and "Sans" each in its own subset
+// of Liberation Sans under one name, as two papers merged into one file embed
+// theirs (tests/fonts.rs, audit B108).
+const subsets = await PDFDocument.create();
+subsets.registerFontkit(fontkit);
+const liberationSans = readFileSync(join(root, "node_modules/@docx-editor.dev/fonts/assets/LiberationSans-Regular.ttf"));
+const subsetsPage = subsets.addPage([300, 200]);
+for (const [text, y] of [["Liberation", 150], ["Sans", 100]] as const) {
+  const subset = await subsets.embedFont(liberationSans, { subset: true });
+  subsetsPage.drawText(text, { x: 20, y, size: 20, font: subset });
+}
+// pdf-lib suffixes each subset's name ("LiberationSans-2000"). A word
+// processor tags it instead, counting from the same tag in every file it
+// exports, so the first font of two merged exports is "AAAAAA+LiberationSans"
+// in both.
+await subsets.flush();
+for (const [, object] of subsets.context.enumerateIndirectObjects()) {
+  if (!(object instanceof PDFDict)) continue;
+  for (const key of ["BaseFont", "FontName"]) {
+    const name = object.lookupMaybe(PDFName.of(key), PDFName)?.decodeText();
+    if (name?.startsWith("LiberationSans-")) object.set(PDFName.of(key), PDFName.of("AAAAAA+LiberationSans"));
+  }
+}
+const subsetsOut = join(dirname(fileURLToPath(import.meta.url)), "font-subsets.pdf");
+writeFileSync(subsetsOut, await subsets.save({ useObjectStreams: false }));
+console.log(subsetsOut);
