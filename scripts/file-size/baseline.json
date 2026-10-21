@@ -52,7 +52,6 @@
   "src/pdf/import/annotations.test.ts": 32620,
   "src/pdf/merge/insertPdf.test.ts": 25496,
   "src/storage/drafts.test.ts": 29978,
-  "src/storage/drafts.ts": 23090,
   "src/storage/workspace.test.ts": 27080,
   "src/workspace/merge/pageMerge.encrypted.test.tsx": 23002
 }
