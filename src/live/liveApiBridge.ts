@@ -6,7 +6,6 @@ import type {
   OverlayTextAnchor,
   PageModel,
 } from "../pdf/model/types";
-import { sha256Hex } from "../storage/hash";
 import {
   AnchorResolutionError,
   AnchorTextUnavailableError,
@@ -14,10 +13,8 @@ import {
   resolveAnnotationSpecAnchors,
   specHasAnchors,
 } from "../pdf/annotations/resolveAnchors";
-import {
-  CanonicalJsonError,
-  liveOperationCanonicalPayload,
-} from "./liveOperation";
+import { CanonicalJsonError } from "./liveOperation";
+import { liveOperationIdMatches } from "./liveOperationId";
 import {
   AnnotationSpecError,
   parseAnnotationSpec,
@@ -38,6 +35,7 @@ import {
   type LiveAnnotationRequestWithAnchors,
   type PreparedLiveAnnotationRequest,
 } from "./liveAnnotationPrepare";
+export { deriveLiveOperationId } from "./liveOperationId";
 import {
   failure,
   isObject,
@@ -561,24 +559,6 @@ function anchorValidationAnnotation(annotation: unknown): unknown {
     rects: [{ x: 0, y: 0, w: 1, h: 1 }],
     quote: anchor.quote,
   };
-}
-
-export async function deriveLiveOperationId(
-  request: Pick<LiveApiAnnotationRequest, "target" | "spec">,
-): Promise<string> {
-  const canonical = liveOperationCanonicalPayload(
-    request.target.sha256,
-    request.target.pageTopologyHash,
-    request.spec,
-  );
-  return sha256Hex(new TextEncoder().encode(canonical));
-}
-
-async function liveOperationIdMatches(
-  request: LiveApiAnnotationRequest,
-): Promise<boolean> {
-  if (!/^[0-9a-f]{64}$/.test(request.operationId)) return false;
-  return request.operationId === (await deriveLiveOperationId(request));
 }
 
 export type LiveContextPublisher = {
