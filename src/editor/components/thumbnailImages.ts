@@ -8,10 +8,12 @@ export type ThumbnailImages = ReadonlyMap<string, CanvasImageSource>;
  * canvas draw, the way loadThumbnailOverlayFonts loads fonts: drawing is
  * synchronous and cannot wait for a decode. Rejects when an image will not
  * decode, so compact export falls back to the standard copy rather than
- * saving a page without it.
+ * saving a page without it. With `skipUndecodable` (sidebar tiles, which
+ * have no fallback) such an image is left out and the rest still paints.
  */
 export async function loadThumbnailOverlayImages(
   overlays: readonly Overlay[],
+  { skipUndecodable = false }: { skipUndecodable?: boolean } = {},
 ): Promise<ThumbnailImages> {
   const images = new Map<string, CanvasImageSource>();
   const urls = new Set<string>();
@@ -22,7 +24,12 @@ export async function loadThumbnailOverlayImages(
     Array.from(urls, async (url) => {
       const image = document.createElement("img");
       image.src = url;
-      await image.decode();
+      try {
+        await image.decode();
+      } catch (error) {
+        if (skipUndecodable) return;
+        throw error;
+      }
       images.set(url, image);
     }),
   );

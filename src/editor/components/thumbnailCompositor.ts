@@ -264,22 +264,15 @@ function drawRect(
   overlay: RectOverlay,
   scale: number,
 ): void {
-  const d = pdfRectToDisplay(
-    overlay.rect,
-    page.widthPt,
-    page.heightPt,
-    page.rotation,
-    scale,
-  );
-  ctx.save();
-  if (overlay.fill) {
-    ctx.fillStyle = overlay.fill;
-    fillRoundRect(ctx, d.x, d.y, d.w, d.h, 1.5);
-  }
-  ctx.strokeStyle = overlay.color;
-  ctx.lineWidth = Math.max(1, overlay.strokeWidth * scale);
-  strokeRoundRect(ctx, d.x, d.y, d.w, d.h, 1.5);
-  ctx.restore();
+  withRotatedBox(ctx, page, overlay.rect, overlay.angle, scale, (d) => {
+    if (overlay.fill) {
+      ctx.fillStyle = overlay.fill;
+      fillRoundRect(ctx, d.x, d.y, d.w, d.h, 1.5);
+    }
+    ctx.strokeStyle = overlay.color;
+    ctx.lineWidth = Math.max(1, overlay.strokeWidth * scale);
+    strokeRoundRect(ctx, d.x, d.y, d.w, d.h, 1.5);
+  });
 }
 
 function drawStamp(
@@ -288,22 +281,15 @@ function drawStamp(
   overlay: StampOverlay,
   scale: number,
 ): void {
-  const d = pdfRectToDisplay(
-    overlay.rect,
-    page.widthPt,
-    page.heightPt,
-    page.rotation,
-    scale,
-  );
-  ctx.save();
-  ctx.strokeStyle = overlay.color;
-  ctx.lineWidth = Math.max(1.5, overlay.strokeWidth * scale);
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.beginPath();
-  traceStamp(ctx, d, overlay.kind);
-  ctx.stroke();
-  ctx.restore();
+  withRotatedBox(ctx, page, overlay.rect, overlay.angle, scale, (d) => {
+    ctx.strokeStyle = overlay.color;
+    ctx.lineWidth = Math.max(1.5, overlay.strokeWidth * scale);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    traceStamp(ctx, d, overlay.kind);
+    ctx.stroke();
+  });
 }
 
 function drawInk(
@@ -355,11 +341,27 @@ function drawImage(
 ): void {
   const image = images.get(overlay.dataUrl);
   if (!image) return;
-  const p = thumbnailRotatedBoxPlacement(page, overlay.rect, scale);
+  withRotatedBox(ctx, page, overlay.rect, overlay.angle, scale, (d) => {
+    ctx.drawImage(image, d.x, d.y, d.w, d.h);
+  });
+}
+
+// Paints a box in its own frame: `draw` gets the unrotated box centered on
+// the origin, turned clockwise by the page rotation plus the overlay's free
+// angle, as the editor shows it (OverlayDom.tsx boxPlacement).
+function withRotatedBox(
+  ctx: CanvasRenderingContext2D,
+  page: PageModel,
+  rect: PdfRect,
+  angle: number | undefined,
+  scale: number,
+  draw: (box: PdfRect) => void,
+): void {
+  const p = thumbnailRotatedBoxPlacement(page, rect, scale);
   ctx.save();
   ctx.translate(p.centerX, p.centerY);
-  ctx.rotate(p.radians + ((overlay.angle ?? 0) * Math.PI) / 180);
-  ctx.drawImage(image, -p.width / 2, -p.height / 2, p.width, p.height);
+  ctx.rotate(p.radians + ((angle ?? 0) * Math.PI) / 180);
+  draw({ x: -p.width / 2, y: -p.height / 2, w: p.width, h: p.height });
   ctx.restore();
 }
 
@@ -494,14 +496,12 @@ function drawText(
   scale: number,
 ): void {
   if (!overlay.text) return;
-  const d = pdfRectToDisplay(
-    overlay.rect,
-    page.widthPt,
-    page.heightPt,
-    page.rotation,
-    scale,
-  );
-  drawTextInDisplayRect(ctx, overlay, d, scale);
+  // An edit of the page's own text stays square to the glyphs it covers,
+  // as in export (overlayDraw.ts), whatever angle it carries.
+  const angle = overlay.type === "text" ? overlay.angle : 0;
+  withRotatedBox(ctx, page, overlay.rect, angle, scale, (d) => {
+    drawTextInDisplayRect(ctx, overlay, d, scale);
+  });
 }
 
 function drawTextInDisplayRect(
@@ -551,35 +551,28 @@ function drawNote(
   overlay: NoteOverlay,
   scale: number,
 ): void {
-  const d = pdfRectToDisplay(
-    overlay.rect,
-    page.widthPt,
-    page.heightPt,
-    page.rotation,
-    scale,
-  );
-  ctx.save();
-  ctx.fillStyle = overlay.color;
-  ctx.globalAlpha = 0.82;
-  fillRoundRect(ctx, d.x, d.y, d.w, d.h, 1.5);
-  ctx.globalAlpha = 1;
-  ctx.strokeStyle = "rgba(158,130,40,0.55)";
-  ctx.lineWidth = 0.75;
-  strokeRoundRect(ctx, d.x, d.y, d.w, d.h, 1.5);
+  withRotatedBox(ctx, page, overlay.rect, overlay.angle, scale, (d) => {
+    ctx.fillStyle = overlay.color;
+    ctx.globalAlpha = 0.82;
+    fillRoundRect(ctx, d.x, d.y, d.w, d.h, 1.5);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = "rgba(158,130,40,0.55)";
+    ctx.lineWidth = 0.75;
+    strokeRoundRect(ctx, d.x, d.y, d.w, d.h, 1.5);
 
-  const pad = Math.max(2, 5 * scale);
-  const lineGap = Math.max(3, 10 * scale);
-  ctx.strokeStyle = "rgba(58,47,18,0.55)";
-  ctx.lineWidth = 1;
-  for (let i = 0; i < 3; i += 1) {
-    const y = d.y + pad + i * lineGap;
-    if (y > d.y + d.h - pad) break;
-    ctx.beginPath();
-    ctx.moveTo(d.x + pad, y);
-    ctx.lineTo(d.x + d.w - pad, y);
-    ctx.stroke();
-  }
-  ctx.restore();
+    const pad = Math.max(2, 5 * scale);
+    const lineGap = Math.max(3, 10 * scale);
+    ctx.strokeStyle = "rgba(58,47,18,0.55)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i += 1) {
+      const y = d.y + pad + i * lineGap;
+      if (y > d.y + d.h - pad) break;
+      ctx.beginPath();
+      ctx.moveTo(d.x + pad, y);
+      ctx.lineTo(d.x + d.w - pad, y);
+      ctx.stroke();
+    }
+  });
 }
 
 function traceStamp(

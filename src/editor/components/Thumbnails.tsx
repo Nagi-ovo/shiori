@@ -27,10 +27,7 @@ import { useAppStore, useEditorStore } from "../store/store";
 import { isBlankPage, type Overlay, type PageModel } from "../../pdf/model/types";
 import type { PdfDocument as PDFDocumentProxy } from "../../pdf/engine/types";
 import { releaseCanvasBackingStore } from "../../pdf/render/canvasMemory";
-import { appPdfEngine } from "../../pdf/engine/appEngine";
 import { rotatedSize } from "../../pdf/geometry/coords";
-import { MAX_CANVAS_PIXELS } from "../../pdf/openPolicy";
-import { renderPageBackdrop } from "../../pdf/render/tiles";
 import { useTranslation } from "react-i18next";
 import { T } from "../../design/tokens";
 import { Ic } from "./icons";
@@ -39,19 +36,11 @@ import { THUMBNAIL_PRE_RENDER_PAGE_LIMIT } from "../../pdf/openPolicy";
 import {
   THUMBNAIL_PAPER,
   THUMBNAIL_TARGET_WIDTH,
-  drawThumbnailOverlays,
-  drawThumbnailPaper,
-  fitThumbnailCanvasToTile,
-  loadThumbnailOverlayFonts,
-  prepareThumbnailCanvas,
-  thumbnailViewportForPage,
 } from "./thumbnailCompositor";
+import { paintThumbnail } from "./thumbnailPaint";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { toast } from "../toast";
-import {
-  compositePdfPaperColor,
-  pdfPaperColor,
-} from "../../design/pdfPaperTone";
+import { pdfPaperColor } from "../../design/pdfPaperTone";
 import { useEscapeClose } from "./useEscapeClose";
 import {
   placePageMenu,
@@ -932,61 +921,24 @@ function Thumb({
       lastRendered?.paperColor !== paperColor;
     if (!dirty) return;
     let cancelled = false;
-    let handle: ReturnType<typeof renderPageBackdrop> | null = null;
+    let handle: { cancel: () => void } | null = null;
     const timer = window.setTimeout(() => {
-      (async () => {
-        await loadThumbnailOverlayFonts(overlays);
-        if (cancelled) return;
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        if (isBlankPage(page)) {
-          const ctx = canvas.getContext("2d");
-          if (!ctx) return;
-          const viewport = prepareThumbnailCanvas(
-            canvas,
-            page,
-            THUMBNAIL_TARGET_WIDTH,
-          );
-          drawThumbnailPaper(ctx, viewport);
-          compositePdfPaperColor(ctx, canvas.width, canvas.height, paperColor);
-          drawThumbnailOverlays(ctx, page, overlays, viewport);
-          if (!cancelled) {
-            setReady(true);
-            lastRenderedRef.current = { page, overlays, paperColor };
-          }
-          return;
-        }
-
-        const viewport = thumbnailViewportForPage(page, THUMBNAIL_TARGET_WIDTH);
-        const size = rotatedSize(page.widthPt, page.heightPt, page.rotation);
-        handle = renderPageBackdrop(
-          appPdfEngine.renderRegion,
-          doc,
-          {
-            sourceIndex: page.sourceIndex,
-            rotation: page.rotation,
-            scale: viewport.scale,
-            widthPt: size.width,
-            heightPt: size.height,
-            dpr: window.devicePixelRatio || 1,
-            maxPixels: MAX_CANVAS_PIXELS,
-            priority: "thumbnail",
-          },
-          canvas,
-        );
-        await handle.done;
-        if (cancelled) return;
-        fitThumbnailCanvasToTile(canvas);
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          compositePdfPaperColor(ctx, canvas.width, canvas.height, paperColor);
-          drawThumbnailOverlays(ctx, page, overlays, viewport);
-        }
-        if (!cancelled) {
+      paintThumbnail({
+        canvas: () => canvasRef.current,
+        doc,
+        page,
+        overlays,
+        paperColor,
+        cancelled: () => cancelled,
+        onBackdrop: (started) => {
+          handle = started;
+        },
+      }).then((painted) => {
+        if (painted && !cancelled) {
           setReady(true);
           lastRenderedRef.current = { page, overlays, paperColor };
         }
-      })().catch((err) => {
+      }).catch((err) => {
         if (!cancelled) console.warn("Thumbnail render failed:", err);
       });
     }, THUMBNAIL_OVERLAY_DEBOUNCE_MS);
