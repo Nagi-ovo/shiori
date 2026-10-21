@@ -3,7 +3,7 @@
 // history behind the address bar and back/forward enablement.
 
 use serde::Serialize;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::Url;
 #[cfg(not(mobile))]
 use tauri::{AppHandle, Manager, Runtime};
@@ -40,13 +40,14 @@ struct WebPanelNav {
 // blocking pool, and attempts arriving in a burst open the client once.
 #[cfg(not(mobile))]
 pub(super) fn route_non_web_panel_navigation(raw: &str) {
-    static LAST_ATTEMPT: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+    static GATE: std::sync::Mutex<ExternalOpenGate> =
+        std::sync::Mutex::new(ExternalOpenGate::new());
     let lower = raw.trim().to_ascii_lowercase();
     if !lower.starts_with("mailto:") {
         return;
     }
-    let mut last_attempt = LAST_ATTEMPT.lock().unwrap_or_else(|err| err.into_inner());
-    if !external_open_allowed(&mut last_attempt, Instant::now()) {
+    let mut gate = GATE.lock().unwrap_or_else(|err| err.into_inner());
+    if !external_open_allowed(&mut gate, Instant::now()) {
         return;
     }
     let url = raw.to_string();
@@ -55,13 +56,45 @@ pub(super) fn route_non_web_panel_navigation(raw: &str) {
     });
 }
 
-// Every attempt restarts the quiet period, so a loop keeps being refused for
-// as long as it runs, while a click after a pause goes through.
 #[cfg_attr(mobile, allow(dead_code))]
-fn external_open_allowed(last_attempt: &mut Option<Instant>, now: Instant) -> bool {
-    const QUIET: std::time::Duration = std::time::Duration::from_secs(2);
-    let previous = last_attempt.replace(now);
-    previous.is_none_or(|previous| now.saturating_duration_since(previous) >= QUIET)
+const OPEN_QUIET: Duration = Duration::from_secs(2);
+#[cfg_attr(mobile, allow(dead_code))]
+const OPEN_RESET: Duration = Duration::from_secs(600);
+
+#[cfg_attr(mobile, allow(dead_code))]
+struct ExternalOpenGate {
+    last_attempt: Option<Instant>,
+    quiet: Duration,
+}
+
+impl ExternalOpenGate {
+    #[cfg_attr(mobile, allow(dead_code))]
+    const fn new() -> Self {
+        Self {
+            last_attempt: None,
+            quiet: OPEN_QUIET,
+        }
+    }
+}
+
+// Every attempt restarts the quiet period, so a loop keeps being refused for
+// as long as it runs, while a click after a pause goes through. Each open
+// doubles the quiet period a later one needs (back to 2 s after ten silent
+// minutes): a fixed 2 s let a loop ticking every 2.1 s open Mail every tick.
+#[cfg_attr(mobile, allow(dead_code))]
+fn external_open_allowed(gate: &mut ExternalOpenGate, now: Instant) -> bool {
+    let idle = gate
+        .last_attempt
+        .replace(now)
+        .map(|previous| now.saturating_duration_since(previous));
+    if idle.is_none_or(|idle| idle >= OPEN_RESET) {
+        gate.quiet = OPEN_QUIET;
+    }
+    if idle.is_some_and(|idle| idle < gate.quiet) {
+        return false;
+    }
+    gate.quiet = (gate.quiet * 2).min(OPEN_RESET);
+    true
 }
 
 // The panel's navigation policy. WebKit (macOS WKWebView, Linux WebKitGTK)
@@ -255,7 +288,7 @@ mod tests {
     fn web_panel_mailto_flood_opens_the_mail_client_once() {
         use std::time::{Duration, Instant};
         let start = Instant::now();
-        let mut last = None;
+        let mut last = super::ExternalOpenGate::new();
         let opened = (0..50)
             .filter(|i| {
                 let now = start + Duration::from_millis(200 * i);
@@ -265,6 +298,24 @@ mod tests {
         assert_eq!(opened, 1, "a 200 ms loop opens the mail client once");
         let later = start + Duration::from_millis(200 * 49 + 5_000);
         assert!(super::external_open_allowed(&mut last, later));
+    }
+
+    // A loop just slower than the quiet period must not get through on every
+    // tick either: each open makes the next one wait longer.
+    #[test]
+    fn web_panel_slow_mailto_loop_stops_opening_the_mail_client() {
+        use std::time::{Duration, Instant};
+        let start = Instant::now();
+        for (period_ms, most) in [(2_100, 1), (60_000, 6)] {
+            let mut last = super::ExternalOpenGate::new();
+            let opened = (0..60)
+                .filter(|i| {
+                    let now = start + Duration::from_millis(period_ms * i);
+                    super::external_open_allowed(&mut last, now)
+                })
+                .count();
+            assert!(opened <= most, "{period_ms} ms loop opened {opened} times");
+        }
     }
 
     // The address bar's back/forward enablement and target are driven
