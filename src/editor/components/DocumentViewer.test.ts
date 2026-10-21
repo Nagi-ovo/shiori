@@ -177,4 +177,17 @@ describe("DocumentViewer safe rendering", () => {
     expect(html).toMatch(/<h1[^>]*>Chapter 2<\/h1>/);
     expect(html).not.toContain("shioriDocumentMetadata");
   });
+
+  // One "Key: value" sentence in the section is not enough to make it YAML.
+  test("keeps a first section with prose and one colon line out of the metadata", async () => {
+    const html = await renderSafeHtml(
+      "markdown",
+      "---\n\n# Chapter 1\n\nThe whole first chapter.\n\nNote: something\n\n---\n\n# Chapter 2\n",
+    );
+
+    expect(html).toMatch(/<h1 data-source-line="3">Chapter 1<\/h1>/);
+    expect(html).toContain("The whole first chapter.");
+    expect(html).toContain("Note: something");
+    expect(html).not.toContain("shioriDocumentMetadata");
+  });
 });
