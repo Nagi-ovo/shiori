@@ -127,6 +127,12 @@ describe("an annotation's flags and a note's state", () => {
     expect([text(note, "State"), text(note, "StateModel")]).toEqual(["Accepted", "Review"]);
   });
 
+  test("a callout's come back too", async () => {
+    const { overlays, exported } = await roundTrip([{ ...callout, F: 128 }]);
+    expect(overlays).toMatchObject([{ type: "callout", sourceFlags: 128 }]);
+    expect(exported.map(flags)).toEqual(["128"]);
+  });
+
   // No /F means 0: a viewer shows it but never prints it. Exported with
   // Shiori's own Print it would start printing.
   test("an annotation without /F still does not print", async () => {

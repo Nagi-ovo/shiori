@@ -179,6 +179,8 @@ export async function importFileAnnotations(
       if (rawCallout) {
         const callout = importRawCallout(rawCallout, annot, page);
         if (callout) {
+          // Its /T, dates and /F, as annotationToOverlay gives every other kind.
+          withSourceProvenance(callout, annot, page);
           const anchor = anchorFor(annot.id);
           if (anchor) callout.anchor = anchor;
           if (returnPageOverlays) overlays.push(callout);
