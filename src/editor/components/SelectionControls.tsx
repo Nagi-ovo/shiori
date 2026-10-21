@@ -60,12 +60,17 @@ export function SelectionControls({
   const updateOverlay = useEditorStore((s) => s.updateOverlay);
   const setSelectedLocked = useEditorStore((s) => s.setSelectedLocked);
   // A drag through the popover's colour well is one undo step, not one per
-  // tick; a swatch pick stays a step of its own.
+  // tick; a swatch pick stays a step of its own. `session` keeps a rect's
+  // stroke and fill popovers apart when both are open.
   const colourPreview = useOverlayPreviewStep();
-  const recolour = (apply: (c: string, write: OverlayWrite) => void) => ({
+  const recolour = (
+    apply: (c: string, write: OverlayWrite) => void,
+    session = "color",
+  ) => ({
     onChange: (c: string) => apply(c, updateOverlay),
-    onPreview: (c: string) => apply(c, colourPreview.preview),
-    onPreviewEnd: colourPreview.end,
+    onPreview: (c: string) =>
+      apply(c, (id, patch) => colourPreview.preview(session, id, patch)),
+    onPreviewEnd: () => colourPreview.end(session),
   });
 
   const selType = selection.type;
@@ -177,7 +182,7 @@ export function SelectionControls({
             <RectFillPicker
               value={selection.fill}
               recent={recentColors}
-              {...recolour((c, w) => applyRectStyle({ fill: c }, w))}
+              {...recolour((c, w) => applyRectStyle({ fill: c }, w), "fill")}
               onChange={(fill) => applyRectStyle({ fill })}
               onCommit={pushRecentColor}
             />

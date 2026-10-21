@@ -107,8 +107,11 @@ function openPopover(container: HTMLElement, index = 0): void {
   });
 }
 
-function colourWell(): HTMLInputElement {
-  const input = document.querySelector<HTMLInputElement>('input[type="color"]');
+/** The n-th open popover's colour well, in document order. */
+function colourWell(index = 0): HTMLInputElement {
+  const input = document.querySelectorAll<HTMLInputElement>(
+    'input[type="color"]',
+  )[index];
   if (!input) throw new Error("the popover's colour well is not open");
   return input;
 }
@@ -119,8 +122,8 @@ function colourWell(): HTMLInputElement {
  * detection, which reads the value of the focused input on key events; the
  * keyUp is what makes React see each tick, as a browser's input event would.
  */
-function dragThrough(colours: string[]): void {
-  const input = colourWell();
+function dragThrough(colours: string[], well = 0): void {
+  const input = colourWell(well);
   act(() => {
     input.focus();
   });
@@ -244,6 +247,22 @@ describe("recolouring the selection through the colour popover", () => {
     expect(current<RectOverlay>(rect.id).fill).toBe(dragTicks(12).at(-1)!);
     expect(current<RectOverlay>(rect.id).color).toBe(rect.color);
     expect(undoDepth()).toBe(1);
+  });
+
+  test("stroke and fill sessions open at once stay two steps", () => {
+    // The backdrop stops a pointer, but Tab still reaches the fill's "+"
+    // while the stroke popover is open, so both can stream at once.
+    select(rect);
+    const view = render(<ContextualToolbar />);
+    openPopover(view.container, 0);
+    dragThrough(["#111111", "#222222"], 0);
+    openPopover(view.container, 1);
+    dragThrough(["#333333", "#444444"], 1);
+
+    expect(undoDepth()).toBe(2);
+    act(() => useEditorStore.getState().undo());
+    expect(current<RectOverlay>(rect.id).fill).toBe(rect.fill);
+    expect(current<RectOverlay>(rect.id).color).toBe("#222222");
   });
 
   test("a note's drag still carries its colour into the next note", () => {
