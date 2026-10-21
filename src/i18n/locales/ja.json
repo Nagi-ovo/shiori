@@ -621,6 +621,7 @@
   "browser": {
     "title": "ブラウザ",
     "addressPlaceholder": "検索またはアドレスを入力",
+    "address": "アドレス",
     "back": "戻る",
     "forward": "進む",
     "reload": "再読み込み",

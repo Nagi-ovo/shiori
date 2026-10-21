@@ -621,6 +621,7 @@
   "browser": {
     "title": "浏览器",
     "addressPlaceholder": "搜索或输入网址",
+    "address": "网址",
     "back": "后退",
     "forward": "前进",
     "reload": "刷新",

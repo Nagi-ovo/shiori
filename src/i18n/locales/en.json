@@ -627,6 +627,7 @@
   "browser": {
     "title": "Browser",
     "addressPlaceholder": "Search or enter address",
+    "address": "Address",
     "back": "Back",
     "forward": "Forward",
     "reload": "Reload",

@@ -252,6 +252,9 @@ export const BrowserPanel = memo(function BrowserPanel({
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
+          // The placeholder is a hint, not a name, and it goes once the
+          // field holds a URL.
+          aria-label={t("browser.address")}
           placeholder={t("browser.addressPlaceholder")}
           onFocus={(e) => e.currentTarget.select()}
           onKeyDown={(e) => {
