@@ -96,6 +96,52 @@ describe("catalog display settings", () => {
     expect(off.asArray()).toContainEqual(widget!.get(PDFName.of("OC"))!);
   });
 
+  test("form fields keep their layers when a link to a left-out page is dropped", async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([300, 400]);
+    const target = doc.addPage([300, 400]);
+    const layer = (name: string) => doc.context.register(
+      doc.context.obj({ Type: "OCG", Name: PDFString.of(name) }),
+    );
+    const shown = layer("Questions");
+    const hidden = layer("Answers");
+    const annot = (entries: Record<string, unknown>) =>
+      page.node.addAnnot(doc.context.register(doc.context.obj({
+        Type: "Annot", Rect: [20, 20, 120, 40], ...entries,
+      })));
+    // The export drops this link (its page is left out) before layers map.
+    annot({ Subtype: "Link", Dest: [target.ref, "Fit"] });
+    annot({ Subtype: "Widget", FT: "Tx", T: PDFString.of("question"), OC: shown });
+    annot({ Subtype: "Widget", FT: "Tx", T: PDFString.of("answer"), OC: hidden });
+    doc.catalog.set(
+      PDFName.of("OCProperties"),
+      doc.context.obj({ OCGs: [shown, hidden], D: { OFF: [hidden] } }),
+    );
+    const source = await doc.save();
+
+    const out = await PDFDocument.load(
+      (await exportPdf(source, withHighlight(modelForPages([0])), {
+        documentFiles: "omit",
+      })).bytes,
+    );
+
+    const widgets = out
+      .getPage(0)
+      .node.Annots()!
+      .asArray()
+      .map((ref) => out.context.lookup(ref, PDFDict))
+      .filter((entry) => entry.get(PDFName.of("Subtype")) === PDFName.of("Widget"));
+    const layerOf = (name: string) => widgets
+      .find((widget) => widget.lookup(PDFName.of("T"), PDFString).decodeText() === name)!
+      .get(PDFName.of("OC"))!;
+    const off = out.catalog
+      .lookup(PDFName.of("OCProperties"), PDFDict)
+      .lookup(PDFName.of("D"), PDFDict)
+      .lookup(PDFName.of("OFF"), PDFArray);
+    expect(off.asArray()).toEqual([layerOf("answer")]);
+    expect(off.asArray()).not.toContainEqual(layerOf("question"));
+  });
+
   test("a right-to-left book keeps its reading direction and spreads", async () => {
     const doc = await PDFDocument.create();
     doc.addPage([300, 400]);

@@ -57,6 +57,7 @@ import {
   stripUnexportedPageDocumentFiles,
 } from "./navigation";
 import { isolatePageReferences } from "./pageIsolation";
+import { recordCopiedAnnotations } from "./catalogEntries";
 import { alignPageTreeWithPdfium } from "./sourcePageTree";
 import {
   drawContentTextEditsForPage,
@@ -212,6 +213,7 @@ export async function rebuildPdf(
   const pageIsolation = isolatePageReferences(source, sourceIndices);
   const copiedPages = await out.copyPages(source, sourceIndices);
   pageIsolation.restoreSource();
+  recordCopiedAnnotations(out, copiedPages);
   const duplicatedSourceIndices = new Set(
     sourceIndices.filter(
       (index, position) => sourceIndices.indexOf(index) !== position,

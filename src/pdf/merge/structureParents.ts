@@ -10,8 +10,9 @@ const APPEARANCE_STATES = ["N", "R", "D"].map((key) => PDFName.of(key));
  * inserted page's /StructParents (and its annotations' /StructParent) would
  * index into the base document's ParentTree and hand its marked content to
  * unrelated base structure elements. Untagged is honest; aliased is not.
- * Form XObjects carry the same keys, so the walk follows the page's
- * resources, nested form resources and annotation appearance streams.
+ * Form and image XObjects carry the same keys, so the walk follows the
+ * page's resources, nested form, tiling-pattern and Type 3 font resources
+ * and annotation appearance streams.
  */
 export function dropStructureParents(document: PDFDocument, page: PDFDict) {
   const visited = new Set<PDFObject>();
@@ -47,10 +48,21 @@ function dropFromResources(
   if (!resources || visited.has(resources)) return;
   visited.add(resources);
   const xobjects = lookupDict(document, resources.get(PDFName.of("XObject")));
-  if (!xobjects) return;
-  for (const [, value] of xobjects.entries()) {
+  for (const [, value] of xobjects?.entries() ?? []) {
     const stream = resolveObject(document, value);
     if (stream instanceof PDFStream) dropFromForm(document, stream, visited);
+  }
+  // Tiling patterns and Type 3 fonts carry resources of their own, which can
+  // hold tagged images and forms.
+  for (const key of ["Pattern", "Font"]) {
+    const entries = lookupDict(document, resources.get(PDFName.of(key)));
+    for (const [, value] of entries?.entries() ?? []) {
+      const owner = resolveObject(document, value);
+      const dict = owner instanceof PDFStream ? owner.dict : owner;
+      if (dict instanceof PDFDict) {
+        dropFromResources(document, dict.get(PDFName.of("Resources")), visited);
+      }
+    }
   }
 }
 
@@ -61,7 +73,13 @@ function dropFromForm(
 ) {
   if (visited.has(stream)) return;
   visited.add(stream);
-  if (!isName(document, stream.dict.get(PDFName.of("Subtype")), "Form")) return;
+  const subtype = stream.dict.get(PDFName.of("Subtype"));
+  if (isName(document, subtype, "Image")) {
+    // A tagged image is itself a structural content item (/StructParent).
+    stream.dict.delete(STRUCT_PARENT);
+    return;
+  }
+  if (!isName(document, subtype, "Form")) return;
   stream.dict.delete(STRUCT_PARENT);
   stream.dict.delete(STRUCT_PARENTS);
   dropFromResources(document, stream.dict.get(PDFName.of("Resources")), visited);

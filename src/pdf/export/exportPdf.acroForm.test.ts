@@ -71,6 +71,31 @@ describe("form calculation order", () => {
     ]);
   });
 
+  test("a calculated field inside a group with no widget at all keeps its calculation", async () => {
+    const source = await calculatedForm({ totalOnPage: 0, hiddenField: false });
+    const doc = await PDFDocument.load(source);
+    const group = doc.context.register(
+      doc.context.obj({ T: PDFString.of("calc"), Kids: [] }),
+    );
+    const total = doc.context.register(
+      doc.context.obj({ FT: "Tx", T: PDFString.of("total"), Parent: group }),
+    );
+    doc.context.lookup(group, PDFDict).lookup(PDFName.of("Kids"), PDFArray).push(total);
+    doc.getForm().acroForm.addField(group);
+    doc.getForm().acroForm.dict.set(PDFName.of("CO"), doc.context.obj([total]));
+
+    const out = await PDFDocument.load(
+      (await exportPdf(
+        await doc.save({ updateFieldAppearances: false }),
+        rotated(modelForPages([0, 1])),
+      )).bytes,
+    );
+
+    expect(calculationOrder(out)).toEqual([
+      out.getForm().getTextField("calc.total").ref,
+    ]);
+  });
+
   test("a field left out with its page leaves the calculation order too", async () => {
     const source = await calculatedForm({ totalOnPage: 1, hiddenField: false });
 
