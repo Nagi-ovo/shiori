@@ -2,7 +2,6 @@ import { nanoid } from "nanoid";
 import type { PDFDocument } from "pdf-lib";
 import type {
   CalloutOverlay,
-  CalloutThreadEntry,
   NoteOverlay,
   Overlay,
   OverlayTextAnchor,
@@ -23,6 +22,7 @@ import {
   parseDefaultAppearanceFontSize,
   recordValue,
   rectFromAnnot,
+  threadEntryFromReply,
   type PdfjsAnnotation,
 } from "./listingImporters";
 import {
@@ -265,16 +265,7 @@ export async function importFileAnnotations(
       overlays.push(fold.note);
       continue;
     }
-    const entry: CalloutThreadEntry = {
-      id: fold.meta.replyId ?? nanoid(),
-      role: fold.meta.role,
-      text: fold.note.text,
-    };
-    if (fold.note.sourceAuthor) entry.author = fold.note.sourceAuthor;
-    if (fold.note.sourceCreatedAt !== undefined) {
-      entry.at = fold.note.sourceCreatedAt;
-    }
-    (parent.thread ??= []).push(entry);
+    (parent.thread ??= []).push(threadEntryFromReply(fold.note, fold.meta, nanoid));
   }
   // Every overlay leaving this function came out of the file, whatever path
   // built it. Marked here rather than at each construction site because

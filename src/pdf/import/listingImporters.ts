@@ -1,4 +1,5 @@
 import type {
+  CalloutThreadEntry,
   HighlightOverlay,
   InkOverlay,
   NoteOverlay,
@@ -187,6 +188,25 @@ function importStickyNote(
   if (typeof annot.state === "string") note.sourceState = annot.state;
   if (typeof annot.stateModel === "string") note.sourceStateModel = annot.stateModel;
   return note;
+}
+
+/** A Shiori-exported reply, read as a note, as a turn of its callout's thread. */
+export function threadEntryFromReply(
+  note: NoteOverlay,
+  meta: { role: CalloutThreadEntry["role"]; replyId: string | null },
+  makeId: () => string,
+): CalloutThreadEntry {
+  const entry: CalloutThreadEntry = { id: meta.replyId ?? makeId(), role: meta.role, text: note.text };
+  if (note.sourceAuthor) entry.author = note.sourceAuthor;
+  if (note.sourceCreatedAt !== undefined) entry.at = note.sourceCreatedAt;
+  // Print and Comment are what Shiori writes for every reply; a turn keeps
+  // only what another reader changed.
+  if (note.sourceFlags !== undefined && note.sourceFlags !== 4) entry.sourceFlags = note.sourceFlags;
+  if (note.sourceIcon !== undefined && note.sourceIcon !== "Comment") entry.sourceIcon = note.sourceIcon;
+  if (note.sourceOpen !== undefined) entry.sourceOpen = note.sourceOpen;
+  if (note.sourceState !== undefined) entry.sourceState = note.sourceState;
+  if (note.sourceStateModel !== undefined) entry.sourceStateModel = note.sourceStateModel;
+  return entry;
 }
 
 function importSquare(

@@ -81,12 +81,18 @@ export function buildCalloutReply(
     Subtype: "Text",
     Rect: [x, y, x + ICON, y + ICON],
     Contents: PDFHexString.fromText(entry.text ?? ""),
-    Name: "Comment",
-    F: 4,
+    Name: entry.sourceIcon || "Comment",
+    F: replyFlags(entry.sourceFlags),
     RT: "R",
     NM: shioriAnnotationName(`${o.id}/reply/${entry.id}`),
   });
   dict.set(PDFName.of("IRT"), parentRef);
+  // What an imported reply became in another reader (see ReplySourceField).
+  if (typeof entry.sourceOpen === "boolean") dict.set(PDFName.of("Open"), ctx.obj(entry.sourceOpen));
+  if (entry.sourceState && entry.sourceStateModel) {
+    dict.set(PDFName.of("State"), PDFHexString.fromText(entry.sourceState));
+    dict.set(PDFName.of("StateModel"), PDFHexString.fromText(entry.sourceStateModel));
+  }
   if (entry.author) {
     dict.set(PDFName.of("T"), PDFHexString.fromText(entry.author));
   }
@@ -107,6 +113,11 @@ export function buildCalloutReply(
     }),
   );
   return ctx.register(dict);
+}
+
+/** An imported reply's /F as it was, else Print. */
+function replyFlags(flags: number | undefined): number {
+  return typeof flags === "number" && Number.isInteger(flags) && flags >= 0 ? flags : 4;
 }
 
 export function buildCallout(
