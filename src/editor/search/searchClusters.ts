@@ -22,6 +22,58 @@ export function* searchClusters(text: string): Generator<SearchCluster> {
   yield* fallbackSearchClusters(text);
 }
 
+/** Code units between the cluster starts an index keeps for the locator. */
+export const CLUSTER_START_STRIDE = 128;
+
+/** Locate clusters lazily, as searchClusters(text) splits them, so search
+ * can snap a match to whole graphemes without storing every boundary.
+ * `clusterStarts` is a sorted, sparse list of true cluster starts, the first
+ * at 0; text between two of them segments the same as the whole text.
+ * (Intl.Segments.containing would do, but JavaScriptCore answers it wrongly
+ * at an astral cluster's first code unit.) */
+export function searchClusterLocator(
+  text: string,
+  clusterStarts: readonly number[],
+): {
+  /** Start of the cluster `offset` is in. */
+  start(offset: number): number;
+  /** `offset` itself on a boundary, else the end of the cluster it splits. */
+  end(offset: number): number;
+} {
+  const containing = (offset: number): SearchCluster => {
+    let low = 0;
+    let high = clusterStarts.length - 1;
+    while (low < high) {
+      const middle = (low + high + 1) >>> 1;
+      if (clusterStarts[middle]! <= offset) low = middle;
+      else high = middle - 1;
+    }
+    const from = clusterStarts[low] ?? 0;
+    const to = clusterStarts[low + 1] ?? text.length;
+    for (const cluster of searchClusters(text.slice(from, to))) {
+      if (from + cluster.end > offset) {
+        return { ...cluster, start: from + cluster.start, end: from + cluster.end };
+      }
+    }
+    return { segment: "", start: offset, end: offset };
+  };
+  const onBoundary = (offset: number) =>
+    offset <= 0 ||
+    offset >= text.length ||
+    // Below U+0300 nothing extends or joins a cluster, bar CR LF.
+    (text.charCodeAt(offset) < 0x300 &&
+      text.charCodeAt(offset - 1) < 0x300 &&
+      text.charCodeAt(offset - 1) !== 0x0d);
+  return {
+    start: (offset) => (onBoundary(offset) ? offset : containing(offset).start),
+    end: (offset) => {
+      if (onBoundary(offset)) return offset;
+      const cluster = containing(offset);
+      return cluster.start < offset ? cluster.end : offset;
+    },
+  };
+}
+
 /** Conservative fallback for old WebViews without Intl.Segmenter: keep a
  * base plus combining/variation/ZWJ continuation code points together. */
 export function* fallbackSearchClusters(text: string): Generator<SearchCluster> {
@@ -30,16 +82,22 @@ export function* fallbackSearchClusters(text: string): Generator<SearchCluster> 
     let previousWasJoiner = false;
     // A regional indicator pairs with the next one into a flag.
     let unpairedIndicator = isRegionalIndicator(text.slice(start, end));
+    // A consonant, a linker and another consonant form one conjunct
+    // (UAX #29 GB9c): 0 off, 1 after a consonant, 2 after its linker.
+    let conjunct = CONJUNCT_CONSONANT.test(text.slice(start, end)) ? 1 : 0;
     while (end < text.length) {
       const nextEnd = nextCodePointEnd(text, end);
       const next = text.slice(end, nextEnd);
+      const linksConsonant = conjunct === 2 && CONJUNCT_CONSONANT.test(next);
       const continuation =
-        /\p{Mark}/u.test(next) ||
-        next === "\u200d" ||
+        isFallbackContinuation(next) ||
         previousWasJoiner ||
-        isVariationOrEmojiModifier(next) ||
+        linksConsonant ||
         (unpairedIndicator && isRegionalIndicator(next));
       if (!continuation) break;
+      if (linksConsonant) conjunct = 1;
+      else if (conjunct && CONJUNCT_LINKER.test(next)) conjunct = 2;
+      else if (!/^[\p{Mn}\p{Me}\u200d]$/u.test(next)) conjunct = 0;
       previousWasJoiner = next === "\u200d";
       unpairedIndicator = false;
       end = nextEnd;
@@ -48,6 +106,27 @@ export function* fallbackSearchClusters(text: string): Generator<SearchCluster> 
     start = end;
   }
 }
+
+function isFallbackContinuation(character: string): boolean {
+  return (
+    /\p{Mark}/u.test(character) ||
+    character === "\u200d" ||
+    // ZWNJ extends a grapheme, as in Persian, though it breaks a conjunct.
+    character === "\u200c" ||
+    // Thai and Lao SARA AM: spacing marks that are letters by category.
+    character === "\u0e33" ||
+    character === "\u0eb3" ||
+    isVariationOrEmojiModifier(character)
+  );
+}
+
+// Indic_Conjunct_Break=Linker and =Consonant, read off Intl.Segmenter by
+// probing "क" + L + "क" and "क्" + C for one grapheme (bun 1.4 ICU);
+// probe again when searchClusters.test.ts finds the two apart.
+const CONJUNCT_LINKER =
+  /^[्্્୍్്္្᩠᭄᮫꧀꫶\u{10A3F}\u{11133}\u{113D0}\u{1193E}\u{11A47}\u{11A99}\u{11F42}]$/u;
+const CONJUNCT_CONSONANT =
+  /^[क-हक़-य़ॸ-ॿক-নপ-রলশ-হড়ঢ়য়ৰৱક-નપ-રલળવ-હૹକ-ନପ-ରଲଳଵ-ହଡ଼ଢ଼ୟୱక-నప-హౘ-ౚക-ഺက-ဪဿၐ-ၕၚ-ၝၡၥၦၮ-ၰၵ-ႁႎក-ឳᨠ-ᩔᬋᬌᬓ-ᬳᭅ-ᭌᮃ-ᮠᮮᮯᮻ-ᮽꦉ-ꦋꦏ-ꦲꧠ-ꧤꧧ-ꧯꧺ-ꧾꩠ-ꩯꩱ-ꩳꩺꩾꩿꫠ-ꫪꯀ-ꯚ\u{10A00}\u{10A10}-\u{10A13}\u{10A15}-\u{10A17}\u{10A19}-\u{10A35}\u{11103}-\u{11126}\u{11144}\u{11147}\u{11380}-\u{11389}\u{1138B}\u{1138E}\u{11390}-\u{113B5}\u{11900}-\u{11906}\u{11909}\u{1190C}-\u{11913}\u{11915}\u{11916}\u{11918}-\u{1192F}\u{11A00}\u{11A0B}-\u{11A32}\u{11A50}\u{11A5C}-\u{11A83}\u{11F04}-\u{11F10}\u{11F12}-\u{11F33}]$/u;
 
 function nextCodePointEnd(text: string, start: number): number {
   const codePoint = text.codePointAt(start);

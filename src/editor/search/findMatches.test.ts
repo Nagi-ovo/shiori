@@ -159,12 +159,12 @@ describe("find matches", () => {
       "x\u0300\u0315",
     );
     expect(whole).toMatchObject({ index: 0, end: source.length });
-    expect(
-      findMatches([{ pageId: "p", pageNumber: 1, text: source }], "\u0300"),
-    ).toEqual([]);
-    expect(
-      findMatches([{ pageId: "p", pageNumber: 1, text: source }], "\u0315"),
-    ).toEqual([]);
+    // A lone mark addresses its whole grapheme, never a reordered subrange.
+    for (const mark of ["\u0300", "\u0315"]) {
+      expect(
+        findMatches([{ pageId: "p", pageNumber: 1, text: source }], mark),
+      ).toMatchObject([{ index: 0, end: source.length }]);
+    }
   });
 
   test("never returns half of an astral Unicode character", () => {
@@ -185,14 +185,69 @@ describe("find matches", () => {
   test("never returns half of an emoji or diacritic grapheme", () => {
     const ranges = (text: string, query: string) =>
       findMatches([{ pageId: "p", pageNumber: 1, text }], query).map((m) => [m.index, m.end]);
-    // A skin-tone modifier, and a mark NFKC has no precomposed form for.
-    expect(ranges("👍🏽x", "👍")).toEqual([]);
+    // A skin-tone modifier, and a mark NFKC has no precomposed form for:
+    // the match grows to the whole grapheme.
+    expect(ranges("👍🏽x", "👍")).toEqual([[0, 4]]);
     expect(ranges("👍🏽x", "👍🏽")).toEqual([[0, 4]]);
-    expect(ranges("q\u0301x", "q")).toEqual([]);
+    expect(ranges("q\u0301x", "q")).toEqual([[0, 2]]);
     expect(ranges("q\u0301x", "q\u0301")).toEqual([[0, 2]]);
-    // Indic vowel signs and viramas stay addressable, so a word's prefix
-    // still finds it.
-    expect(ranges("हिन्दी", "हिन्द")).toEqual([[0, 5]]);
+    // Hebrew points, Arabic harakat, Thai and Indic signs snap the same
+    // way, so a word's prefix still finds the word.
+    expect(ranges("שָׁלוֹם", "ש")).toEqual([[0, 3]]);
+    expect(ranges("بِسْمِ", "ب")).toEqual([[0, 2]]);
+    expect(ranges("หิน", "ห")).toEqual([[0, 2]]);
+    expect(ranges("ทำงาน", "ท")).toEqual([[0, 2]]);
+    expect(ranges("हिन्दी", "हिन्द")).toEqual([[0, 6]]);
+    expect(ranges("हिन्दी", "ि")).toEqual([[0, 2]]);
+    expect(ranges("க்ஷ", "க")).toEqual([[0, 2]]);
+    // Hits inside one grapheme come back as that grapheme once.
+    expect(ranges("נִּ", "\u05bc")).toEqual([[0, 3]]);
+    expect(ranges(`a${"\u0302".repeat(3)}b`, "\u0302")).toEqual([[0, 4]]);
+    // A match still never splits one code point's own expansion.
+    expect(ranges("ß", "s")).toEqual([]);
+    // Nor does a mark on that code point open its expansion up.
+    expect(ranges("ß́", "s")).toEqual([]);
+    expect(ranges("ﬃ́x", "f")).toEqual([]);
+    expect(ranges("ﬃ́x", "ﬃ́")).toEqual([[0, 2]]);
+  });
+
+  test("keeps Find on over a long pointed and Indic document", () => {
+    const line =
+      "בְּרֵאשִׁית בָּרָא אֱלֹהִים بِسْمِ اللهِ الرَّحْمٰنِ ภาษาไทยที่มีวรรณยุกต์ हिन्दी भारत की राष्ट्रभाषा ";
+    const text = line.repeat(Math.ceil(3_000 / line.length));
+    const pages = Array.from({ length: 200 }, (_, page) => ({
+      pageId: `p${page}`,
+      pageNumber: page + 1,
+      text,
+    }));
+    // 200 pages carry ~170,000 multi-code-point graphemes, more than the
+    // document mapping budget; snapping must not spend it.
+    const indexed = indexSearchPages(pages);
+    const mappings = indexed.reduce(
+      (total, page) => total + page.index.mappingExceptions.length,
+      0,
+    );
+    expect(mappings).toBeLessThan(MAX_DOCUMENT_SEARCH_MAPPING_EXCEPTIONS / 10);
+    const boundaries = new Set(
+      Array.from(
+        new Intl.Segmenter("und", { granularity: "grapheme" }).segment(text),
+        (part) => part.index,
+      ).concat(text.length),
+    );
+    for (const [query, first] of [
+      ["ש", "שִׁ"],
+      ["ب", "بِ"],
+      ["ม", "มี"],
+      ["हिन्द", "हिन्दी"],
+    ] as const) {
+      const { matches, truncated } = findMatchesWithStatus(pages.slice(-1), query);
+      expect(truncated).toBe(false);
+      expect(matches[0]?.snippet.match).toBe(first);
+      expect(matches.at(-1)!.index).toBeGreaterThan(2_000);
+      for (const match of matches) {
+        expect([boundaries.has(match.index), boundaries.has(match.end)]).toEqual([true, true]);
+      }
+    }
   });
 
   test("caps repetitive results and keeps snippet work bounded", () => {
