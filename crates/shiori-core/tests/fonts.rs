@@ -112,3 +112,49 @@ fn a_font_is_known_by_its_program_in_any_file() {
     let helvetica = font_of(&source.chars(0, MAX_PAGE_CHARS).unwrap(), "H");
     assert_eq!(helvetica, ("Helvetica".to_string(), String::new()));
 }
+
+#[test]
+fn dictionaries_sharing_a_program_keep_their_own_glyphs() {
+    // Three dictionaries share one Foxit Serif program, as pdfTeX shares a
+    // Type 1 file across encodings (audit B108). Each sets an "a" with its
+    // own glyph: the program's a, its A (as small caps would) and its e at
+    // a's width. A face rebuilt for one must not stand in for another.
+    let doc = core().open(fixture("shared-program.pdf"), None).unwrap();
+    let glyphs = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    let ids: Vec<String> = glyphs
+        .iter()
+        .filter(|g| g.text == "a")
+        .map(|g| {
+            assert_eq!(g.font_name, "FoxitSerif");
+            g.font_id.clone()
+        })
+        .collect();
+    let [plain, caps, swap] = <[String; 3]>::try_from(ids).unwrap();
+    assert!(!plain.is_empty());
+    assert_ne!(plain, caps);
+    assert_ne!(plain, swap);
+    assert_ne!(caps, swap);
+    // The ids are the font's, not the page's: the same on every read.
+    let again = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    assert_eq!(font_of(&again, "A").1, plain);
+
+    // The programs carry the same ids as the glyphs drawn with them.
+    let fonts = doc.embedded_fonts(0).unwrap();
+    let embedded: Vec<&str> = fonts.iter().map(|font| font.id.as_str()).collect();
+    assert_eq!(embedded, [plain.as_str(), caps.as_str(), swap.as_str()]);
+    assert!(fonts.iter().all(|font| font.data == fonts[0].data));
+
+    // Rebuilt by name, each dictionary's "a" is the glyph it draws.
+    let rebuilt = doc.font_outlines(0, &["FoxitSerif".to_string()]).unwrap();
+    let glyph = |id: &str, unicode: char| {
+        let font = rebuilt.iter().find(|font| font.id == id).unwrap();
+        let glyph = font.glyphs.iter().find(|g| g.unicode == unicode as u32);
+        let glyph = glyph.unwrap();
+        (glyph.advance.round(), glyph.path.clone())
+    };
+    assert_eq!(rebuilt.len(), 3);
+    assert_eq!(glyph(&caps, 'a'), glyph(&plain, 'A'));
+    assert_eq!(glyph(&swap, 'a'), glyph(&plain, 'e'));
+    assert_eq!(glyph(&swap, 'a').0, glyph(&plain, 'a').0);
+    assert_ne!(glyph(&swap, 'a').1, glyph(&plain, 'a').1);
+}

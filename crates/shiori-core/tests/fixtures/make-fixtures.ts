@@ -366,3 +366,82 @@ for (const [, object] of subsets.context.enumerateIndirectObjects()) {
 const subsetsOut = join(dirname(fileURLToPath(import.meta.url)), "font-subsets.pdf");
 writeFileSync(subsetsOut, await subsets.save({ useObjectStreams: false }));
 console.log(subsetsOut);
+
+// shared-program.pdf: one page, three font dictionaries under one name that
+// share one embedded program (Foxit Serif, bare CFF, one /FontFile3 stream
+// and one descriptor), as pdfTeX shares a Type 1 file across encodings
+// (tests/fonts.rs, audit B108). Each sets an "a" (code 97, /ToUnicode
+// U+0061) with its own glyph: "plain" draws the program's a (444); "caps"
+// draws its A (722), as a small-caps encoding would; "swap" draws its e at
+// the same 444, an equal-width swap like old-style figures. "plain" also sets
+// "A" and "e", whose outlines the other two must match.
+{
+  const shared = await PDFDocument.create();
+  const program = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "fonts/FoxitSerif.pfb"));
+  const ctx = shared.context;
+  const fontFile = ctx.register(ctx.stream(program, { Subtype: "Type1C" }));
+  const times = await shared.embedFont(StandardFonts.TimesRoman);
+  const timesWidths = Array.from({ length: 95 }, (_, i) =>
+    Math.round(times.widthOfTextAtSize(String.fromCharCode(32 + i), 1000)),
+  );
+  const descriptor = ctx.register(
+    ctx.obj({
+      Type: "FontDescriptor",
+      FontName: "SHIORI+FoxitSerif",
+      Flags: 34,
+      FontBBox: [-168, -218, 1000, 898],
+      ItalicAngle: 0,
+      Ascent: 683,
+      Descent: -217,
+      CapHeight: 662,
+      StemV: 84,
+      FontFile3: fontFile,
+    }),
+  );
+  const toUnicodeA = ctx.register(
+    ctx.stream(
+      [
+        "/CIDInit /ProcSet findresource begin 12 dict begin begincmap",
+        "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+        "/CMapName /Adobe-Identity-UCS def /CMapType 2 def",
+        "1 begincodespacerange <00> <FF> endcodespacerange",
+        "1 beginbfchar <61> <0061> endbfchar",
+        "endcmap CMapName currentdict /CMap defineresource pop end end",
+      ].join("\n"),
+    ),
+  );
+  const dict = (glyph: string | undefined, width: number) =>
+    ctx.register(
+      ctx.obj({
+        Type: "Font",
+        Subtype: "Type1",
+        BaseFont: "SHIORI+FoxitSerif",
+        FirstChar: 32,
+        LastChar: 126,
+        Widths: timesWidths.map((w, i) => (i === 97 - 32 ? width : w)),
+        ...(glyph
+          ? {
+              Encoding: ctx.obj({
+                Type: "Encoding",
+                BaseEncoding: "WinAnsiEncoding",
+                Differences: [97, PDFName.of(glyph)],
+              }),
+              ToUnicode: toUnicodeA,
+            }
+          : { Encoding: "WinAnsiEncoding" }),
+        FontDescriptor: descriptor,
+      }),
+    );
+  const page = shared.addPage([300, 200]);
+  for (const [key, ref, text, y] of [
+    ["Plain", dict(undefined, 444), "aAe", 150],
+    ["Caps", dict("A", 722), "a", 100],
+    ["Swap", dict("e", 444), "a", 50],
+  ] as const) {
+    page.node.setFontDictionary(PDFName.of(key), ref);
+    page.pushOperators(beginText(), setFontAndSize(key, 20), moveText(20, y), showText(PDFString.of(text)), endText());
+  }
+  const sharedOut = join(dirname(fileURLToPath(import.meta.url)), "shared-program.pdf");
+  writeFileSync(sharedOut, await shared.save({ useObjectStreams: false }));
+  console.log(sharedOut);
+}

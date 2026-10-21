@@ -37,8 +37,8 @@ pub struct TextChar {
     /// subset prefix and keeps a TrueType or CID font's), and
     /// its descriptor flags (PDF 32000 table 123: 1 fixed pitch, 2 serif, …).
     pub font_name: String,
-    /// The font's program id (`fonts::program_id`), which tells apart
-    /// fonts named alike; empty for a font the file does not embed.
+    /// The font's id (`fonts::id::font_identity`), which tells apart fonts
+    /// named alike; empty for a font the file does not embed.
     pub font_id: String,
     pub font_flags: i32,
     /// The font's ascent and descent at this glyph's size, in page units
