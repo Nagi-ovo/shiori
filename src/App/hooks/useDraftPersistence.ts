@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { DraftSyncState } from "../../editor/hooks/useDraftSync";
@@ -7,6 +7,8 @@ import { CAPABILITIES, IS_MAC } from "../../platform";
 import { resolveNativeAppExit } from "../../platform/appExit";
 import { safeUnlisten } from "../../platform/ipc";
 import { interceptNativeWindowClose } from "../../platform/nativeEvents";
+import { draftConflictChoice } from "../draftConflictChoice";
+import { createLeaveGuard, type LeaveSteps } from "../leaveGuard";
 
 interface DraftPersistenceParams {
   draftState: DraftSyncState;
@@ -19,7 +21,9 @@ interface DraftPersistenceParams {
  * the PDF draft and any pending text-source writes on every path the app can
  * be suspended or closed — tab hide / pagehide, the web beforeunload prompt,
  * and the Tauri native close-requested guard — and surface draft save
- * failures as a toast. Extracted verbatim from the App God-component.
+ * failures as a toast. A close or quit blocked by a copy refused for another
+ * window's newer draft asks the reader to export or discard it instead
+ * (leaveGuard.ts).
  *
  * The flush primitives (draftState, flushPendingTextSources) stay owned by
  * App because other call sites — workspace tab close, the menu exit wire —
@@ -34,26 +38,38 @@ export function useDraftPersistence({
   completeNativeExitRequest: () => Promise<void>;
 } {
   const { t } = useTranslation();
-  const nativeQuitInFlightRef = useRef(false);
+  const [quitAfterPersisting] = useState(createLeaveGuard);
+  const [closeAfterPersisting] = useState(createLeaveGuard);
   const lastDraftErrorRef = useRef<string | null>(null);
 
   const flushDraftNow = draftState.flushNowOrThrow;
   const flushDraftBeforeSuspension = draftState.flushNow;
+  const { discardRefusedEdits } = draftState;
 
-  const completeNativeExitRequest = useCallback(async () => {
-    if (nativeQuitInFlightRef.current) return;
-    nativeQuitInFlightRef.current = true;
-    try {
-      await flushDraftNow();
-      await flushPendingTextSources();
-      await resolveNativeAppExit(true);
-    } catch (err) {
-      nativeQuitInFlightRef.current = false;
-      void resolveNativeAppExit(false);
-      console.error("Failed to persist documents before quitting", err);
-      toast.error(t("documents.closeSaveFailed"));
-    }
-  }, [flushDraftNow, flushPendingTextSources, t]);
+  const persistThen = useCallback(
+    (context: string, leave: () => Promise<void>): LeaveSteps => ({
+      flushDraft: flushDraftNow,
+      flushTextSources: () => flushPendingTextSources(),
+      leave,
+      discardRefusedEdits,
+      offerConflictChoice: draftConflictChoice.offer,
+      reportSaveFailed: (err) => {
+        console.error(`Failed to persist documents before ${context}`, err);
+        toast.error(t("documents.closeSaveFailed"));
+      },
+    }),
+    [discardRefusedEdits, flushDraftNow, flushPendingTextSources, t],
+  );
+
+  const completeNativeExitRequest = useCallback(
+    () =>
+      quitAfterPersisting({
+        ...persistThen("quitting", () => resolveNativeAppExit(true)),
+        // Release the native handshake; discarding later re-runs the quit.
+        blocked: () => void resolveNativeAppExit(false),
+      }),
+    [persistThen, quitAfterPersisting],
+  );
 
   useEffect(() => {
     const flushBeforeSuspension = () => {
@@ -85,25 +101,17 @@ export function useDraftPersistence({
   useEffect(() => {
     if (!CAPABILITIES.nativeWindowChrome) return;
     let disposed = false;
-    let closeInFlight = false;
     let unlisten: (() => void) | undefined;
 
     void (async () => {
       try {
-        const stopListening = await interceptNativeWindowClose(async (destroyWindow) => {
-          if (closeInFlight) return;
-          closeInFlight = true;
-          try {
-            await flushDraftNow();
-            await flushPendingTextSources();
-            if (IS_MAC) await destroyWindow();
-            else await resolveNativeAppExit(true);
-          } catch (err) {
-            closeInFlight = false;
-            console.error("Failed to persist documents before closing", err);
-            toast.error(t("documents.closeSaveFailed"));
-          }
-        });
+        const stopListening = await interceptNativeWindowClose((destroyWindow) =>
+          closeAfterPersisting(
+            persistThen("closing", () =>
+              IS_MAC ? destroyWindow() : resolveNativeAppExit(true),
+            ),
+          ),
+        );
         if (disposed) safeUnlisten(stopListening);
         else unlisten = stopListening;
       } catch (err) {
@@ -115,7 +123,7 @@ export function useDraftPersistence({
       disposed = true;
       safeUnlisten(unlisten);
     };
-  }, [flushDraftNow, flushPendingTextSources, t]);
+  }, [closeAfterPersisting, persistThen]);
 
   useEffect(() => {
     if (draftState.status !== "error" || !draftState.error) {
