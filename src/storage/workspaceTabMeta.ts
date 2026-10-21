@@ -27,6 +27,7 @@ export function isWorkspaceTabMeta(value: unknown): value is WorkspaceTabMeta {
       typeof tab.workingCopyCacheId === "string") &&
     (tab.textDirty === undefined || typeof tab.textDirty === "boolean") &&
     (tab.hash === undefined || typeof tab.hash === "string") &&
+    (tab.sourceHash === undefined || typeof tab.sourceHash === "string") &&
     (tab.pinned === undefined || typeof tab.pinned === "boolean") &&
     (tab.pdfView === undefined || isPdfViewState(tab.pdfView)) &&
     (tab.textView === undefined || isTextViewState(tab.textView)) &&

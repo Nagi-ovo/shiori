@@ -1,8 +1,11 @@
+import "../../test/buildGlobals";
 import { describe, expect, test } from "bun:test";
 import { exportSnapshotKey } from "../../editor/export/exportStatus";
 import { createPdfEditorStore } from "../../editor/store/store";
 import type { Draft } from "../../storage/drafts";
 import { sha256Hex } from "../../storage/hash";
+import { loadWorkspaceState, saveWorkspaceState, type WorkspaceTabMeta } from "../../storage/workspace";
+import { metaFromRuntimeTab } from "../appWorkspace";
 import { captureSuspendedPdfSnapshot } from "../../storage/runtimeSessions";
 import type { WorkspaceRuntimeTab } from "../types";
 import { openDocument } from "./openDocument";
@@ -345,6 +348,43 @@ describe("openDocument", () => {
     expect(byTitle("s.md")?.sourceHash).toBe(await sha256Hex(disk));
     // The bytes are the edits, not the file: what the file holds is unknown.
     expect(byTitle("d.md")?.sourceHash).toBeUndefined();
+  });
+
+  test("unsaved edits restored after a restart still know what their file held", async () => {
+    const disk = new TextEncoder().encode("# On disk");
+    const copy = new TextEncoder().encode("# Unsaved edits");
+    const diskHash = await sha256Hex(disk);
+    const edited = {
+      id: "t", kind: "markdown", title: "n.md", size: copy.length, source: { type: "path", path: "/n/n.md" },
+      workingCopyCacheId: "wc", textDirty: true, hash: await sha256Hex(copy), sourceHash: diskHash,
+      text: "# Unsaved edits", status: "loaded", updatedAt: 1,
+    } as WorkspaceRuntimeTab;
+    const stored = new Map<string, string>();
+    const realStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: { getItem: (k: string) => stored.get(k) ?? null, setItem: (k: string, v: string) => void stored.set(k, v) },
+    });
+    let restored: WorkspaceTabMeta | undefined;
+    try {
+      // Quit with the edits unsaved, then launch again.
+      saveWorkspaceState({ version: 1, activeTabId: "t", tabs: [metaFromRuntimeTab(edited)] });
+      restored = loadWorkspaceState().tabs[0];
+    } finally {
+      if (realStorage) Object.defineProperty(globalThis, "localStorage", realStorage);
+      else delete (globalThis as { localStorage?: unknown }).localStorage;
+    }
+    const store = workspace([{ ...restored!, status: "loading" }], "t");
+    const { ports } = fakePorts(store);
+
+    await openDocument(
+      { kind: "markdown", name: "n.md", size: copy.length, bytes: copy, path: "/n/n.md" },
+      { tabId: "t", workingCopyCacheId: "wc", skipDuplicateCheck: true },
+      ports,
+    );
+
+    // So Cmd+S asks only if the file changed, not on every restored tab.
+    expect(store.getState().tabs[0]).toMatchObject({ text: "# Unsaved edits", sourceHash: diskHash });
   });
 
   test("a rejected document restore marks its tab unavailable", async () => {

@@ -70,6 +70,14 @@ export type WorkspaceTabMeta = {
   textDirty?: boolean;
   hash?: string;
   /**
+   * Text documents only: SHA-256 of what the file held when Shiori last read
+   * or wrote it. Cmd+S first checks the file still holds that, so it never
+   * replaces a newer version another program wrote. Persisted so edits
+   * restored from the working copy keep it; unknown (undefined) means the
+   * save asks first.
+   */
+  sourceHash?: string;
+  /**
    * Explicitly kept: this document is part of what the reader is working on,
    * not just something they opened to look at. Opening a file never sets it —
    * the reader does, with the pin control. Absent means unfiled.

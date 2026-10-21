@@ -52,13 +52,6 @@ export type WorkspaceRuntimeTab = WorkspaceTabMeta & {
    */
   textBom?: boolean;
   /**
-   * SHA-256 of what the text document's file held when Shiori last read or
-   * wrote it. A save first checks the file still holds that, so it never
-   * replaces a newer version another program wrote. Unknown (undefined) when
-   * the tab was restored from a working copy of unsaved edits.
-   */
-  sourceHash?: string;
-  /**
    * Binary non-PDF documents (`docx`) live here instead of `text`. There is no
    * working copy and no save-back path for them yet, so these bytes are read
    * only — the viewer renders them and nothing writes them.
