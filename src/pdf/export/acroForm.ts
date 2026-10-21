@@ -127,13 +127,25 @@ function collectFieldRootsFromPages(dest: PDFDocument): PDFRef[] {
 // afterwards), then walks both /Parent chains together, so every field with
 // a widget on an exported page maps to the field object the output uses.
 // The clone cache learns the same pairs, so nothing cloned later copies a
-// field a second time.
+// field a second time. A field with no widget of its own (a hidden total
+// inside a group) is reached only through its parent's /Kids, which the
+// copier keeps in order; a partial export prunes the source's /Kids in place
+// before the copy, so both sides still line up.
 function mapCopiedFields(
   source: PDFDocument,
   dest: PDFDocument,
   state: CloneState,
 ): Map<string, PDFRef> {
   const copied = new Map<string, PDFRef>();
+  const pairs: [PDFRef, PDFRef][] = [];
+  const pair = (from: PDFRef, to: PDFRef): boolean => {
+    const tag = from.toString();
+    if (copied.has(tag)) return false;
+    copied.set(tag, to);
+    if (!state.clonedRefs.has(tag)) state.clonedRefs.set(tag, to);
+    pairs.push([from, to]);
+    return true;
+  };
   for (const page of source.getPages()) {
     const destRef = state.pageRefMap.get(page.ref.toString());
     const destPage = destRef && lookupDict(dest, destRef);
@@ -145,16 +157,24 @@ function mapCopiedFields(
       let from: PDFRef | undefined = sourceWidget;
       let to: PDFRef | undefined = destWidgets[index];
       for (let depth = 0; from && to && depth < 32; depth++) {
-        const tag = from.toString();
-        if (copied.has(tag)) break;
-        copied.set(tag, to);
-        if (!state.clonedRefs.has(tag)) state.clonedRefs.set(tag, to);
+        if (!pair(from, to)) break;
         const fromParent: PDFObject | undefined = lookupDict(source, from)?.get(PARENT_KEY);
         const toParent: PDFObject | undefined = lookupDict(dest, to)?.get(PARENT_KEY);
         from = fromParent instanceof PDFRef ? fromParent : undefined;
         to = toParent instanceof PDFRef ? toParent : undefined;
       }
     });
+  }
+  while (pairs.length > 0) {
+    const [from, to] = pairs.pop()!;
+    const fromKids = asArray(source, lookupDict(source, from)?.get(KIDS_KEY));
+    const toKids = asArray(dest, lookupDict(dest, to)?.get(KIDS_KEY));
+    if (!fromKids || !toKids || fromKids.size() !== toKids.size()) continue;
+    for (let i = 0; i < fromKids.size(); i++) {
+      const fromKid = fromKids.get(i);
+      const toKid = toKids.get(i);
+      if (fromKid instanceof PDFRef && toKid instanceof PDFRef) pair(fromKid, toKid);
+    }
   }
   return copied;
 }

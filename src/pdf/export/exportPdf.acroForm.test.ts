@@ -43,6 +43,34 @@ describe("form calculation order", () => {
     expect(calculationOrder(out)).toEqual([total, hidden]);
   });
 
+  test("a widgetless calculated field inside a group keeps its calculation", async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([300, 300]);
+    const form = doc.getForm();
+    form
+      .createTextField("group.visible")
+      .addToPage(page, { x: 20, y: 200, width: 100, height: 20 });
+    const visible = form.getTextField("group.visible").acroField.dict;
+    const groupRef = visible.get(PDFName.of("Parent")) as PDFRef;
+    const hidden = doc.context.register(
+      doc.context.obj({ FT: "Tx", T: PDFString.of("hidden"), Parent: groupRef }),
+    );
+    doc.context
+      .lookup(groupRef, PDFDict)
+      .lookup(PDFName.of("Kids"), PDFArray)
+      .push(hidden);
+    form.acroForm.dict.set(PDFName.of("CO"), doc.context.obj([hidden]));
+    const source = await doc.save({ updateFieldAppearances: false });
+
+    const out = await PDFDocument.load(
+      (await exportPdf(source, rotated(modelForPages([0])))).bytes,
+    );
+
+    expect(calculationOrder(out)).toEqual([
+      out.getForm().getTextField("group.hidden").ref,
+    ]);
+  });
+
   test("a field left out with its page leaves the calculation order too", async () => {
     const source = await calculatedForm({ totalOnPage: 1, hiddenField: false });
 
