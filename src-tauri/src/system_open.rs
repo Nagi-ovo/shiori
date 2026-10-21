@@ -13,7 +13,7 @@ use crate::{documents::validate_pdf_path, runtime_guard::enforce_runtime_guard};
 #[tauri::command]
 #[specta::specta]
 #[cfg(not(mobile))]
-pub(crate) fn open_exported_pdf<R: Runtime>(
+pub(crate) async fn open_exported_pdf<R: Runtime>(
     caller: Webview<R>,
     path: String,
 ) -> Result<(), String> {
@@ -21,7 +21,7 @@ pub(crate) fn open_exported_pdf<R: Runtime>(
     enforce_runtime_guard()?;
     let path = PathBuf::from(path);
     validate_pdf_path(&path)?;
-    open_path(&path)
+    off_main_thread(move || open_path(&path)).await
 }
 
 #[tauri::command]
@@ -38,7 +38,7 @@ pub(crate) fn open_exported_pdf<R: Runtime>(
 #[tauri::command]
 #[specta::specta]
 #[cfg(not(mobile))]
-pub(crate) fn reveal_exported_pdf<R: Runtime>(
+pub(crate) async fn reveal_exported_pdf<R: Runtime>(
     caller: Webview<R>,
     path: String,
 ) -> Result<(), String> {
@@ -46,7 +46,7 @@ pub(crate) fn reveal_exported_pdf<R: Runtime>(
     enforce_runtime_guard()?;
     let path = PathBuf::from(path);
     validate_pdf_path(&path)?;
-    reveal_path(&path)
+    off_main_thread(move || reveal_path(&path)).await
 }
 
 #[tauri::command]
@@ -58,6 +58,20 @@ pub(crate) fn reveal_exported_pdf<R: Runtime>(
 ) -> Result<(), String> {
     enforce_main_webview(&caller)?;
     Err("native-paths-unsupported".into())
+}
+
+// Each hand-off waits for its opener to exit, to report a failure such as
+// "no application can open this". A sync command would do that wait on the
+// main thread, and Linux xdg-open without a recognised desktop runs the
+// handler in the foreground: Reveal froze every window until the file
+// manager or viewer was closed. Wait on the blocking pool instead.
+#[cfg(not(mobile))]
+async fn off_main_thread(
+    hand_off: impl FnOnce() -> Result<(), String> + Send + 'static,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(hand_off)
+        .await
+        .map_err(|err| err.to_string())?
 }
 
 #[cfg(not(mobile))]
@@ -139,9 +153,12 @@ pub(crate) fn open_external_url_impl(url: String) -> Result<(), String> {
 #[tauri::command]
 #[specta::specta]
 #[cfg(not(mobile))]
-pub(crate) fn open_external_url<R: Runtime>(caller: Webview<R>, url: String) -> Result<(), String> {
+pub(crate) async fn open_external_url<R: Runtime>(
+    caller: Webview<R>,
+    url: String,
+) -> Result<(), String> {
     enforce_main_webview(&caller)?;
-    open_external_url_impl(url)
+    off_main_thread(move || open_external_url_impl(url)).await
 }
 
 #[tauri::command]

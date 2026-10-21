@@ -127,22 +127,20 @@ fn write_file_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let path = resolved.as_path();
 
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let file_name = path
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| "export".to_string());
     // Same directory as the destination, so the rename never crosses a device
     // boundary (which would make it a copy, and non-atomic).
-    let temp_path = parent.join(format!(".{file_name}.shiori-tmp"));
+    let (temp_path, mut file) = create_temp_beside(parent)?;
 
     let write_result = (|| -> std::io::Result<()> {
-        let mut file = fs::File::create(&temp_path)?;
         file.write_all(bytes)?;
         // Without fsync the rename can land before the contents do, leaving a
         // zero-length file after a crash or power loss.
         file.sync_all()?;
         Ok(())
     })();
+    // Close the temp before chmod and rename, as when the closure owned it:
+    // Windows may refuse to remove or rename a file that is still open.
+    drop(file);
 
     if let Err(err) = write_result {
         let _ = fs::remove_file(&temp_path);
@@ -166,6 +164,38 @@ fn write_file_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         return Err(err);
     }
     Ok(())
+}
+
+// A fixed temp name opened with File::create followed a symlink already at
+// that name, truncating its target and filling it with the document, and the
+// rename then turned the document itself into that symlink; two saves of one
+// path also shared the temp inode. create_new (O_EXCL, which also refuses a
+// symlink) under a per-save name sidesteps whatever sits there. A crash now
+// leaves its own temp behind instead of the next save reusing it. The name
+// leaves out the destination's: a file name may use all of NAME_MAX, and a
+// suffix on it overflowed that.
+#[cfg(not(mobile))]
+fn create_temp_beside(parent: &Path) -> std::io::Result<(PathBuf, fs::File)> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let pid = std::process::id();
+    for _ in 0..16 {
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        let temp_path = parent.join(format!(".shiori-tmp-{pid}-{n}"));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+        {
+            Ok(file) => return Ok((temp_path, file)),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(err),
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "no free temporary file name beside the destination",
+    ))
 }
 
 #[tauri::command]
@@ -242,9 +272,15 @@ pub(crate) async fn share_exported_file<R: Runtime>(
     use tauri_plugin_shiori_browser::{ShareFilePayload, ShioriBrowserExt};
     enforce_main_webview(&caller)?;
     enforce_runtime_guard()?;
+    let export_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join("exports");
+    let path = shareable_export_path(&path, &export_dir)?;
     app.shiori_browser()
         .share_file(ShareFilePayload {
-            path,
+            path: path.to_string_lossy().into_owned(),
             filename,
             mime,
         })
@@ -263,6 +299,27 @@ pub(crate) async fn share_exported_file<R: Runtime>(
 ) -> Result<bool, String> {
     enforce_main_webview(&caller)?;
     Err("share-not-supported-on-desktop".into())
+}
+
+// The iOS share sheet offers the file to any app the user picks, so share
+// only a file inside the exports folder save_pdf_dialog writes to, the rule
+// Android's shareCachedExport (MainActivity.kt) already applies; forwarding
+// the path as given let the webview offer any file in the sandbox (drafts,
+// WebKit data). Both sides are canonicalised: `..` and symlinks resolve
+// first, and iOS reaches the cache through the /var -> /private/var link.
+#[cfg(any(mobile, all(test, unix)))]
+fn shareable_export_path(
+    path: &str,
+    export_dir: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    let invalid = || "share-export-path-invalid".to_string();
+    let export_dir = fs::canonicalize(export_dir).map_err(|_| invalid())?;
+    let file = fs::canonicalize(path).map_err(|_| invalid())?;
+    if file != export_dir && file.starts_with(&export_dir) && file.is_file() {
+        Ok(file)
+    } else {
+        Err(invalid())
+    }
 }
 
 #[cfg(mobile)]
@@ -349,6 +406,75 @@ mod tests {
         let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "a 0600 note must not become world-readable");
         assert_eq!(fs::read_to_string(&path).unwrap(), "still secret");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // The temp file sits beside the destination under a name anyone who can
+    // write that folder could predict. Whatever already sits there (a planted
+    // symlink, a leftover, another save's temp) must not be written through
+    // or renamed over the document.
+    #[test]
+    #[cfg(all(not(mobile), unix))]
+    fn atomic_write_never_writes_through_an_existing_temp_entry() {
+        let dir = text_image_test_dir("atomic-temp-symlink");
+        let victim = dir.join("victim.txt");
+        let path = dir.join("note.md");
+        fs::write(&victim, b"keep me").unwrap();
+        fs::write(&path, b"old").unwrap();
+        std::os::unix::fs::symlink(&victim, dir.join(".note.md.shiori-tmp")).unwrap();
+
+        super::write_file_atomically(&path, b"new").unwrap();
+
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "keep me");
+        assert!(fs::symlink_metadata(&path).unwrap().file_type().is_file());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // The share sheet hands a file to any app the user picks, so the path the
+    // webview names must be an export save_pdf_dialog wrote, as on Android
+    // (MainActivity.kt shareCachedExport), not any file in the sandbox.
+    #[test]
+    #[cfg(all(not(mobile), unix))]
+    fn share_accepts_only_files_inside_the_exports_folder() {
+        let dir = text_image_test_dir("share-exports");
+        let exports = dir.join("exports");
+        fs::create_dir_all(&exports).unwrap();
+        fs::write(exports.join("out.pdf"), b"%PDF").unwrap();
+        fs::write(dir.join("drafts.sqlite"), b"private").unwrap();
+        std::os::unix::fs::symlink(dir.join("drafts.sqlite"), exports.join("link.pdf")).unwrap();
+        let share = |path: std::path::PathBuf| {
+            super::shareable_export_path(&path.to_string_lossy(), &exports)
+        };
+
+        let ok = share(exports.join("out.pdf")).unwrap();
+        assert_eq!(ok, fs::canonicalize(exports.join("out.pdf")).unwrap());
+        for bad in [
+            dir.join("drafts.sqlite"),
+            exports.join("../drafts.sqlite"),
+            exports.join("link.pdf"),
+            exports.join("missing.pdf"),
+            exports.clone(),
+        ] {
+            assert!(
+                share(bad.clone()).is_err(),
+                "should refuse {}",
+                bad.display()
+            );
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // A file name may use the whole NAME_MAX (255 bytes); the temp beside it
+    // must fit too, or saving a long-named note fails.
+    #[test]
+    #[cfg(all(not(mobile), unix))]
+    fn atomic_write_saves_a_file_whose_name_is_near_the_limit() {
+        let dir = text_image_test_dir("atomic-long-name");
+        let path = dir.join(format!("{}.md", "a".repeat(237)));
+        fs::write(&path, b"old").unwrap();
+        super::write_file_atomically(&path, b"new").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
         let _ = fs::remove_dir_all(&dir);
     }
 

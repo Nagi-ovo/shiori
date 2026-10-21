@@ -6,13 +6,21 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 #[cfg(not(mobile))]
 use tauri::Manager;
+use tauri::{AppHandle, Runtime, Webview};
 #[cfg(not(mobile))]
-use tauri::{webview::WebviewBuilder, LogicalPosition, LogicalSize, WebviewUrl};
-use tauri::{AppHandle, Runtime, Url, Webview};
+use tauri::{LogicalPosition, LogicalSize};
 
-#[cfg(not(mobile))]
-use crate::emit_to_main;
 use crate::{enforce_main_webview, runtime_guard::enforce_runtime_guard};
+
+mod navigation;
+pub(crate) use navigation::parse_web_url;
+#[cfg(not(mobile))]
+mod create;
+#[cfg(not(mobile))]
+use create::create_web_panel;
+#[cfg(not(mobile))]
+use navigation::emit_web_panel_nav;
+
 // Embedded Browser panel. Web content lives in a native child webview
 // (label `web-panel`) of the main window, created lazily on first open.
 // That webview is deliberately granted NO app-command capability: build.rs
@@ -36,14 +44,16 @@ pub(crate) struct WebPanelState {
 
 // A linear history of committed URLs plus a cursor. Tracked purely to
 // drive the address bar and back/forward enablement — actual traversal
-// uses the webview's own history via `history.back()/forward()`. We infer
-// pushes vs. traversals by matching the navigated URL against the
-// neighbours of the cursor, which is robust regardless of whether
-// `on_navigation` fires for reloads.
+// uses the webview's own history via `history.back()/forward()`. A commit
+// is a traversal only when the panel's own Back/Forward asked for one
+// (`pending_steps`, negative for Back) and the URL is an entry within those
+// steps; anything else, a link back to the previous page included, is a new
+// entry.
 #[derive(Default)]
 struct WebPanelInner {
     history: Vec<String>,
     cursor: usize,
+    pending_steps: i32,
     persist_session: Option<bool>,
     // Whether the child webview is currently shown. Lets set_bounds skip a
     // redundant show() every frame: on Windows WebView2, Show() forces a
@@ -75,16 +85,6 @@ struct WebPanelInner {
     pending_hide: bool,
 }
 
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct WebPanelNav {
-    url: Option<String>,
-    loading: bool,
-    can_go_back: bool,
-    can_go_forward: bool,
-    error: Option<String>,
-}
-
 #[derive(Deserialize, Clone, Copy, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct WebPanelBounds {
@@ -100,70 +100,8 @@ pub(crate) struct WebPanelOpenRequest {
     pub(crate) url: String,
 }
 
-pub(crate) fn parse_web_url(raw: &str) -> Result<Url, String> {
-    let parsed = Url::parse(raw.trim()).map_err(|_| "web-panel-invalid-url".to_string())?;
-    match parsed.scheme() {
-        "http" | "https" => Ok(parsed),
-        _ => Err("web-panel-unsupported-url".into()),
-    }
-}
-
-#[cfg(not(mobile))]
-fn route_non_web_panel_navigation(raw: &str) {
-    let lower = raw.trim().to_ascii_lowercase();
-    if lower.starts_with("mailto:") {
-        let _ = crate::system_open::open_external_url_impl(raw.to_string());
-    }
-}
-
 fn lock_web_panel(state: &WebPanelState) -> std::sync::MutexGuard<'_, WebPanelInner> {
     state.inner.lock().unwrap_or_else(|err| err.into_inner())
-}
-
-// Classify a committed navigation against the cursor's neighbours so the
-// history stays consistent for reloads, link clicks, and back/forward.
-fn record_web_navigation(inner: &mut WebPanelInner, url: &str) {
-    let current = inner.history.get(inner.cursor).map(String::as_str);
-    if current == Some(url) {
-        return; // reload / re-entrant fire of the same page
-    }
-    if inner.cursor > 0 && inner.history.get(inner.cursor - 1).map(String::as_str) == Some(url) {
-        inner.cursor -= 1; // went back
-        return;
-    }
-    if inner.history.get(inner.cursor + 1).map(String::as_str) == Some(url) {
-        inner.cursor += 1; // went forward
-        return;
-    }
-    if !inner.history.is_empty() {
-        inner.history.truncate(inner.cursor + 1);
-    }
-    inner.history.push(url.to_string());
-    inner.cursor = inner.history.len().saturating_sub(1);
-}
-
-#[cfg(not(mobile))]
-fn emit_web_panel_nav<R: Runtime>(app: &AppHandle<R>, loading: bool, error: Option<String>) {
-    let (url, can_go_back, can_go_forward) = {
-        let state = app.state::<WebPanelState>();
-        let inner = lock_web_panel(&state);
-        (
-            inner.history.get(inner.cursor).cloned(),
-            inner.cursor > 0,
-            inner.cursor + 1 < inner.history.len(),
-        )
-    };
-    let _ = emit_to_main(
-        app,
-        "web-panel-nav",
-        WebPanelNav {
-            url,
-            loading,
-            can_go_back,
-            can_go_forward,
-            error,
-        },
-    );
 }
 
 #[cfg(not(mobile))]
@@ -173,117 +111,6 @@ fn apply_web_panel_bounds<R: Runtime>(webview: &Webview<R>, bounds: &WebPanelBou
         bounds.width.max(1.0),
         bounds.height.max(1.0),
     ));
-}
-
-#[cfg(not(mobile))]
-fn create_web_panel<R: Runtime>(
-    app: &AppHandle<R>,
-    url: Url,
-    bounds: Option<WebPanelBounds>,
-    persist_session: bool,
-) -> Result<(), String> {
-    let window = app
-        .get_window("main")
-        .ok_or_else(|| "web-panel-no-window".to_string())?;
-    let nav_app = app.clone();
-    let builder = WebviewBuilder::new(WEB_PANEL_LABEL, WebviewUrl::External(url))
-        .user_agent(WEB_PANEL_USER_AGENT)
-        .incognito(!persist_session)
-        .on_navigation(move |url| {
-            let committed = url.to_string();
-            if parse_web_url(&committed).is_err() {
-                route_non_web_panel_navigation(&committed);
-                return false;
-            }
-            {
-                let state = nav_app.state::<WebPanelState>();
-                let mut inner = lock_web_panel(&state);
-                record_web_navigation(&mut inner, &committed);
-            }
-            // Emit nav-state OFF this callback's stack. On Windows this closure
-            // is the synchronous WebView2 `NavigationStarting` COM callback,
-            // running on the main UI thread inside the message pump.
-            // `emit_web_panel_nav` -> `app.emit` -> webview `eval` goes through
-            // wry's `send_user_message`, which INLINE-EXECUTES when called from
-            // the main thread (POSTMORTEMS 2026-05-30) — i.e. it would run
-            // re-entrantly while a navigation COM callback is still on the
-            // stack. macOS WKWebView dispatches `evaluateJavaScript`
-            // asynchronously, so it never re-enters; Windows does, and that
-            // re-entrancy is the prime suspect for the post-navigation main-
-            // thread wedge (page blank + dead buttons + unclosable window +
-            // terminal stuck at "starting shell" — every invoke round-trip
-            // frozen). `async_runtime::spawn` hops the emit onto a worker
-            // thread, so `send_user_message` takes its QUEUED branch and the
-            // eval lands on a later, clean event-loop turn. Do NOT swap in
-            // `run_on_main_thread`: from the main thread it ALSO inline-runs and
-            // reproduces the re-entrancy. History was recorded synchronously
-            // above; the spawned emit re-reads that snapshot, so the address
-            // bar / back-forward state stay correct, one loop-tick later.
-            let emit_app = nav_app.clone();
-            tauri::async_runtime::spawn(async move {
-                emit_web_panel_nav(&emit_app, false, None);
-            });
-            true
-        });
-    let (position, size) = match &bounds {
-        Some(b) => (
-            LogicalPosition::new(b.x, b.y),
-            LogicalSize::new(b.width.max(1.0), b.height.max(1.0)),
-        ),
-        // Fallback only — the frontend measures the host and corrects via
-        // set_bounds on the next frame. Keep it rail-sized, not 800px, so a
-        // missed measurement never overflows the panel.
-        None => (
-            LogicalPosition::new(0.0, 0.0),
-            LogicalSize::new(420.0, 560.0),
-        ),
-    };
-    // Mark "creating" across add_child. On Windows add_child synchronously
-    // runs a nested message pump while the WebView2 controller is built; an
-    // IPC queued concurrently (the frontend's independent rAF/ResizeObserver
-    // fires web_panel_set_bounds right as the panel opens) can be dispatched
-    // re-entrantly inside that pump and hit SetBounds/SetIsVisible on the
-    // half-built controller. While this flag is set, those commands stash their
-    // request instead of calling wry; we flush the latest once below. macOS
-    // never re-enters, so the gate is simply never tripped there.
-    {
-        let state = app.state::<WebPanelState>();
-        let mut inner = lock_web_panel(&state);
-        inner.creating = true;
-        inner.pending_bounds = None;
-        inner.pending_hide = false;
-    }
-    let result = window
-        .add_child(builder, position, size)
-        .map_err(|err| err.to_string());
-    let (pending_bounds, pending_hide) = {
-        let state = app.state::<WebPanelState>();
-        let mut inner = lock_web_panel(&state);
-        inner.creating = false;
-        (
-            inner.pending_bounds.take(),
-            std::mem::take(&mut inner.pending_hide),
-        )
-    };
-    result?;
-    // add_child creates the child webview VISIBLE. Replay the visibility/geometry
-    // intent that arrived during creation, and make this the single authority for
-    // the `visible` flag (web_panel_open no longer forces it true on the create
-    // path). If a hide raced the create, take the panel down now — otherwise the
-    // OS-top-layer webview would float over whatever the user switched to.
-    let webview = app.get_webview(WEB_PANEL_LABEL);
-    if pending_hide {
-        if let Some(webview) = &webview {
-            webview.hide().map_err(|err| err.to_string())?;
-        }
-        lock_web_panel(&app.state::<WebPanelState>()).visible = false;
-    } else {
-        if let (Some(bounds), Some(webview)) = (pending_bounds, &webview) {
-            apply_web_panel_bounds(webview, &bounds);
-        }
-        lock_web_panel(&app.state::<WebPanelState>()).visible = true;
-    }
-    Ok(())
 }
 
 #[tauri::command]
@@ -310,6 +137,7 @@ pub(crate) fn web_panel_open<R: Runtime>(
             .is_some_and(|current| current != persist_session);
         inner.history.clear();
         inner.cursor = 0;
+        inner.pending_steps = 0;
         inner.history.push(parsed.to_string());
         inner.persist_session = Some(persist_session);
         recreate
@@ -533,6 +361,10 @@ pub(crate) fn web_panel_back<R: Runtime>(
 ) -> Result<(), String> {
     enforce_main_webview(&caller)?;
     if let Some(webview) = app.get_webview(WEB_PANEL_LABEL) {
+        navigation::request_traversal(
+            &mut lock_web_panel(&app.state::<WebPanelState>()),
+            navigation::Traversal::Back,
+        );
         webview
             .eval("history.back()")
             .map_err(|err| err.to_string())?;
@@ -561,6 +393,10 @@ pub(crate) fn web_panel_forward<R: Runtime>(
 ) -> Result<(), String> {
     enforce_main_webview(&caller)?;
     if let Some(webview) = app.get_webview(WEB_PANEL_LABEL) {
+        navigation::request_traversal(
+            &mut lock_web_panel(&app.state::<WebPanelState>()),
+            navigation::Traversal::Forward,
+        );
         webview
             .eval("history.forward()")
             .map_err(|err| err.to_string())?;
@@ -625,6 +461,7 @@ pub(crate) fn web_panel_close<R: Runtime>(
     let mut inner = lock_web_panel(&state);
     inner.history.clear();
     inner.cursor = 0;
+    inner.pending_steps = 0;
     inner.persist_session = None;
     inner.visible = false;
     Ok(())
@@ -640,65 +477,4 @@ pub(crate) fn web_panel_close<R: Runtime>(
     use tauri_plugin_shiori_browser::ShioriBrowserExt;
     enforce_main_webview(&caller)?;
     app.shiori_browser().close().map_err(|err| err.to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn web_panel_only_accepts_http_urls() {
-        assert!(super::parse_web_url("https://github.com").is_ok());
-        assert!(super::parse_web_url("http://example.com/x?q=1").is_ok());
-        assert!(super::parse_web_url("  https://trim.me  ").is_ok());
-        for bad in [
-            "mailto:a@b.com",
-            "file:///tmp/x.pdf",
-            "ftp://host/f",
-            "javascript:alert(1)",
-            "not a url",
-            "",
-        ] {
-            assert!(super::parse_web_url(bad).is_err(), "should reject {bad}");
-        }
-    }
-
-    // The address bar's back/forward enablement and target are driven
-    // entirely by this cursor model, so exercise the push / back / forward /
-    // reload / branch-truncation transitions directly.
-    #[test]
-    fn web_navigation_history_tracks_cursor() {
-        let mut inner = super::WebPanelInner::default();
-
-        super::record_web_navigation(&mut inner, "https://a.com");
-        assert_eq!(inner.cursor, 0);
-        assert_eq!(inner.history, vec!["https://a.com"]);
-
-        super::record_web_navigation(&mut inner, "https://b.com");
-        super::record_web_navigation(&mut inner, "https://c.com");
-        assert_eq!(inner.cursor, 2);
-        assert_eq!(inner.history.len(), 3);
-
-        // Reload (same URL) is a no-op.
-        super::record_web_navigation(&mut inner, "https://c.com");
-        assert_eq!(inner.cursor, 2);
-        assert_eq!(inner.history.len(), 3);
-
-        // Back: navigating to the previous neighbour moves the cursor back
-        // without growing history.
-        super::record_web_navigation(&mut inner, "https://b.com");
-        assert_eq!(inner.cursor, 1);
-        assert_eq!(inner.history.len(), 3);
-
-        // Forward: navigating to the next neighbour advances the cursor.
-        super::record_web_navigation(&mut inner, "https://c.com");
-        assert_eq!(inner.cursor, 2);
-
-        // Go back, then a brand-new navigation truncates the forward entry.
-        super::record_web_navigation(&mut inner, "https://b.com");
-        super::record_web_navigation(&mut inner, "https://d.com");
-        assert_eq!(inner.cursor, 2);
-        assert_eq!(
-            inner.history,
-            vec!["https://a.com", "https://b.com", "https://d.com"]
-        );
-    }
 }

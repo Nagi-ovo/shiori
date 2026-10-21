@@ -17,7 +17,6 @@
   "src-tauri/src/external_terminals.rs": 42364,
   "src-tauri/src/lib.rs": 25910,
   "src-tauri/src/live_api.rs": 96307,
-  "src-tauri/src/web_panel.rs": 26562,
   "src/app.css": 28526,
   "src/brand/InkDripStage.tsx": 20754,
   "src/brand/fluid/simulation.ts": 32386,
