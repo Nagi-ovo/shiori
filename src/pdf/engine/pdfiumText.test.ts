@@ -175,6 +175,27 @@ describe("pageTextFromPdfiumGlyphs", () => {
     expect(semanticTextContentToString(text.content)).toBe("שלום");
   });
 
+  test("a right-to-left word with one letter in another font reads whole", () => {
+    // A lone letter is a run of one glyph: nothing shows its direction but
+    // its script.
+    const first = [...rtlWord("ש", 124, 700, courier), ...rtlWord("לום", 118, 700)];
+    const last = [...rtlWord("שלו", 124, 700), ...rtlWord("ם", 106, 700, courier)];
+    for (const glyphs of [first, last]) {
+      const text = pageTextFromPdfiumGlyphs(glyphs, "he");
+      const items = text.content.items as PdfTextItem[];
+      expect(items.map((item) => item.dir)).toEqual(["rtl", "rtl"]);
+      expect(semanticTextContentToString(text.content)).toBe("שלום");
+    }
+  });
+
+  test("a space after a one-letter right-to-left run spans the gap on its left", () => {
+    // "ו" (and), PDFium's space, then "שלום" ending 40 pt further left.
+    const glyphs = [...rtlWord("ו", 124, 700), generated(" ", 118, 700), ...rtlWord("שלום", 78, 700)];
+    const items = textItems(glyphs);
+    expect(items.map((item) => item.str)).toEqual(["ו", " ", "שלום"]);
+    expect([items[1]!.transform[4], items[1]!.width]).toEqual([78, 40]);
+  });
+
   test("text in another font on the same baseline keeps its place", () => {
     // "site", a ";" in another font, then "go" right after the semicolon.
     const glyphs = [...word("site", 72, 700), ...word(";", 96, 700, courier), ...word("go", 102, 700)];

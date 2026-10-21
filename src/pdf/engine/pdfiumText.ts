@@ -165,7 +165,7 @@ class PageTextBuilder {
     if (!run) {
       if (this.#looseSpace) {
         const { run: before, at } = this.#looseSpace;
-        this.#items.push(before.rtl ? spaceItem(before, end, at) : spaceItem(before, at, origin));
+        this.#items.push(readsRtl(before) ? spaceItem(before, end, at) : spaceItem(before, at, origin));
         this.#looseSpace = null;
       }
       run = {
@@ -227,7 +227,7 @@ class PageTextBuilder {
       }
       this.#recent = [run, ...this.#recent].slice(0, RESUMABLE_RUNS);
       if (!hasEOL && run.pendingSpace) {
-        this.#looseSpace = { at: run.rtl ? run.origin : along(run, run.width), run };
+        this.#looseSpace = { at: readsRtl(run) ? run.origin : along(run, run.width), run };
       }
     } else if (hasEOL) {
       const last = this.#items[this.#items.length - 1];
@@ -260,6 +260,13 @@ class PageTextBuilder {
 // Letters of the right-to-left scripts; a run turns right-to-left only on
 // two of them in a row, so a neutral or Latin glyph never flips it.
 const RTL_LETTER = /^[\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}]/u;
+// One such letter with its marks: a run of it (a letter in its own font, a
+// one-letter word) shows no advance direction, so its script decides.
+const RTL_SINGLE = /^[\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}]\p{M}*$/u;
+
+function readsRtl(run: Run): boolean {
+  return run.rtl || (RTL_LETTER.test(run.str) && (run.glyphs.length === 1 || RTL_SINGLE.test(run.str)));
+}
 
 function continues(
   run: Run,
@@ -288,7 +295,7 @@ function continues(
     offset < 0 &&
     endOffset <= MAX_OVERLAP_EM * size &&
     endOffset >= -MAX_GAP_EM * size &&
-    (run.rtl || (run.glyphs.length === 1 && RTL_LETTER.test(run.str) && RTL_LETTER.test(glyph.text)));
+    (run.rtl || (readsRtl(run) && RTL_LETTER.test(glyph.text)));
   return leftward ? "leftward" : null;
 }
 
@@ -309,7 +316,7 @@ function itemOf(run: Run, hasEOL: boolean): PdfTextItem {
   const { fontSize: size, dir, origin } = run;
   return {
     str: run.str,
-    dir: run.rtl ? "rtl" : "ltr",
+    dir: readsRtl(run) ? "rtl" : "ltr",
     transform: [size * dir.x, size * dir.y, -size * dir.y, size * dir.x, origin.x, origin.y],
     width: run.width,
     height: size,
@@ -322,7 +329,10 @@ function itemOf(run: Run, hasEOL: boolean): PdfTextItem {
  * from `from` to `to` along the run's baseline. */
 function spaceItem(before: Run, from: PdfPoint, to: PdfPoint): PdfTextItem {
   const gap = (to.x - from.x) * before.dir.x + (to.y - from.y) * before.dir.y;
-  return itemOf({ ...before, origin: from, str: " ", width: Math.max(0, gap), item: null, glyphs: [] }, false);
+  return itemOf(
+    { ...before, origin: from, str: " ", width: Math.max(0, gap), item: null, glyphs: [], rtl: readsRtl(before) },
+    false,
+  );
 }
 
 function cellOf(
