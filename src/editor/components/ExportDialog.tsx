@@ -12,46 +12,41 @@ import {
 import { ExportErrorNotice, LossyExportNotice } from "./ExportNotices";
 import { ExportPagesSection } from "./ExportPagesSection";
 import { useEditorStore } from "../store/store";
-import type {
-  DocumentFilesPolicy,
-  ExportMode,
-  ExportQuality,
-  ExportResult,
-} from "../../pdf/export/exportPdf";
+import type { ExportMode } from "../../pdf/export/exportPdf";
 import { selectPagesForExport, type ExportRange } from "../../pdf/export/pageRanges";
-import {
-  cjkJpExportFontUrl,
-  cjkScExportFontUrl,
-} from "../../pdf/export/fontAssets";
 import { hasNonAscii } from "../../pdf/export/textScripts";
-import type { PdfDocument } from "../../pdf/engine/types";
 import {
   openExportedFile,
   revealExportedFile,
   saveBytes,
 } from "../export/exportPlatformAdapter";
 import { toast } from "../toast";
-import { formatBytes } from "../../shared/format";
 import {
   buildDiagnosticReport,
   copyDiagnosticReport,
   diagnosticErrorMessage,
   type DiagnosticContext,
 } from "../../runtime/diagnostics";
-import { exportCompactRasterPdf } from "../export/compactRasterPdfAdapter";
-import type { ExportSourceEncryption } from "../../pdf/export/encryptedSource";
-import { deniedEdits } from "../../pdf/security/permissions";
 import { formatEditList } from "../permissionEdits";
-import {
-  cachePreviewResult,
-  type PreviewResultCache,
-} from "../export/exportPreviewCache";
 import { exportSnapshotKey } from "../export/exportStatus";
+import {
+  exportBytesForQuality,
+  loadExportPdfModule,
+  type ExportPreviewRequest,
+} from "./exportDialogBytes";
+import { readExportPrefs, writeExportPrefs, type QualityV } from "./exportPrefs";
+import {
+  PREVIEW_DEBOUNCE_MS,
+  deferredSizePreviews,
+  generateSizePreview,
+  qualityHint,
+  selectSizePreview,
+  unavailableSizePreviews,
+  type ExportBytesCache,
+  type SizePreviewState,
+} from "./exportSizePreview";
 
 type RangeV = ExportRange;
-type QualityV = ExportQuality;
-type ExportPdfModule = typeof import("../../pdf/export/exportPdf");
-type ExportPdfFunction = ExportPdfModule["exportPdf"];
 
 type Props = {
   open: boolean;
@@ -76,85 +71,13 @@ type ExportErrorState = {
 type PendingLossyExport = {
   bytes: Uint8Array;
   lostChars: number;
+  unexcisedEdits: number;
   completeDocument: boolean;
   snapshotKey: string;
   suggestedName: string;
   diagnosticContext: DiagnosticContext;
 };
 
-type SizePreview = {
-  status: "deferred" | "calculating" | "ready" | "unavailable";
-  size?: number;
-};
-
-type SizePreviewMap = Record<QualityV, SizePreview>;
-
-type SizePreviewState = {
-  request: ExportPreviewRequest | null;
-  previews: SizePreviewMap;
-};
-
-type ExportPreviewRequest = {
-  doc: PdfDocument;
-  originalBytes: Uint8Array;
-  // In memory only, like `opened.password`: it opens the source again to
-  // re-encrypt the export (src/pdf/export/encryptedSource.ts).
-  password: string | undefined;
-  model: Parameters<ExportPdfFunction>[1];
-  mode: ExportMode;
-  documentFiles: Exclude<DocumentFilesPolicy, "auto">;
-  unicodeFontErrorMessage: string;
-};
-
-type ExportBytesCache = {
-  request: ExportPreviewRequest;
-  results: PreviewResultCache;
-  pending: Partial<Record<QualityV, Promise<ExportResult>>>;
-};
-
-const PREVIEW_DEBOUNCE_MS = 220;
-
-// Remember the annotation mode + quality across exports (WCAG 2.2 SC 3.3.7,
-// redundant entry). The page range is intentionally NOT persisted — it is
-// document-specific. Stored as one small JSON blob, validated on read so a
-// stale/garbage value can never wedge the dialog.
-const EXPORT_PREFS_KEY = "shiori:exportPrefs:v1";
-const EXPORT_MODES: readonly ExportMode[] = ["annotations", "flatten", "none"];
-const EXPORT_QUALITIES: readonly QualityV[] = [
-  "original",
-  "standard",
-  "compact",
-];
-const DEFAULT_EXPORT_PREFS: { mode: ExportMode; quality: QualityV } = {
-  mode: "annotations",
-  quality: "original",
-};
-
-function readExportPrefs(): { mode: ExportMode; quality: QualityV } {
-  try {
-    const raw = localStorage.getItem(EXPORT_PREFS_KEY);
-    if (!raw) return DEFAULT_EXPORT_PREFS;
-    const parsed = JSON.parse(raw) as { mode?: unknown; quality?: unknown };
-    return {
-      mode: EXPORT_MODES.includes(parsed.mode as ExportMode)
-        ? (parsed.mode as ExportMode)
-        : DEFAULT_EXPORT_PREFS.mode,
-      quality: EXPORT_QUALITIES.includes(parsed.quality as QualityV)
-        ? (parsed.quality as QualityV)
-        : DEFAULT_EXPORT_PREFS.quality,
-    };
-  } catch {
-    return DEFAULT_EXPORT_PREFS;
-  }
-}
-
-function writeExportPrefs(mode: ExportMode, quality: QualityV): void {
-  try {
-    localStorage.setItem(EXPORT_PREFS_KEY, JSON.stringify({ mode, quality }));
-  } catch {
-    // Private mode / quota — remembering preferences is best-effort.
-  }
-}
 
 export function ExportDialog({
   open,
@@ -546,12 +469,13 @@ export function ExportDialog({
       const prepared: PendingLossyExport = {
         bytes: exportResult.bytes,
         lostChars: exportResult.lostChars,
+        unexcisedEdits: exportResult.unexcisedEdits ?? 0,
         completeDocument,
         snapshotKey: exportSnapshotKey(exportModel),
         suggestedName: `${stem}-edited.pdf`,
         diagnosticContext,
       };
-      if (prepared.lostChars > 0) {
+      if (prepared.lostChars > 0 || prepared.unexcisedEdits > 0) {
         setPendingLossyExport(prepared);
         return;
       }
@@ -648,7 +572,10 @@ export function ExportDialog({
       </Section>
 
       {pendingLossyExport ? (
-        <LossyExportNotice lostChars={pendingLossyExport.lostChars} />
+        <LossyExportNotice
+          lostChars={pendingLossyExport.lostChars}
+          unexcisedEdits={pendingLossyExport.unexcisedEdits}
+        />
       ) : null}
 
       {error ? (
@@ -697,7 +624,9 @@ export function ExportDialog({
               <span>
                 {busy
                   ? t("export.busy")
-                  : t("export.lostCharsConfirmAction")}
+                  : pendingLossyExport.unexcisedEdits > 0
+                    ? t("export.unexcisedConfirmAction")
+                    : t("export.lostCharsConfirmAction")}
               </span>
             </IconBtn>
           </>
@@ -715,223 +644,6 @@ export function ExportDialog({
       </div>
     </Modal>
   );
-}
-
-async function exportCompactPdf(
-  doc: PdfDocument,
-  originalBytes: Uint8Array,
-  model: Parameters<ExportPdfFunction>[1],
-  options: Parameters<ExportPdfFunction>[2] & { mode: ExportMode },
-): Promise<ExportResult> {
-  const {
-    assertExportIntegrity,
-    exportPdf,
-    preserveDocumentFilesInPdf,
-    refuseUnhandledEncryption,
-  } = await loadExportPdfModule();
-  const encryption = options.sourceEncryption;
-  // A raster is drawn from the decrypted pages; without the source's
-  // handler it would leave in the clear, so an encrypted source stops here.
-  if (!encryption) await refuseUnhandledEncryption(originalBytes);
-  // An encrypted source's vector export leaves exportPdf encrypted; the
-  // plaintext it encrypted is what the raster copies attachments from.
-  let vectorPlain: Uint8Array | null = null;
-  const capturing: ExportSourceEncryption | undefined = encryption && {
-    ...encryption,
-    encrypt: (plain, pageCount) => {
-      vectorPlain = plain;
-      return encryption.encrypt(plain, pageCount);
-    },
-  };
-  // Carry the vector path's full result: when compact falls back to the
-  // standard bytes, its lostChars must reach the caller's warning toast —
-  // dropping them silently exported "?" glyphs with no notice.
-  const vector = await exportPdf(originalBytes, model, {
-    ...options,
-    sourceEncryption: capturing,
-    quality: "standard",
-  });
-  // A raster copy replaces every page's content and its annotations.
-  if (
-    encryption &&
-    deniedEdits(encryption.security, ["content", "annotations"]).length > 0
-  ) {
-    return vector;
-  }
-  let rasterBytes: Uint8Array;
-  try {
-    rasterBytes = await exportCompactRasterPdf(doc, model, {
-      mode: options.mode,
-    });
-  } catch (err) {
-    console.warn("Compact raster export failed; using standard PDF.", err);
-    return vector;
-  }
-  // Attachment preservation is a data-integrity boundary, not a quality
-  // optimization. Keep it outside the raster fallback: if raw copying or its
-  // round-trip check fails, the export must fail loudly instead of silently
-  // changing the user's selected result.
-  if (options.documentFiles === "preserve") {
-    // The validated vector result already reflects logical page deletion and
-    // annotation mode. Using the untouched source here would resurrect files
-    // owned only by pages the user removed from the document.
-    // An unchanged encrypted vector is the source itself, so its plaintext
-    // carries exactly the source's files.
-    const filesSource = encryption
-      ? (vectorPlain ?? (await encryption.plaintext()))
-      : vector.bytes;
-    rasterBytes = await preserveDocumentFilesInPdf(filesSource, rasterBytes);
-  }
-  // Both sides compared as they would be saved: encryption adds a little.
-  if (rasterBytes.byteLength >= vector.bytes.byteLength) return vector;
-  try {
-    // The raster path builds its own PDF outside exportPdf(), so it never ran
-    // the round-trip guard. Validate it here and fall back to the (already
-    // validated) vector bytes if the raster output doesn't hold up.
-    await assertExportIntegrity(rasterBytes, model.pages.length);
-    // Rasterized pages carry text as pixels — nothing is lost to font
-    // fallback on this path. An encrypted source's raster leaves encrypted
-    // like the source, or not at all.
-    const bytes = encryption
-      ? await encryption.encrypt(rasterBytes, model.pages.length)
-      : rasterBytes;
-    return { bytes, lostChars: 0 };
-  } catch (err) {
-    console.warn("Compact raster integrity check failed; using standard PDF.", err);
-    return vector;
-  }
-}
-
-async function generateSizePreview(
-  request: ExportPreviewRequest,
-  quality: QualityV,
-  cache: ExportBytesCache,
-  publish: (preview: SizePreview) => void,
-): Promise<void> {
-  const existing = cache.pending[quality];
-  const pending = existing ?? exportBytesForQuality({ ...request, quality });
-  cache.pending[quality] = pending;
-  try {
-    const result = await pending;
-    cachePreviewResult(cache.results, quality, result);
-    publish({ status: "ready", size: result.bytes.byteLength });
-  } catch (err) {
-    console.warn(`Unable to calculate ${quality} export size.`, err);
-    publish({ status: "unavailable" });
-  } finally {
-    if (cache.pending[quality] === pending) delete cache.pending[quality];
-  }
-}
-
-async function exportBytesForQuality({
-  doc,
-  originalBytes,
-  password,
-  model,
-  mode,
-  documentFiles,
-  quality,
-  unicodeFontErrorMessage,
-}: ExportPreviewRequest & { quality: QualityV }): Promise<ExportResult> {
-  return withExportEncryption(
-    { doc, bytes: originalBytes, password },
-    async (sourceEncryption) => {
-      const options = {
-        ...exportOptions(mode, documentFiles, unicodeFontErrorMessage),
-        sourceEncryption,
-      };
-      if (quality === "compact") {
-        return exportCompactPdf(doc, originalBytes, model, options);
-      }
-      const { exportPdf } = await loadExportPdfModule();
-      return exportPdf(originalBytes, model, { ...options, quality });
-    },
-  );
-}
-
-function exportOptions(
-  mode: ExportMode,
-  documentFiles: Exclude<DocumentFilesPolicy, "auto">,
-  unicodeFontErrorMessage: string,
-): Parameters<ExportPdfFunction>[2] & { mode: ExportMode } {
-  return {
-    mode,
-    documentFiles,
-    unicodeFontUrl: cjkScExportFontUrl,
-    unicodeJpFontUrl: cjkJpExportFontUrl,
-    requireUnicodeFont: true,
-    unicodeFontErrorMessage,
-  };
-}
-
-function loadExportPdfModule(): Promise<ExportPdfModule> {
-  return import("../export/exportPdfAdapter").then((adapter) =>
-    adapter.loadExportPdfModule(),
-  );
-}
-
-function withExportEncryption<T>(
-  ...args: Parameters<
-    typeof import("../export/exportPdfAdapter").withExportEncryption<T>
-  >
-): Promise<T> {
-  return import("../export/exportPdfAdapter").then((adapter) =>
-    adapter.withExportEncryption(...args),
-  );
-}
-
-function deferredSizePreviews(selectedQuality: QualityV): SizePreviewMap {
-  return {
-    original: {
-      status: selectedQuality === "original" ? "calculating" : "deferred",
-    },
-    standard: {
-      status: selectedQuality === "standard" ? "calculating" : "deferred",
-    },
-    compact: {
-      status: selectedQuality === "compact" ? "calculating" : "deferred",
-    },
-  };
-}
-
-function selectSizePreview(
-  current: SizePreviewMap,
-  selectedQuality: QualityV,
-  cached: ExportResult | undefined,
-): SizePreviewMap {
-  const next = { ...current };
-  for (const quality of EXPORT_QUALITIES) {
-    if (quality !== selectedQuality && next[quality].status === "calculating") {
-      next[quality] = { status: "deferred" };
-    }
-  }
-  next[selectedQuality] = cached
-    ? { status: "ready", size: cached.bytes.byteLength }
-    : { status: "calculating" };
-  return next;
-}
-
-function unavailableSizePreviews(): SizePreviewMap {
-  return {
-    original: { status: "unavailable" },
-    standard: { status: "unavailable" },
-    compact: { status: "unavailable" },
-  };
-}
-
-function qualityHint(
-  t: (key: string, values?: Record<string, unknown>) => string,
-  quality: QualityV,
-  preview: SizePreview,
-): string {
-  if (preview.status === "ready" && preview.size != null) {
-    return t(`export.quality.${quality}Hint`, {
-      size: formatBytes(preview.size),
-    });
-  }
-  if (preview.status === "unavailable") return t("export.quality.sizeUnavailable");
-  if (preview.status === "deferred") return t("export.quality.sizeOnSelect");
-  return t("export.quality.sizeCalculating");
 }
 
 function exportDiagnosticCode(

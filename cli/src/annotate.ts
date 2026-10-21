@@ -8,6 +8,7 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { EncryptedPDFError, PDFDocument } from "pdf-lib";
 import { exportPdf } from "../../src/pdf/export/exportPdf";
+import { alignPageTreeWithPdfium } from "../../src/pdf/export/sourcePageTree";
 import {
   hasCjkText,
   hasKana,
@@ -391,6 +392,8 @@ async function readPageModels(
     // exporting bytes loaded via `ignoreEncryption` can produce a structurally
     // valid but unreadable PDF. Always fail closed before export instead.
     const pdf = await PDFDocument.load(sourceBytes);
+    // Number pages as PDFium, extract and export do.
+    alignPageTreeWithPdfium(pdf);
     const sourcePages = pdf.getPages();
     assertPdfWithinPageLimit(sourcePages.length);
     return sourcePages.map((page, index) => {

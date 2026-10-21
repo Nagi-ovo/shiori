@@ -29,6 +29,7 @@ export {
   ExportSignedSourceError,
   assertExportIntegrity,
 } from "./exportIntegrity";
+export { preserveDocumentInfoInPdf } from "./documentInfo";
 
 // "annotations" writes real /Annot objects so highlights, notes, shapes,
 // ink, and text remain editable in Acrobat / Foxit / PDF Expert. "flatten"

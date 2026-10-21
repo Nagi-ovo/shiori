@@ -5,7 +5,15 @@ import { T } from "../../design/tokens";
 // asks the user to confirm a lossy export, and the export failure with its
 // copyable diagnostic code.
 
-export function LossyExportNotice({ lostChars }: { lostChars: number }) {
+export function LossyExportNotice({
+  lostChars,
+  unexcisedEdits = 0,
+}: {
+  lostChars: number;
+  // Original-text edits painted over without removing the old glyphs: the
+  // file still answers search and copy with the text the user replaced.
+  unexcisedEdits?: number;
+}) {
   const { t } = useTranslation();
   return (
     <div
@@ -22,12 +30,24 @@ export function LossyExportNotice({ lostChars }: { lostChars: number }) {
         marginBottom: 10,
       }}
     >
-      <strong>{t("export.lostCharsConfirmTitle")}</strong>
-      <div style={{ marginTop: 4 }}>
-        {t("export.lostCharsConfirmBody", {
-          count: lostChars,
-        })}
-      </div>
+      {lostChars > 0 ? (
+        <div>
+          <strong>{t("export.lostCharsConfirmTitle")}</strong>
+          <div style={{ marginTop: 4 }}>
+            {t("export.lostCharsConfirmBody", {
+              count: lostChars,
+            })}
+          </div>
+        </div>
+      ) : null}
+      {unexcisedEdits > 0 ? (
+        <div style={{ marginTop: lostChars > 0 ? 8 : 0 }}>
+          <strong>{t("export.unexcisedConfirmTitle")}</strong>
+          <div style={{ marginTop: 4 }}>
+            {t("export.unexcisedConfirmBody", { count: unexcisedEdits })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

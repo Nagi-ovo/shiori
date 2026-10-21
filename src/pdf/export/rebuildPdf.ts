@@ -30,6 +30,7 @@ import {
   unexcisedEditCount,
   type ContentTextRedaction,
 } from "./contentTextRedaction";
+import { copySourceDocumentInfo } from "./documentInfo";
 import { ExportEncryptedSourceError } from "./encryptedSource";
 import { annotationFonts, loadExportFonts } from "./exportFonts";
 import {
@@ -56,6 +57,7 @@ import {
   stripUnexportedPageDocumentFiles,
 } from "./navigation";
 import { isolatePageReferences } from "./pageIsolation";
+import { alignPageTreeWithPdfium } from "./sourcePageTree";
 import {
   drawContentTextEditsForPage,
   drawImageOverlaysForPage,
@@ -116,6 +118,8 @@ export async function rebuildPdf(
   const source = await PDFDocument.load(new Uint8Array(originalBytes), {
     ignoreEncryption: true,
   });
+  // Every sourceIndex is PDFium's page number; see sourcePageTree.ts.
+  alignPageTreeWithPdfium(source);
   const sourcePages = source.getPages();
   const sourceIndices = model.pages
     .filter((page) => !isBlankPage(page))
@@ -332,40 +336,6 @@ function resolveDocumentFilesPolicy(
 ): "preserve" | "omit" {
   if (policy === "preserve" || policy === "omit") return policy;
   return pagesUnchanged ? "preserve" : "omit";
-}
-
-// Export builds a brand-new document, whose Info dict starts empty — so every
-// export used to strip Title/Author/Subject/Keywords and stamp pdf-lib as the
-// Producer. A paper annotated in Shiori then showed up untitled and authorless
-// in Finder, Zotero, Calibre and Mendeley, usually noticed weeks later.
-//
-// Producer and ModificationDate are deliberately NOT carried over: pdf-lib
-// sets those on save, and they should describe the tool that wrote this file.
-// CreationDate is, because it describes the document, not the write.
-function copySourceDocumentInfo(source: PDFDocument, dest: PDFDocument) {
-  const title = safeInfoRead(() => source.getTitle());
-  if (title) dest.setTitle(title);
-  const author = safeInfoRead(() => source.getAuthor());
-  if (author) dest.setAuthor(author);
-  const subject = safeInfoRead(() => source.getSubject());
-  if (subject) dest.setSubject(subject);
-  const keywords = safeInfoRead(() => source.getKeywords());
-  if (keywords) dest.setKeywords([keywords]);
-  const creator = safeInfoRead(() => source.getCreator());
-  if (creator) dest.setCreator(creator);
-  const creationDate = safeInfoRead(() => source.getCreationDate());
-  if (creationDate) dest.setCreationDate(creationDate);
-}
-
-// Info entries come from arbitrary files and pdf-lib throws when one holds an
-// unexpected type (a date that will not parse, a name where a string belongs).
-// Losing one field is not a reason to fail an export.
-function safeInfoRead<T>(read: () => T | undefined): T | undefined {
-  try {
-    return read();
-  } catch {
-    return undefined;
-  }
 }
 
 function pagesMatchSource(modelPages: PageModel[], sourcePages: PDFPage[]): boolean {
