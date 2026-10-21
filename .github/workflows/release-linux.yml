@@ -64,7 +64,7 @@ jobs:
             src-tauri -> target
             crates/shiori-core-wasm -> target
           shared-key: "tauri-release"
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' && inputs.publish_to_release_repo != true }}
 
       # Tauri 2 system deps. webkit2gtk-4.1 is the current webview;
       # libayatana-appindicator3 powers the optional system-tray API

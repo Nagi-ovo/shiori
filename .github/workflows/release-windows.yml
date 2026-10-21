@@ -72,8 +72,10 @@ jobs:
       #
       # Only runs on main save: a cache written from a tag is scoped to that
       # tag and no later release can read it, yet saving it cost 5.9 min on
-      # Windows (v26.9.26). The wasm core (`bun run build` compiles it) is
-      # its own workspace; left out, it compiled cold on every run.
+      # Windows (v26.9.26). A publishing dispatch runs on main but builds the
+      # tag, so it does not save either. The wasm core (`bun run build`
+      # compiles it) is its own workspace; left out, it compiled cold on
+      # every run.
       - name: Cache Rust build (deps + registry)
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
@@ -81,7 +83,7 @@ jobs:
             src-tauri -> target
             crates/shiori-core-wasm -> target
           shared-key: "tauri-release"
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' && inputs.publish_to_release_repo != true }}
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
