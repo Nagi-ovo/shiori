@@ -11,7 +11,7 @@ import type {
 export function textBoxSurface(
   overlay: TextOverlay | ContentTextOverlay | CalloutOverlay,
   { selected, collapsed, scale }: { selected: boolean; collapsed: boolean; scale: number },
-): { border: string; backgroundColor: string; color: string } {
+): { border: string; backgroundColor: string; color: string; boxShadow?: string } {
   const isCallout = overlay.type === "callout";
   if (overlay.type === "text" && (overlay.fill || (overlay.borderWidth ?? 0) > 0)) {
     return importedBoxSurface(overlay, selected, scale);
@@ -33,17 +33,20 @@ export function textBoxSurface(
 // A box imported with its own fill or frame draws them, as the exported
 // FreeText does, in place of Shiori's dashed guide; selection still shows by
 // its handles. Its /CA applies to each of fill, frame and text, as a PDF
-// viewer paints them one over another.
+// viewer paints them one over another. The frame is an inset shadow, not a
+// border: the exported appearance strokes it over text laid out across the
+// whole box, and a border-box border would take its width from that room.
 function importedBoxSurface(overlay: TextOverlay, selected: boolean, scale: number) {
   const alpha = textOpacity(overlay);
   const width = overlay.borderWidth ?? 0;
-  return {
-    border: width > 0
-      ? `${width * scale}px solid ${withAlpha(overlay.borderColor ?? overlay.color, alpha)}`
-      : `1px dashed ${selected ? T.ink : "rgba(26,24,21,0.18)"}`,
+  const surface = {
+    border: width > 0 ? "none" : `1px dashed ${selected ? T.ink : "rgba(26,24,21,0.18)"}`,
     backgroundColor: overlay.fill ? withAlpha(overlay.fill, alpha) : "transparent",
     color: withAlpha(overlay.color, alpha),
   };
+  if (width <= 0) return surface;
+  const frame = withAlpha(overlay.borderColor ?? overlay.color, alpha);
+  return { ...surface, boxShadow: `inset 0 0 0 ${width * scale}px ${frame}` };
 }
 
 function textOpacity(overlay: TextOverlay | ContentTextOverlay | CalloutOverlay): number | undefined {

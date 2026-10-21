@@ -718,7 +718,7 @@ function TextOverlayDom({
           : outline,
         outlineOffset: collapsed ? 2 : undefined,
         // backgroundColor, not the `background` shorthand: shorthands are not
-        // transitionable, and the collapse morph needs this to animate.
+        // transitionable, and the collapse morph animates this.
         backgroundColor: surface.backgroundColor,
         borderRadius: isCallout ? (collapsed ? 999 : 5) : undefined,
         boxShadow: collapsed
@@ -727,7 +727,7 @@ function TextOverlayDom({
             ? selected
               ? "0 4px 14px rgba(35,26,15,0.16)"
               : "0 2px 8px rgba(35,26,15,0.10)"
-            : undefined,
+            : surface.boxShadow,
         overflow: isCallout ? "hidden" : undefined,
         boxSizing: "border-box",
         cursor: overlay.locked

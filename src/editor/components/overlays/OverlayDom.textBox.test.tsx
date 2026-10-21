@@ -48,14 +48,23 @@ describe("a text box imported with a fill, frame and opacity", () => {
     const card = view.getByRole("group");
     expect(card.style.backgroundColor).toBe("rgba(255, 255, 153, 0.6)");
     // The frame is the text colour unless the box names its own, and scales with the page.
-    expect(card.style.border).toBe("4px solid rgba(0, 0, 255, 0.6)");
+    expect(card.style.boxShadow).toBe("inset 0 0 0 4px rgba(0, 0, 255, 0.6)");
     expect(view.getByText("Boxed").closest<HTMLElement>("[dir=auto]")!.style.color).toBe("rgba(0, 0, 255, 0.6)");
+  });
+
+  // The exported appearance lays the text out over the whole box and strokes
+  // the frame on top; a CSS border would take its width from the text's room
+  // on each side, wrapping or clipping a small box with a thick frame.
+  test("a thick frame is painted over the box, not laid out inside it", () => {
+    const card = draw({ ...box, rect: { x: 40, y: 500, w: 40, h: 40 }, borderWidth: 10, borderColor: "#ff0000" }).getByRole("group");
+    expect(card.style.boxShadow).toBe("inset 0 0 0 10px #ff0000");
+    expect(card.style.borderStyle || "none").toBe("none");
   });
 
   test("an opaque fill draws opaque, with its own frame colour", () => {
     const card = draw({ ...box, fill: "#ffff99", borderWidth: 1, borderColor: "#ff0000" }).getByRole("group");
     expect(card.style.backgroundColor).toBe("#ffff99");
-    expect(card.style.border).toBe("1px solid #ff0000");
+    expect(card.style.boxShadow).toBe("inset 0 0 0 1px #ff0000");
   });
 
   test("a box made in Shiori keeps its dashed guide and clear background", () => {
