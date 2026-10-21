@@ -35,7 +35,9 @@ import { buildFreeText, buildStampFreeText } from "./freeTextAnnotations";
 import {
   markKeptAnnotationLinks,
   relinkKeptReplies,
+  removedAnnotation,
   takeKeptAnnotationLinks,
+  threadReplyKey,
   type RemovedAnnotation,
 } from "./keptAnnotationLinks";
 import {
@@ -153,7 +155,6 @@ export function attachAnnotationsToPage(
   // reply may be built before the comment it answers. Threads that span pages
   // are not rebuilt: /IRT is defined within a page's annotation list.
   linkReplyThreads(page, pageOverlays, refsByOverlayId, kept.parents);
-  relinkKeptReplies(kept.replies, refsByOverlayId);
   // Callout conversation turns become native /IRT Text replies, appended in
   // thread order so a round trip reads them back in the same order.
   for (const o of pageOverlays) {
@@ -161,9 +162,13 @@ export function attachAnnotationsToPage(
     const parentRef = refsByOverlayId.get(o.id);
     if (!parentRef) continue;
     for (const entry of o.thread) {
-      page.node.addAnnot(buildCalloutReply(page, o, entry, parentRef));
+      const ref = buildCalloutReply(page, o, entry, parentRef);
+      page.node.addAnnot(ref);
+      refsByOverlayId.set(threadReplyKey(o.id, entry.id), ref);
     }
   }
+  // After the turns, since a kept annotation may reply to one of them.
+  relinkKeptReplies(kept.replies, refsByOverlayId);
 }
 
 // Writes back the review metadata captured at import (see OverlayCommon's
@@ -269,8 +274,7 @@ function stripReplaceableAnnotationsFromPage(
     removedAny = true;
     if (raw instanceof PDFRef) {
       removedRefs.add(raw.toString());
-      const irt = dict.get(PDFName.of("IRT"));
-      removed.set(raw.toString(), { sourceIndex, inReplyTo: irt instanceof PDFRef ? irt : null });
+      removed.set(raw.toString(), removedAnnotation(dict, sourceIndex));
       page.doc.context.delete(raw);
     }
   }

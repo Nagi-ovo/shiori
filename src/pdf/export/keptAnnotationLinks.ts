@@ -20,20 +20,56 @@
 // in Shiori's developer dictionary, but no kept annotation names an object
 // that no longer exists.
 
-import { PDFDict, PDFName, PDFRef, PDFString, type PDFObject, type PDFPage } from "pdf-lib";
+import {
+  PDFDict,
+  PDFHexString,
+  PDFName,
+  PDFRef,
+  PDFString,
+  type PDFObject,
+  type PDFPage,
+} from "pdf-lib";
 import { pdfjsRefId } from "../import/sourceAnnotations";
 
 const SHIO = PDFName.of("Shio");
 const MARK = PDFName.of("Rebuild");
 const ID = PDFName.of("Id");
+const TURN = PDFName.of("Turn");
 const IRT = PDFName.of("IRT");
 const RT = PDFName.of("RT");
 
-export type RemovedAnnotation = { sourceIndex: number; inReplyTo: PDFRef | null };
+export type RemovedAnnotation = {
+  sourceIndex: number;
+  inReplyTo: PDFRef | null;
+  /** Set for a thread reply Shiori wrote, which import folds into its callout. */
+  threadKey?: string;
+};
 
 /** The overlay id the importer gives the annotation at `ref` (importedAnnotationOverlayId). */
 function overlayIdOf(sourceIndex: number, ref: PDFRef): string {
   return `pdf-annotation-${sourceIndex}-${pdfjsRefId(ref)}`;
+}
+
+/** Names one turn of a callout's thread, on both sides of the hand-over. */
+export function threadReplyKey(calloutId: string, replyId: string): string {
+  return `${calloutId}/reply/${replyId}`;
+}
+
+/**
+ * Strip side: what to remember about an annotation it deletes. A Shiori
+ * thread reply comes back from import as a turn of its callout, not as an
+ * overlay of its own, so a kept reply to it is keyed by callout and turn.
+ */
+export function removedAnnotation(dict: PDFDict, sourceIndex: number): RemovedAnnotation {
+  const irt = dict.get(IRT);
+  const inReplyTo = irt instanceof PDFRef ? irt : null;
+  const entry: RemovedAnnotation = { sourceIndex, inReplyTo };
+  const shio = dict.lookupMaybe(SHIO, PDFDict);
+  const replyId = shio?.lookupMaybe(PDFName.of("ReplyId"), PDFString, PDFHexString)?.decodeText();
+  if (inReplyTo && replyId && shio?.get(PDFName.of("Kind")) === PDFName.of("Reply")) {
+    entry.threadKey = threadReplyKey(overlayIdOf(sourceIndex, inReplyTo), replyId);
+  }
+  return entry;
 }
 
 /**
@@ -66,6 +102,8 @@ export function markKeptAnnotationLinks(
     const target = irt instanceof PDFRef ? removed.get(irt.toString()) : undefined;
     if (irt instanceof PDFRef && target) {
       mark.set(IRT, PDFString.of(overlayIdOf(target.sourceIndex, irt)));
+      // The turn id comes from the file; a hex string needs no escaping.
+      if (target.threadKey) mark.set(TURN, PDFHexString.fromText(target.threadKey));
       const type = dict.get(RT);
       if (type) mark.set(RT, type);
       dict.delete(IRT);
@@ -85,10 +123,10 @@ export type KeptAnnotationLinks = {
   /** Kept annotations a rebuilt reply may answer, by the overlay id it names. */
   parents: Map<string, PDFRef>;
   /** Kept replies waiting for the rebuilt annotation they answer. */
-  replies: Array<{ dict: PDFDict; target: string; type: PDFObject | undefined }>;
+  replies: Array<{ dict: PDFDict; target: string; turn?: string; type: PDFObject | undefined }>;
 };
 
-type TakenMark = { id?: string; target?: string; type: PDFObject | undefined };
+type TakenMark = { id?: string; target?: string; turn?: string; type: PDFObject | undefined };
 
 // Copies of a duplicated source page share their kept annotation objects, so
 // the page attach reaches first takes the mark off for all of them. What it
@@ -107,7 +145,8 @@ export function takeKeptAnnotationLinks(page: PDFPage): KeptAnnotationLinks {
     const taken = takenMarks.get(dict) ?? takeMark(dict);
     if (!taken) continue;
     if (taken.id && raw instanceof PDFRef) links.parents.set(taken.id, raw);
-    if (taken.target) links.replies.push({ dict, target: taken.target, type: taken.type });
+    const { target, turn, type } = taken;
+    if (target) links.replies.push({ dict, target, turn, type });
   }
   return links;
 }
@@ -118,6 +157,7 @@ function takeMark(dict: PDFDict): TakenMark | undefined {
   const taken: TakenMark = {
     id: mark.lookupMaybe(ID, PDFString)?.decodeText(),
     target: mark.lookupMaybe(IRT, PDFString)?.decodeText(),
+    turn: mark.lookupMaybe(TURN, PDFHexString)?.decodeText(),
     type: mark.get(RT),
   };
   takenMarks.set(dict, taken);
@@ -138,7 +178,11 @@ export function relinkKeptReplies(
   refsByOverlayId: Map<string, PDFRef>,
 ): void {
   for (const reply of replies) {
-    const parent = refsByOverlayId.get(reply.target);
+    // A turn of a callout's thread, or, when import did not fold it into
+    // one, the note it became.
+    const parent =
+      (reply.turn ? refsByOverlayId.get(reply.turn) : undefined) ??
+      refsByOverlayId.get(reply.target);
     if (!parent) continue;
     reply.dict.set(IRT, parent);
     if (reply.type) reply.dict.set(RT, reply.type);

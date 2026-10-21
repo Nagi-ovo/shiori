@@ -310,6 +310,42 @@ describe("reply links between rebuilt and kept annotations", () => {
     expect(bySubtype("Caret")?.dict.get(PDFName.of("IRT"))).toBe(bySubtype("StrikeOut")!.ref);
   });
 
+  test("a kept Circle replying to a callout's thread reply still points at it", async () => {
+    // A callout with one turn, exported by Shiori; then another tool adds a
+    // Circle that replies to that turn's Text annotation.
+    const blank = await PDFDocument.create().then((doc) => (doc.addPage([612, 792]), doc.save()));
+    const callout = {
+      id: "c1", type: "callout", pageId: "p1", targetRects: [{ x: 72, y: 650, w: 120, h: 20 }],
+      rect: { x: 250, y: 620, w: 144, h: 54 }, text: "Why?", fontSize: 12, color: "#b13a2e",
+      bold: false, align: "left", fontFamily: "sans",
+      thread: [{ id: "turn-1", role: "user", text: "Because." }],
+    };
+    const shiori = { pages: [page], overlays: [callout] } as unknown as DocumentModel;
+    const doc = await PDFDocument.load((await exportPdf(blank, shiori)).bytes);
+    const annots = doc.getPage(0).node.lookup(PDFName.of("Annots"), PDFArray);
+    const turn = annots.get(1);
+    annots.push(annot(doc, "Circle", [100, 600, 200, 700], { IRT: turn, RT: "R" }));
+
+    const { loaded, bySubtype } = await exportedAnnots(await doc.save());
+    const irt = bySubtype("Circle")?.dict.get(PDFName.of("IRT"));
+    const parent = irt ? loaded.context.lookupMaybe(irt, PDFDict) : undefined;
+    const shio = parent?.lookupMaybe(PDFName.of("Shio"), PDFDict);
+    expect(shio?.lookupMaybe(PDFName.of("ReplyId"), PDFString)?.decodeText()).toBe("turn-1");
+  });
+
+  test("a kept Circle replying to a thread reply that lost its callout still points at it", async () => {
+    // A Shiori thread reply whose parent is no callout imports as a note.
+    const bytes = await sourcePdf((doc) => {
+      const line = annot(doc, "Line", [100, 500, 200, 520], { L: [100, 510, 200, 510] });
+      const turn = annot(doc, "Text", [210, 680, 230, 700], {
+        IRT: line, RT: "R", Shio: doc.context.obj({ V: 1, Kind: "Reply", ReplyId: PDFString.of("turn-1") }),
+      });
+      return [line, turn, annot(doc, "Circle", [100, 600, 200, 700], { IRT: turn, RT: "R" })];
+    });
+    const { bySubtype } = await exportedAnnots(bytes);
+    expect(bySubtype("Circle")?.dict.get(PDFName.of("IRT"))).toBe(bySubtype("Text")!.ref);
+  });
+
   test("a mark left by an earlier flattened export links nothing", async () => {
     // The flattened file's Caret still carries its mark, naming an object
     // number from the file it came from; here that number is a Highlight.
