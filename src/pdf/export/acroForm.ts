@@ -52,6 +52,7 @@ export function preserveAcroForm(
     const cloned = cloneObject(source, dest, state, root);
     if (!(cloned instanceof PDFRef)) continue;
     copiedFields.set(root.toString(), cloned);
+    mapClonedDescendants(source, root, state, copiedFields, new Set());
     fields.push(cloned);
   }
   if (fields.length === 0) return;
@@ -177,6 +178,27 @@ function mapCopiedFields(
     }
   }
   return copied;
+}
+
+// A widgetless root was deep-cloned, so each field under it now has its copy
+// in the clone cache; /CO can name a child (calc.total) as well as the root.
+function mapClonedDescendants(
+  source: PDFDocument,
+  node: PDFRef,
+  state: CloneState,
+  copied: Map<string, PDFRef>,
+  visited: Set<string>,
+) {
+  if (visited.has(node.toString())) return;
+  visited.add(node.toString());
+  const kids = asArray(source, lookupDict(source, node)?.get(KIDS_KEY));
+  for (let i = 0; i < (kids?.size() ?? 0); i++) {
+    const kid = kids!.get(i);
+    if (!(kid instanceof PDFRef)) continue;
+    const clone = state.clonedRefs.get(kid.toString());
+    if (clone && !copied.has(kid.toString())) copied.set(kid.toString(), clone);
+    mapClonedDescendants(source, kid, state, copied, visited);
+  }
 }
 
 function widgetRefs(doc: PDFDocument, page: PDFDict): PDFRef[] {
