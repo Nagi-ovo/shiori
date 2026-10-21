@@ -83,3 +83,32 @@ describe("a hidden annotation", () => {
     ]);
   });
 });
+
+describe("an annotation's flags and a note's state", () => {
+  const flags = (dict: PDFDict) => dict.get(PDFName.of("F"))?.toString();
+
+  test("come back as written", async () => {
+    const { exported } = await roundTrip([
+      // Locked | Print, and Locked alone: a mark that never printed.
+      { Subtype: "Highlight", F: 132, ...quad },
+      { Subtype: "Square", F: 128, Rect: [20, 20, 120, 100] },
+      {
+        Subtype: "Text", F: 4, Rect: [40, 300, 60, 320], Contents: PDFString.of("Fine"),
+        Name: "Key", Open: true, State: PDFString.of("Accepted"), StateModel: PDFString.of("Review"),
+      },
+    ]);
+    expect(exported.map(flags)).toEqual(["132", "128", "4"]);
+    const note = exported[2]!;
+    expect(note.get(PDFName.of("Name"))?.toString()).toBe("/Key");
+    expect(note.get(PDFName.of("Open"))?.toString()).toBe("true");
+    expect([text(note, "State"), text(note, "StateModel")]).toEqual(["Accepted", "Review"]);
+  });
+
+  // No /F means 0, which would also mean "never print"; the export has
+  // always printed these, and still does.
+  test("an annotation without /F still prints", async () => {
+    const { overlays, exported } = await roundTrip([{ Subtype: "Highlight", ...quad }]);
+    expect(overlays[0]).not.toHaveProperty("sourceFlags");
+    expect(flags(exported[0]!)).toBe("4");
+  });
+});

@@ -438,7 +438,7 @@ export function annotationToOverlay(
   return withSourceProvenance(overlay, annot, page);
 }
 
-// Copies /T, /CreationDate, /M, /IRT and /RT off the pdf.js annotation so
+// Copies /T, /CreationDate, /M, /IRT, /RT and /F off the pdf.js annotation so
 // export can write them back. Without this, a document reviewed elsewhere
 // loses every reviewer name and timestamp the first time it is exported, and
 // reply threads collapse into unrelated top-level notes.
@@ -464,6 +464,7 @@ export function withSourceProvenance<T extends Overlay>(
   if (replyType === "R" || replyType === "Group") {
     overlay.sourceReplyType = replyType;
   }
+  if (typeof annot.annotationFlags === "number") overlay.sourceFlags = annot.annotationFlags;
   return overlay;
 }
 

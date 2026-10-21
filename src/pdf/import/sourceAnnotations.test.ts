@@ -84,7 +84,7 @@ describe("the file annotation reader", () => {
       { type: "underline", id: "pdf-annotation-0-6R", pageId: "p1", rects: [{ x: 20, y: 60, w: 100, h: 20 }], color: "#dd6791", opacity: 1, ...imported },
       { type: "strikethrough", id: "pdf-annotation-0-7R", pageId: "p1", rects: [{ x: 20, y: 100, w: 100, h: 20 }], color: "#808080", opacity: 1, ...imported },
       // 8R has a short quad list and 10R is NoView; 9R's Invisible flag is ignored.
-      { type: "highlight", id: "pdf-annotation-0-9R", pageId: "p1", rects: [{ x: 20, y: 180, w: 100, h: 20 }], color: "#f4d674", opacity: 0.45, ...imported },
+      { type: "highlight", id: "pdf-annotation-0-9R", pageId: "p1", rects: [{ x: 20, y: 180, w: 100, h: 20 }], color: "#f4d674", opacity: 0.45, sourceFlags: 1, ...imported },
       { type: "strikethrough", id: "pdf-annotation-0-annot_p0_1", pageId: "p1", rects: [{ x: 20, y: 260, w: 100, h: 20 }], color: "#b13a2e", opacity: 1, ...imported },
     ]);
     // PDFium hides what Shiori claims by the file's own /Rect.

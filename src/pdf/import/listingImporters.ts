@@ -162,7 +162,7 @@ function importStickyNote(
   const rect = rectFromAnnot(annot);
   if (!rect) return null;
   const localRect = pdfRectToPageLocal(page, rect);
-  return createNoteOverlay({
+  const note = createNoteOverlay({
     id: makeId(),
     pageId: page.id,
     rect: {
@@ -175,6 +175,12 @@ function importStickyNote(
     color: colorToHex(annot.color, NOTE_DEFAULT_COLOR),
     now,
   });
+  // Its icon, pop-up state and review state, written back on export.
+  if (typeof annot.name === "string") note.sourceIcon = annot.name;
+  if (typeof annot.open === "boolean") note.sourceOpen = annot.open;
+  if (typeof annot.state === "string") note.sourceState = annot.state;
+  if (typeof annot.stateModel === "string") note.sourceStateModel = annot.stateModel;
+  return note;
 }
 
 function importSquare(

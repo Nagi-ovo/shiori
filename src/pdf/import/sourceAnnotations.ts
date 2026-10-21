@@ -1,5 +1,6 @@
 import {
   PDFArray,
+  PDFBool,
   PDFDict,
   PDFDocument,
   PDFName,
@@ -125,11 +126,17 @@ function readAnnotation(
     modificationDate: latin1(dict.lookup(PDFName.of("M"))) ?? null,
   };
   const appearance = normalAppearance(dict);
+  // The /F as written, so export can write it back; only when there is one.
+  const sourceFlags = dict.lookup(PDFName.of("F"));
+  if (sourceFlags instanceof PDFNumber && Number.isSafeInteger(sourceFlags.asNumber()) && sourceFlags.asNumber() >= 0) {
+    data.annotationFlags = sourceFlags.asNumber();
+  }
 
   if (MARKUP_SUBTYPES.has(subtype)) readMarkup(dict, data);
 
   switch (subtype) {
     case "Text":
+      readNoteState(dict, data);
       if (!appearance) {
         rect[1] = rect[3]! - TEXT_ICON_SIZE;
         rect[2] = rect[0]! + TEXT_ICON_SIZE;
@@ -230,6 +237,19 @@ function readMarkup(dict: PDFDict, data: SourceAnnotation): void {
   }
   if (dict.has(PDFName.of("RC"))) {
     data.richText = richTextRoot(latin1(dict.lookup(PDFName.of("RC"))));
+  }
+}
+
+/** A sticky note's icon, whether its pop-up opens, and its review state. */
+function readNoteState(dict: PDFDict, data: SourceAnnotation): void {
+  const name = lookup(dict, "Name", PDFName)?.decodeText();
+  if (name) data.name = name;
+  const open = dict.lookup(PDFName.of("Open"));
+  if (open instanceof PDFBool) data.open = open.asBoolean();
+  for (const key of ["State", "StateModel"] as const) {
+    const value = dict.lookup(PDFName.of(key));
+    const decoded = value === undefined ? "" : textObject(value).str;
+    if (decoded) data[key === "State" ? "state" : "stateModel"] = decoded;
   }
 }
 
