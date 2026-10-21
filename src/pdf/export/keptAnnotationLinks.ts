@@ -88,6 +88,13 @@ export type KeptAnnotationLinks = {
   replies: Array<{ dict: PDFDict; target: string; type: PDFObject | undefined }>;
 };
 
+type TakenMark = { id?: string; target?: string; type: PDFObject | undefined };
+
+// Copies of a duplicated source page share their kept annotation objects, so
+// the page attach reaches first takes the mark off for all of them. What it
+// read is kept here for the copies after it, whatever order they come in.
+const takenMarks = new WeakMap<PDFDict, TakenMark>();
+
 /** Attach side: read every mark on the copied page and remove it. */
 export function takeKeptAnnotationLinks(page: PDFPage): KeptAnnotationLinks {
   const links: KeptAnnotationLinks = { parents: new Map(), replies: [] };
@@ -96,16 +103,26 @@ export function takeKeptAnnotationLinks(page: PDFPage): KeptAnnotationLinks {
   for (let i = 0; i < annots.size(); i++) {
     const raw = annots.get(i);
     const dict = annots.lookupMaybe(i, PDFDict);
-    const shio = dict?.lookupMaybe(SHIO, PDFDict);
-    const mark = shio?.lookupMaybe(MARK, PDFDict);
-    if (!dict || !shio || !mark) continue;
-    const id = mark.lookupMaybe(ID, PDFString)?.decodeText();
-    if (id && raw instanceof PDFRef) links.parents.set(id, raw);
-    const target = mark.lookupMaybe(IRT, PDFString)?.decodeText();
-    if (target) links.replies.push({ dict, target, type: mark.get(RT) });
-    clearMark(dict);
+    if (!dict) continue;
+    const taken = takenMarks.get(dict) ?? takeMark(dict);
+    if (!taken) continue;
+    if (taken.id && raw instanceof PDFRef) links.parents.set(taken.id, raw);
+    if (taken.target) links.replies.push({ dict, target: taken.target, type: taken.type });
   }
   return links;
+}
+
+function takeMark(dict: PDFDict): TakenMark | undefined {
+  const mark = dict.lookupMaybe(SHIO, PDFDict)?.lookupMaybe(MARK, PDFDict);
+  if (!mark) return undefined;
+  const taken: TakenMark = {
+    id: mark.lookupMaybe(ID, PDFString)?.decodeText(),
+    target: mark.lookupMaybe(IRT, PDFString)?.decodeText(),
+    type: mark.get(RT),
+  };
+  takenMarks.set(dict, taken);
+  clearMark(dict);
+  return taken;
 }
 
 function clearMark(dict: PDFDict): void {

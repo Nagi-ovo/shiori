@@ -278,6 +278,38 @@ describe("reply links between rebuilt and kept annotations", () => {
     expect(irt === undefined || loaded.context.lookup(irt) instanceof PDFDict).toBe(true);
   });
 
+  // Duplicate copies of a source page share its kept annotation objects, and
+  // a duplicate carries none of the page's overlays. Moved before the
+  // original, it is the first page attach sees.
+  async function exportedWithDuplicateFirst(bytes: Uint8Array) {
+    const overlays = await importFileAnnotations([page], bytes);
+    const duplicate = { ...page, id: "dup" };
+    const model = { pages: [duplicate, page], overlays } as unknown as DocumentModel;
+    const loaded = await PDFDocument.load((await exportPdf(bytes, model)).bytes);
+    const annots = loaded.getPage(1).node.lookup(PDFName.of("Annots"), PDFArray);
+    const entries = annots.asArray().map((ref) => ({
+      ref: ref as PDFRef,
+      dict: loaded.context.lookup(ref, PDFDict),
+    }));
+    return (subtype: string) =>
+      entries.find((e) => e.dict.get(PDFName.of("Subtype"))?.toString() === `/${subtype}`);
+  }
+
+  test("a duplicate page before the original leaves the original's reply linked", async () => {
+    const bytes = await sourcePdf((doc) => {
+      const circle = annot(doc, "Circle", [100, 600, 200, 700]);
+      const reply = annot(doc, "Text", [210, 680, 230, 700], { IRT: circle, RT: "R" });
+      return [circle, reply];
+    });
+    const bySubtype = await exportedWithDuplicateFirst(bytes);
+    expect(bySubtype("Text")?.dict.get(PDFName.of("IRT"))).toBe(bySubtype("Circle")!.ref);
+  });
+
+  test("a duplicate page before the original leaves the original's Caret grouped", async () => {
+    const bySubtype = await exportedWithDuplicateFirst(await replaceText());
+    expect(bySubtype("Caret")?.dict.get(PDFName.of("IRT"))).toBe(bySubtype("StrikeOut")!.ref);
+  });
+
   test("a mark left by an earlier flattened export links nothing", async () => {
     // The flattened file's Caret still carries its mark, naming an object
     // number from the file it came from; here that number is a Highlight.
