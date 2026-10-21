@@ -191,7 +191,7 @@ describe("shiori-core in wasm", () => {
       const ids = decodeEmbeddedFonts(doc.embeddedFonts(0)).map((font) => font.id);
       expect(new Set(ids).size).toBe(3);
       const glyphs = JSON.parse(doc.pageText(0)).glyphs as PdfiumGlyph[];
-      const drawn = (all: PdfiumGlyph[]) => all.filter((g) => g.text === "Ѐ").map((g) => g.fontId);
+      const drawn = (all: PdfiumGlyph[]) => all.filter((g) => g.text === text).map((g) => g.fontId);
       expect(drawn(glyphs)).toEqual(ids.slice(1));
       expect(drawn(native.glyphs(0))).toEqual(ids.slice(1));
     } finally {
@@ -203,8 +203,12 @@ describe("shiori-core in wasm", () => {
   // Liberation Sans under two Identity-H dictionaries that give U+0400 to
   // the glyphs of "Ő" and "ő", GIDs 274 and 275 (audit B108); in the second
   // file both read their codes 0x100-0x1FF exactly as 0x00-0xFF and part at
-  // 0x300.
-  test.each(["shared-truetype-high.pdf", "shared-truetype-periodic.pdf"])("tells apart dictionaries that part past the first 256 codes and loads neither as it is, as the native core does (%s)", (file) => {
+  // 0x300; in the third they give them U+1F600, read back as a UTF-16 pair.
+  test.each([
+    ["shared-truetype-high.pdf", "Ѐ"],
+    ["shared-truetype-periodic.pdf", "Ѐ"],
+    ["shared-truetype-supplementary.pdf", "😀"],
+  ])("tells apart dictionaries that part past the first 256 codes and loads neither as it is, as the native core does (%s)", (file, text) => {
     const bytes = readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures", file));
     const doc = wasm.CoreDocument.open(bytes, undefined);
     const native = openCoreDocument(bytes);
@@ -214,14 +218,16 @@ describe("shiori-core in wasm", () => {
       const ids = fonts.map((font) => font.id);
       expect(new Set(ids).size).toBe(3);
       const glyphs = JSON.parse(doc.pageText(0)).glyphs as PdfiumGlyph[];
-      const drawn = (all: PdfiumGlyph[]) => all.filter((g) => g.text === "Ѐ").map((g) => g.fontId);
+      const drawn = (all: PdfiumGlyph[]) => all.filter((g) => g.text === text).map((g) => g.fontId);
       expect(drawn(glyphs)).toEqual(ids.slice(1));
       expect(drawn(native.glyphs(0))).toEqual(ids.slice(1));
     } finally {
       doc.free();
       native.close();
     }
-  });
+    // Reading every code of three whole fonts, in wasm and natively, can
+    // take longer than bun's 5 s.
+  }, 30_000);
 
   test("rebuilds embedded fonts a browser refuses so they draw as PDFium draws them", async () => {
     // Bare CFF (as XeTeX and InDesign embed) and pdf-lib's TrueType subset,

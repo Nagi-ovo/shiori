@@ -716,8 +716,15 @@ for (const [file, keys, objectStreams, unicode] of [
 // descendant font and give U+0400 to the glyph of "Ő" and of "ő", GIDs 274
 // and 275, codes past the first 256 under Identity-H. The same width, the
 // same answer for every probe character, two glyphs; the program's own cmap
-// draws U+0400 as its Cyrillic Ѐ.
-{
+// draws U+0400 as its Cyrillic Ѐ. shared-truetype-supplementary.pdf gives
+// them U+1F600 (a UTF-16 pair) instead and maps every other character the
+// program has but U+0150, U+0151 and U+0400 as the program does, so the
+// probe finds the program drawing them alike (second review of the audit
+// fixes).
+for (const [file, destination, all] of [
+  ["shared-truetype-high.pdf", "0400", false],
+  ["shared-truetype-supplementary.pdf", "D83DDE00", true],
+] as const) {
   const shared = await PDFDocument.create();
   shared.registerFontkit(fontkit);
   const program = readFileSync(join(root, "node_modules/@docx-editor.dev/fonts/assets/LiberationSans-Regular.ttf"));
@@ -732,7 +739,13 @@ for (const [file, keys, objectStreams, unicode] of [
     ["Upper", 0x150, 100],
     ["Lower", 0x151, 50],
   ] as const).forEach(([key, codePoint, y]) => {
-    const gid = face.glyphForCodePoint(codePoint).id.toString(16).toUpperCase().padStart(4, "0");
+    const hex = (n: number) => n.toString(16).toUpperCase().padStart(4, "0");
+    const gid = hex(face.glyphForCodePoint(codePoint).id);
+    const chars = [`<${gid}> <${destination}>`];
+    for (const c of all ? face.characterSet : []) {
+      const other = face.glyphForCodePoint(c).id;
+      if (c > 0x1f && c < 0x10000 && ![0x150, 0x151, 0x400].includes(c)) chars.push(`<${hex(other)}> <${hex(c)}>`);
+    }
     const toUnicode = ctx.register(
       ctx.stream(
         [
@@ -740,7 +753,7 @@ for (const [file, keys, objectStreams, unicode] of [
           "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
           "/CMapName /Adobe-Identity-UCS def /CMapType 2 def",
           "1 begincodespacerange <0000> <FFFF> endcodespacerange",
-          `1 beginbfchar <${gid}> <0400> endbfchar`,
+          `${chars.length} beginbfchar ${chars.join(" ")} endbfchar`,
           "endcmap CMapName currentdict /CMap defineresource pop end end",
         ].join("\n"),
       ),
@@ -758,7 +771,7 @@ for (const [file, keys, objectStreams, unicode] of [
     page.node.setFontDictionary(PDFName.of(key), remap);
     page.pushOperators(beginText(), setFontAndSize(key, 20), moveText(20, y), showText(PDFHexString.of(gid)), endText());
   });
-  const highOut = join(dirname(fileURLToPath(import.meta.url)), "shared-truetype-high.pdf");
+  const highOut = join(dirname(fileURLToPath(import.meta.url)), file);
   writeFileSync(highOut, await shared.save({ useObjectStreams: false }));
   console.log(highOut);
 }

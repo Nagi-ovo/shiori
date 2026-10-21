@@ -384,3 +384,20 @@ fn dictionaries_reading_their_first_codes_as_a_simple_font_would_differ() {
         ]
     );
 }
+
+#[test]
+fn dictionaries_parting_at_a_character_past_u_ffff_differ() {
+    // shared-truetype-high.pdf's "upper" and "lower" with U+1F600, read back
+    // as its UTF-16 pair, for the glyph of "Ő" and of "ő", and every other
+    // character mapped as the program maps it: PDFium looks no glyph up by
+    // half a pair, so nothing shows the program draws those codes alike.
+    let doc = core()
+        .open(fixture("shared-truetype-supplementary.pdf"), None)
+        .unwrap();
+    let glyphs = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    let [upper, lower] = <[String; 2]>::try_from(ids_of(&glyphs, "\u{1f600}")).unwrap();
+    assert_ne!(upper, lower);
+    let fonts = doc.embedded_fonts(0).unwrap();
+    let own: Vec<bool> = fonts.iter().map(|font| font.own_cmap).collect();
+    assert_eq!(own, [true, false, false]);
+}

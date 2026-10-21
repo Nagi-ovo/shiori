@@ -60,9 +60,10 @@ pub(super) struct Reach {
     /// The characters past `PROBE` the codes read back as, and every
     /// `DECOMPOSED` one the dictionary maps, ascending.
     pub(super) beyond: Vec<u32>,
-    /// For a font with right-to-left letters, a hash of each character a
-    /// code alone read back as that its dictionary does not map back, with
-    /// its box: what tells apart dictionaries PDFium reads alike.
+    /// A hash of each half of a UTF-16 pair a code read back as and, for a
+    /// font with right-to-left letters, each character a code alone read
+    /// back as that its dictionary does not map back, with its box: what
+    /// tells apart dictionaries PDFium reads alike.
     pub(super) unverified: Option<u64>,
     /// Every code was read, and back to a character the dictionary maps or
     /// one asked about directly: only then is `beyond` all it maps past the
@@ -97,6 +98,12 @@ struct Read {
 /// alone reads back as its own character unless it is a right-to-left
 /// letter, whose sources are asked about directly. A code that draws
 /// nothing on a line of its own is dropped from that reading.
+///
+/// A code whose /ToUnicode gives a character past U+FFFF (U+1F600, or a
+/// math letter such as U+1D44E) reads back as the two halves of its UTF-16
+/// pair, which PDFium looks no glyph up by, on every platform. Nothing
+/// shows which glyph such a code draws, so its halves go into `unverified`
+/// with their box and the mapping is not established.
 ///
 /// Costs a text page of 65,536 characters in lines of 256 per font (about
 /// 0.1 s natively for a whole Latin TrueType program, 10 ms for a subset or
@@ -162,11 +169,14 @@ pub(super) unsafe fn reach(lib: &Lib, document: FPDF_DOCUMENT, font: FPDF_FONT) 
         .chain(decomposed)
         .collect();
     let mut unverified: Option<Fnv> = None;
-    for read in alone
-        .iter()
-        .filter(|read| read.mapped && character(read.unicode) && !right_to_left(read.unicode))
-    {
-        if !maps(read.unicode) {
+    // The line is read as it is set unless the font has right-to-left
+    // letters; then only each code alone is.
+    let as_set = if rtl { &alone } else { &line };
+    for read in as_set.iter().filter(|read| read.mapped) {
+        let half = (0xd800..0xe000).contains(&read.unicode);
+        let unmapped =
+            rtl && !right_to_left(read.unicode) && character(read.unicode) && !maps(read.unicode);
+        if half || unmapped {
             let hash = unverified.get_or_insert_with(Fnv::new);
             hash.int(read.unicode as i32);
             read.extent.iter().for_each(|&edge| hash.int(edge));

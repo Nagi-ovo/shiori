@@ -88,8 +88,8 @@ pub(super) const UNMAPPED: u32 = 0xffff;
 /// it; the outline catches one that swaps in a glyph of the same width, a
 /// mirror image included. Then each character of `reach.beyond` the font
 /// draws, with its advance and outline, so two dictionaries that part only
-/// past the probe part here, and the hash of what a right-to-left run read
-/// back that it does not map (`Reach::unverified`). A font that maps
+/// past the probe part here, and the hash of what its codes read back as
+/// that no glyph is looked up by (`Reach::unverified`). A font that maps
 /// nothing past the probe keeps the id it had before `reach` was added.
 ///
 /// The outline is every segment's type, point and closure in whole 1/1000
