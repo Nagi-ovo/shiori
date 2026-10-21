@@ -33,6 +33,7 @@ import type {
   RectOverlay,
   StampOverlay,
   StrikeOutOverlay,
+  TextOverlay,
   UnderlineOverlay,
 } from "../model/types";
 import {
@@ -74,7 +75,7 @@ export async function drawOverlaysForPage(
     else if (o.type === "image") await drawImageOverlay(out, o, embeddedImages);
     else if (o.type === "ink") drawInk(out, o);
     else if (o.type === "note") lostChars += drawNote(out, o, fonts);
-    else if (o.type === "text") lostChars += drawText(out, o, fonts);
+    else if (o.type === "text") lostChars += drawTextBox(out, o, fonts);
     else if (o.type === "callout") lostChars += drawCallout(out, o, fonts);
     if (turned) out.pushOperators(popGraphicsState());
   }
@@ -299,6 +300,35 @@ function drawRect(out: PDFPage, o: RectOverlay) {
     opacity: o.fill ? (o.opacity ?? 1) : 0,
     borderOpacity: o.opacity,
   });
+}
+
+// A text box imported with a fill, a frame or a /CA draws them as its
+// FreeText appearance does: the fill over the whole box, the frame inset by
+// half its width, the text on top, all at that opacity. Others draw only text.
+function drawTextBox(out: PDFPage, o: TextOverlay, fonts: FontSet): number {
+  const border = o.borderWidth ?? 0;
+  const alpha = typeof o.opacity === "number" && o.opacity < 1 ? Math.max(0, o.opacity) : undefined;
+  if (!o.fill && border <= 0 && alpha === undefined) return drawText(out, o, fonts);
+  out.pushOperators(pushGraphicsState());
+  if (alpha !== undefined) {
+    const gs = out.doc.context.obj({ Type: "ExtGState", ca: alpha, CA: alpha });
+    out.pushOperators(setGraphicsState(out.node.newExtGState("GS", gs)));
+  }
+  const { x, y, w, h } = o.rect;
+  if (o.fill) out.drawRectangle({ x, y, width: w, height: h, color: hexToRgb(o.fill) });
+  if (border > 0) {
+    out.drawRectangle({
+      x: x + border / 2,
+      y: y + border / 2,
+      width: Math.max(0, w - border),
+      height: Math.max(0, h - border),
+      borderColor: hexToRgb(o.borderColor ?? o.color),
+      borderWidth: border,
+    });
+  }
+  const lost = drawText(out, o, fonts);
+  out.pushOperators(popGraphicsState());
+  return lost;
 }
 
 function drawStamp(out: PDFPage, o: StampOverlay) {

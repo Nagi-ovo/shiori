@@ -11,13 +11,14 @@ import {
 import { exportPdf } from "./exportPdf";
 import type { DocumentModel, Overlay } from "../model/types";
 
-// A translucent ink stroke or box (an imported /CA) burned into the page
-// keeps its opacity, as the editable export and the screen show it.
+// A translucent ink stroke or box (an imported /CA), or a text box's fill
+// and frame, burned into the page as the editable export and the screen
+// show them.
 
 const page = { id: "p1", sourceIndex: 0, rotation: 0, widthPt: 612, heightPt: 792 } as const;
 
-/** The stroke (CA) and fill (ca) alpha of every graphics state the page content sets. */
-async function alphasSet(overlay: Overlay): Promise<Array<{ CA?: number; ca?: number }>> {
+/** The flattened page's content operators, and the stroke (CA) and fill (ca) alpha of every graphics state they set. */
+async function flattened(overlay: Overlay) {
   const doc = await PDFDocument.create();
   doc.addPage([612, 792]);
   const model = { pages: [page], overlays: [overlay] } as unknown as DocumentModel;
@@ -32,10 +33,15 @@ async function alphasSet(overlay: Overlay): Promise<Array<{ CA?: number; ca?: nu
   const states = node.Resources()?.lookupMaybe(PDFName.of("ExtGState"), PDFDict);
   const alpha = (gs: PDFDict | undefined, key: string) =>
     gs?.lookupMaybe(PDFName.of(key), PDFNumber)?.asNumber();
-  return [...ops.matchAll(/\/(\S+) gs/g)].map(([, name]) => {
+  const alphas = [...ops.matchAll(/\/(\S+) gs/g)].map(([, name]) => {
     const gs = states?.lookupMaybe(PDFName.of(name!), PDFDict);
     return { CA: alpha(gs, "CA"), ca: alpha(gs, "ca") };
   });
+  return { ops, alphas };
+}
+
+async function alphasSet(overlay: Overlay): Promise<Array<{ CA?: number; ca?: number }>> {
+  return (await flattened(overlay)).alphas;
 }
 
 const ink = {
@@ -65,5 +71,32 @@ describe("a flattened ink stroke or box", () => {
         expect(state.ca ?? 1).toBe(1);
       }
     }
+  });
+});
+
+describe("a flattened text box", () => {
+  const textBox = {
+    type: "text", id: "t", pageId: "p1", rect: { x: 72, y: 600, w: 200, h: 40 }, text: "Boxed",
+    fontSize: 12, color: "#0000ff", bold: false, align: "left", fontFamily: "sans",
+  } as Overlay;
+
+  test("draws its fill and frame under its text, all at its opacity", async () => {
+    const { ops, alphas } = await flattened({
+      ...textBox, fill: "#ffff99", borderWidth: 2, borderColor: "#ff0000", opacity: 0.6,
+    } as Overlay);
+    expect(alphas).toContainEqual({ CA: 0.6, ca: 0.6 });
+    const fill = ops.indexOf("1 1 0.6 rg");
+    const frame = ops.indexOf("1 0 0 RG");
+    const text = ops.indexOf("Tj");
+    expect(fill).toBeGreaterThan(-1);
+    expect(frame).toBeGreaterThan(fill);
+    expect(text).toBeGreaterThan(frame);
+  });
+
+  test("made in Shiori, draws only its text", async () => {
+    const { ops, alphas } = await flattened(textBox);
+    expect(alphas).toEqual([]);
+    expect(ops).not.toContain("1 1 0.6 rg");
+    expect(ops).not.toMatch(/ re\b/);
   });
 });
