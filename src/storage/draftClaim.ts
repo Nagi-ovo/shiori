@@ -3,6 +3,7 @@ import { draftSource, webHandleDraftPrefix } from "./draftIdentity";
 import { isDraftOpen } from "./draftProtection";
 import {
   clearOperationLog,
+  operationLogIds,
   readOperationLog,
   writeOperationLog,
 } from "./operationLog";
@@ -84,15 +85,22 @@ async function claimableDraftId(
   }
   const exists = deps.webFileHandleExists;
   if (!exists) return null;
-  const rows = await db.draftModels
-    .where("id")
-    .startsWith(webHandleDraftPrefix(hash))
-    .toArray();
-  rows.sort((a, b) => b.lastTouched - a.lastTouched);
-  for (const row of rows) {
-    const source = draftSource(row.id);
-    if (source?.type !== "webFileHandle" || isDraftOpen(row.id)) continue;
-    if (!(await exists(source.id))) return row.id;
+  // A crash before the first autosave leaves a log and no row.
+  const prefix = webHandleDraftPrefix(hash);
+  const newest = new Map<string, number>();
+  const seen = (id: string, at: number) =>
+    newest.set(id, Math.max(at, newest.get(id) ?? 0));
+  for (const row of await db.draftModels.where("id").startsWith(prefix).toArray()) {
+    seen(row.id, row.lastTouched);
+  }
+  for (const id of operationLogIds(prefix)) {
+    seen(id, readOperationLog(id)?.lastTouched ?? 0);
+  }
+  const ids = [...newest.keys()].sort((a, b) => newest.get(b)! - newest.get(a)!);
+  for (const id of ids) {
+    const source = draftSource(id);
+    if (source?.type !== "webFileHandle" || isDraftOpen(id)) continue;
+    if (!(await exists(source.id))) return id;
   }
   return null;
 }

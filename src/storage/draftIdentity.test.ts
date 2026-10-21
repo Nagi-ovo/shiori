@@ -162,6 +162,20 @@ describe("draft identity", () => {
     expect(await drafts.get(oldHandle)).toBeUndefined();
   });
 
+  test("a crash log under a forgotten web file handle is claimed too", async () => {
+    // The tab crashed before its first autosave, then its handle was pruned.
+    const oldHandle = draftIdFor(HASH, { type: "webFileHandle", id: "old" });
+    const newHandle = draftIdFor(HASH, { type: "webFileHandle", id: "new" });
+    writeOperationLog(oldHandle, model("unsaved"), 77);
+    const deps = { webFileHandleExists: async (id: string) => id === "new" };
+
+    expect(await claimDraft(HASH, newHandle, deps)).toBe(newHandle);
+    expect(readOperationLog(newHandle)?.model.overlays.map((overlay) => overlay.id)).toEqual([
+      "unsaved",
+    ]);
+    expect(readOperationLog(oldHandle)).toBeNull();
+  });
+
   test("a failed claim reads the unclaimed draft instead of opening clean", async () => {
     await save(HASH, "legacy");
     const warn = spyOn(console, "warn").mockImplementation(() => {});
