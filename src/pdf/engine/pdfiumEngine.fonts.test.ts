@@ -227,6 +227,62 @@ describe("pdfiumEngine fonts", () => {
       expect(core.fontOutlines).toHaveBeenCalledTimes(2);
     });
   });
+
+  test("a rebuilt font seen before keeps its family on a page beside a new one", async () => {
+    // Page 0 sets "Hi" in one CMR10; page 1 sets "Ho" in it and "x" in a
+    // second CMR10 program, the usual later page of a merged LaTeX file.
+    const runs = [[["Hi", "1a"]], [["Ho", "1a"], ["x", "2b"]]] as const;
+    await withFontStubs(async (added) => {
+      core.pageText.mockImplementation((async (_doc: number, page: number) => ({
+        glyphs: runs[page]!.flatMap(([word, fontId], run) =>
+          [...word].map((text, i) => ({
+            text,
+            origin: [72 + 6 * i, 700 - 20 * run] as [number, number],
+            end: [78 + 6 * i, 700 - 20 * run] as [number, number],
+            fontSize: 12,
+            angle: 0,
+            generated: false,
+            fontName: "CMR10",
+            fontId,
+            fontFlags: 32,
+            ascent: 9,
+            descent: -3,
+          })),
+        ),
+        lang: null,
+      })) as unknown as typeof core.pageText);
+      core.pageFonts.mockImplementation(async (_doc: number, page: number) =>
+        packFonts(runs[page]!.map(([, id]) => ({ name: "CMR10", id, format: "cff", data: [1, 0, 4, 2] }))),
+      );
+      core.fontOutlines.mockImplementation(async (_doc, page) =>
+        new TextEncoder().encode(
+          JSON.stringify(
+            runs[page]!.map(([word, id]) => ({
+              name: "CMR10",
+              id,
+              flags: 32,
+              ascent: 700,
+              descent: -200,
+              glyphs: [...word].map((ch) => [ch.codePointAt(0), 500, "M0 0L500 0L500 700Z"]),
+            })),
+          ),
+        ),
+      );
+      const familyOf = (text: Awaited<ReturnType<typeof engine.pageText>>, id: string) => {
+        const style = [...text.fontNames].find(([, key]) => key.endsWith(`#${id}`))![0];
+        return text.faceFamilies.get(style);
+      };
+      const { doc } = await engine.load(new Uint8Array([7]), {});
+      const first = familyOf(await engine.pageText(doc, 0), "1a");
+      const page1 = await engine.pageText(doc, 1);
+      expect(familyOf(page1, "1a")).toBe(first);
+      const other = familyOf(page1, "2b");
+      expect(other).toMatch(/^shiori-pdf-/);
+      expect(other).not.toBe(first);
+      // The seen font gains its new character alone; its H stays loaded.
+      expect(added).toEqual([`${first} U+48,U+69`, `${first} U+6F`, `${other} U+78`]);
+    });
+  });
 });
 
 /**

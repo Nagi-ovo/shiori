@@ -328,8 +328,14 @@ export function createPdfiumEngine(core: PdfCoreBridge, label = "PDFium 7881"): 
           const fonts = decodeEmbeddedFonts(await core.pageFonts(entry.id, sourceIndex));
           await Promise.all(
             fonts.map(async (font) => {
+              // The page's other fonts come back too: one seen before keeps
+              // its family and the glyphs already rebuilt in it. Pages read
+              // concurrently, so the check holds again after the load.
               const key = fontKey(font.name, font.id);
+              const known = () => entry.faces.has(key) || entry.rebuilt.has(key);
+              if (known()) return;
               const family = await loadEmbeddedFontFace(font);
+              if (known()) return;
               if (family) entry.faces.set(key, family);
               else {
                 entry.rebuilt.set(key, {
