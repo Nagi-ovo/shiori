@@ -13,21 +13,25 @@
 //! Coordinates are PDF user space, in points, y up, before the page's own
 //! rotation — the space `src/pdf/geometry/coords.ts` calls PDF space.
 
+mod document;
 pub mod encryption;
 mod fonts;
 mod geometry;
 mod open;
 pub mod pdf_syntax;
+mod render;
 mod text;
 mod xref;
 
-use encryption::{EncryptionError, SourceEncryption};
+pub use document::Document;
+use encryption::EncryptionError;
 pub use fonts::{
     encode_embedded_fonts, encode_font_outlines, EmbeddedFont, FontFormat, FontOutlines,
     GlyphOutline,
 };
 pub use geometry::PageGeometry;
 pub use open::Core;
+pub use render::{RenderRequest, MAX_RENDER_PIXELS};
 pub use text::TextChar;
 
 use std::fmt;
@@ -36,21 +40,13 @@ use std::os::raw::c_int;
 use std::os::raw::{c_ulong, c_void};
 
 use pdfium_render::prelude::{
-    PdfiumLibraryBindings, FPDF_BOOKMARK, FPDF_DEST, FPDF_DOCUMENT, FPDF_FORMFILLINFO,
-    FPDF_FORMHANDLE, FPDF_LINK, FPDF_PAGE, FPDF_TEXTPAGE, FS_RECTF,
+    PdfiumLibraryBindings, FPDF_BOOKMARK, FPDF_DEST, FPDF_LINK, FPDF_PAGE, FPDF_TEXTPAGE, FS_RECTF,
 };
 
 pub(crate) type Lib = dyn PdfiumLibraryBindings;
 
-// fpdfview.h render flags, fpdf_annot.h annotation flag, bitmap format.
-const FPDF_ANNOT: i32 = 0x01;
-const FPDF_REVERSE_BYTE_ORDER: i32 = 0x10;
+// fpdf_annot.h annotation flag.
 const FPDF_ANNOT_FLAG_HIDDEN: i32 = 1 << 1;
-const FPDF_BITMAP_BGRA: i32 = 4;
-
-/// The largest tile the core will allocate, in pixels: the app's canvas
-/// budget (src/pdf/openPolicy.ts MAX_CANVAS_PIXELS).
-pub const MAX_RENDER_PIXELS: u64 = 32_000_000;
 
 /// The most characters one page's text may hold before [`Document::chars`]
 /// refuses it: the reading layer's own limit
@@ -108,24 +104,6 @@ impl fmt::Display for CoreError {
 }
 
 impl std::error::Error for CoreError {}
-
-/// A region of a page drawn at a scale, in device pixels of the whole page:
-/// a viewport tile, or the whole page when the region covers it.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RenderRequest {
-    /// The page's displayed rotation, clockwise degrees (0/90/180/270). Like
-    /// pdf.js's viewport rotation it replaces the page's /Rotate, not adds to it.
-    pub rotation: u16,
-    /// Device pixels per PDF point: the zoom scale times the device pixel ratio.
-    pub pixels_per_point: f32,
-    pub x: u32,
-    pub y: u32,
-    pub width: u32,
-    pub height: u32,
-    /// Draw annotations and form fields. Off for output that must carry the
-    /// page content alone (an original-only raster export).
-    pub annotations: bool,
-}
 
 /// Nested form XObjects followed before giving up (a malformed file can nest forever).
 const MAX_FORM_DEPTH: usize = 32;
@@ -209,19 +187,6 @@ impl Rect {
     }
 }
 
-/// An open PDF. Dropping it closes the document.
-pub struct Document {
-    lib: &'static Lib,
-    handle: FPDF_DOCUMENT,
-    /// Null when PDFium could not set one up; pages then draw without forms.
-    form: FPDF_FORMHANDLE,
-    _form_info: Box<FPDF_FORMFILLINFO>,
-    /// PDFium reads from this buffer for the document's whole life.
-    _bytes: Vec<u8>,
-    /// For an encrypted file, its handler unlocked, or why it cannot be reproduced.
-    encryption: Option<Result<SourceEncryption, EncryptionError>>,
-}
-
 /// What a document's encryption allows, as PDFium reports it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Security {
@@ -255,25 +220,6 @@ pub struct Metadata {
     /// "Standard" for an encrypted file: the only handler PDFium opens
     /// (any other fails to open with FPDF_ERR_SECURITY).
     pub encrypt_filter_name: Option<&'static str>,
-}
-
-// A document may move to another thread, but only the thread that owns it
-// calls into it. pdfium-render's thread-safe table locks each FFI call, so
-// calls never overlap, but it orders nothing across the several calls one
-// read takes (load page, load text page, walk, close); PDFium documents no
-// guarantee for a document shared between threads, so it is not Sync. The
-// desktop app gives each document to its one render thread.
-unsafe impl Send for Document {}
-
-impl Drop for Document {
-    fn drop(&mut self) {
-        unsafe {
-            if !self.form.is_null() {
-                self.lib.FPDFDOC_ExitFormFillEnvironment(self.form);
-            }
-            self.lib.FPDF_CloseDocument(self.handle);
-        }
-    }
 }
 
 struct Page<'a> {
@@ -322,104 +268,6 @@ impl Document {
             lib: self.lib,
             handle,
         })
-    }
-
-    /// Draws `request`'s region of a page, annotations and form fields
-    /// included, on white. Returns RGBA rows, `width × height × 4` bytes.
-    pub fn render(&self, index: u32, request: RenderRequest) -> Result<Vec<u8>, CoreError> {
-        let RenderRequest {
-            rotation,
-            pixels_per_point,
-            x,
-            y,
-            width,
-            height,
-            annotations,
-        } = request;
-        if width == 0 || height == 0 || u64::from(width) * u64::from(height) > MAX_RENDER_PIXELS {
-            return Err(CoreError::Pdfium(format!(
-                "cannot render {width}×{height} px"
-            )));
-        }
-        let geometry = self.page_geometry(index)?;
-        let page = self.page(index)?;
-        let lib = self.lib;
-        // PDFium applies the page's own /Rotate first and `rotate` on top.
-        let page_turns = i32::from(geometry.rotation / 90);
-        let turns = (i32::from(rotation / 90) - page_turns).rem_euclid(4);
-        let upright = (i32::from(rotation / 90)).rem_euclid(2) == 0;
-        let (w_pt, h_pt) = if upright {
-            (geometry.width, geometry.height)
-        } else {
-            (geometry.height, geometry.width)
-        };
-        let full_w = (w_pt * pixels_per_point).floor().max(1.0) as c_int;
-        let full_h = (h_pt * pixels_per_point).floor().max(1.0) as c_int;
-        let (w, h) = (width as c_int, height as c_int);
-        unsafe {
-            let bitmap = lib.FPDFBitmap_CreateEx(w, h, FPDF_BITMAP_BGRA, std::ptr::null_mut(), 0);
-            if bitmap.is_null() {
-                return Err(CoreError::Pdfium(format!(
-                    "no memory for {width}×{height} px"
-                )));
-            }
-            lib.FPDFBitmap_FillRect(bitmap, 0, 0, w, h, 0xFFFF_FFFF);
-            let flags = if annotations {
-                FPDF_ANNOT | FPDF_REVERSE_BYTE_ORDER
-            } else {
-                FPDF_REVERSE_BYTE_ORDER
-            };
-            let form = if annotations {
-                self.form
-            } else {
-                std::ptr::null_mut()
-            };
-            let (start_x, start_y) = (-(x as c_int), -(y as c_int));
-            if !form.is_null() {
-                lib.FORM_OnAfterLoadPage(page.handle, form);
-            }
-            lib.FPDF_RenderPageBitmap(
-                bitmap,
-                page.handle,
-                start_x,
-                start_y,
-                full_w,
-                full_h,
-                turns,
-                flags,
-            );
-            if !form.is_null() {
-                lib.FPDF_FFLDraw(
-                    form,
-                    bitmap,
-                    page.handle,
-                    start_x,
-                    start_y,
-                    full_w,
-                    full_h,
-                    turns,
-                    flags,
-                );
-                lib.FORM_OnBeforeClosePage(page.handle, form);
-            }
-            let stride = lib.FPDFBitmap_GetStride(bitmap) as usize;
-            let row = width as usize * 4;
-            // On wasm32 the bitmap lives in PDFium's own heap, a separate
-            // linear memory; it comes over as one copy.
-            #[cfg(target_arch = "wasm32")]
-            let pixels = lib.FPDFBitmap_GetBuffer_as_vec(bitmap);
-            #[cfg(not(target_arch = "wasm32"))]
-            let pixels = std::slice::from_raw_parts(
-                lib.FPDFBitmap_GetBuffer(bitmap) as *const u8,
-                stride * height as usize,
-            );
-            let mut rgba = Vec::with_capacity(row * height as usize);
-            for line in 0..height as usize {
-                rgba.extend_from_slice(&pixels[line * stride..line * stride + row]);
-            }
-            lib.FPDFBitmap_Destroy(bitmap);
-            Ok(rgba)
-        }
     }
 
     /// Hides the annotations Shiori draws itself, so the page raster shows

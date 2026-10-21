@@ -17,9 +17,10 @@
 //! same id on every page, in a reopened file and in a file merged from it,
 //! where edits saved with it in a draft find it again.
 
-use pdfium_render::prelude::{FPDF_DOCUMENT, FPDF_FONT};
+use pdfium_render::prelude::FPDF_FONT;
 
-use super::{font_program, reach, GLYPH_PATH_SCALE};
+use super::reach::Reach;
+use super::GLYPH_PATH_SCALE;
 use crate::Lib;
 
 /// The characters every font is asked about: the ones the 8-bit encodings
@@ -63,14 +64,14 @@ impl Fnv {
         Fnv(0xcbf2_9ce4_8422_2325)
     }
 
-    fn bytes(&mut self, data: &[u8]) {
+    pub(super) fn bytes(&mut self, data: &[u8]) {
         for &byte in data {
             self.0 ^= u64::from(byte);
             self.0 = self.0.wrapping_mul(0x0100_0000_01b3);
         }
     }
 
-    fn int(&mut self, value: i32) {
+    pub(super) fn int(&mut self, value: i32) {
         self.bytes(&value.to_le_bytes());
     }
 }
@@ -85,24 +86,25 @@ pub(super) const UNMAPPED: u32 = 0xffff;
 /// glyph it draws. The advance (through PDFium's lookup from Unicode back to
 /// a code) catches a dictionary that maps a character elsewhere or widens
 /// it; the outline catches one that swaps in a glyph of the same width, a
-/// mirror image included. Then each character of `beyond` (`reach`) the
-/// font draws, with its advance and outline, so two dictionaries that part
-/// only past the probe part here. A font that maps nothing past the probe
-/// keeps the id it had before `beyond` was added.
+/// mirror image included. Then each character of `reach.beyond` the font
+/// draws, with its advance and outline, so two dictionaries that part only
+/// past the probe part here, and the hash of what its codes read back as
+/// that no glyph is looked up by (`Reach::unverified`). A font that maps
+/// nothing past the probe keeps the id it had before `reach` was added.
 ///
 /// The outline is every segment's type, point and closure in whole 1/1000
 /// em, as `glyph_outline` rebuilds it from PDFium's FreeType, so two ids are
 /// equal when the rebuilt probe glyphs are. An upgrade of either that moves
 /// a point across a rounding boundary changes the id and leaves a draft's
 /// edit in a fallback face. Hashing reads the program and asks about 420
-/// characters once per font per page read: 0.1 to 0.3 ms for a Latin font
+/// characters once per font per document (`seen`): 0.1 to 0.3 ms for a Latin font
 /// in a native release build, a few more milliseconds to hash a whole CJK
 /// program.
 pub(crate) unsafe fn font_identity(
     lib: &Lib,
     font: FPDF_FONT,
     program: &[u8],
-    beyond: &[u32],
+    reach: &Reach,
 ) -> String {
     let mut hash = Fnv::new();
     hash.bytes(program);
@@ -114,13 +116,17 @@ pub(crate) unsafe fn font_identity(
         glyph_shape(lib, font, unicode, &mut hash);
     }
     let none = answer(lib, font, UNMAPPED);
-    for &unicode in beyond {
+    for &unicode in &reach.beyond {
         let (advance, shape) = answer(lib, font, unicode);
         if (advance, shape) != none {
             hash.int(unicode as i32);
             hash.int(advance);
             hash.bytes(&shape.to_le_bytes());
         }
+    }
+    if let Some(unverified) = reach.unverified {
+        hash.int(-1);
+        hash.bytes(&unverified.to_le_bytes());
     }
     format!("{:016x}", hash.0)
 }
@@ -157,15 +163,4 @@ pub(super) unsafe fn glyph_shape(lib: &Lib, font: FPDF_FONT, unicode: u32, hash:
         hash.int((y * GLYPH_PATH_SCALE).round() as i32);
         hash.int(lib.FPDFPathSegment_GetClose(segment));
     }
-}
-
-/// The id of a font of `document` (`font_identity`); empty for a font the
-/// file does not embed.
-pub(crate) unsafe fn font_id(lib: &Lib, document: FPDF_DOCUMENT, font: FPDF_FONT) -> String {
-    font_program(lib, font)
-        .map(|data| {
-            let beyond = reach::mapped_beyond_probe(lib, document, font);
-            font_identity(lib, font, &data, &beyond)
-        })
-        .unwrap_or_default()
 }

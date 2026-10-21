@@ -325,3 +325,53 @@ fn a_crop_box_off_a_page_with_no_media_box_leaves_letter() {
         (0.0, 0.0, 612.0, 792.0)
     );
 }
+
+#[test]
+fn a_page_whose_crop_box_misses_its_media_box_draws_on_the_media_box() {
+    // A 20 pt square at (100, 100) on pages whose crop box misses the media
+    // box: its own media box, one handed down, and none at all (US Letter).
+    // The page is drawn on the box page_geometry reports, scaled and with y
+    // up, where the overlays put their marks, at any zoom.
+    let square = "0 0 0 rg 100 100 20 20 re f";
+    let content = format!(
+        "<< /Length {} >>\nstream\n{square}\nendstream",
+        square.len()
+    );
+    let bytes = hand_made_pdf(&[
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R 4 0 R 6 0 R] /Count 3 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] /CropBox [400 400 500 500] /Contents 5 0 R >>",
+        "<< /Type /Pages /Parent 2 0 R /Kids [7 0 R] /Count 1 /MediaBox [0 0 595 842] >>",
+        &content,
+        "<< /Type /Page /Parent 2 0 R /CropBox [900 900 1000 1000] /Contents 5 0 R >>",
+        "<< /Type /Page /Parent 4 0 R /CropBox [900 900 1000 1000] /Contents 5 0 R >>",
+    ]);
+    let doc = core().open(bytes, None).unwrap();
+    for (index, w, h) in [(0, 200, 300), (1, 595, 842), (2, 612, 792)] {
+        let g = doc.page_geometry(index).unwrap();
+        assert_eq!((g.width, g.height), (w as f32, h as f32), "page {index}");
+        for scale in [1, 2] {
+            let (sw, sh) = (w * scale, h * scale);
+            let page = doc.render(index, whole(0, scale as f32, sw, sh)).unwrap();
+            // Inside the square, at pixel (x, h − y) times the scale.
+            let (x0, y0) = (101 * scale, (h - 119) * scale);
+            let (x1, y1) = (119 * scale, (h - 101) * scale);
+            assert!(
+                any_in(&page, sw, (x0, y0, x1, y1), is_dark),
+                "page {index} at {scale}x: square"
+            );
+            // And nowhere else: not at the bitmap's (100, 100).
+            let above = (h - 140) * scale;
+            assert!(
+                !any_in(&page, sw, (0, 0, sw, above), is_dark),
+                "page {index} at {scale}x: ink above the square"
+            );
+        }
+    }
+    // Drawing the page does not move the box it is drawn on.
+    let g = doc.page_geometry(1).unwrap();
+    assert_eq!(
+        (g.origin_x, g.origin_y, g.width, g.height),
+        (0.0, 0.0, 595.0, 842.0)
+    );
+}

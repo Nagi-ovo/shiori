@@ -134,6 +134,7 @@ impl Core {
             _form_info: form_info,
             _bytes: bytes,
             encryption,
+            fonts: Default::default(),
         })
     }
 }

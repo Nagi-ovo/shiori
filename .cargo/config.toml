@@ -1,0 +1,8 @@
+# pdfium-render 0.9.4's thread-safe bindings take their lock in only some
+# calls (FPDFText_SetCharcodes, FPDFPageObj_CreateTextObj, FPDFPage_New and
+# FPDFBitmap_CreateEx among those that skip it). Every Shiori host drives
+# PDFium from one thread (the desktop render thread, the web worker, the
+# CLI's addon), but `cargo test` runs a binary's tests on parallel threads,
+# where those calls overlap and corrupt PDFium's heap. One thread, then.
+[env]
+RUST_TEST_THREADS = "1"
