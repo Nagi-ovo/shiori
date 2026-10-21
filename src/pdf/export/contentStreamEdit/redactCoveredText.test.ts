@@ -157,6 +157,22 @@ describe("page text redaction with editor-built cover rects", () => {
     expect(report.cleanRects).toEqual([false]);
   });
 
+  test("keeps a large glyph behind dashes under their floating ink cover", async () => {
+    // A 60pt "W" (advance 30pt) behind eight 24pt hyphens: the hyphens'
+    // thin ink cover spans the W's advance and sits inside its box too, but
+    // only a sliver of the W is under it.
+    const page = await pageWithContent(
+      "BT /F1 60 Tf 130 690 Td (W) Tj ET BT /F1 24 Tf 100 700 Td (--------) Tj ET",
+      ARIAL_DESCRIPTOR,
+    );
+    const band = { ascent: 7.275, descent: -5.155 };
+
+    const report = redactCoveredTextOnPage(page, [editorCoverRect(96, band)]);
+
+    expect(report.removedCount).toBe(8);
+    expect(report.cleanRects).toEqual([false]);
+  });
+
   test("keeps a large heading glyph behind a cover whose own text is unplaced", async () => {
     // The body line is in a font the walk cannot measure, so nothing holds a
     // core band in the cover; the W still only fills a third of its width.

@@ -215,11 +215,31 @@ function hugSlack(rect: PdfRect): number {
   return 0.8 + Math.max(3, 0.25 * Math.abs(rect.h));
 }
 
+// A hugged glyph drawn over a smaller hugged one, with a clearly taller box,
+// belongs to another layer of text (a heading or drop cap behind a row of
+// dashes): the thin cover only grazes it, so it is not part of the run.
+const LARGER_BOX_RATIO = 1.25;
+
+function withoutLargerOverlapping(hugged: GlyphPlacement[]): GlyphPlacement[] {
+  const boxes = hugged.map((glyph) => quadBounds(glyph.quad));
+  return hugged.filter((_, index) => {
+    const box = boxes[index]!;
+    const height = box.maxY - box.minY;
+    return !boxes.some(
+      (other) =>
+        other.maxY - other.minY < height / LARGER_BOX_RATIO &&
+        other.minX < box.maxX - HIT_EPSILON &&
+        other.maxX > box.minX + HIT_EPSILON,
+    );
+  });
+}
+
 // Per rect, the glyphs it removes. A rect removes every glyph whose core
 // band it holds. A rect that holds no core band may be an ink-bounds cover
 // of glyphs that float off the baseline; it removes the glyphs it hugs
 // (rectHugsUprightGlyph), but only when together they span the rect, so a
-// cover over a much larger glyph (a heading, a watermark) keeps it.
+// cover over a much larger glyph (a heading, a watermark) keeps it, and
+// never a much larger glyph overlapping the hugged run.
 function removalsByRect(
   glyphs: GlyphPlacement[],
   coverRects: PdfRect[],
@@ -227,7 +247,9 @@ function removalsByRect(
   return coverRects.map((rect) => {
     const core = glyphs.filter((glyph) => quadInsideRect(glyph.coreQuad, rect));
     if (core.length > 0) return new Set(core);
-    const hugged = glyphs.filter((glyph) => rectHugsUprightGlyph(rect, glyph.quad));
+    const hugged = withoutLargerOverlapping(
+      glyphs.filter((glyph) => rectHugsUprightGlyph(rect, glyph.quad)),
+    );
     if (hugged.length === 0) return new Set();
     const rb = rectBounds(rect);
     const minX = Math.min(...hugged.map((glyph) => quadBounds(glyph.quad).minX));
