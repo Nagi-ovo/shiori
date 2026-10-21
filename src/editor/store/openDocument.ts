@@ -52,6 +52,13 @@ export function openDocumentActions(
                 options?.completedLiveOperationIds ?? [],
               ),
             }),
+        // A new document's fonts start empty and rebuild as its pages are
+        // read; the old faces are destroyed with the old handle. Kept, their
+        // coverage would silence the missing-glyph warning (runtimeSessions
+        // resets them on restore for the same reason).
+        ...(opened.doc !== current.opened?.doc
+          ? { pdfFontFaces: {}, pdfFontChars: {} }
+          : {}),
         selectedIds: [],
         liveOverlayReveals: [],
         pendingOverlayReveals,
