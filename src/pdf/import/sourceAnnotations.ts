@@ -168,7 +168,11 @@ function readAnnotation(
       data.opacity = opacityAsWritten(dict);
       break;
   }
-  if (subtype === "Square" || subtype === "FreeText") data.opacity = opacityAsWritten(dict);
+  if (subtype === "Square" || subtype === "FreeText") {
+    data.opacity = opacityAsWritten(dict);
+    const turn = appearanceTurn(appearance, rect);
+    if (turn) data.appearanceTurn = turn;
+  }
   if (QUAD_SUBTYPES.has(subtype)) data.quadPoints = quadPoints(dict);
   if (subtype === "Popup") {
     const parent = lookup(dict, "Parent", PDFDict);
@@ -370,6 +374,39 @@ function annotationRotation(dict: PDFDict): number {
   const angle = value instanceof PDFNumber ? value.asNumber() : 0;
   if (!Number.isInteger(angle) || angle % 90 !== 0) return 0;
   return ((angle % 360) + 360) % 360;
+}
+
+/**
+ * The turn an appearance's /Matrix gives a box (Shiori's own) when it is a
+ * rotation, and its unturned size: the BBox, scaled as the viewer scales it
+ * to fit the turned box into /Rect. Undefined when the matrix does not turn,
+ * or does more than turn and scale evenly, so such a box imports as before.
+ */
+function appearanceTurn(
+  appearance: PDFRawStream | null,
+  rect: readonly number[],
+): { angle: number; w: number; h: number } | undefined {
+  if (!appearance) return undefined;
+  const m = numbers(lookup(appearance.dict, "Matrix", PDFArray));
+  const box = normalRect(lookup(appearance.dict, "BBox", PDFArray));
+  if (!m || m.length !== 6 || !box) return undefined;
+  const [a, b, c, d] = m as [number, number, number, number];
+  const scale = Math.hypot(a, b);
+  if (!(scale > 0) || Math.abs(a - d) > 1e-4 * scale || Math.abs(b + c) > 1e-4 * scale) return undefined;
+  // Clockwise as seen: the matrix turns by the negative angle in y-up space.
+  const angle = Number(((((Math.atan2(-b, a) * 180) / Math.PI) % 360 + 360) % 360).toFixed(6)) % 360;
+  if (angle === 0) return undefined;
+  const [cos, sin] = [Math.abs(a / scale), Math.abs(b / scale)];
+  const w = box[2]! - box[0]!;
+  const h = box[3]! - box[1]!;
+  const turnedW = scale * (w * cos + h * sin);
+  const turnedH = scale * (w * sin + h * cos);
+  if (!(turnedW > 0 && turnedH > 0)) return undefined;
+  const fitX = (rect[2]! - rect[0]!) / turnedW;
+  const fitY = (rect[3]! - rect[1]!) / turnedH;
+  if (Math.abs(fitX - fitY) > 0.01 * Math.max(fitX, fitY)) return undefined;
+  const k = scale * ((fitX + fitY) / 2);
+  return { angle, w: w * k, h: h * k };
 }
 
 function opacityOrOne(dict: PDFDict): number {

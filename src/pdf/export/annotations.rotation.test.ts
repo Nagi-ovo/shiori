@@ -86,7 +86,7 @@ describe("a turned box in the editable export", () => {
 
 describe("a turned box reopened", () => {
   test.each([
-    ["text", 90],
+    ["rect", 30], ["text", 30], ["text", 90], ["stamp", 45], ["rect", 200],
   ] as const)("a %s at %d° comes back turned", async (kind, angle) => {
     const { bytes } = await exported({ ...shapes[kind]!, angle } as Overlay);
     const [back] = await importFileAnnotations([page], bytes, 1);

@@ -197,11 +197,13 @@ function importSquare(
   const rect = rectFromAnnot(annot);
   if (!rect) return null;
   const border = recordValue(annot.borderStyle);
+  const turn = appearanceTurn(annot);
   return {
     type: "rect",
     id: makeId(),
     pageId: page.id,
-    rect: pdfRectToPageLocal(page, rect),
+    rect: pdfRectToPageLocal(page, turn ? turnedBox(rect, turn) : rect),
+    ...(turn ? { angle: turn.angle } : {}),
     color: colorToHex(annot.color, "#b13a2e"),
     strokeWidth: numberValue(border?.width, 2),
     fill: null,
@@ -251,13 +253,16 @@ function importFreeText(
   // upright on a rotated page) turns its content within /Rect. Shiori keeps
   // the box unrotated and turns it by `angle` (clockwise, the opposite sense)
   // about its centre, so a quarter turn swaps the box's sides there.
+  // Without one, a turn its appearance's /Matrix gives it (Shiori's export).
   const rotation = numberValue(annot.rotation, 0);
-  const box =
-    rotation % 180 === 0
+  const turn = rotation ? undefined : appearanceTurn(annot);
+  const box = turn
+    ? turnedBox(rect, turn)
+    : rotation % 180 === 0
       ? rect
       : { x: rect.x + (rect.w - rect.h) / 2, y: rect.y + (rect.h - rect.w) / 2, w: rect.h, h: rect.w };
   const localRect = pdfRectToPageLocal(page, box);
-  const angle = rotation ? { angle: 360 - rotation } : {};
+  const angle = turn ? { angle: turn.angle } : rotation ? { angle: 360 - rotation } : {};
   const appearance = recordValue(annot.defaultAppearanceData);
   const text = contentsText(annot);
   const stampKind = stampKindFromText(text);
@@ -306,6 +311,20 @@ function freeTextBox(annot: PdfjsAnnotation): Partial<TextOverlay> {
   const border = numberValue(recordValue(annot.borderStyle)?.width, 0);
   if (border > 0) box.borderWidth = border;
   return { ...box, ...translucency(annot) };
+}
+
+type AppearanceTurn = { angle: number; w: number; h: number };
+
+function appearanceTurn(annot: PdfjsAnnotation): AppearanceTurn | undefined {
+  const turn = recordValue(annot.appearanceTurn);
+  if (!turn) return undefined;
+  const [angle, w, h] = [turn.angle, turn.w, turn.h].map((n) => numberValue(n, NaN));
+  return angle! > 0 && w! > 0 && h! > 0 ? { angle: angle!, w: w!, h: h! } : undefined;
+}
+
+// The unturned box a turn was drawn from, about the centre of /Rect.
+function turnedBox(rect: { x: number; y: number; w: number; h: number }, turn: AppearanceTurn) {
+  return { x: rect.x + (rect.w - turn.w) / 2, y: rect.y + (rect.h - turn.h) / 2, w: turn.w, h: turn.h };
 }
 
 function stampKindFromText(text: string): StampOverlay["kind"] | null {

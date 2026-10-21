@@ -202,6 +202,20 @@ describe("what other tools wrote, kept as written", () => {
     ]);
   });
 
+  // Only a turn is read back as an angle (Shiori writes one); a matrix that
+  // skews or scales unevenly leaves the box as its /Rect says.
+  test("an appearance that skews is not taken for a turn", async () => {
+    const bytes = await onePage((pdf, add) => {
+      const skewed = pdf.context.register(pdf.context.flateStream("0 0 100 40 re S", {
+        Type: "XObject", Subtype: "Form", BBox: [0, 0, 100, 40], Matrix: [1, 0.5, 0, 1, 0, 0],
+      }));
+      add({ Subtype: "Square", Rect: [20, 20, 120, 110], AP: { N: skewed } });
+    });
+    const { overlays } = await importFile(bytes);
+    expect(overlays).toMatchObject([{ type: "rect", rect: { x: 20, y: 20, w: 100, h: 90 } }]);
+    expect(overlays[0]).not.toHaveProperty("angle");
+  });
+
   // PDFium counts a page tree leaf without /Type /Page; pdf-lib's getPages()
   // drops it, which shifted every later page's annotations up by one.
   test("a page without /Type keeps its place in the page order", async () => {
