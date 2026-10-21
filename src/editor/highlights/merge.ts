@@ -144,7 +144,10 @@ function hasReviewProvenance(overlay: TextMarkupOverlay): boolean {
       overlay.sourceCreatedAt !== undefined ||
       overlay.sourceModifiedAt !== undefined ||
       overlay.sourceInReplyToId ||
-      overlay.sourceReplyType,
+      overlay.sourceReplyType ||
+      // Merging would move the comment onto a new id or cut it with the
+      // erased span.
+      overlay.comment,
   );
 }
 

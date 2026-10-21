@@ -142,7 +142,15 @@ function importTextMarkup({
     rects: coalescedRects,
     color: colorToHex(annot.color, fallbackColor),
     opacity: clampOpacity(opacity),
+    ...sourceComment(annot),
   } as TextMarkupOverlay;
+}
+
+// The reviewer's comment on a markup, shape or ink (its /Contents), when it
+// has one. Shiori's own export writes an empty /Contents on markup.
+function sourceComment(annot: PdfjsAnnotation): { comment?: string } {
+  const comment = contentsText(annot);
+  return comment ? { comment } : {};
 }
 
 function importStickyNote(
@@ -185,6 +193,7 @@ function importSquare(
     color: colorToHex(annot.color, "#b13a2e"),
     strokeWidth: numberValue(border?.width, 2),
     fill: null,
+    ...sourceComment(annot),
   };
 }
 
@@ -213,6 +222,7 @@ function importInk(
     paths,
     color: colorToHex(annot.color, "#b13a2e"),
     width: numberValue(border?.width, 2),
+    ...sourceComment(annot),
   };
 }
 

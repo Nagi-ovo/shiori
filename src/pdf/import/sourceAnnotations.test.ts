@@ -77,7 +77,7 @@ describe("the file annotation reader", () => {
       // The skewed quad's bounds; dates in UTC.
       {
         type: "highlight", id: "pdf-annotation-0-5R", pageId: "p1", rects: [{ x: 20, y: 19, w: 100, h: 22 }],
-        color: "#3399ff", opacity: 0.3, sourceAuthor: "Réviseur 审阅",
+        color: "#3399ff", opacity: 0.3, comment: "bullet • dash –", sourceAuthor: "Réviseur 审阅",
         sourceCreatedAt: Date.UTC(2026, 8, 24), sourceModifiedAt: Date.UTC(2026, 8, 25, 2, 15), ...imported,
       },
       // pdf.js's CMYK conversion, not the naive (1 - c)(1 - k).

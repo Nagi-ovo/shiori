@@ -190,6 +190,25 @@ describe("imported review provenance through markup gestures", () => {
     expect(result.overlays.find((overlay) => overlay.id === "new")).toBeDefined();
   });
 
+  test("does not absorb a highlight that carries a comment", () => {
+    const commented = {
+      ...highlight("commented", "#f4d674", [{ x: 10, y: 20, w: 40, h: 12 }]),
+      comment: "Check this figure",
+    };
+    const result = applyHighlightGesture({
+      overlays: [commented],
+      pageId: "p1",
+      rects: [{ x: 45, y: 20, w: 40, h: 12 }],
+      color: "#f4d674",
+      opacity: 0.45,
+      makeId: () => "new",
+    });
+
+    expect(result.overlays.find((overlay) => overlay.id === "commented")).toEqual(
+      commented,
+    );
+  });
+
   test("does not reshape an imported highlight during color replacement", () => {
     const imported = {
       ...highlight("imported", "#f4d674", [
