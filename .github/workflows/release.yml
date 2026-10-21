@@ -74,6 +74,7 @@ permissions: {}
 
 jobs:
   validate-release-version:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
     runs-on: ubuntu-latest
     permissions:
       # write: creates the draft release the platform jobs upload to.
@@ -85,7 +86,6 @@ jobs:
           persist-credentials: false
 
       - name: Match release label to application version
-        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
         env:
           MANUAL_TAG: ${{ inputs.tag }}
           PUSHED_REF: ${{ github.ref }}

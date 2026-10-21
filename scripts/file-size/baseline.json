@@ -1,5 +1,5 @@
 {
-  ".github/workflows/release.yml": 38622,
+  ".github/workflows/release.yml": 38618,
   "cli/build.ts": 26214,
   "cli/src/liveApp.ts": 40343,
   "cli/src/main.ts": 87917,
