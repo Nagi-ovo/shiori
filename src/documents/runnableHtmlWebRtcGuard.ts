@@ -21,9 +21,20 @@
 // frame and opens a data channel from it against its own STUN host, with the
 // network panel open). Like the other frame scripts, it must never contain the
 // literal script-closing sequence.
+//
+// The document's scripts run after the guard in the same realm, so every
+// built-in the guard calls later (descriptor lookup and definition, function
+// invocation, the WeakSet, the [Replaceable] window.length) is captured here
+// first, and descriptors are null-prototype so an Object.prototype getter or
+// value cannot corrupt them.
 export const WEBRTC_GUARD = `(function () {
   var runWindow = window;
   var runDocument = document;
+  var define = Object.defineProperty;
+  var describe = Object.getOwnPropertyDescriptor;
+  var apply = Reflect.apply;
+  var lengthDescriptor = describe(runWindow, "length");
+  var lengthOf = lengthDescriptor && lengthDescriptor.get;
   var RTC = ["RTCPeerConnection", "webkitRTCPeerConnection", "mozRTCPeerConnection"];
   var FRAME_ELEMENTS = ["HTMLIFrameElement", "HTMLFrameElement", "HTMLObjectElement"];
   var INSERTS = [
@@ -36,22 +47,30 @@ export const WEBRTC_GUARD = `(function () {
     ["Range", ["insertNode", "surroundContents"], []]
   ];
   var wrapped = typeof WeakSet === "function" ? new WeakSet() : null;
+  var wrappedHas = wrapped && WeakSet.prototype.has;
+  var wrappedAdd = wrapped && WeakSet.prototype.add;
   function claimed(w) {
-    var d = Object.getOwnPropertyDescriptor(w, RTC[0]);
+    var d = describe(w, RTC[0]);
     return !!d && d.value === undefined && d.writable === false;
   }
   function strip(w) {
     for (var i = 0; i < RTC.length; i++) {
-      try { Object.defineProperty(w, RTC[i], { value: undefined, writable: false, configurable: false }); }
+      try { define(w, RTC[i], { __proto__: null, value: undefined, writable: false, configurable: false }); }
       catch (e) {
         // An engine may refuse non-configurable properties on a WindowProxy.
-        try { Object.defineProperty(w, RTC[i], { value: undefined, writable: false, configurable: true }); }
+        try { define(w, RTC[i], { __proto__: null, value: undefined, writable: false, configurable: true }); }
         catch (e2) {}
       }
     }
   }
   function sweep() {
     try { harden(runWindow, runDocument); } catch (e) {}
+  }
+  function frameCount(w) {
+    if (lengthOf) {
+      try { return apply(lengthOf, w, []) >>> 0; } catch (e) {}
+    }
+    try { return w.length >>> 0; } catch (e) { return 0; }
   }
   function harden(w, d) {
     if (!w) return;
@@ -60,8 +79,7 @@ export const WEBRTC_GUARD = `(function () {
     if (fresh) {
       try { hook(w, d || w.document); } catch (e) {}
     }
-    var n = 0;
-    try { n = w.length >>> 0; } catch (e) {}
+    var n = frameCount(w);
     for (var i = 0; i < n; i++) {
       var child = null;
       try { child = w[i]; } catch (e) {}
@@ -73,19 +91,21 @@ export const WEBRTC_GUARD = `(function () {
     catch (e) { return null; }
   }
   function wrap(proto, name, kind, after) {
-    var desc = Object.getOwnPropertyDescriptor(proto, name);
+    var desc = describe(proto, name);
     var original = desc && desc[kind];
     if (typeof original !== "function" || !desc.configurable) return;
-    if (wrapped && wrapped.has(original)) return;
+    if (wrapped && apply(wrappedHas, wrapped, [original])) return;
     var replacement = function () {
       var result;
-      try { result = original.apply(this, arguments); }
+      try { result = apply(original, this, arguments); }
       finally { try { after(result); } catch (e) {} }
       return result;
     };
-    if (wrapped) wrapped.add(replacement);
-    desc[kind] = replacement;
-    Object.defineProperty(proto, name, desc);
+    if (wrapped) apply(wrappedAdd, wrapped, [replacement]);
+    var next = { __proto__: null, enumerable: desc.enumerable, configurable: true };
+    if (kind === "value") { next.value = replacement; next.writable = desc.writable; }
+    else { next.get = desc.get; next.set = desc.set; next[kind] = replacement; }
+    define(proto, name, next);
   }
   function hardenView(doc) {
     if (doc) harden(doc.defaultView);

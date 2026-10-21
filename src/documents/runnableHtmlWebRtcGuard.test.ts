@@ -22,6 +22,13 @@ type Realm = {
 
 type FakeFrame = { realm: Realm };
 
+const defineOwn = Object.defineProperty;
+const framesOf = new WeakMap<object, Realm[]>();
+// Like the engine's getter, it reads whichever window it is called on.
+function windowLength(this: object) {
+  return framesOf.get(this)?.length ?? 0;
+}
+
 function fakeRealm(): Realm {
   const frames: Realm[] = [];
   const observers: Array<() => void> = [];
@@ -61,11 +68,14 @@ function fakeRealm(): Realm {
       if (type === "load" && capture) loadListeners.push(listener);
     },
   };
-  Object.defineProperty(win, "length", { get: () => frames.length });
+  framesOf.set(win, frames);
+  // [Replaceable] like the real one: a page can shadow it with its own value.
+  Object.defineProperty(win, "length", { configurable: true, get: windowLength });
   function attach(child: Realm) {
     const index = frames.length;
     frames.push(child);
-    Object.defineProperty(win, index, {
+    // The engine's own, which page script cannot replace.
+    defineOwn(win, index, {
       configurable: true,
       get: () => frames[index].win,
     });
@@ -159,6 +169,52 @@ describe("run frame WebRTC guard in nested frames", () => {
     appendFrame(child, grandchild);
 
     expect(rtcOf(grandchild)).toEqual([undefined, undefined]);
+  });
+
+  test("a page that tampers with built-ins still gets no WebRTC in a child", () => {
+    const top = fakeRealm();
+    runShim(top);
+    const child = fakeRealm();
+    let leaked: unknown = "not read";
+    const defineProperty = Object.defineProperty;
+    const getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+    const apply = Function.prototype.apply;
+    const poisoned = Object.getOwnPropertyDescriptor(Object.prototype, "get");
+    // What a document's own script could do after the guard has run.
+    Object.defineProperty(top.win, "length", { value: 0 });
+    Object.defineProperty(Object.prototype, "get", {
+      configurable: true,
+      writable: true,
+      value: function poison() {},
+    });
+    Object.defineProperty = ((target: object) => target) as typeof defineProperty;
+    Object.getOwnPropertyDescriptor = () => ({
+      value: undefined,
+      writable: false,
+    });
+    Function.prototype.apply = function (
+      this: (...args: unknown[]) => unknown,
+      self: unknown,
+      args: unknown[],
+    ) {
+      const result = Reflect.apply(this, self, args);
+      const first = top.win[0] as Realm["win"] | undefined;
+      if (first) leaked = first.RTCPeerConnection;
+      return result;
+    };
+    try {
+      appendFrame(top, child);
+    } finally {
+      Function.prototype.apply = apply;
+      Object.defineProperty = defineProperty;
+      Object.getOwnPropertyDescriptor = getOwnPropertyDescriptor;
+      if (poisoned) Object.defineProperty(Object.prototype, "get", poisoned);
+      else delete (Object.prototype as Record<string, unknown>).get;
+    }
+
+    // Read between the insertion and the guard's sweep, or never.
+    expect(typeof leaked).not.toBe("function");
+    expect(rtcOf(child)).toEqual([undefined, undefined]);
   });
 
   test("WebRTC is removed where a window refuses non-configurable properties", () => {
