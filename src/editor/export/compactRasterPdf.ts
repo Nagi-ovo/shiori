@@ -14,6 +14,7 @@ import {
   drawThumbnailOverlays,
   loadThumbnailOverlayFonts,
 } from "../components/thumbnailCompositor";
+import { loadThumbnailOverlayImages } from "../components/thumbnailImages";
 import type { ExportMode } from "../../pdf/export/exportPdf";
 
 const COMPACT_TARGET_DPI = 120;
@@ -79,15 +80,22 @@ export async function exportCompactRasterPdf(
       }
 
       if (includeOverlays) {
+        const overlays = model.overlays.filter(
+          (overlay) => overlay.pageId === pageModel.id,
+        );
+        // One page's images at a time: a photo on every page of a long
+        // document would otherwise stay decoded until the whole export ends.
+        const images = await loadThumbnailOverlayImages(overlays);
         drawThumbnailOverlays(
           ctx,
           pageModel,
-          model.overlays.filter((overlay) => overlay.pageId === pageModel.id),
+          overlays,
           {
             width: widthPx,
             height: heightPx,
             scale,
           },
+          images,
         );
       }
 

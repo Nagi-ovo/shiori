@@ -39,6 +39,8 @@ type Props = {
   sourceIndex: number;
   rotation: Rotation;
   scale: number;
+  /** The screen's devicePixelRatio; tiles are drawn for it. */
+  dpr: number;
   /** The page's displayed size at scale 1, rotation applied, in points. */
   widthPt: number;
   heightPt: number;
@@ -70,6 +72,7 @@ export function PageTiles({
   sourceIndex,
   rotation,
   scale,
+  dpr,
   widthPt,
   heightPt,
   tiling,
@@ -122,17 +125,25 @@ export function PageTiles({
     if (!sameFace(staleRef.current)) releaseStale();
 
     // A new scale: what is finished at the old one stays, stretched, until
-    // the new one covers the screen; what is still rendering is dropped.
+    // the new one covers the screen; what is still rendering is dropped. A
+    // new screen ratio is the same at a stretch of 1.
     const previous = currentRef.current;
-    const scaleChanged = previous !== null && previous.scale !== scale;
+    const scaleChanged =
+      previous !== null && (previous.scale !== scale || previous.dpr !== dpr);
     if (scaleChanged) {
-      releaseStale();
       for (const [key, tile] of previous.tiles) {
         if (tile.ready) continue;
         releaseTile(previous, tile);
         previous.tiles.delete(key);
       }
-      staleRef.current = previous;
+      // A layer with nothing finished is no stand-in: inside a stream of
+      // changes, keep the stale layer that still holds the sharp tiles.
+      if (previous.tiles.size > 0) {
+        releaseStale();
+        staleRef.current = previous;
+      } else {
+        releaseLayer(previous);
+      }
       currentRef.current = null;
     }
     const stale = staleRef.current;
@@ -159,7 +170,7 @@ export function PageTiles({
         sourceIndex,
         rotation,
         scale,
-        dpr: window.devicePixelRatio || 1,
+        dpr,
         el,
         tiles: new Map(),
       };
@@ -230,8 +241,10 @@ export function PageTiles({
           (error: unknown) => {
             if (cancelled) return;
             console.warn("Failed to render a page tile", error);
+            // The entry stays, never ready and never attached, so the next
+            // scroll frame does not ask for the same region again: it is
+            // retried only once scrolled away and back, or at a new layer.
             runtime.releaseCanvasBackingStore(canvas);
-            layer.tiles.delete(cell.key);
           },
         );
       }
@@ -267,6 +280,7 @@ export function PageTiles({
     sourceIndex,
     rotation,
     scale,
+    dpr,
     widthPt,
     heightPt,
     tiling,

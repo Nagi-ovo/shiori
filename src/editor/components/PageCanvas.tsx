@@ -22,9 +22,17 @@ import {
   renderPageBackdrop,
 } from "../../pdf/render/tiles";
 import { PageTiles, type PageTilesRuntime } from "./PageTiles";
+import { useDevicePixelRatio } from "./useDevicePixelRatio";
 import { buildTimestamp } from "../../runtime/expiry";
 import { zoomDebugTap } from "./zoomDebugTap";
 import { appVersion } from "../../runtime/version";
+import { DiagOverlay } from "./DiagOverlay";
+import {
+  appendLocalStorage,
+  buildCaps,
+  renderDiagnosticsEnabled,
+  type DiagPayload,
+} from "./pageCanvasDiagnostics";
 
 type PageCanvasRuntime = PageTilesRuntime & {
   releaseCanvasBackingStore: typeof releaseCanvasBackingStore;
@@ -70,41 +78,8 @@ type RenderedSurface = {
   sourceIndex: number;
   rotation: Rotation;
   scale: number;
-};
-
-type DiagPhase = "render-rejected" | "render-succeeded-but-blank";
-
-type DiagPayload = {
-  when: string;
-  phase: DiagPhase;
-  err: { name?: string; message?: string; stack?: string } | null;
-  ua: string;
-  /** The engine that drew the page (PdfEngine.label). */
-  engine: string;
-  appVersion: string;
-  pageIndex: number;
-  canvas: { w: number; h: number };
-  viewport: { w: number; h: number };
   dpr: number;
-  caps: {
-    offscreenCanvas: boolean;
-    imageDecoder: boolean;
-    path2d: boolean;
-    webgl: boolean;
-  };
-  loc: string;
-  samplePixels?: string[];
-  // Two-stage blank detector telemetry: how many pixels stage 2 actually
-  // scanned and how many were non-white. We only emit the diagnostic
-  // when both stages are all white, but recording the numbers lets us
-  // distinguish "near-certainly blank" from a borderline 7×7 false
-  // positive in postmortem analysis.
-  checkedPixels?: number;
-  nonWhiteSamples?: number;
 };
-
-const LS_KEY = "shioriRenderDiagnostics";
-const LS_ENABLED_KEY = "shioriRenderDiagnosticsEnabled";
 
 // Dev-only render diagnostics: the first render failure in a session shows a
 // red overlay; subsequent failures only append to localStorage to keep the
@@ -112,46 +87,6 @@ const LS_ENABLED_KEY = "shioriRenderDiagnosticsEnabled";
 // engineer-facing UI to end users.
 let overlayActive = false;
 let overlayDismissed = false;
-
-function buildCaps(): DiagPayload["caps"] {
-  const g = globalThis as { ImageDecoder?: unknown };
-  let webgl = false;
-  try {
-    const probe = document.createElement("canvas");
-    const gl = probe.getContext("webgl2") || probe.getContext("webgl");
-    webgl = !!gl;
-    gl?.getExtension("WEBGL_lose_context")?.loseContext();
-  } catch {
-    webgl = false;
-  }
-  return {
-    offscreenCanvas: typeof OffscreenCanvas !== "undefined",
-    imageDecoder: typeof g.ImageDecoder !== "undefined",
-    path2d: typeof Path2D !== "undefined",
-    webgl,
-  };
-}
-
-function appendLocalStorage(payload: DiagPayload): void {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    const arr = raw ? (JSON.parse(raw) as DiagPayload[]) : [];
-    arr.push(payload);
-    while (arr.length > 20) arr.shift();
-    localStorage.setItem(LS_KEY, JSON.stringify(arr));
-  } catch {
-    // localStorage full or parse error — drop silently.
-  }
-}
-
-function renderDiagnosticsEnabled(): boolean {
-  if (import.meta.env.DEV) return true;
-  try {
-    return localStorage.getItem(LS_ENABLED_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
 
 function PageCanvasImpl({
   doc,
@@ -173,6 +108,9 @@ function PageCanvasImpl({
   const { t } = useTranslation();
   const [diag, setDiag] = useState<DiagPayload | null>(null);
   const [rendered, setRendered] = useState<RenderedSurface | null>(null);
+  // A new screen (another monitor, browser zoom) needs a new raster even at
+  // the same zoom: the CSS size, and so every other trigger, stays put.
+  const dpr = useDevicePixelRatio();
 
   // The old bitmap is only a valid stand-in while it depicts the same page
   // face; across a page/rotation/document change it would show the wrong
@@ -186,16 +124,12 @@ function PageCanvasImpl({
 
   // Past the backdrop budget the full-page raster stays a small backdrop and
   // tiles carry the sharpness (src/pdf/render/tiles.ts says why).
-  const tiling = pageNeedsTiles(
-    widthPt,
-    heightPt,
-    scale,
-    window.devicePixelRatio || 1,
-  );
+  const tiling = pageNeedsTiles(widthPt, heightPt, scale, dpr);
+  const sharp = sameSurface && rendered.scale === scale && rendered.dpr === dpr;
 
   const lastScaleChangeAtRef = useRef(0);
   useEffect(() => {
-    if (sameSurface && rendered.scale === scale) return;
+    if (sharp) return;
     let cancelled = false;
     let handle: { cancel: () => void; done: Promise<void> } | null = null;
     let settleTimer: number | null = null;
@@ -225,7 +159,7 @@ function PageCanvasImpl({
           scale,
           widthPt,
           heightPt,
-          dpr: window.devicePixelRatio || 1,
+          dpr,
           maxPixels: tiling ? TILED_BACKDROP_MAX_PIXELS : MAX_CANVAS_PIXELS,
         },
         canvas,
@@ -236,13 +170,13 @@ function PageCanvasImpl({
       // hides. `rendered` moving to the new scale drops the CSS stretch
       // in the same commit.
       setFront(back);
-      setRendered({ doc, sourceIndex, rotation, scale });
+      setRendered({ doc, sourceIndex, rotation, scale, dpr });
       zoomDebugTap("rasterDone", {
         page: sourceIndex,
         scale,
         w: canvas.width,
         h: canvas.height,
-        dpr: window.devicePixelRatio || 1,
+        dpr,
       });
       if (!renderDiagnosticsEnabled()) return;
       const ctx = canvas.getContext("2d");
@@ -372,7 +306,7 @@ function PageCanvasImpl({
     // reads them only to decide immediate-vs-settled, and the completion
     // setState re-satisfies the guard at the top on the follow-up run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, sourceIndex, rotation, scale, widthPt, heightPt, tiling, front, runtime]);
+  }, [doc, sourceIndex, rotation, scale, dpr, widthPt, heightPt, tiling, front, runtime]);
 
   // Free the hidden canvas after a swap: its bitmap was just replaced, and
   // keeping it allocated would double per-page canvas memory at high zoom.
@@ -503,10 +437,11 @@ function PageCanvasImpl({
           sourceIndex={sourceIndex}
           rotation={rotation}
           scale={scale}
+          dpr={dpr}
           widthPt={widthPt}
           heightPt={heightPt}
           tiling={tiling}
-          backdropSharp={sameSurface && rendered.scale === scale}
+          backdropSharp={sharp}
           runtime={runtime}
         />
       </div>
@@ -523,118 +458,6 @@ function PageCanvasImpl({
         />
       ) : null}
     </>
-  );
-}
-
-function DiagOverlay({
-  diag,
-  dialogLabel,
-  closeLabel,
-  onClose,
-}: {
-  diag: DiagPayload;
-  dialogLabel: string;
-  closeLabel: string;
-  onClose: () => void;
-}) {
-  const text = JSON.stringify(diag, null, 2);
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-    } catch {
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-        setCopied(true);
-      } catch {
-        // clipboard blocked — user can still select manually
-      }
-    }
-  };
-  return (
-    <div
-      style={{
-        position: "fixed",
-        top: 80,
-        right: 16,
-        width: 460,
-        maxHeight: "70vh",
-        overflow: "auto",
-        background: "#fff5f5",
-        border: "2px solid #dc2626",
-        borderRadius: 8,
-        padding: 12,
-        zIndex: 99999,
-        fontFamily:
-          "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-        fontSize: 11,
-        color: "#1f2937",
-        boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
-      }}
-      role="dialog"
-      aria-label={dialogLabel}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 8,
-        }}
-      >
-        <strong style={{ color: "#dc2626" }}>Shiori · render diagnostic</strong>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button
-            type="button"
-            onClick={copy}
-            style={{
-              padding: "2px 8px",
-              border: "1px solid #dc2626",
-              background: copied ? "#dc2626" : "#fff",
-              color: copied ? "#fff" : "#dc2626",
-              borderRadius: 4,
-              cursor: "pointer",
-              fontSize: 11,
-            }}
-          >
-            {copied ? "Copied" : "Copy"}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={closeLabel}
-            style={{
-              padding: "2px 8px",
-              border: "1px solid #9ca3af",
-              background: "#fff",
-              color: "#1f2937",
-              borderRadius: 4,
-              cursor: "pointer",
-              fontSize: 11,
-            }}
-          >
-            ×
-          </button>
-        </div>
-      </div>
-      <pre
-        style={{
-          margin: 0,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-        }}
-      >
-        {text}
-      </pre>
-    </div>
   );
 }
 

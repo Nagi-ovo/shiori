@@ -14,6 +14,8 @@ import type { PdfDocument as PDFDocumentProxy } from "../../pdf/engine/types";
 
 const cancelRender = mock(() => undefined);
 const rasteredScales: number[] = [];
+/** Each backdrop's bitmap width, in device pixels. */
+const rasteredWidths: number[] = [];
 
 type TileRequest = {
   x: number;
@@ -22,6 +24,7 @@ type TileRequest = {
   canvas: HTMLCanvasElement;
   cancelled: boolean;
   finish: () => void;
+  fail: () => void;
 };
 const tileRequests: TileRequest[] = [];
 /** What the fake window shows of the page, in device pixels. */
@@ -47,13 +50,16 @@ const runtime = {
     // The full-page backdrop: drawn at once.
     if (request.priority === "backdrop") {
       rasteredScales.push(request.scale);
+      rasteredWidths.push(request.region.width);
       canvas.width = request.region.width;
       canvas.height = request.region.height;
       return { cancel: cancelRender, done: Promise.resolve() };
     }
     let finish = () => {};
-    const done = new Promise<void>((resolve) => {
+    let fail = () => {};
+    const done = new Promise<void>((resolve, reject) => {
       finish = resolve;
+      fail = () => reject(new Error("region rejected"));
     });
     const tile: TileRequest = {
       x: request.region.x,
@@ -66,6 +72,7 @@ const runtime = {
         canvas.height = request.region.height;
         finish();
       },
+      fail,
     };
     tileRequests.push(tile);
     return {
@@ -86,6 +93,35 @@ function setDpr(dpr: number) {
     value: dpr,
   });
 }
+
+/**
+ * A screen whose pixel ratio can change under a mounted page (the window
+ * moved to another monitor): `(resolution: …)` queries report the change.
+ */
+function watchResolutionQueries() {
+  const listeners = new Set<EventListener>();
+  const original = window.matchMedia;
+  window.matchMedia = ((media: string) => ({
+    matches: true,
+    media,
+    onchange: null,
+    addEventListener: (_type: string, listener: EventListener) => listeners.add(listener),
+    removeEventListener: (_type: string, listener: EventListener) => listeners.delete(listener),
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => true,
+  })) as unknown as typeof window.matchMedia;
+  restoreMatchMedia = () => {
+    window.matchMedia = original;
+  };
+  return (dpr: number) => {
+    setDpr(dpr);
+    act(() => {
+      for (const listener of [...listeners]) listener(new Event("change"));
+    });
+  };
+}
+let restoreMatchMedia = () => {};
 
 const pause = (ms: number) =>
   new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -116,7 +152,10 @@ describe("PageCanvas lifecycle", () => {
     document.body.replaceChildren();
     cancelRender.mockClear();
     rasteredScales.length = 0;
+    rasteredWidths.length = 0;
     tileRequests.length = 0;
+    restoreMatchMedia();
+    restoreMatchMedia = () => {};
     visible = null;
     setDpr(1);
   });
@@ -186,6 +225,16 @@ describe("PageCanvas lifecycle", () => {
     expect(rasteredScales).toEqual([1, 1.5, 1.6, 1.7]);
   });
 
+  test("re-rasters at the new pixel ratio when the window changes screens", async () => {
+    const moveToScreen = watchResolutionQueries();
+    render(<PageCanvas {...tiledPage(1)} />);
+    await waitFor(() => expect(rasteredWidths).toEqual([612]));
+
+    // Same zoom, same CSS size: only the screen got sharper.
+    moveToScreen(2);
+    await waitFor(() => expect(rasteredWidths).toEqual([612, 1224]));
+  });
+
   // Stage 1.4 of docs/PLAN-RUST-PDF-CORE-2026-09.md: only what is on screen,
   // plus one tile around it, is ever drawn at a scale past the budget.
   describe("viewport tiles", () => {
@@ -250,6 +299,35 @@ describe("PageCanvas lifecycle", () => {
       expect(added.every((tile) => tile.y >= 5 * TILE)).toBe(true);
     });
 
+    // A region the engine rejects would fail the same way again: asking for
+    // it on every scroll frame only floods the render queue.
+    test("a tile that failed to draw is not asked for again while scrolling", async () => {
+      setDpr(2);
+      visible = screen;
+      const warn = mock(() => undefined);
+      const originalWarn = console.warn;
+      console.warn = warn;
+      try {
+        render(<PageCanvas {...tiledPage(8)} />);
+        await waitFor(() => expect(tileRequests).toHaveLength(25));
+        act(() => {
+          for (const tile of tileRequests) tile.fail();
+        });
+        await pause(0);
+
+        for (let frame = 0; frame < 3; frame += 1) {
+          act(() => {
+            window.dispatchEvent(new Event("scroll"));
+          });
+          await pause(32);
+        }
+        expect(tileRequests.length).toBe(25);
+        expect(warn).toHaveBeenCalledTimes(25);
+      } finally {
+        console.warn = originalWarn;
+      }
+    });
+
     test("a scale change cancels every tile still drawing", async () => {
       setDpr(2);
       visible = screen;
@@ -262,6 +340,41 @@ describe("PageCanvas lifecycle", () => {
         expect(tileRequests.some((tile) => tile.scale === 7)).toBe(true),
       );
       expect(atEight.every((tile) => tile.cancelled)).toBe(true);
+    });
+
+    test("a sharper screen at the same zoom brings tiles in", async () => {
+      const moveToScreen = watchResolutionQueries();
+      visible = screen;
+      // Letter at 3x: 4.4 MP at dpr 1, inside the budget; 17 MP at dpr 2.
+      render(<PageCanvas {...tiledPage(3)} />);
+      await waitFor(() => expect(rasteredScales).toEqual([3]));
+      await pause(20);
+      expect(tileRequests.length).toBe(0);
+
+      moveToScreen(2);
+      await waitFor(() => expect(tileRequests).toHaveLength(25));
+    });
+
+    // A window resize at fit width re-fits the scale every frame: the sharp
+    // tiles of the last settled scale must outlast the whole stream, not
+    // only its first step.
+    test("finished tiles stay on screen through a stream of scale changes", async () => {
+      setDpr(2);
+      visible = screen;
+      const view = render(<PageCanvas {...tiledPage(8)} />);
+      await waitFor(() => expect(tileRequests).toHaveLength(25));
+      const sharp = [...tileRequests];
+      act(() => {
+        for (const tile of sharp) tile.finish();
+      });
+      await pause(0);
+
+      for (const scale of [7.9, 7.8, 7.7]) {
+        view.rerender(<PageCanvas {...tiledPage(scale)} />);
+        await pause(20);
+      }
+      expect(sharp.every((tile) => tile.canvas.width > 0)).toBe(true);
+      expect(sharp.every((tile) => tile.canvas.isConnected)).toBe(true);
     });
 
     test("unmounting frees every tile bitmap", async () => {
