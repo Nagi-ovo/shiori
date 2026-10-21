@@ -14,7 +14,8 @@ import { createPdfEditorStore } from "./store";
 //   with its own subset): pooled, an edit in one paper's text draws with the
 //   other's face, and the warning counts the other's characters (B108).
 // - a draft saved before fonts were keyed by their program names the font
-//   alone; its edit box must still find the font's face.
+//   alone; its edit box must still find the font's face, and count only
+//   that face's characters as covered.
 
 const page = (id: string, sourceIndex: number): PageModel => ({
   id,
@@ -59,7 +60,9 @@ describe("PDF font registry", () => {
     const { pdfFontFaces, pdfFontChars } = store.getState();
     expect(pdfFontFaces[fontKey("Calibri", "2b")]).toBe("shiori-pdf-b");
     expect([...pdfFontChars[fontKey("Calibri", "2b")]!]).toEqual(["H", "o"]);
-    // An edit saved by name alone finds the first face under it, as it did.
+    // An edit saved by name alone finds the first face under it, as it did,
+    // and is warned about the characters that face lacks.
     expect(pdfFontFaces.Calibri).toBe("shiori-pdf-a");
+    expect([...pdfFontChars.Calibri!]).toEqual(["H", "i"]);
   });
 });

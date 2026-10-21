@@ -7,8 +7,7 @@ import type { Store } from "./store";
  * Fonts are keyed by name and program (src/pdf/engine/fontKey.ts), so two
  * subsets PDFium names alike keep their own face and characters. A draft
  * saved before that names its edit's font alone; the bare name keeps the
- * first face registered under it and every program's characters, as it
- * did then.
+ * first face registered under it and that face's characters.
  */
 export function pdfFontRegistry(
   set: StoreApi<Store>["setState"],
@@ -43,7 +42,8 @@ export function pdfFontRegistry(
           nextFaces[bare] = faceFamily;
           facesChanged = true;
         }
-        if (chars) addChars(bare, chars);
+        // Only the face the bare name draws with tells its edits what is covered.
+        if (chars && nextFaces[bare] === faceFamily) addChars(bare, chars);
       }
       // No-op when nothing moved — page re-renders re-register the same
       // faces and must not churn subscribers.
