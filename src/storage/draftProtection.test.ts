@@ -196,6 +196,28 @@ describe("draft protection across windows", () => {
     expect(b.protection.isDraftProtected("open-in-a")).toBe(true);
   });
 
+  test("a lock answer older than another window's entry does not speak for it", async () => {
+    const w = world();
+    const b = w.makeWindow("b");
+    b.protection.protectOpenDrafts(() => []);
+    await settle();
+    b.frozen = true;
+
+    // A opens while B is frozen, then freezes too, past the heartbeat expiry.
+    const a = w.makeWindow("a");
+    a.protection.protectOpenDrafts(() => ["open-in-a"]);
+    await settle();
+    a.frozen = true;
+    w.advance(TTL_MS + HEARTBEAT_MS);
+
+    // B wakes holding a lock answer from before A existed.
+    b.frozen = false;
+    expect(b.protection.isDraftProtected("open-in-a")).toBe(true);
+    b.target.dispatchEvent(new window.Event("pageshow"));
+    await settle();
+    expect(b.protection.isDraftProtected("open-in-a")).toBe(true);
+  });
+
   test("another window's sweep clears a crashed window's entry", async () => {
     const w = world();
     const a = w.makeWindow("a");

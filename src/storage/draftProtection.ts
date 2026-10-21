@@ -26,6 +26,9 @@ import { draftContentHash, isHashOnlyDraftId } from "./draftIdentity";
  * sweep asks synchronously. Until this window's first answer arrives, an
  * expired entry still counts (a window opened after another froze must not
  * take it for crashed), and expired entries are removed only after an answer.
+ * An answer speaks only for entries published before it was asked: a window
+ * that froze holding an old answer must not take a newer window for crashed
+ * while its fresh query is pending.
  *
  * The same machinery, under another key prefix, publishes the workspace cache
  * rows each window holds (workspaceSourceReservations.ts).
@@ -79,8 +82,10 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
   let registered = false;
   let timer: number | null = null;
   let releaseLock: (() => void) | null = null;
-  // Keys whose window held its lock at the last query.
+  // Keys whose window held its lock at the last query, and when that query
+  // was asked: it says nothing of an entry published after it.
   let lockedKeys = new Set<string>();
+  let lockedKeysAt = Number.NEGATIVE_INFINITY;
   // Whether lockedKeys answers for anything yet; without Web Locks it never will.
   let locksKnown = deps.locks === null;
 
@@ -108,7 +113,10 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
         const entry = parseEntry(store.getItem(key));
         const live =
           entry &&
-          (Math.abs(now - entry.at) < EXPIRY_MS || !locksKnown || lockedKeys.has(key));
+          (Math.abs(now - entry.at) < EXPIRY_MS ||
+            !locksKnown ||
+            lockedKeys.has(key) ||
+            entry.at >= lockedKeysAt);
         visit(key, live ? entry : null);
       }
     } catch {
@@ -137,9 +145,13 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
     };
     const locks = deps.locks;
     if (!locks) return sweepExpired();
+    const askedAt = deps.now();
     try {
       locks.query().then((snapshot) => {
-        lockedKeys = new Set((snapshot.held ?? []).flatMap((lock) => lock.name ?? []));
+        if (askedAt >= lockedKeysAt) {
+          lockedKeys = new Set((snapshot.held ?? []).flatMap((lock) => lock.name ?? []));
+          lockedKeysAt = askedAt;
+        }
         answered();
       }, answered);
     } catch {
