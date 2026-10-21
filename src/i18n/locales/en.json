@@ -634,6 +634,12 @@
     "copyLink": "Copy link",
     "copied": "Link copied",
     "openExternal": "Open in system browser",
+    "externalOpen": {
+      "title": "Open in another app?",
+      "message": "A page in the Browser panel wants to open {{url}}.",
+      "open": "Open",
+      "cancel": "Cancel"
+    },
     "resize": "Drag to resize browser",
     "empty": "Run `open https://…` in the terminal, or type an address above.",
     "unavailable": "The browser panel is only available in the desktop app.",

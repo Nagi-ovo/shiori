@@ -45,13 +45,15 @@ struct ShareFileResult: Encodable {
   let completed: Bool
 }
 
-// Encodable mirror of the frozen `web-panel-nav` payload.
+// Encodable mirror of the frozen `web-panel-nav` payload, plus `externalOpen`,
+// which the Rust poll strips off and re-emits as `web-panel-external-open`.
 struct NavStatePayload: Encodable {
   let url: String?
   let loading: Bool
   let canGoBack: Bool
   let canGoForward: Bool
   let error: String?
+  let externalOpen: String?
 }
 
 private struct NavSnapshot {
@@ -60,6 +62,8 @@ private struct NavSnapshot {
   var canGoBack: Bool = false
   var canGoForward: Bool = false
   var error: String? = nil
+  // A mailto:/tel: link the page asked for, reported once by navState.
+  var externalOpen: String? = nil
 }
 
 class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
@@ -241,6 +245,7 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
   @objc public func navState(_ invoke: Invoke) {
     self.navLock.lock()
     let snap = self.nav
+    self.nav.externalOpen = nil
     self.navLock.unlock()
     invoke.resolve(
       NavStatePayload(
@@ -248,7 +253,8 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
         loading: snap.loading,
         canGoBack: snap.canGoBack,
         canGoForward: snap.canGoForward,
-        error: snap.error))
+        error: snap.error,
+        externalOpen: snap.externalOpen))
   }
 
   // Always called on the main thread (delegate callbacks + the command blocks),
@@ -276,8 +282,11 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
   // only http/https). Without this a link or script redirect to `file:` could
   // read local files inside the panel, and `tel:`/custom app schemes could
   // deep-link out of Shiori. http(s) + WebKit-internal/content schemes proceed;
-  // communication schemes hand off to the system opener; everything else (file:,
-  // javascript:, app schemes) is refused outright.
+  // mailto:/tel: are never opened from here, since a page can request them from
+  // script without a tap: they are reported to the main webview, which asks the
+  // user and opens them through the opener plugin (whose default scope is
+  // exactly mailto:/tel:). Everything else (sms:, maps:, file:, javascript:,
+  // app schemes) is refused outright.
   func webView(
     _ webView: WKWebView,
     decidePolicyFor navigationAction: WKNavigationAction,
@@ -290,9 +299,11 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
     switch scheme {
     case "http", "https", "about", "blob", "data":
       decisionHandler(.allow)
-    case "mailto", "tel", "sms", "facetime", "facetime-audio", "maps":
+    case "mailto", "tel":
       decisionHandler(.cancel)
-      DispatchQueue.main.async { UIApplication.shared.open(url) }
+      self.navLock.lock()
+      self.nav.externalOpen = url.absoluteString
+      self.navLock.unlock()
     default:
       decisionHandler(.cancel)
     }

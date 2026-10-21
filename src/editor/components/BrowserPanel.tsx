@@ -15,6 +15,13 @@ import {
   webPanelForward,
   webPanelReload,
 } from "../../platform";
+import {
+  askToOpenExternally,
+  listenWebPanelExternalOpen,
+  openWebPanelExternalUrl,
+} from "../../platform/webPanel";
+import { safeUnlisten } from "../../platform/ipc";
+import { createExternalOpenPrompt } from "./browserExternalOpen";
 
 // The last navigation request nonce the Browser panel acted on. Module-level
 // (not a ref) so it survives the panel unmounting when the rail is closed:
@@ -165,6 +172,35 @@ export const BrowserPanel = memo(function BrowserPanel({
       }
     };
   }, [shouldShow, request?.nonce, reportBounds]);
+
+  // A page asked to hand a mailto:/tel: link to another app. Ask first; a
+  // request arriving while the rail is closed is dropped.
+  useEffect(() => {
+    const prompt = createExternalOpenPrompt({
+      ask: (target) =>
+        askToOpenExternally({
+          title: t("browser.externalOpen.title"),
+          message: t("browser.externalOpen.message", { url: target }),
+          open: t("browser.externalOpen.open"),
+          cancel: t("browser.externalOpen.cancel"),
+        }),
+      open: openWebPanelExternalUrl,
+    });
+    let disposed = false;
+    let off: (() => void) | null = null;
+    void listenWebPanelExternalOpen((target) => {
+      void prompt(target, useAppStore.getState().webPanel.url);
+    })
+      .then((unlisten) => {
+        if (disposed) safeUnlisten(unlisten);
+        else off = unlisten;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      safeUnlisten(off);
+    };
+  }, [t]);
 
   // Closing the rail entirely unmounts the panel — hide the webview so it
   // doesn't float over the canvas.

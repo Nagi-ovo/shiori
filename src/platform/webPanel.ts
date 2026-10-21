@@ -14,7 +14,7 @@
 // Remote pages are NOT granted Shiori's file/pdf/terminal commands — that
 // isolation lives in the webview's scoped capability on the Rust side.
 
-import { CAPABILITIES } from "./index";
+import { CAPABILITIES, IS_TAURI_MOBILE } from "./index";
 import { openExternalUrl } from "./external";
 import { isWebPanelUrl } from "./webPanelUrl";
 
@@ -139,4 +139,51 @@ export async function listenWebPanelOpenRequest(
   return listen<{ url: string }>("web-panel-open", (event) => {
     handler(event.payload.url);
   });
+}
+
+// A page in the panel navigated to a mailto: link (or, on mobile, tel:).
+// The native side cancels it and reports it here instead of opening it, so
+// the user can be asked first (src/editor/components/browserExternalOpen.ts).
+export async function listenWebPanelExternalOpen(
+  handler: (url: string) => void,
+): Promise<() => void> {
+  if (!CAPABILITIES.embeddedBrowserPanel) return () => undefined;
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<{ url: string }>("web-panel-external-open", (event) => {
+    handler(event.payload.url);
+  });
+}
+
+export type ExternalOpenPromptText = {
+  title: string;
+  message: string;
+  open: string;
+  cancel: string;
+};
+
+// A native dialog, not a DOM modal: the panel's webview is an OS layer that
+// would sit on top of anything the page renders.
+export async function askToOpenExternally(text: ExternalOpenPromptText): Promise<boolean> {
+  const { ask } = await import("@tauri-apps/plugin-dialog");
+  return ask(text.message, {
+    title: text.title,
+    kind: "warning",
+    okLabel: text.open,
+    cancelLabel: text.cancel,
+  });
+}
+
+const PANEL_EXTERNAL_URL = /^(mailto|tel):/i;
+
+// Open a link the user agreed to hand off. Desktop only ever reports mailto:
+// (open_external_url accepts it); mobile goes through the opener plugin,
+// whose default scope covers mailto: and tel:.
+export async function openWebPanelExternalUrl(url: string): Promise<void> {
+  if (!PANEL_EXTERNAL_URL.test(url)) throw new Error("unsupported-external-url");
+  if (IS_TAURI_MOBILE) {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+    return;
+  }
+  await openExternalUrl(url);
 }

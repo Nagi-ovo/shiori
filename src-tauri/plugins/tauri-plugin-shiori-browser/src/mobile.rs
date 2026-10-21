@@ -189,8 +189,12 @@ impl<R: Runtime> ShioriBrowser<R> {
             .name("shiori-browser-nav".into())
             .spawn(move || loop {
                 if poll.visible.load(Ordering::SeqCst) {
-                    if let Ok(nav) = handle.run_mobile_plugin::<WebPanelNav>("navState", ()) {
-                        emit_changed(&app, &poll, nav);
+                    if let Ok(reply) = handle.run_mobile_plugin::<NavStateReply>("navState", ()) {
+                        if let Some(url) = reply.external_open {
+                            let _ =
+                                app.emit("web-panel-external-open", ExternalOpenRequest { url });
+                        }
+                        emit_changed(&app, &poll, reply.nav);
                     }
                     std::thread::sleep(POLL_VISIBLE);
                 } else {

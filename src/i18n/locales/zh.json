@@ -628,6 +628,12 @@
     "copyLink": "复制链接",
     "copied": "已复制链接",
     "openExternal": "在系统浏览器中打开",
+    "externalOpen": {
+      "title": "要用其他应用打开吗？",
+      "message": "浏览器面板中的网页想要打开 {{url}}。",
+      "open": "打开",
+      "cancel": "取消"
+    },
     "resize": "拖拽调整浏览器宽度",
     "empty": "在终端运行 `open https://…`,或在上方输入网址。",
     "unavailable": "只有桌面版可以使用浏览器面板。",

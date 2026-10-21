@@ -35,7 +35,7 @@ pub(super) fn create_web_panel<R: Runtime>(
         .on_navigation(move |url| {
             let target = url.as_str();
             if !web_panel_allows_navigation(target) {
-                route_non_web_panel_navigation(target);
+                route_non_web_panel_navigation(&policy_app, target);
                 return false;
             }
             let recorded = {
