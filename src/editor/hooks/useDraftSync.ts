@@ -94,6 +94,9 @@ export function useDraftSync(
   const operationLogTimerRef = useRef<number | null>(null);
   // Stamp of the clean op-log a suspension wrote (flushPendingSave).
   const cleanOperationLogStampRef = useRef<number | null>(null);
+  // lastTouched of the draft this hook last wrote. Recovery prefers the log
+  // only when it is strictly newer, so a clean log must be stamped past it.
+  const savedDraftStampRef = useRef(0);
   const dirtyRef = useRef<boolean>(false);
   // Unlike undoStack.length, this survives a complete Undo back to the source
   // model. The clean revision still has to delete an older saved draft.
@@ -283,6 +286,7 @@ export function useDraftSync(
         });
         draftVersionRef.current = writtenVersion;
         draftVersionByDocument.set(snap.opened.doc, writtenVersion);
+        savedDraftStampRef.current = now;
       }
 
       const revisionIsCurrent =
@@ -438,7 +442,11 @@ export function useDraftSync(
         isModelClean(logModel, logOpened.sourcePages) &&
         (draftVersionRef.current !== null || readOperationLog(logId))
       ) {
-        cleanOperationLogStampRef.current = Date.now();
+        cleanOperationLogStampRef.current = Math.max(
+          Date.now(),
+          savedDraftStampRef.current + 1,
+          (readOperationLog(logId)?.lastTouched ?? 0) + 1,
+        );
         writeOperationLog(logId, logModel, cleanOperationLogStampRef.current);
       }
     }

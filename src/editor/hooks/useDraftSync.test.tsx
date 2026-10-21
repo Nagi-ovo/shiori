@@ -341,6 +341,29 @@ describe("useDraftSync disabled gate", () => {
     }
   });
 
+  test("suspension after Undo outranks the stale draft saved in the same millisecond", async () => {
+    // The save and the suspension can share a Date.now() value; a tie used to
+    // restore the stale draft.
+    const { chooseDraftRecovery } = await import("../../workspace/intake/recovery");
+    const clock = spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    try {
+      const { drafts, readOperationLog, restore } = await saveThenUndoWithRemovalHeld();
+      try {
+        const recovery = chooseDraftRecovery(
+          await drafts.get(HASH),
+          readOperationLog(HASH),
+          [page],
+          [],
+        );
+        expect(recovery?.overlays).toEqual([]);
+      } finally {
+        await restore();
+      }
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test("a deletion refused by a newer draft drops the clean log suspension wrote", async () => {
     const { drafts, readOperationLog, releaseRemoval, restore } =
       await saveThenUndoWithRemovalHeld();
