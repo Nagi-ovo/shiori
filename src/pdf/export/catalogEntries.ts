@@ -1,7 +1,10 @@
-import { PDFDict, PDFName, type PDFDocument } from "pdf-lib";
+import { PDFDict, PDFName, type PDFDocument, type PDFObject } from "pdf-lib";
 import {
+  asArray,
   copyCatalogEntry,
+  isName,
   lookupDict,
+  resolveObject,
   seedObjectMapping,
   type CloneState,
 } from "./pdfObjectClone";
@@ -50,6 +53,9 @@ export function copyDocumentCatalogEntries(
 // screen and in print comes out visible. Visibility is decided by object
 // identity, so the layers the copied pages already reference are mapped
 // onto their copies first; a fresh clone would hide a different object.
+// Annotations name layers too (a widget's /OC, or its appearance's
+// resources), so each copied annotation is paired with its source: the
+// copier keeps /Annots order and the export only appends its own after them.
 function copyOptionalContent(
   source: PDFDocument,
   dest: PDFDocument,
@@ -69,6 +75,41 @@ function copyOptionalContent(
       page.node.getInheritableAttribute(resourcesKey),
       destPage.get(resourcesKey),
     );
+    seedAnnotationLayers(source, dest, state, page.node, destPage);
   }
   copyCatalogEntry(source, dest, state, "OCProperties");
+}
+
+function seedAnnotationLayers(
+  source: PDFDocument,
+  dest: PDFDocument,
+  state: CloneState,
+  sourcePage: PDFDict,
+  destPage: PDFDict,
+) {
+  const annotsKey = PDFName.of("Annots");
+  const subtypeKey = PDFName.of("Subtype");
+  const sourceAnnots = asArray(source, sourcePage.get(annotsKey));
+  const destAnnots = asArray(dest, destPage.get(annotsKey));
+  if (!sourceAnnots || !destAnnots) return;
+  if (destAnnots.size() < sourceAnnots.size()) return;
+  for (let index = 0; index < sourceAnnots.size(); index += 1) {
+    const from = lookupDict(source, sourceAnnots.get(index));
+    const to = lookupDict(dest, destAnnots.get(index));
+    const subtype = from && resolveName(source, from.get(subtypeKey));
+    if (!from || !to || !subtype) continue;
+    if (!isName(dest, to.get(subtypeKey), subtype)) continue;
+    for (const key of ["OC", "AP"]) {
+      const name = PDFName.of(key);
+      seedObjectMapping(source, dest, state, from.get(name), to.get(name));
+    }
+  }
+}
+
+function resolveName(
+  doc: PDFDocument,
+  value: PDFObject | undefined,
+): string | undefined {
+  const resolved = resolveObject(doc, value);
+  return resolved instanceof PDFName ? resolved.decodeText() : undefined;
 }

@@ -54,6 +54,48 @@ describe("catalog display settings", () => {
     expect(off.asArray()).toContainEqual(layerUsedByPage(out, 0));
   });
 
+  test("a form field on a hidden layer stays hidden after an edit", async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([300, 400]);
+    const layer = doc.context.register(
+      doc.context.obj({ Type: "OCG", Name: PDFString.of("Answers") }),
+    );
+    // Marked through the widget's own /OC, which no page resource names.
+    page.node.addAnnot(
+      doc.context.register(
+        doc.context.obj({
+          Type: "Annot",
+          Subtype: "Widget",
+          FT: "Tx",
+          T: PDFString.of("answer"),
+          Rect: [20, 20, 120, 40],
+          OC: layer,
+        }),
+      ),
+    );
+    doc.catalog.set(
+      PDFName.of("OCProperties"),
+      doc.context.obj({ OCGs: [layer], D: { OFF: [layer] } }),
+    );
+    const source = await doc.save();
+
+    const out = await PDFDocument.load(
+      (await exportPdf(source, withHighlight(modelForPages([0])))).bytes,
+    );
+
+    const widget = out
+      .getPage(0)
+      .node.Annots()!
+      .asArray()
+      .map((ref) => out.context.lookup(ref, PDFDict))
+      .find((annot) => annot.get(PDFName.of("Subtype")) === PDFName.of("Widget"));
+    const off = out.catalog
+      .lookup(PDFName.of("OCProperties"), PDFDict)
+      .lookup(PDFName.of("D"), PDFDict)
+      .lookup(PDFName.of("OFF"), PDFArray);
+    expect(off.asArray()).toContainEqual(widget!.get(PDFName.of("OC"))!);
+  });
+
   test("a right-to-left book keeps its reading direction and spreads", async () => {
     const doc = await PDFDocument.create();
     doc.addPage([300, 400]);
