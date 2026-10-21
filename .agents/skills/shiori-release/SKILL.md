@@ -201,7 +201,10 @@ the workflow files from `main` but checks out the tag for every build, so
 Windows, Linux and Android ship the tagged code even when `main` has moved
 on; the tag must already exist on the remote, or the run fails at checkout.
 Only a publishing dispatch builds the tag: an analysis dispatch (publishing
-off) builds the branch it was started from. A test APK for device checks
+off) builds the branch it was started from. Runs of one tag share a
+concurrency group, so the dispatch waits for a tag run still in progress
+instead of clobbering its assets; cancel the old run only if it is stuck. A
+test APK for device checks
 comes from a dispatch with `android_only=true`, `android_artifacts=apk`,
 publishing off; it lands in a `qa-android-<run>` draft.
 

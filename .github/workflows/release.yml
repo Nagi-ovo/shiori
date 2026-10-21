@@ -83,6 +83,16 @@ on:
 
 permissions: {}
 
+# One run per tag at a time. Two overlapping runs of a tag (a push still
+# going and the re-dispatch the release skill recommends) --clobber the same
+# assets file by file and can leave one run's .msi beside the other's
+# .msi.sig. A second run waits instead; GitHub keeps one pending run per
+# group, so a third replaces it. ref_name, not ref, so a push (refs/tags/vX)
+# and a dispatch with tag=vX share the group.
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   validate-release-version:
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
