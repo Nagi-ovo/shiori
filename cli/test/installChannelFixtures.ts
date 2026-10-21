@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -77,7 +78,20 @@ export function makeArchive(
     mkdirSync(dirname(join(dir, path)), { recursive: true });
     writeFileSync(join(dir, path), body);
   }
-  const entries = [executable, ...new Set(Object.keys(files).map((path) => path.split("/")[0]))];
+  // Like a real package, the archive carries the inventory its installs are
+  // checked against.
+  const listed = [executable, ...Object.keys(files)];
+  writeFileSync(
+    join(dir, "manifest.json"),
+    JSON.stringify({
+      files: listed.map((path) => ({ path, size: statSync(join(dir, path)).size })),
+    }),
+  );
+  const entries = [
+    executable,
+    "manifest.json",
+    ...new Set(Object.keys(files).map((path) => path.split("/")[0])),
+  ];
   const archive = join(dir, "shiori-cli.tar.gz");
   const packed = spawnSync("tar", ["-czf", archive, ...entries], {
     cwd: dir,
@@ -118,4 +132,47 @@ export function curlInstallerEnv(dir: string, port: number | undefined) {
     SHIORI_INSTALLER_NO_SLEEP: "1",
     TERM: "dumb",
   };
+}
+
+// One `npx @nagi-ovo/shiori` in a process of its own, starting at `startAt`
+// (ms since the epoch). It prints "whole" when the tree it got back holds
+// the real executable and the engine addon.
+export function spawnNpmRun(
+  dir: string,
+  run: { api: string; target: string; home: string; startAt?: number },
+) {
+  // Its own script: rewriting a shared one could truncate it under a run
+  // still loading it.
+  const child = join(dir, `npm-run-${randomBytes(4).toString("hex")}.mjs`);
+  writeFileSync(
+    child,
+    [
+      'import { existsSync, readFileSync } from "node:fs";',
+      'import { dirname, join } from "node:path";',
+      "const { ensureCliBinary } = await import(process.env.INSTALL_MJS);",
+      "await new Promise((r) => setTimeout(r, Math.max(0, Number(process.env.START_AT) - Date.now())));",
+      "try {",
+      "  const binary = await ensureCliBinary({",
+      "    api: process.env.API, target: process.env.TARGET,",
+      '    env: { SHIORI_CLI_HOME: process.env.HOME_DIR, SHIORI_CLI_ALLOW_HTTP: "1" },',
+      "  });",
+      '  const whole = readFileSync(binary, "utf8").includes("shiori-ok") &&',
+      '    existsSync(join(dirname(binary), "native", "shiori_core.node"));',
+      '  console.log(whole ? "whole" : "broken");',
+      "} catch (error) {",
+      "  console.log(`threw ${error.code ?? error.message}`);",
+      "}",
+    ].join("\n"),
+  );
+  return Bun.spawn([process.execPath, child], {
+    env: {
+      ...process.env,
+      INSTALL_MJS: join(import.meta.dir, "..", "npm", "install.mjs"),
+      API: run.api,
+      TARGET: run.target,
+      HOME_DIR: run.home,
+      START_AT: String(run.startAt ?? 0),
+    },
+    stdout: "pipe",
+  });
 }

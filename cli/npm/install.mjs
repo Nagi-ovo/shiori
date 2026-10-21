@@ -9,10 +9,9 @@ import {
   renameSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export const CLI_RELEASE_API = "https://shiori.nagi.fun/api/cli";
 export const CLI_RELEASE_SCHEMA = "shiori.cli-release/v1";
@@ -69,17 +68,14 @@ export function cachedBinaryPath(home, version, target) {
   return join(home, "cli", version, executableName(target));
 }
 
-// Written into the staging directory last, so a version directory carrying
-// it was extracted whole before it was renamed into place.
-const INSTALL_COMPLETE_MARKER = ".shiori-install-complete";
-
+// A tree is whole when every file the package's manifest lists is there at
+// its full size, whichever installer wrote it. The curl and PowerShell
+// installers extract in place, over a tree this runner published too: tar
+// stopped part way leaves the file it was writing short and the ones after
+// it missing, so no record of an earlier complete install can stand in for
+// the check.
 function isCompleteInstall(dir, target) {
   if (!existsSync(join(dir, executableName(target)))) return false;
-  if (existsSync(join(dir, INSTALL_COMPLETE_MARKER))) return true;
-  // The curl and PowerShell installers extract into the same directory
-  // without the marker. Theirs is complete when every file the package's
-  // manifest lists is there at its full size: tar stopped part way leaves
-  // the file it was writing short and the ones after it missing.
   try {
     const { files } = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
     return (
@@ -96,68 +92,52 @@ function isCompleteInstall(dir, target) {
   }
 }
 
-// The locked step is two renames; a lock older than this was left by a run
-// killed while holding it.
-const INSTALL_LOCK_STALE_MS = 10_000;
-
-function withInstallLock(lock, isDone, critical) {
-  const pause = new Int32Array(new SharedArrayBuffer(4));
-  for (;;) {
-    try {
-      mkdirSync(lock);
-      break;
-    } catch (error) {
-      if (error.code !== "EEXIST") throw error;
-    }
-    // The holder may be publishing the very install this run is after.
-    if (isDone()) return;
-    try {
-      if (Date.now() - statSync(lock).mtimeMs > INSTALL_LOCK_STALE_MS) {
-        rmSync(lock, { recursive: true, force: true });
-      }
-    } catch {
-      // Released between the mkdir and the stat.
-    }
-    Atomics.wait(pause, 0, 0, 20);
-  }
-  try {
-    critical();
-  } finally {
-    rmSync(lock, { recursive: true, force: true });
-  }
-}
-
-function publishInstall(staging, dest, target, lock) {
+// The staged tree goes in whole when there is nothing at dest yet. A tree
+// already there is repaired, never moved aside or deleted: each file it
+// lacks or holds short is put in from staging by a single rename, and the
+// files it holds whole stay where they are. A CLI launched from that tree
+// keeps loading the files it expects, and two runs repairing the same tree
+// at once, or one resuming after another finished, only put identical
+// bytes over each other. That is why there is no lock to take: no step a
+// held-up run can resume into takes apart what another run published.
+function publishInstall(staging, dest, target) {
   try {
     renameSync(staging, dest);
     return;
   } catch {
-    // Another run got there first, or an older runner left a partial tree.
+    // Another run got there first, or an earlier install was cut short.
     if (isCompleteInstall(dest, target)) return;
   }
-  // Replacing that tree is the one step that removes anything, so runs take
-  // it in turn and look again once they hold the lock: by then the tree may
-  // be the whole install of the run before. It is moved aside, not deleted
-  // in place, so dest is only ever the old tree, absent, or a whole one.
-  const done = () => isCompleteInstall(dest, target);
-  withInstallLock(lock, done, () => {
-    if (done()) return;
-    const stale = `${staging}-stale`;
+  const { files } = JSON.parse(readFileSync(join(staging, "manifest.json"), "utf8"));
+  // The inventory goes over last: until every file it lists is whole, the
+  // tree reads as incomplete to every run.
+  const entries = [
+    ...files.map((file) => [file.path, file.size]),
+    ["manifest.json", statSync(join(staging, "manifest.json")).size],
+  ];
+  for (const [path, size] of entries) {
+    const into = join(dest, path);
+    if (sizeOf(into) === size) continue;
+    mkdirSync(dirname(into), { recursive: true });
     try {
-      try {
-        renameSync(dest, stale);
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-      }
-      try {
-        renameSync(staging, dest);
-      } catch (error) {
-        if (!done()) throw error;
-      }
-    } finally {
-      rmSync(stale, { recursive: true, force: true });
+      renameSync(join(staging, path), into);
+    } catch (error) {
+      // Another run put the same file in first, or Windows will not replace
+      // one a running CLI has loaded; either way it is whole.
+      if (sizeOf(into) !== size) throw error;
     }
-  });
+  }
+  if (!isCompleteInstall(dest, target)) {
+    throw new Error("Could not complete the Shiori CLI install");
+  }
+}
+
+function sizeOf(path) {
+  try {
+    return statSync(path).size;
+  } catch {
+    return -1;
+  }
 }
 
 export async function fetchCliManifest(api = CLI_RELEASE_API) {
@@ -224,13 +204,12 @@ export async function ensureCliBinary(options = {}) {
       throw new Error("Archive did not contain the Shiori CLI executable");
     }
     if (!target.startsWith("win32")) chmodSync(staged, 0o755);
-    writeFileSync(join(staging, INSTALL_COMPLETE_MARKER), "");
-    publishInstall(
-      staging,
-      dest,
-      target,
-      join(home, "cli", `.${manifest.version}.lock`),
-    );
+    // Published, a tree this check rejects would be downloaded and replaced
+    // again by every later run.
+    if (!isCompleteInstall(staging, target)) {
+      throw new Error("Archive is not a complete Shiori CLI package");
+    }
+    publishInstall(staging, dest, target);
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }

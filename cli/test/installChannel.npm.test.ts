@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -16,6 +17,7 @@ import {
   makeArchive,
   makeTruncatedArchive,
   serveCliArchive,
+  spawnNpmRun,
   withTempDir,
 } from "./installChannelFixtures";
 
@@ -141,10 +143,82 @@ describe("CLI install channel: npm runner", () => {
     });
   });
 
+  // Reinstalling the same version with curl or PowerShell extracts over the
+  // tree the npm runner published. Stopped part way, it leaves the engine
+  // addon short in a directory the npm runner once completed, and that tree
+  // has to be replaced, not launched.
+  test("npm runner replaces its own install that a curl reinstall cut short", async () => {
+    if (!target) return;
+    await withTempDir(async (dir) => {
+      const executable = target.startsWith("win32") ? "shiori.exe" : "shiori";
+      const addon = "a".repeat(4096);
+      const { server } = await serveCliArchive(
+        makeArchive(mkdtempSync(join(dir, "pkg-")), executable, {
+          "native/shiori_core.node": addon,
+        }),
+        target,
+      );
+      servers.push(server);
+      const install = () =>
+        ensureCliBinary({
+          api: `http://127.0.0.1:${server.port}/api/cli`,
+          env: { SHIORI_CLI_HOME: join(dir, ".shiori"), SHIORI_CLI_ALLOW_HTTP: "1" },
+          target,
+        });
+      const installed = join(dirname(await install()), "native", "shiori_core.node");
+      writeFileSync(installed, addon.slice(0, 1024));
+
+      const binary = await install();
+      expect(readFileSync(join(dirname(binary), "native", "shiori_core.node"), "utf8")).toBe(
+        addon,
+      );
+      expect(readFileSync(binary, "utf8")).toContain("shiori-ok");
+    });
+  });
+
+  // A CLI launched from the tree may still be loading files from it when a
+  // later run finds part of that tree cut short. The runner used to move
+  // the whole tree aside to replace it, and a run held up anywhere in that
+  // step (stopped, asleep, its lock judged stale) could resume and take
+  // apart an install another run had published and launched since. Only
+  // the cut-short files are put in place; the whole ones stay where they are.
+  test.skipIf(process.platform === "win32")(
+    "npm runner repairs a cut-short install around the files a CLI is using",
+    async () => {
+      if (!target) return;
+      await withTempDir(async (dir) => {
+        const addon = "a".repeat(4096);
+        const { server } = await serveCliArchive(
+          makeArchive(mkdtempSync(join(dir, "pkg-")), "shiori", {
+            "native/shiori_core.node": addon,
+          }),
+          target,
+        );
+        servers.push(server);
+        const install = () =>
+          ensureCliBinary({
+            api: `http://127.0.0.1:${server.port}/api/cli`,
+            env: { SHIORI_CLI_HOME: join(dir, ".shiori"), SHIORI_CLI_ALLOW_HTTP: "1" },
+            target,
+          });
+        const running = await install();
+        const inUse = statSync(running).ino;
+        writeFileSync(join(dirname(running), "native", "shiori_core.node"), addon.slice(0, 1024));
+
+        const binary = await install();
+        expect(binary).toBe(running);
+        expect(statSync(binary).ino).toBe(inUse);
+        expect(readFileSync(join(dirname(binary), "native", "shiori_core.node"), "utf8")).toBe(
+          addon,
+        );
+      });
+    },
+  );
+
   // Several agents starting `npx @nagi-ovo/shiori` over a half-written
-  // version directory each extract and then replace it. Without one run at
-  // a time doing the replacing, a run deleted the tree another had just
-  // published, and the others failed on a rename into a non-empty directory.
+  // version directory each extract and then repair it. A run used to delete
+  // the tree another had just published, and the others failed on a rename
+  // into a non-empty directory.
   // Skipped on Windows, where a scanner holding a handle can fail any rename.
   test.skipIf(process.platform === "win32")(
     "concurrent npm runs all recover a half-extracted version directory",
@@ -166,39 +240,13 @@ describe("CLI install channel: npm runner", () => {
         for (let i = 0; i < 400; i++) {
           writeFileSync(join(partial, "licenses", `notice-${i}.txt`), "notice");
         }
-        const child = join(dir, "child.mjs");
-        writeFileSync(
-          child,
-          [
-            'import { existsSync, readFileSync } from "node:fs";',
-            'import { dirname, join } from "node:path";',
-            "const { ensureCliBinary } = await import(process.env.INSTALL_MJS);",
-            "await new Promise((r) => setTimeout(r, Number(process.env.START_AT) - Date.now()));",
-            "try {",
-            "  const binary = await ensureCliBinary({",
-            "    api: process.env.API, target: process.env.TARGET,",
-            '    env: { SHIORI_CLI_HOME: process.env.HOME_DIR, SHIORI_CLI_ALLOW_HTTP: "1" },',
-            "  });",
-            '  const whole = readFileSync(binary, "utf8").includes("shiori-ok") &&',
-            '    existsSync(join(dirname(binary), "native", "shiori_core.node"));',
-            '  console.log(whole ? "whole" : "broken");',
-            "} catch (error) {",
-            "  console.log(`threw ${error.code ?? error.message}`);",
-            "}",
-          ].join("\n"),
-        );
         const startAt = Date.now() + 1500;
         const runs = Array.from({ length: 6 }, () =>
-          Bun.spawn([process.execPath, child], {
-            env: {
-              ...process.env,
-              INSTALL_MJS: join(import.meta.dir, "..", "npm", "install.mjs"),
-              API: `http://127.0.0.1:${server.port}/api/cli`,
-              TARGET: target,
-              HOME_DIR: home,
-              START_AT: String(startAt),
-            },
-            stdout: "pipe",
+          spawnNpmRun(dir, {
+            api: `http://127.0.0.1:${server.port}/api/cli`,
+            target,
+            home,
+            startAt,
           }),
         );
         const outcomes = await Promise.all(
