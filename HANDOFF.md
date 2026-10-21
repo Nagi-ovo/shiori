@@ -12,12 +12,12 @@ Last reconciled against reality: **2026-10-21**.
   all 119 handled; B102 is not a bug. Every fix was then reviewed by Codex
   gpt-6-astra (sol for the parts it had missed) and the 28 findings answered
   (`CHANGELOG.md` `[未发布]` → 复审补修, 收尾). B034 is done: a refused
-  window may export or discard (desktop close/quit unit-tested only). Still
-  open (未完成): B027, two routes marked `test.failing` in the opt-in Chromium
-  suite (`SHIORI_BROWSER_TEST=1 bun test
-  src/documents/runnableHtmlWebRtcGuard.browser.test.ts`); the shadow-root
-  one needs Jesse to pick between disabling declarative shadow DOM in run
-  frames and turning WebRTC off at the host. Web tab close/reload still drops
+  window may export or discard (desktop close/quit unit-tested only). B027 is
+  closed: run mode no longer lets the parser create shadow roots (Jesse's
+  pick), verified in Chromium only (`SHIORI_BROWSER_TEST=1 bun test
+  src/documents/runnableHtmlWebRtcGuard.browser.test.ts`), not on WebKit.
+  A "fully trusted" run tier that re-enables declarative shadow DOM was
+  discussed and deferred until a real file needs it. Web tab close/reload still drops
   a refused copy silently (predates B034). Left as they are by Jesse's call
   (有意不再修): B108 (no PDFium API up to chromium/8111) and B088 (wry
   gesture signals on three engines, two unverifiable here). Gates green on main: verify

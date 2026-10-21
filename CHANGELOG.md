@@ -165,7 +165,7 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
 
 - **运行模式里更多由脚本动态插入的 srcdoc 子 frame 会先装上隔离脚本（`eaaa790` `a6b80b1`
   `e0a158b`；回归修复 `3bed9a0` `77641e5`：不含 srcdoc 的 `setHTMLUnsafe` 原样交给浏览器，SVG
-  不再被改坏；大批插入按根节点只扫一遍）。** 嵌套 frame 照常可用（审计 B027，部分修复，见文末）。
+  不再被改坏；大批插入按根节点只扫一遍）。** 嵌套 frame 照常可用（审计 B027）。
 - **Markdown 预览的远程图片策略覆盖更全（`c17238d` `c3d094a`）。** 「从不 / 询问」的远程图片
   设置之前有几条路径没有经过它，现在统一走 URL 解析后的判定（审计 B025）。
 - **Markdown 预览拦截更多种类的链接（`49eff83`）。** 收紧了预览里链接的拦截，避免文档让整个
@@ -175,7 +175,7 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
   的指令绑在一起（审计 B026）。
 - **收紧了 Web 版运行模式 frame 的隔离（`12c1411` `08a36da` 拆分，`62bbf3d` `fb5092b` `91f4aeb`
   `386e6a4` `67cd024` `e083f43`）。** 运行中的文档向外联网的途径收得更紧，文档自己创建的 frame
-  也在覆盖范围内（审计 B027，部分修复，见文末）。
+  也在覆盖范围内（审计 B027）。
 
 #### 草稿与工作区存储
 
@@ -381,8 +381,17 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
   测试（审计 B034，Opus 实现）。
 - **运行模式的守卫不再借用文档能改写的 DOM 读取（`79cdd8b` `05a7cc3`）。** 守卫在文档脚本之前存下
   原生的 MutationRecord、NodeList 读取方法，观察选项不再从原型链上取值；新增按需运行的 Chromium
-  测试（`SHIORI_BROWSER_TEST=1`），直接看每个子框架的第一段脚本能否用 WebRTC，还没覆盖的路径标为
-  `test.failing`（审计 B027，部分；Codex gpt-6-astra 实现）。
+  测试（`SHIORI_BROWSER_TEST=1`），直接看每个子框架的第一段脚本能否用 WebRTC（审计 B027；Codex
+  gpt-6-astra 实现）。
+- **运行模式不再由解析器建 shadow root（`4f64c0a`，按 Jesse 的选择）。** 解析器建出的 shadow root
+  不经过 `attachShadow`，守卫看不到。现在 `buildRunnableHtml` 去掉所有 template 上的 `shadowroot*`
+  属性，守卫在 `setHTML[Unsafe]`、各个位置型 HTML 方法、`Document.parseHTML[Unsafe]`、
+  `document.write` 里按写入位置的上下文去掉它们，流式 HTML 方法直接拒绝。没选在各 WebView 关掉
+  WebRTC：这样一处代码覆盖网页版和所有引擎。代价：声明式 shadow DOM 的内容在运行模式里不显示；
+  每次 `document.write` 被补成完整片段，跨几次调用才写完的标签会提前闭合；限制性的 Trusted Types
+  策略可能挡住 HTML 插入。Chromium 测试 72/72，WebKit 没跑（审计 B027，Codex gpt-6-astra 实现）。
+- **守卫不再把 SVG 改坏（`4fa4238`）。** 守卫找 srcdoc 时改为按写入位置的上下文解析，SVG、MathML、
+  表格、`<script>`/`<style>` 文本保持原样（审计 B027，Codex gpt-6-astra 实现）。
 
 ### 改动
 
@@ -402,11 +411,8 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
 
 ### 未完成
 
-- **B027（部分）：** 运行模式的隔离又收紧了一轮（`eaaa790` `a6b80b1` `e0a158b`，Chrome 复测见
-  `test-artifacts/b027-run-frames/`），之后又补了 `79cdd8b` `05a7cc3`。还剩两处：解析器建出的
-  shadow root 在守卫脚本里堵不全，要在禁用声明式 shadow DOM 和在宿主层关掉 WebRTC 之间选一个；
-  无害属性里含 `srcdoc` 字样时，`setHTMLUnsafe` 里的 SVG 仍会被改坏。两处在 Chromium 测试里都标为
-  `test.failing`。
+- **B027 只在 Chromium 上验证过。** macOS 桌面的 WebKit、Linux 的 WebKitGTK 没跑浏览器测试；
+  位置型和流式 HTML 方法在本机 Chrome 里还不存在，对应的拦截没有实际跑过。
 - **网页版关浏览器标签或刷新**时，被拒绝保存的副本不提示就丢了（`pagehide` 走非严格保存，
   `beforeunload` 只管文本源）。这是 B034 之前就有的缺口，没有改。
 

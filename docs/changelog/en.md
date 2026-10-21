@@ -57,7 +57,7 @@
 
 ### Security
 
-- **Tightened isolation for running HTML documents and for the Markdown preview.** This fixes several issues a malicious file could exploit, the "never load remote images" setting covers more cases, and on desktop the run approval only lists what it can actually allow.
+- **Tightened isolation for running HTML documents and for the Markdown preview.** This fixes several issues a malicious file could exploit, the "never load remote images" setting covers more cases, and on desktop the run approval only lists what it can actually allow. Run mode no longer renders declarative shadow DOM (`<template shadowrootmode>`).
 - **Certain damaged or crafted PDFs and passwords no longer crash the app.** On web and mobile, a failed open no longer holds on to memory.
 
 ### Browser panel
