@@ -147,7 +147,10 @@ function hasReviewProvenance(overlay: TextMarkupOverlay): boolean {
       overlay.sourceReplyType ||
       // Merging would move the comment onto a new id or cut it with the
       // erased span.
-      overlay.comment,
+      overlay.comment ||
+      // A merged highlight is written with Print (4) alone: a locked or
+      // unprinted one would lose its flags.
+      (overlay.sourceFlags !== undefined && overlay.sourceFlags !== 4),
   );
 }
 
