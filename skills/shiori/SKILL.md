@@ -99,6 +99,10 @@ Schema name: `shiori.annotations/v1`. Full authoritative reference:
 - On `ERR_APP_OUTCOME_UNKNOWN` (timeout / lost response): do NOT assume nothing
   was applied. Run `app context` again, compare both hashes from the error
   detail, and re-run the identical spec — idempotency makes that safe.
+- The same spec is the same operation even after the user pressed Undo or
+  discarded the draft: it adds nothing and the result says `alreadyApplied`.
+  To apply it again on purpose, add `--nonce <new value>`; retry that new
+  operation with the same `--nonce` (the error detail repeats it).
 - Live mode requires the desktop app running; the CLI only connects to its
   authenticated 127.0.0.1 live API. If connection fails, tell the user to open
   Shiori (or fall back to file mode on a copy).

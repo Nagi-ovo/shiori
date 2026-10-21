@@ -53,7 +53,8 @@
       "annotations": []
     },
     "operationId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-    "dryRun": false
+    "dryRun": false,
+    "nonce": "again-1"
   },
   "annotationRequestEvent": {
     "requestId": "0123456789abcdef0123456789abcdef",
@@ -68,7 +69,8 @@
       "schema": "shiori.annotations/v1",
       "annotations": []
     },
-    "dryRun": false
+    "dryRun": false,
+    "nonce": "again-1"
   },
   "completion": {
     "success": {

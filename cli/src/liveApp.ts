@@ -8,6 +8,7 @@ import {
 } from "./annotationSpec";
 import {
   CanonicalJsonError,
+  LIVE_OPERATION_NONCE_PATTERN,
   liveOperationCanonicalPayload,
 } from "./liveOperation";
 import { LiveAppError, remoteError, unavailable } from "./liveAppError";
@@ -55,6 +56,11 @@ export type LiveAnnotateOptions = LiveAppClientOptions & {
   baseSha256?: string;
   /** In-memory spec (e.g. synthesized from --highlight); replaces specPath. */
   spec?: Record<string, unknown>;
+  /**
+   * Makes an identical spec a new operation (--nonce). A new value applies it
+   * again after Undo; the same value retries that operation safely.
+   */
+  nonce?: string;
 };
 
 export type LiveAnnotateResponse = {
@@ -73,7 +79,7 @@ export function describeAnnotateResult({
   data,
 }: LiveAnnotateResponse): string {
   const repeated = data.alreadyApplied
-    ? " This exact spec was already applied to this PDF, so Shiori does not re-add it, even after Undo; change the spec to apply it again."
+    ? " This exact spec was already applied to this PDF, so Shiori does not re-add it, even after Undo; to apply it again, repeat the command with --nonce and a value not used before."
     : "";
   return data.dryRun
     ? `Dry run: ${data.added} annotations ready for ${context.name}.${repeated}`
@@ -112,6 +118,13 @@ export async function annotateLiveApp(
   specPath: string | null,
   options: LiveAnnotateOptions = {},
 ): Promise<LiveAnnotateResponse> {
+  const nonce = options.nonce;
+  if (nonce !== undefined && !LIVE_OPERATION_NONCE_PATTERN.test(nonce)) {
+    throw new LiveAppError(
+      "ERR_SPEC_INVALID",
+      "--nonce must be 1-64 letters, digits, '.', '_' or '-'",
+    );
+  }
   // Read context first so every mutation is anchored to the document the user
   // can currently see. The server rechecks this same target during POST.
   // Only this read may rediscover: a POST connect failure is OUTCOME_UNKNOWN.
@@ -160,6 +173,7 @@ export async function annotateLiveApp(
     context.sha256,
     context.pageTopologyHash,
     spec,
+    nonce,
   );
   let response: HttpResponse;
   try {
@@ -167,18 +181,25 @@ export async function annotateLiveApp(
       descriptor,
       "POST",
       "/v1/annotations",
-      { target, operationId, spec, dryRun: options.dryRun === true },
+      {
+        target,
+        operationId,
+        spec,
+        dryRun: options.dryRun === true,
+        // Only when asked for: an older app's native rejects unknown fields.
+        ...(nonce !== undefined ? { nonce } : {}),
+      },
       options,
     );
   } catch (error) {
-    if (error instanceof LiveAppError) throw outcomeUnknown(target, operationId);
+    if (error instanceof LiveAppError) throw outcomeUnknown(target, operationId, nonce);
     throw error;
   }
   let envelope: LiveSuccessEnvelope | LiveErrorEnvelope;
   try {
     envelope = parseEnvelope(response.value);
   } catch (error) {
-    if (error instanceof LiveAppError) throw outcomeUnknown(target, operationId);
+    if (error instanceof LiveAppError) throw outcomeUnknown(target, operationId, nonce);
     throw error;
   }
   if (!envelope.ok) {
@@ -188,36 +209,36 @@ export async function annotateLiveApp(
       envelope.error.code === "INTERNAL" ||
       envelope.error.code === "REQUEST_TIMEOUT"
     ) {
-      throw outcomeUnknown(target, operationId);
+      throw outcomeUnknown(target, operationId, nonce);
     }
     throw remoteError(response.status, envelope.error, descriptor.token);
   }
   if (response.status < 200 || response.status >= 300) {
-    throw outcomeUnknown(target, operationId);
+    throw outcomeUnknown(target, operationId, nonce);
   }
   let data: LiveAnnotationResult;
   try {
     data = parseAnnotationResult(envelope.data);
   } catch (error) {
-    if (error instanceof LiveAppError) throw outcomeUnknown(target, operationId);
+    if (error instanceof LiveAppError) throw outcomeUnknown(target, operationId, nonce);
     throw error;
   }
   if (
     !Array.isArray(spec.annotations) ||
     !resultAccountsForSpec(data, spec.annotations)
   ) {
-    throw outcomeUnknown(target, operationId);
+    throw outcomeUnknown(target, operationId, nonce);
   }
-  if (data.operationId !== operationId) throw outcomeUnknown(target, operationId);
+  if (data.operationId !== operationId) throw outcomeUnknown(target, operationId, nonce);
   if (
     data.documentId !== target.documentId ||
     data.sha256 !== target.sha256 ||
     data.pageTopologyHash !== target.pageTopologyHash
   ) {
-    throw outcomeUnknown(target, operationId);
+    throw outcomeUnknown(target, operationId, nonce);
   }
   if (data.dryRun !== (options.dryRun === true)) {
-    throw outcomeUnknown(target, operationId);
+    throw outcomeUnknown(target, operationId, nonce);
   }
   return { context, data };
 }
@@ -252,13 +273,19 @@ export function liveOperationId(
   sha256: string,
   pageTopologyHash: string,
   spec: unknown,
+  nonce?: string,
 ): string {
   if (!SHA256_PATTERN.test(sha256) || !SHA256_PATTERN.test(pageTopologyHash)) {
     throw new LiveAppError("ERR_SPEC_INVALID", "Operation target hash is invalid");
   }
   let canonical: string;
   try {
-    canonical = liveOperationCanonicalPayload(sha256, pageTopologyHash, spec);
+    canonical = liveOperationCanonicalPayload(
+      sha256,
+      pageTopologyHash,
+      spec,
+      nonce,
+    );
   } catch (error) {
     if (error instanceof CanonicalJsonError) {
       throw new LiveAppError("ERR_SPEC_INVALID", error.message);
@@ -474,11 +501,17 @@ function requestJson(
   });
 }
 
-function outcomeUnknown(target: LiveTarget, operationId: string): LiveAppError {
+function outcomeUnknown(
+  target: LiveTarget,
+  operationId: string,
+  nonce: string | undefined,
+): LiveAppError {
+  // A retry is safe only as the same operation, so it must repeat the nonce.
+  const retry = `--base-sha256 ${target.sha256}${nonce === undefined ? "" : ` --nonce=${nonce}`}`;
   return new LiveAppError(
     "ERR_APP_OUTCOME_UNKNOWN",
     "The annotation outcome is unknown; do not assume that nothing was applied",
-    `operationId=${operationId}; documentId=${target.documentId}; sha256=${target.sha256}; pageTopologyHash=${target.pageTopologyHash}; run app context and verify both hashes before retrying the same spec with --base-sha256 ${target.sha256}`,
+    `operationId=${operationId}; documentId=${target.documentId}; sha256=${target.sha256}; pageTopologyHash=${target.pageTopologyHash}; run app context and verify both hashes before retrying the same spec with ${retry}`,
   );
 }
 

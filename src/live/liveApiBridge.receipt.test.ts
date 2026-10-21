@@ -6,6 +6,7 @@ import {
   applyLiveAnnotationRequest,
   type ActiveLivePdf,
 } from "./liveApiBridge";
+import { deriveLiveOperationId, liveOperationIdMatches } from "./liveOperationId";
 
 const OPERATION_ID = "d".repeat(64);
 const PAGE_TOPOLOGY_HASH = "e".repeat(64);
@@ -103,5 +104,31 @@ describe("live annotate on an operation receipt", () => {
       if (!result.ok) throw new Error("expected success");
       expect("alreadyApplied" in result.data).toBe(false);
     }
+  });
+});
+
+// Undo and a discarded draft leave the receipt behind on purpose, so the only
+// way to apply an identical spec again is to make it a different operation:
+// the caller adds a nonce, and the id it authenticates changes with it.
+describe("live annotate with an operation nonce", () => {
+  test("applies an identical spec again past the receipt of the first", async () => {
+    const first = request(noteSpec);
+    first.operationId = await deriveLiveOperationId(first);
+    const again = { ...request(noteSpec), nonce: "again-1" };
+    again.operationId = await deriveLiveOperationId(again);
+    expect(again.operationId).not.toBe(first.operationId);
+    expect(await liveOperationIdMatches(again)).toBe(true);
+    // The nonce is authenticated: dropping it no longer matches the id.
+    expect(await liveOperationIdMatches({ ...again, nonce: undefined })).toBe(false);
+
+    const pdf = access(false, []);
+    pdf.hasOperationReceipt = (id) => id === first.operationId;
+    expect(
+      applyLiveAnnotationRequest(first, { getActivePdf: () => pdf }),
+    ).toMatchObject({ ok: true, data: { added: 0, alreadyApplied: true } });
+    const result = applyLiveAnnotationRequest(again, { getActivePdf: () => pdf });
+    expect(result).toMatchObject({ ok: true, data: { added: 1 } });
+    if (!result.ok) throw new Error("expected success");
+    expect("alreadyApplied" in result.data).toBe(false);
   });
 });

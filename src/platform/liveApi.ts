@@ -70,6 +70,9 @@ export type LiveApiAnnotationRequest = {
   target: LiveApiTarget;
   spec: unknown;
   dryRun: boolean;
+  /** Hashed into operationId; absent unless the caller asked for a new
+   * operation (src/live/liveOperation.ts). */
+  nonce?: string;
 };
 
 export type LiveApiSuccessData = {
