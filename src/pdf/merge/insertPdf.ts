@@ -20,6 +20,7 @@ import {
   inspectDocumentFiles,
   reattachLinkDestinations,
 } from "../export/navigation";
+import { alignPageTreeWithPdfium } from "../export/sourcePageTree";
 import { pdfSignatureIssue } from "../signatures";
 import type { ExportSourceEncryption } from "../export/encryptedSource";
 import { deniedEdits } from "../security/permissions";
@@ -138,6 +139,8 @@ async function insertPlainPdfPages(
       "Password-protected PDFs cannot be inserted safely.",
     );
   }
+  // pageModelsFor numbers these pages for export, which reads PDFium's order.
+  alignPageTreeWithPdfium(parsedIncoming);
   if (parsedIncoming.getPageCount() === 0) {
     throw new PdfPageInsertError("empty", "The selected PDF has no pages.");
   }
@@ -178,6 +181,8 @@ async function insertPlainPdfPages(
     throw error;
   });
   const incoming = await PDFDocument.load(new Uint8Array(sanitized.bytes));
+  // An export that changed nothing hands back the source bytes as they were.
+  alignPageTreeWithPdfium(incoming);
   const insertedPageCount = incoming.getPageCount();
   if (insertedPageCount === 0) {
     throw new PdfPageInsertError("empty", "The selected PDF has no pages.");
