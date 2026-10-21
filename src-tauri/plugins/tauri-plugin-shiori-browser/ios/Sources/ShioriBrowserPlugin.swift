@@ -303,14 +303,18 @@ class ShioriBrowserPlugin: Plugin, WKNavigationDelegate, WKUIDelegate {
   // target="_blank" links and window.open ask for a new web view. With no UI
   // delegate WebKit drops them and the tap does nothing; the panel has one
   // view, so load the request there. The load passes decidePolicyFor above,
-  // so the scheme gate still applies.
+  // so the scheme gate still applies. Only http(s): window.open() and
+  // window.open('about:blank') (a script about to fill its popup) would
+  // otherwise replace the page with a blank one. window.open still returns
+  // null to the page, so popups that talk to window.opener stay unsupported.
   func webView(
     _ webView: WKWebView,
     createWebViewWith configuration: WKWebViewConfiguration,
     for navigationAction: WKNavigationAction,
     windowFeatures: WKWindowFeatures
   ) -> WKWebView? {
-    if navigationAction.targetFrame == nil {
+    let scheme = navigationAction.request.url?.scheme?.lowercased()
+    if navigationAction.targetFrame == nil, scheme == "http" || scheme == "https" {
       webView.load(navigationAction.request)
     }
     return nil
