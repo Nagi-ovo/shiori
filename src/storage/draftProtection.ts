@@ -13,8 +13,8 @@
  * heartbeat time and expire. The expiry is 20 beats: browsers throttle timers
  * in hidden tabs (Chrome to about once a minute), and a live but throttled
  * window must not lapse. A crashed window pins its drafts for at most that
- * long. A window publishes at once when it registers and whenever the reader
- * leaves it (blur, hidden), which is when another window starts writing.
+ * long. A window publishes at once when it registers, whenever its set of
+ * open drafts changes, and whenever the reader leaves it (blur, hidden).
  */
 
 const KEY_PREFIX = "shiori:open-drafts:v1:";
@@ -151,6 +151,10 @@ export function createDraftProtection(deps: DraftProtectionDeps) {
       };
     },
 
+    /** Publishes at once: call when the open set changes, as other windows'
+     * sweeps may run before the next beat. */
+    republishOpenDrafts: publish,
+
     isDraftProtected(id: string): boolean {
       for (const openId of openDraftIds()) if (openId === id) return true;
       let found = false;
@@ -180,3 +184,4 @@ const shared = createDraftProtection({
 
 export const protectOpenDrafts = shared.protectOpenDrafts;
 export const isDraftProtected = shared.isDraftProtected;
+export const republishOpenDrafts = shared.republishOpenDrafts;

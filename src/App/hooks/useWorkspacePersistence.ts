@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { getRecent } from "../../editor/recentDocs";
-import { protectOpenDrafts } from "../../storage/draftProtection";
+import {
+  protectOpenDrafts,
+  republishOpenDrafts,
+} from "../../storage/draftProtection";
 import {
   cleanupWorkspaceSources,
   saveWorkspaceState,
@@ -107,6 +110,13 @@ export function useWorkspacePersistence<T>({
       ),
     [getTabs, toMeta],
   );
+  // The provider is read lazily here, but other windows see only what was
+  // last published: republish when the set changes, not on the next beat.
+  const openDraftKey = useMemo(
+    () => tabs.flatMap((tab) => toMeta(tab).hash ?? []).sort().join("\0"),
+    [tabs, toMeta],
+  );
+  useLayoutEffect(() => republishOpenDrafts(), [openDraftKey]);
 
   const protectedWorkspaceCacheKey = useMemo(
     () => tabs.flatMap(cacheIdsForTab).sort().join("\0"),
