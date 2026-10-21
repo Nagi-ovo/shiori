@@ -82,14 +82,22 @@ export function* fallbackSearchClusters(text: string): Generator<SearchCluster> 
     let previousWasJoiner = false;
     // A regional indicator pairs with the next one into a flag.
     let unpairedIndicator = isRegionalIndicator(text.slice(start, end));
+    // A consonant, a linker and another consonant form one conjunct
+    // (UAX #29 GB9c): 0 off, 1 after a consonant, 2 after its linker.
+    let conjunct = CONJUNCT_CONSONANT.test(text.slice(start, end)) ? 1 : 0;
     while (end < text.length) {
       const nextEnd = nextCodePointEnd(text, end);
       const next = text.slice(end, nextEnd);
+      const linksConsonant = conjunct === 2 && CONJUNCT_CONSONANT.test(next);
       const continuation =
         isFallbackContinuation(next) ||
         previousWasJoiner ||
+        linksConsonant ||
         (unpairedIndicator && isRegionalIndicator(next));
       if (!continuation) break;
+      if (linksConsonant) conjunct = 1;
+      else if (conjunct && CONJUNCT_LINKER.test(next)) conjunct = 2;
+      else if (!/^[\p{Mn}\p{Me}\u200d]$/u.test(next)) conjunct = 0;
       previousWasJoiner = next === "\u200d";
       unpairedIndicator = false;
       end = nextEnd;
@@ -103,12 +111,22 @@ function isFallbackContinuation(character: string): boolean {
   return (
     /\p{Mark}/u.test(character) ||
     character === "\u200d" ||
+    // ZWNJ extends a grapheme, as in Persian, though it breaks a conjunct.
+    character === "\u200c" ||
     // Thai and Lao SARA AM: spacing marks that are letters by category.
     character === "\u0e33" ||
     character === "\u0eb3" ||
     isVariationOrEmojiModifier(character)
   );
 }
+
+// Indic_Conjunct_Break=Linker and =Consonant, read off Intl.Segmenter by
+// probing "क" + L + "क" and "क्" + C for one grapheme (bun 1.4 ICU);
+// probe again when searchClusters.test.ts finds the two apart.
+const CONJUNCT_LINKER =
+  /^[्্્୍్്္្᩠᭄᮫꧀꫶\u{10A3F}\u{11133}\u{113D0}\u{1193E}\u{11A47}\u{11A99}\u{11F42}]$/u;
+const CONJUNCT_CONSONANT =
+  /^[क-हक़-य़ॸ-ॿক-নপ-রলশ-হড়ঢ়য়ৰৱક-નપ-રલળવ-હૹକ-ନପ-ରଲଳଵ-ହଡ଼ଢ଼ୟୱక-నప-హౘ-ౚക-ഺက-ဪဿၐ-ၕၚ-ၝၡၥၦၮ-ၰၵ-ႁႎក-ឳᨠ-ᩔᬋᬌᬓ-ᬳᭅ-ᭌᮃ-ᮠᮮᮯᮻ-ᮽꦉ-ꦋꦏ-ꦲꧠ-ꧤꧧ-ꧯꧺ-ꧾꩠ-ꩯꩱ-ꩳꩺꩾꩿꫠ-ꫪꯀ-ꯚ\u{10A00}\u{10A10}-\u{10A13}\u{10A15}-\u{10A17}\u{10A19}-\u{10A35}\u{11103}-\u{11126}\u{11144}\u{11147}\u{11380}-\u{11389}\u{1138B}\u{1138E}\u{11390}-\u{113B5}\u{11900}-\u{11906}\u{11909}\u{1190C}-\u{11913}\u{11915}\u{11916}\u{11918}-\u{1192F}\u{11A00}\u{11A0B}-\u{11A32}\u{11A50}\u{11A5C}-\u{11A83}\u{11F04}-\u{11F10}\u{11F12}-\u{11F33}]$/u;
 
 function nextCodePointEnd(text: string, start: number): number {
   const codePoint = text.codePointAt(start);
