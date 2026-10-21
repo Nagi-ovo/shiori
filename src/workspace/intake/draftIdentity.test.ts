@@ -31,7 +31,8 @@ const { openPdf } = await import("./openPdf");
  * - a moved file finds the draft its dropped copy left, unless a tab of
  *   that copy is still open;
  * - a dropped (cache) source keeps reading and writing the bare hash;
- * - discarding a conflicting draft deletes that tab's draft, not the hash's.
+ * - discarding a conflicting draft deletes that tab's draft, not the hash's,
+ *   unless that hash draft is the one it restored.
  */
 
 const PDF = bytes(1, 2, 3, 4);
@@ -186,5 +187,23 @@ describe("draft identity through open and restart", () => {
       removeDraft: (id) => removed.push(id),
     });
     expect(removed).toEqual([atB]);
+  });
+
+  test("discarding a draft that could not move deletes the one restored", async () => {
+    await saveDraft(HASH, "legacy");
+    const store = workspace();
+    const base = realDraftPorts(store);
+    // claimDraft's contract when the move fails: read the draft in place.
+    base.ports.drafts.claim = async (hash) => hash;
+    await openPdf({ name: "paper.pdf", size: 4, bytes: PDF, path: "/docs/paper.pdf" }, {}, base.ports);
+    expect(notesIn(base, store.getState().activeTabId!)).toEqual(["legacy"]);
+    raiseDeferredDraft(store, store.getState().session.restoredDraft!.draft);
+    const removed: string[] = [];
+    discardDraft({
+      store,
+      editor: () => base.editors.get(store.getState().activeTabId!)!,
+      removeDraft: (id) => removed.push(id),
+    });
+    expect(removed).toEqual([HASH]);
   });
 });

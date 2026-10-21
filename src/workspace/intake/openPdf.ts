@@ -268,7 +268,9 @@ async function runPdfOpen(
       const recoveryDraft: PendingRestore = {
         file: fileLike,
         hash,
-        draftId,
+        // Discard deletes this row, which is `draftId` unless the claim fell
+        // back to reading another one in place.
+        draftId: readDraftId,
         pages: nextPages,
         fileSize: input.size,
         lastTouched: recovery.lastTouched,
