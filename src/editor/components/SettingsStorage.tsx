@@ -18,6 +18,13 @@ import {
   relativeLabelsFor,
 } from "../../shared/format";
 import { useNow } from "../hooks/useNow";
+import { draftSource } from "../../storage/draftIdentity";
+
+/** The path a draft belongs to, when it was saved from one (fact 4). */
+function draftPath(id: string): string | undefined {
+  const source = draftSource(id);
+  return source?.type === "path" ? source.path : undefined;
+}
 
 // The Storage section of Settings: local draft usage, eviction notices and
 // per-draft deletion.
@@ -66,7 +73,7 @@ export function StorageControls() {
   };
   // Two-step, because a single click here destroys the autosaved annotation
   // draft for EVERY PDF the user has edited — the data the app promises to
-  // recover by content hash across sessions — with no dialog and no undo, and
+  // recover across sessions — with no dialog and no undo, and
   // the button sits one tab stop away from each row's own delete icon.
   // Matches the confirm pattern already used by RestoreDraftDialog.
   const [confirmingClearAll, setConfirmingClearAll] = useState(false);
@@ -216,6 +223,7 @@ export function StorageControls() {
             <StorageRow
               key={d.id}
               name={d.fileName}
+              path={draftPath(d.id)}
               size={d.fileSize}
               editedRel={rel(d.lastTouched)}
               storageBytes={d.storageBytes}
@@ -250,12 +258,15 @@ export function StorageControls() {
 
 export function StorageRow({
   name,
+  path,
   size,
   editedRel,
   storageBytes,
   onDelete,
 }: {
   name: string;
+  /** Same bytes at two paths keep two drafts under one name. */
+  path?: string;
   size: number;
   editedRel: string;
   storageBytes: number;
@@ -284,6 +295,21 @@ export function StorageRow({
         >
           {name}
         </div>
+        {path ? (
+          <div
+            title={path}
+            style={{
+              font: `11.5px/1.4 ${T.mono}`,
+              color: T.dim,
+              marginTop: 2,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {path}
+          </div>
+        ) : null}
         <div
           style={{
             font: `11.5px/1.4 ${T.mono}`,
@@ -299,7 +325,10 @@ export function StorageRow({
           {t("storage.uses", { size: formatBytes(storageBytes) })}
         </div>
       </div>
-      <MiniIconBtn title={t("storage.deleteNamed", { name })} onClick={onDelete}>
+      <MiniIconBtn
+        title={t("storage.deleteNamed", { name: path ?? name })}
+        onClick={onDelete}
+      >
         <Ic.trash />
       </MiniIconBtn>
     </div>
