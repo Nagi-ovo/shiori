@@ -41,7 +41,7 @@ afterEach(() => {
   delete window.ShioriAndroid;
 });
 
-async function installEndingWith(message: string) {
+async function startInstall() {
   let requestId = "";
   window.ShioriAndroid = {
     installDirectApk(requestJson: string) {
@@ -54,14 +54,24 @@ async function installEndingWith(message: string) {
   await act(async () => {
     fireEvent.click(view.getByText(i18n.t("update.downloadAndInstallApk")));
   });
-  await act(async () => {
-    window.dispatchEvent(
-      new CustomEvent("shiori-android-update", {
-        detail: { id: requestId, status: "error", message },
-      }),
-    );
-  });
-  return { view, closed: () => closed };
+  const send = async (detail: Record<string, unknown>) => {
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent("shiori-android-update", { detail: { id: requestId, ...detail } }),
+      );
+    });
+  };
+  return { view, send, closed: () => closed };
+}
+
+async function installEndingWith(message: string) {
+  const started = await startInstall();
+  await started.send({ status: "error", message });
+  return started;
+}
+
+function laterButton(view: Awaited<ReturnType<typeof startInstall>>["view"]) {
+  return view.getByText(i18n.t("update.later")).closest("button") as HTMLButtonElement;
 }
 
 describe("UpdateModal direct-APK installer outcome", () => {
@@ -77,5 +87,19 @@ describe("UpdateModal direct-APK installer outcome", () => {
     expect(closed()).toBe(0);
     expect(view.getByText(/Android refused to install the update\./)).toBeTruthy();
     expect(view.queryByText(/android-install-failed/)).toBeNull();
+  });
+
+  // Dismissing Android's confirmation dialog by tapping outside it (Android
+  // 13 and earlier) reports nothing, so the modal must not wait for a final
+  // status once the APK is in the system installer's hands.
+  test("can be dismissed once the APK is downloaded and with the installer", async () => {
+    const { view, send, closed } = await startInstall();
+    await send({ status: "progress", downloaded: 512, total: 1024 });
+    expect(laterButton(view).disabled).toBe(true);
+
+    await send({ status: "progress", downloaded: 1024, total: 1024 });
+    expect(laterButton(view).disabled).toBe(false);
+    fireEvent.click(laterButton(view));
+    expect(closed()).toBe(1);
   });
 });

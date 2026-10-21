@@ -79,6 +79,16 @@ export function UpdateModal({ update, onClose }: Props) {
 
   const installing = phase.kind === "installing";
   const directAndroid = update.kind === "android-direct";
+  // DirectApkUpdater.kt's last progress event (downloaded == total) comes
+  // just before the APK goes to the system installer. From then on the
+  // installer's own UI decides, and dismissing its dialog by tapping outside
+  // (Android 13 and earlier) reports nothing, so let the user close.
+  const withInstaller =
+    directAndroid &&
+    phase.kind === "installing" &&
+    phase.progress?.total != null &&
+    phase.progress.downloaded >= phase.progress.total;
+  const locked = installing && !withInstaller;
 
   const onInstall = async () => {
     setPhase({ kind: "installing", progress: null });
@@ -100,15 +110,15 @@ export function UpdateModal({ update, onClose }: Props) {
 
   return (
     <Modal
-      onClose={installing ? () => undefined : onClose}
+      onClose={locked ? () => undefined : onClose}
       title={t("update.title")}
       subtitle={t("update.subtitle", {
         from: update.currentVersion,
         to: update.version,
       })}
       width={560}
-      closeDisabled={installing}
-      hideClose={installing}
+      closeDisabled={locked}
+      hideClose={locked}
       footer={
         <div
           style={{
@@ -124,7 +134,7 @@ export function UpdateModal({ update, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            disabled={installing}
+            disabled={locked}
             style={{
               border: `1px solid ${T.rule}`,
               background: T.cream,
@@ -132,8 +142,8 @@ export function UpdateModal({ update, onClose }: Props) {
               borderRadius: 4,
               padding: "8px 14px",
               font: `500 13px/1 ${T.sans}`,
-              cursor: installing ? "not-allowed" : "pointer",
-              opacity: installing ? 0.45 : 1,
+              cursor: locked ? "not-allowed" : "pointer",
+              opacity: locked ? 0.45 : 1,
             }}
           >
             {t("update.later")}
@@ -154,7 +164,7 @@ export function UpdateModal({ update, onClose }: Props) {
             }}
           >
             {installing
-              ? directAndroid
+              ? directAndroid && !withInstaller
                 ? t("update.downloadingApk")
                 : t("update.installing")
               : directAndroid
