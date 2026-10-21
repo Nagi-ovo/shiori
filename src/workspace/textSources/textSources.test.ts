@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import type { WriteBackResult } from "../../platform/writeBack";
+import { sha256Hex } from "../../storage/hash";
 import type { WorkspaceRuntimeTab } from "../types";
 import { createWorkspaceStore } from "../workspaceStore";
 import {
@@ -47,7 +48,7 @@ function setup(tab = markdown(), overrides: Partial<TextSourcePorts> = {}) {
     cache: {
       put: async (entry) => {
         const id = `copy-${++nextCache}`;
-        cache.set(id, new TextDecoder().decode(entry.bytes));
+        cache.set(id, new TextDecoder("utf-8", { ignoreBOM: true }).decode(entry.bytes));
         return id;
       },
       remove: (id) => removed.push(id),
@@ -201,6 +202,137 @@ describe("saving to the source file", () => {
 
     expect(written).toEqual(["one", "two"]);
     expect(store.getState().tabs[0]).toMatchObject({ text: "two", textDirty: false });
+  });
+
+  test("a document that was not UTF-8 is never written over its file", async () => {
+    const { sources, writes, tabNow, notices } = setup(
+      markdown({ text: "\uFFFD\uFFFD edited", textDirty: true, textLossy: true }),
+    );
+
+    await sources.saveToSource("md");
+
+    expect(writes).toEqual([]);
+    expect(tabNow().textDirty).toBe(true);
+    expect(notices).toEqual([{ kind: "saveEncodingUnsupported", title: "notes.md" }]);
+  });
+
+  test("a file that began with a byte order mark keeps it, in the copy and on disk", async () => {
+    const { sources, cache, writes, pause } = setup(markdown({ text: "hello", textBom: true }));
+
+    sources.edit("md", "hello world");
+    await pause();
+    await sources.saveToSource("md");
+
+    expect([...cache.values()]).toEqual(["\uFEFFhello world"]);
+    expect(writes).toEqual(["\uFEFFhello world"]);
+  });
+
+  test("a file changed on disk since it was opened is only overwritten when the reader says so", async () => {
+    const encode = (text: string) => new TextEncoder().encode(text);
+    let disk = encode("hello");
+    const writes: string[] = [];
+    const { sources, notices, tabNow, store } = setup(
+      markdown({ text: "hello mine", textDirty: true, sourceHash: await sha256Hex(disk) }),
+      {
+        writeBack: {
+          target: (source) =>
+            source.type === "path" ? { kind: "desktopPath", path: source.path } : null,
+          write: async (_target, text, unchanged) => {
+            if (unchanged && !(await unchanged(disk))) return { status: "changed" };
+            writes.push(text);
+            disk = encode(text);
+            return { status: "written" };
+          },
+          saveAs: async () => ({ status: "cancelled" }),
+          requiresOrigin: true,
+        },
+      },
+    );
+
+    // Saving twice in a row compares against what the first save wrote.
+    await sources.saveToSource("md");
+    store.getState().updateTab("md", (tab) => ({ ...tab, text: "hello mine 2", textDirty: true }));
+    await sources.saveToSource("md");
+    expect(writes).toEqual(["hello mine", "hello mine 2"]);
+
+    disk = encode("theirs, from git pull");
+    store.getState().updateTab("md", (tab) => ({ ...tab, text: "hello mine 3", textDirty: true }));
+    await sources.saveToSource("md");
+
+    expect(writes).toHaveLength(2);
+    expect(tabNow().textDirty).toBe(true);
+    const conflict = notices.at(-1);
+    expect(conflict).toMatchObject({ kind: "saveSourceChanged", title: "notes.md" });
+
+    await (conflict as Extract<TextSourceNotice, { kind: "saveSourceChanged" }>).overwrite();
+
+    expect(writes.at(-1)).toBe("hello mine 3");
+    expect(tabNow().textDirty).toBe(false);
+  });
+
+  test("a file whose opened version is unknown is only overwritten when the reader says so", async () => {
+    // A restore of unsaved edits never read its file, so there is no hash to
+    // compare: the file may hold a newer version from another program.
+    const writes: string[] = [];
+    const { sources, notices, tabNow } = setup(markdown({ text: "restored edits", textDirty: true }), {
+      writeBack: {
+        target: (source) =>
+          source.type === "path" ? { kind: "desktopPath", path: source.path } : null,
+        write: async (_target, text, unchanged) => {
+          if (unchanged && !(await unchanged(new TextEncoder().encode("theirs")))) {
+            return { status: "changed" };
+          }
+          writes.push(text);
+          return { status: "written" };
+        },
+        saveAs: async () => ({ status: "cancelled" }),
+        requiresOrigin: true,
+      },
+    });
+
+    await sources.saveToSource("md");
+
+    expect(writes).toEqual([]);
+    expect(tabNow().textDirty).toBe(true);
+    const prompt = notices.at(-1);
+    expect(prompt).toMatchObject({ kind: "saveSourceUnverified", title: "notes.md" });
+
+    await (prompt as Extract<TextSourceNotice, { kind: "saveSourceUnverified" }>).overwrite();
+
+    expect(writes).toEqual(["restored edits"]);
+    expect(tabNow()).toMatchObject({
+      textDirty: false,
+      sourceHash: await sha256Hex(new TextEncoder().encode("restored edits")),
+    });
+  });
+
+  test("a file the check could not read is not written, and the reader can overwrite it", async () => {
+    const writes: string[] = [];
+    const { sources, notices, tabNow } = setup(
+      markdown({ text: "mine", textDirty: true, sourceHash: "opened" }),
+      {
+        writeBack: {
+          target: (source) =>
+            source.type === "path" ? { kind: "desktopPath", path: source.path } : null,
+          write: async (_target, text, unchanged) => {
+            if (unchanged) return { status: "unverified" };
+            writes.push(text);
+            return { status: "written" };
+          },
+          saveAs: async () => ({ status: "cancelled" }),
+          requiresOrigin: true,
+        },
+      },
+    );
+
+    await sources.saveToSource("md");
+
+    expect(writes).toEqual([]);
+    expect(tabNow().textDirty).toBe(true);
+    const prompt = notices.at(-1);
+    expect(prompt).toMatchObject({ kind: "saveSourceUnverified", title: "notes.md" });
+    await (prompt as Extract<TextSourceNotice, { kind: "saveSourceUnverified" }>).overwrite();
+    expect(writes).toEqual(["mine"]);
   });
 
   test("a clean document is not written", async () => {

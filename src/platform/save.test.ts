@@ -1,7 +1,9 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import "../test/setupDom";
+import { beforeAll, describe, expect, spyOn, test } from "bun:test";
 
 let encodeSuggestedNameHeader: typeof import("./save").encodeSuggestedNameHeader;
 let parseAndroidBridgeResult: typeof import("./save").parseAndroidBridgeResult;
+let saveBytes: typeof import("./save").saveBytes;
 
 beforeAll(async () => {
   Object.defineProperties(globalThis, {
@@ -9,7 +11,7 @@ beforeAll(async () => {
     __BUILD_TIMESTAMP__: { configurable: true, value: 0 },
     __BUILD_EXPIRY_DAYS__: { configurable: true, value: 0 },
   });
-  ({ encodeSuggestedNameHeader, parseAndroidBridgeResult } = await import(
+  ({ encodeSuggestedNameHeader, parseAndroidBridgeResult, saveBytes } = await import(
     "./save"
   ));
 });
@@ -38,5 +40,35 @@ describe("parseAndroidBridgeResult", () => {
       ok: false,
       message: "android-share-export-invalid-response",
     });
+  });
+});
+
+describe("saveBytes (web build)", () => {
+  // The browser fetches a download's blob after click() returns (Safari
+  // fails it with a WebKitBlobResource error once the URL is revoked), so the
+  // URL must outlive the call that started the download.
+  test("keeps the download's blob URL alive after the save returns", async () => {
+    const revoked: string[] = [];
+    const later: (() => void)[] = [];
+    const create = spyOn(URL, "createObjectURL").mockImplementation(() => "blob:shiori/1");
+    const revoke = spyOn(URL, "revokeObjectURL").mockImplementation((url) => {
+      revoked.push(url);
+    });
+    const timer = spyOn(globalThis, "setTimeout").mockImplementation(((run: () => void) => {
+      later.push(run);
+      return 0;
+    }) as never);
+    try {
+      const result = await saveBytes(new Uint8Array([1, 2]), { suggestedName: "a.pdf" });
+
+      expect(result).toEqual({ status: "saved", path: "a.pdf", platform: "web" });
+      expect(revoked).toEqual([]);
+      later.forEach((run) => run());
+      expect(revoked).toEqual(["blob:shiori/1"]);
+    } finally {
+      create.mockRestore();
+      revoke.mockRestore();
+      timer.mockRestore();
+    }
   });
 });

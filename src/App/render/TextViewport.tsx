@@ -49,8 +49,12 @@ export function TextViewport({
   }
   const textKind = tab.kind === "html" ? "html" : "markdown";
   const zoom = tab.textView?.zoom ?? 1;
-  const markdownMode: WorkspaceTextViewMode =
-    textKind === "markdown" ? (tab.textView?.mode ?? "preview") : "preview";
+  // A file that was not UTF-8 is shown read only: its text is a lossy reading,
+  // and saving edits would replace the original bytes with U+FFFD.
+  const editable = textKind === "markdown" && tab.textLossy !== true;
+  const markdownMode: WorkspaceTextViewMode = editable
+    ? (tab.textView?.mode ?? "preview")
+    : "preview";
   const appearanceOverride = tab.textView?.appearance;
   const appearance = resolveMarkdownAppearance(
     globalAppearance,
@@ -88,14 +92,20 @@ export function TextViewport({
       markdownMode={markdownMode}
       markdownAppearance={appearance}
       markdownHeadingColor={headingColor.color}
-      onMarkdownModeChange={textKind === "markdown" ? setMarkdownMode : undefined}
+      onMarkdownModeChange={editable ? setMarkdownMode : undefined}
       onMarkdownTextChange={
-        textKind === "markdown"
-          ? (nextText) => textSources.edit(tab.id, nextText)
-          : undefined
+        editable ? (nextText) => textSources.edit(tab.id, nextText) : undefined
       }
       toolbar={
         <>
+          {tab.textLossy === true ? (
+            <span
+              title={t("documents.readOnlyNotUtf8Hint")}
+              style={{ font: `500 12.5px/1 ${T.sans}`, color: T.dim }}
+            >
+              {t("documents.readOnlyNotUtf8")}
+            </span>
+          ) : null}
           {tab.textDirty === true ? (
             <button
               type="button"

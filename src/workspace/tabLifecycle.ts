@@ -23,6 +23,8 @@ export type ActivateTabPorts = {
   beforeActivate: () => void;
   applyActivation: (target: Tab | null) => void;
   setTransitioning: (transitioning: boolean) => void;
+  /** The text tab being left could not be saved; the switch did not happen. */
+  reportTextSaveFailed: (leaving: Tab | undefined, error: unknown) => void;
 };
 
 export async function activateTab(
@@ -37,7 +39,18 @@ export async function activateTab(
   if (!target || tabId === store.getState().activeTabId) return;
   ports.setTransitioning(true);
   try {
-    await ports.flushTextSources(store.getState().activeTabId ?? undefined);
+    const leavingId = store.getState().activeTabId;
+    try {
+      await ports.flushTextSources(leavingId ?? undefined);
+    } catch (error) {
+      // Stay on the edit, like close and home do; the tab click discards
+      // this promise, so a rejection would leave the reader with no reason.
+      ports.reportTextSaveFailed(
+        store.getState().tabs.find((tab) => tab.id === leavingId),
+        error,
+      );
+      return;
+    }
     if (!(await ports.persistActivePdf())) return;
     // The reader's latest choice wins, not whichever flow finishes last.
     if (!claim.isCurrent()) return;

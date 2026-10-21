@@ -13,6 +13,7 @@ import { replaceOrAppendWorkspaceTab } from "../../editor/workspaceTabs";
 import { sha256Hex } from "../../storage/hash";
 import { patchWorkspaceTextView } from "../../storage/workspace";
 import { textReopenCacheId } from "../tabSources";
+import { decodeTextDocument } from "../textSources/textEncoding";
 import type { WorkspaceRuntimeTab } from "../types";
 import { openPdf } from "./openPdf";
 import { abandonOpen, findExistingTab, openClaim } from "./shared";
@@ -93,6 +94,13 @@ export async function openNonPdf(
   // document is read straight from its source, so there is nothing to
   // recover and nothing to prefer over `sourcePayload`.
   const textKind = isTextDocumentKind(payload.kind) ? payload.kind : null;
+  // What the file on disk holds, for the save's "changed since?" check. A
+  // restore of unsaved edits reads only their working copy, so it is unknown.
+  let sourceHash: string | undefined;
+  let unknownSource = false;
+  const restoresEdits =
+    Boolean(options.workingCopyCacheId) &&
+    store.getState().tabs.find((tab) => tab.id === options.tabId)?.textDirty === true;
   const recoveryEntry =
     options.workingCopyCacheId || !textKind
       ? null
@@ -105,6 +113,11 @@ export async function openNonPdf(
       ports.recents.forget(recoveryEntry);
       ports.ui.reportWorkingCopyMissing(payload.name);
     } else {
+      // The edits began from some earlier file, not necessarily this one, so
+      // the disk vouches for them only when the copy still matches it.
+      const diskHash = await sha256Hex(sourcePayload.bytes);
+      if (diskHash === (await sha256Hex(workingCopy.bytes))) sourceHash = diskHash;
+      else unknownSource = true;
       sourcePayload = {
         ...sourcePayload,
         size: workingCopy.size,
@@ -118,6 +131,7 @@ export async function openNonPdf(
     options.workingCopyCacheId ??
     (tabSource.type !== "cache" ? sourcePayload.cacheId : undefined);
   const contentHash = await sha256Hex(sourcePayload.bytes);
+  if (textKind && !restoresEdits && !unknownSource) sourceHash ??= contentHash;
   const existing = options.skipDuplicateCheck
     ? null
     : await findExistingTab(ports, payload.kind, tabSource, contentHash);
@@ -141,6 +155,7 @@ export async function openNonPdf(
   // A .docx is a zip, not text: decoding it would produce mojibake that the
   // Markdown/HTML path would happily render. Binary kinds keep their bytes.
   const isBinary = payload.kind === "docx";
+  const decoded = isBinary ? null : decodeTextDocument(sourcePayload.bytes);
   const nextTab: WorkspaceRuntimeTab = {
     id: tabId,
     kind: payload.kind,
@@ -149,9 +164,10 @@ export async function openNonPdf(
     source: tabSource,
     workingCopyCacheId,
     hash: contentHash,
-    text: isBinary
-      ? undefined
-      : new TextDecoder("utf-8", { fatal: false }).decode(sourcePayload.bytes),
+    text: decoded?.text,
+    ...(decoded?.lossy ? { textLossy: true } : {}),
+    ...(decoded?.bom ? { textBom: true } : {}),
+    ...(sourceHash ? { sourceHash } : {}),
     bytes: isBinary ? sourcePayload.bytes : undefined,
     textView: options.textView ?? patchWorkspaceTextView(undefined, {}),
     status: "loaded",

@@ -40,6 +40,25 @@ export type WorkspaceRuntimeTab = WorkspaceTabMeta & {
   status: "loaded" | "unloaded" | "loading" | "suspended" | "unavailable";
   text?: string;
   /**
+   * The file was not valid UTF-8, so `text` is a lossy reading of it
+   * (src/workspace/textSources/textEncoding.ts). Shown read-only and never
+   * written back. Runtime only: it is re-derived from the bytes on every open.
+   */
+  textLossy?: boolean;
+  /**
+   * The file began with a UTF-8 byte order mark, which `text` leaves out and
+   * every encode puts back. Runtime only: the working copy keeps the mark, so
+   * a restore re-derives it from the bytes.
+   */
+  textBom?: boolean;
+  /**
+   * SHA-256 of what the text document's file held when Shiori last read or
+   * wrote it. A save first checks the file still holds that, so it never
+   * replaces a newer version another program wrote. Unknown (undefined) when
+   * the tab was restored from a working copy of unsaved edits.
+   */
+  sourceHash?: string;
+  /**
    * Binary non-PDF documents (`docx`) live here instead of `text`. There is no
    * working copy and no save-back path for them yet, so these bytes are read
    * only — the viewer renders them and nothing writes them.

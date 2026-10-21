@@ -94,6 +94,11 @@ export function MarkdownLiveEditor({
   // stale, and a later external change back to that remembered value would be
   // mistaken for an echo and silently dropped.
   const knownEditorTextRef = useRef<string | null>(null);
+  // The line break the document is written with. CodeMirror splits on any
+  // break and joins with "\n", so emitting `doc.toString()` would turn a CRLF
+  // file into LF on its first edit; the editor keeps its default splitting
+  // (pasted LF text still becomes lines) and emits in the file's own break.
+  const lineBreakRef = useRef<LineBreak>("\n");
   const latestTextPropRef = useRef(text);
   const onTextChangeRef = useRef(onTextChange);
   const onScrollTopChangeRef = useRef(onScrollTopChange);
@@ -124,6 +129,7 @@ export function MarkdownLiveEditor({
     const host = hostRef.current;
     if (!host) return;
 
+    lineBreakRef.current = dominantLineBreak(text) ?? "\n";
     const themeCompartment = themeCompartmentRef.current;
     const extensions: Extension[] = [
           history(),
@@ -158,7 +164,8 @@ export function MarkdownLiveEditor({
           }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged && !syncingExternalTextRef.current) {
-              const nextText = update.state.doc.toString();
+              const { doc } = update.state;
+              const nextText = doc.sliceString(0, doc.length, lineBreakRef.current);
               pendingExternalTextRef.current = null;
               knownEditorTextRef.current = nextText;
               onTextChangeRef.current?.(nextText);
@@ -236,7 +243,13 @@ export function MarkdownLiveEditor({
       pendingExternalTextRef.current = null;
       return;
     }
-    if (!view || view.state.doc.toString() === text) {
+    // An external text: it may bring other line breaks (a reload, a restore).
+    const lineBreak = dominantLineBreak(text);
+    if (lineBreak) lineBreakRef.current = lineBreak;
+    if (
+      !view ||
+      view.state.doc.sliceString(0, view.state.doc.length, lineBreakRef.current) === text
+    ) {
       knownEditorTextRef.current = text;
       pendingExternalTextRef.current = null;
       return;
@@ -345,7 +358,25 @@ function scrollEditorToSourceLine(view: EditorView, line: number): void {
   });
 }
 
-function minimalTextChange(current: string, next: string): ChangeSpec | null {
+type LineBreak = "\r\n" | "\n";
+
+/** The break most of the text's lines end with; null for a single line. */
+function dominantLineBreak(text: string): LineBreak | null {
+  let crlf = 0;
+  let lf = 0;
+  for (let at = text.indexOf("\n"); at !== -1; at = text.indexOf("\n", at + 1)) {
+    if (at > 0 && text.charCodeAt(at - 1) === 13) crlf += 1;
+    else lf += 1;
+  }
+  if (crlf + lf === 0) return null;
+  return crlf > lf ? "\r\n" : "\n";
+}
+
+function minimalTextChange(current: string, text: string): ChangeSpec | null {
+  // Compared in the editor's own "\n" form: offsets into a CRLF string are not
+  // document positions, and a diff against one would replace from the first
+  // line break on, which remaps undo history after every remount.
+  const next = text.includes("\r") ? text.replace(/\r\n?/g, "\n") : text;
   if (current === next) return null;
   let from = 0;
   const sharedLength = Math.min(current.length, next.length);

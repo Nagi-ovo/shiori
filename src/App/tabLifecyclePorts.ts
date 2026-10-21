@@ -172,6 +172,10 @@ export function createAppTabs(deps: {
         },
         applyActivation,
         setTransitioning: (on) => live.setTransitioning(on),
+        reportTextSaveFailed: (leaving, error) => {
+          console.error("Failed to persist text document before switching tabs", error);
+          toast.error(t("documents.textSaveFailed"), leaving?.title);
+        },
       }),
 
     close: (tabId: string) =>

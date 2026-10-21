@@ -197,6 +197,12 @@ function waitForAndroidShareChoice(): Promise<boolean> {
   });
 }
 
+// How long a web download's blob URL stays valid. The browser resolves the
+// URL after click() returns (Safari fails the download with a
+// WebKitBlobResource error if it is already revoked), and nothing signals
+// when it is done; FileSaver.js waits about as long.
+const DOWNLOAD_URL_LIFETIME_MS = 40_000;
+
 function saveBytesWeb(
   bytes: Uint8Array,
   options: SaveOptions,
@@ -211,7 +217,7 @@ function saveBytesWeb(
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_URL_LIFETIME_MS);
   // The browser chose the destination (typically the Downloads folder);
   // we can't introspect it, so report the filename so the UI can at least
   // say "Saved as foo.pdf".

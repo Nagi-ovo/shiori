@@ -26,6 +26,7 @@ const ids = (store: WorkspaceStore) => store.getState().tabs.map((t) => t.id);
 function activatePorts(store: WorkspaceStore, overrides: Partial<ActivateTabPorts> = {}) {
   const activated: (string | null)[] = [];
   const transitions: boolean[] = [];
+  const reports: string[] = [];
   const ports: ActivateTabPorts = {
     store,
     flushTextSources: async () => {},
@@ -36,9 +37,11 @@ function activatePorts(store: WorkspaceStore, overrides: Partial<ActivateTabPort
       store.setState({ activeTabId: target?.id ?? null });
     },
     setTransitioning: (on) => transitions.push(on),
+    reportTextSaveFailed: (leaving, error) =>
+      reports.push(`${leaving?.id}: ${String(error)}`),
     ...overrides,
   };
-  return { ports, activated, transitions };
+  return { ports, activated, transitions, reports };
 }
 
 function closePorts(store: WorkspaceStore, overrides: Partial<CloseTabPorts> = {}) {
@@ -150,6 +153,22 @@ describe("activateTab", () => {
     });
 
     await expect(activateTab("b", ports)).rejects.toThrow("disk full");
+    expect(transitions).toEqual([true, false]);
+  });
+
+  test("says so and stays when the text it leaves cannot be saved", async () => {
+    const store = workspace(["a", "b"], "a", { a: "markdown" });
+    const { ports, activated, transitions, reports } = activatePorts(store, {
+      flushTextSources: async () => {
+        throw new Error("QuotaExceededError");
+      },
+    });
+
+    await activateTab("b", ports);
+
+    expect(reports).toEqual(["a: Error: QuotaExceededError"]);
+    expect(activated).toEqual([]);
+    expect(store.getState().activeTabId).toBe("a");
     expect(transitions).toEqual([true, false]);
   });
 });

@@ -238,6 +238,56 @@ describe("writing back through a web file handle", () => {
     expect(stub.state().closed).toBe(true);
   });
 
+  test("checks the file after the write grant and leaves a changed one alone", async () => {
+    const { __recentFileHandlesTest } = await import("./recentFileHandles");
+    const order: string[] = [];
+    const stub = stubHandle({
+      queryPermission: async () => "prompt",
+      requestPermission: async () => {
+        order.push("grant");
+        return "granted";
+      },
+      getFile: async () => {
+        order.push("read");
+        return new File(["theirs"], "note.md");
+      },
+    });
+    const seen: string[] = [];
+
+    expect(
+      await __recentFileHandlesTest.writeTextToHandle(stub.handle as never, "mine", async (bytes) => {
+        seen.push(new TextDecoder().decode(bytes));
+        return false;
+      }),
+    ).toBe("changed");
+    expect(order).toEqual(["grant", "read"]);
+    expect(seen).toEqual(["theirs"]);
+    expect(stub.written).toEqual([]);
+  });
+
+  test("a file the check cannot read is left alone, unless it is gone", async () => {
+    const { __recentFileHandlesTest } = await import("./recentFileHandles");
+    const failingRead = (name: string) =>
+      stubHandle({
+        queryPermission: async () => "granted",
+        getFile: async () => {
+          throw new DOMException("read failed", name);
+        },
+      });
+    const unreadable = failingRead("NotReadableError");
+    const gone = failingRead("NotFoundError");
+    const unchanged = async () => true;
+
+    expect(
+      await __recentFileHandlesTest.writeTextToHandle(unreadable.handle as never, "mine", unchanged),
+    ).toBe("unverified");
+    expect(unreadable.written).toEqual([]);
+    // A deleted file is the write's to report, as before.
+    expect(
+      await __recentFileHandlesTest.writeTextToHandle(gone.handle as never, "mine", unchanged),
+    ).toBe("written");
+  });
+
   // Safari and Firefox ship the read half of the File System Access API only.
   // That is an ordinary outcome, not an error: the caller downloads instead.
   test("reports unsupported when the browser has no writable handles", async () => {

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { exportSnapshotKey } from "../../editor/export/exportStatus";
 import { createPdfEditorStore } from "../../editor/store/store";
 import type { Draft } from "../../storage/drafts";
+import { sha256Hex } from "../../storage/hash";
 import { captureSuspendedPdfSnapshot } from "../../storage/runtimeSessions";
 import type { WorkspaceRuntimeTab } from "../types";
 import { openDocument } from "./openDocument";
@@ -236,6 +237,83 @@ describe("openDocument", () => {
     expect(store.getState().activeTabId).toBe(tab!.id);
     expect(detached).toBe(1);
     expect(log.recents).toEqual(["notes.md"]);
+  });
+
+  test("a Markdown file that is not UTF-8 opens marked lossy, so it is never saved over", async () => {
+    const store = workspace();
+    const { ports } = fakePorts(store);
+    // "中文" in GBK: not valid UTF-8, so the decoded text is U+FFFD mojibake.
+    const gbk = bytes(0x23, 0x20, 0xd6, 0xd0, 0xce, 0xc4);
+
+    await openDocument({ kind: "markdown", name: "gbk.md", size: gbk.length, bytes: gbk, path: "/n/gbk.md" }, {}, ports);
+    await openDocument(
+      { kind: "markdown", name: "utf8.md", size: 8, bytes: new TextEncoder().encode("# 中文"), path: "/n/utf8.md" },
+      {},
+      ports,
+    );
+
+    const [lossy, clean] = store.getState().tabs;
+    expect(lossy).toMatchObject({ title: "gbk.md", textLossy: true });
+    expect(clean?.title).toBe("utf8.md");
+    expect(clean?.textLossy).toBeUndefined();
+  });
+
+  test("a UTF-16 file without a byte order mark opens marked lossy too", async () => {
+    const store = workspace();
+    const { ports } = fakePorts(store);
+    // "# a\r\nb" in UTF-16LE: every byte is valid UTF-8 (the high halves are
+    // NUL), but an edit would splice single UTF-8 bytes into the 2-byte stream.
+    const utf16 = bytes(0x23, 0, 0x20, 0, 0x61, 0, 0x0d, 0, 0x0a, 0, 0x62, 0);
+
+    await openDocument({ kind: "markdown", name: "u16.md", size: utf16.length, bytes: utf16, path: "/n/u16.md" }, {}, ports);
+
+    expect(store.getState().tabs[0]).toMatchObject({ title: "u16.md", textLossy: true });
+  });
+
+  test("a byte order mark is kept on the tab, not in the text the editor parses", async () => {
+    const store = workspace();
+    const { ports } = fakePorts(store);
+    const withBom = bytes(0xef, 0xbb, 0xbf, ...new TextEncoder().encode("# Hi"));
+
+    await openDocument({ kind: "markdown", name: "bom.md", size: withBom.length, bytes: withBom, path: "/n/bom.md" }, {}, ports);
+
+    expect(store.getState().tabs[0]).toMatchObject({ text: "# Hi", textBom: true });
+  });
+
+  test("remembers what the file on disk held, so a save can tell it changed since", async () => {
+    const disk = new TextEncoder().encode("# On disk");
+    const copy = new TextEncoder().encode("# Recovered edits");
+    const restoring = { id: "t", kind: "markdown", title: "d.md", status: "loading", textDirty: true, source: { type: "path", path: "/n/d.md" } } as WorkspaceRuntimeTab;
+    const store = workspace([restoring], "t");
+    const { ports } = fakePorts(store);
+    ports.recents.list = () => [
+      { kind: "markdown", name: "r.md", path: "/n/r.md", cacheId: "wc" },
+      { kind: "markdown", name: "s.md", path: "/n/s.md", cacheId: "same" },
+    ] as never;
+    ports.sources.get = async (id: string) =>
+      (id === "same"
+        ? { id, kind: "markdown", name: "s.md", size: disk.length, bytes: disk }
+        : { id, kind: "markdown", name: "r.md", size: copy.length, bytes: copy }) as never;
+
+    // A fresh open, two that recover a working copy, and a restore of edits.
+    await openDocument({ kind: "markdown", name: "a.md", size: disk.length, bytes: disk, path: "/n/a.md" }, {}, ports);
+    await openDocument({ kind: "markdown", name: "r.md", size: disk.length, bytes: disk, path: "/n/r.md" }, {}, ports);
+    await openDocument({ kind: "markdown", name: "s.md", size: disk.length, bytes: disk, path: "/n/s.md" }, {}, ports);
+    await openDocument(
+      { kind: "markdown", name: "d.md", size: copy.length, bytes: copy, path: "/n/d.md" },
+      { tabId: "t", workingCopyCacheId: "wc", skipDuplicateCheck: true },
+      ports,
+    );
+
+    const byTitle = (title: string) => store.getState().tabs.find((tab) => tab.title === title);
+    expect(byTitle("a.md")?.sourceHash).toBe(await sha256Hex(disk));
+    // Recovered edits may have started from an older file than the one on
+    // disk now, so its hash vouches for nothing, unless the copy matches it.
+    expect(byTitle("r.md")?.text).toBe("# Recovered edits");
+    expect(byTitle("r.md")?.sourceHash).toBeUndefined();
+    expect(byTitle("s.md")?.sourceHash).toBe(await sha256Hex(disk));
+    // The bytes are the edits, not the file: what the file holds is unknown.
+    expect(byTitle("d.md")?.sourceHash).toBeUndefined();
   });
 
   test("a rejected document restore marks its tab unavailable", async () => {

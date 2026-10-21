@@ -43,6 +43,23 @@ export function showTextSourceNotice(notice: TextSourceNotice, t: Translate): vo
     case "savePermissionDenied":
       toast.error(t("documents.savePermissionDenied"), notice.title);
       break;
+    case "saveSourceChanged":
+      toast.errorAction(
+        t("documents.saveSourceChanged"),
+        { label: t("documents.saveOverwrite"), onClick: () => void notice.overwrite() },
+        notice.title,
+      );
+      break;
+    case "saveSourceUnverified":
+      toast.errorAction(
+        t("documents.saveSourceUnverified"),
+        { label: t("documents.saveOverwrite"), onClick: () => void notice.overwrite() },
+        notice.title,
+      );
+      break;
+    case "saveEncodingUnsupported":
+      toast.error(t("documents.saveEncodingUnsupported"), notice.title);
+      break;
     case "saveFailed":
       toast.error(
         t("documents.saveFailed", { message: String(notice.error) }),
