@@ -220,13 +220,12 @@ pub(super) fn emit_web_panel_nav<R: Runtime>(
     loading: bool,
     error: Option<String>,
 ) {
-    let (url, can_go_back, can_go_forward) = {
+    let (url, (can_go_back, can_go_forward)) = {
         let state = app.state::<WebPanelState>();
         let inner = lock_web_panel(&state);
         (
             inner.history.get(inner.cursor).cloned(),
-            inner.cursor > 0,
-            inner.cursor + 1 < inner.history.len(),
+            super::engine::can_go_back_forward(&inner),
         )
     };
     let _ = emit_to_main(

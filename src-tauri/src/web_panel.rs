@@ -17,6 +17,8 @@ pub(crate) use navigation::parse_web_url;
 #[cfg(not(mobile))]
 mod create;
 #[cfg(not(mobile))]
+mod engine;
+#[cfg(not(mobile))]
 use create::create_web_panel;
 #[cfg(not(mobile))]
 use navigation::emit_web_panel_nav;
@@ -54,6 +56,10 @@ struct WebPanelInner {
     history: Vec<String>,
     cursor: usize,
     pending_steps: i32,
+    // The engine's own (can go back, can go forward), once it has reported
+    // them (web_panel/engine.rs). Preferred over the cursor's.
+    #[cfg(not(mobile))]
+    engine_back_forward: Option<(bool, bool)>,
     persist_session: Option<bool>,
     // Whether the child webview is currently shown. Lets set_bounds skip a
     // redundant show() every frame: on Windows WebView2, Show() forces a
@@ -158,6 +164,7 @@ pub(crate) fn web_panel_open<R: Runtime>(
     if let Some(webview) = app.get_webview(WEB_PANEL_LABEL) {
         if recreate_for_session_mode {
             webview.close().map_err(|err| err.to_string())?;
+            lock_web_panel(&app.state::<WebPanelState>()).engine_back_forward = None;
             // create_web_panel owns the post-create visibility (it replays any
             // hide/bounds that raced creation and sets `visible`).
             create_web_panel(&app, parsed, bounds, persist_session)?;
@@ -480,6 +487,7 @@ pub(crate) fn web_panel_close<R: Runtime>(
     inner.history.clear();
     inner.cursor = 0;
     inner.pending_steps = 0;
+    inner.engine_back_forward = None;
     inner.persist_session = None;
     inner.visible = false;
     Ok(())

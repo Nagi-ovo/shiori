@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 pub mod document_title_changed_observer;
+pub mod shiori_history_observer;
 pub mod url_scheme_handler;
 pub mod wry_download_delegate;
 pub mod wry_navigation_delegate;

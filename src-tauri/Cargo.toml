@@ -81,6 +81,11 @@ libc = "0.2"
 # font bytes to the webview. Kept desktop-only so mobile bundles do not compile
 # filesystem/fontconfig discovery code.
 fontdb = "=0.23.0"
+# The Browser panel's hooks into its engine live in the vendored wry
+# (patches/wry-0.55.1/src/shiori.rs): tauri-runtime-wry cannot pass a new
+# builder option through. Same crate Tauri builds (the [patch] below), with
+# no features of its own.
+wry = { version = "=0.55.1", default-features = false }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 # Native Objective-C bridges: AppKit's mixed file/folder open panel on macOS

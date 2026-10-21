@@ -21,6 +21,7 @@ pub use class::wry_web_view::WryWebView;
 use class::wry_web_view_parent::WryWebViewParent;
 use class::{
   document_title_changed_observer::*,
+  shiori_history_observer::ShioriHistoryObserver,
   url_scheme_handler,
   wry_download_delegate::WryDownloadDelegate,
   wry_navigation_delegate::WryNavigationDelegate,
@@ -144,6 +145,9 @@ pub(crate) struct InnerWebView {
   #[allow(dead_code)]
   // We need this the keep the reference count
   document_title_changed_observer: Option<Retained<DocumentTitleChangedObserver>>,
+  #[allow(dead_code)]
+  // We need this the keep the reference count (Shiori, src/shiori.rs)
+  shiori_history_observer: Option<Retained<ShioriHistoryObserver>>,
   #[allow(dead_code)]
   // We need this the keep the reference count
   navigation_policy_delegate: Retained<WryNavigationDelegate>,
@@ -566,6 +570,10 @@ impl InnerWebView {
           None
         };
 
+      // Shiori: the engine's back/forward availability (src/shiori.rs)
+      let shiori_history_observer = crate::shiori::history_handler(&webview_id)
+        .map(|handler| ShioriHistoryObserver::new(webview.clone(), handler));
+
       let pending_scripts = Arc::new(Mutex::new(Some(Vec::new())));
       let has_download_handler = attributes.download_started_handler.is_some();
       // Download handler
@@ -625,6 +633,7 @@ impl InnerWebView {
         pending_scripts,
         ipc_handler_delegate,
         document_title_changed_observer,
+        shiori_history_observer,
         navigation_policy_delegate,
         download_delegate,
         ui_delegate,

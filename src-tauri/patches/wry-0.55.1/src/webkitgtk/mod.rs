@@ -483,6 +483,27 @@ impl InnerWebView {
       });
     }
 
+    // Shiori: the engine's back/forward availability (src/shiori.rs). The
+    // list's `changed` fires when an item is added or removed and when the
+    // current item moves.
+    if let Some(handler) = attributes.id.and_then(crate::shiori::history_handler) {
+      if let Some(list) = webview.back_forward_list() {
+        list.connect_local("changed", false, move |args| {
+          use webkit2gtk::{BackForwardList, BackForwardListExt};
+          if let Some(list) = args
+            .first()
+            .and_then(|list| list.get::<BackForwardList>().ok())
+          {
+            handler(crate::shiori::HistoryEvent {
+              can_go_back: list.back_item().is_some(),
+              can_go_forward: list.forward_item().is_some(),
+            });
+          }
+          None
+        });
+      }
+    }
+
     // window creation handler
     if let Some(new_window_req_handler) = attributes.new_window_req_handler.take() {
       let related_webviews = Rc::new(Mutex::new(HashMap::new()));

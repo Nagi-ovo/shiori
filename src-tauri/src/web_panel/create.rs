@@ -25,6 +25,7 @@ pub(super) fn create_web_panel<R: Runtime>(
     let window = app
         .get_window("main")
         .ok_or_else(|| "web-panel-no-window".to_string())?;
+    super::engine::hook_engine_history(app);
     let nav_app = app.clone();
     let policy_app = app.clone();
     let builder = WebviewBuilder::new(WEB_PANEL_LABEL, WebviewUrl::External(url))
