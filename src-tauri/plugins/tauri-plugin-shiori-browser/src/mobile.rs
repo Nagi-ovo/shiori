@@ -67,6 +67,11 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
 struct PollState {
     started: AtomicBool,
     visible: AtomicBool,
+    // A native view exists: `open` succeeded and no `close` followed. Bounds
+    // alone never start polling, since polling no view reads an empty
+    // snapshot whose nulls would wipe a refused open's error (Android's
+    // `web-panel-temporary-unsupported`) and the requested address.
+    opened: AtomicBool,
     last: Mutex<Option<WebPanelNav>>,
 }
 
@@ -80,6 +85,7 @@ impl<R: Runtime> ShioriBrowser<R> {
     pub fn open(&self, payload: OpenPayload) -> crate::Result<()> {
         let url = payload.url.clone();
         self.call("open", payload)?;
+        self.poll.opened.store(true, Ordering::SeqCst);
         self.poll.visible.store(true, Ordering::SeqCst);
         self.ensure_poll();
         // Fresh "open" intent — seed the address bar immediately (history
@@ -99,8 +105,10 @@ impl<R: Runtime> ShioriBrowser<R> {
     }
 
     pub fn set_bounds(&self, bounds: WebPanelBounds) -> crate::Result<()> {
-        self.poll.visible.store(true, Ordering::SeqCst);
-        self.ensure_poll();
+        if self.poll.opened.load(Ordering::SeqCst) {
+            self.poll.visible.store(true, Ordering::SeqCst);
+            self.ensure_poll();
+        }
         self.call("setBounds", BoundsPayload { bounds })
     }
 
@@ -138,6 +146,7 @@ impl<R: Runtime> ShioriBrowser<R> {
     }
 
     pub fn close(&self) -> crate::Result<()> {
+        self.poll.opened.store(false, Ordering::SeqCst);
         self.poll.visible.store(false, Ordering::SeqCst);
         self.call("close", ())?;
         // Drop the snapshot so a later reopen re-emits a fresh nav state.
