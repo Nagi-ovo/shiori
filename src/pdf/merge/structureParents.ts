@@ -1,17 +1,68 @@
-import { PDFDict, PDFDocument, PDFName } from "pdf-lib";
-import { lookupArray, lookupDict } from "./pdfObjects";
+import { PDFDict, PDFDocument, PDFName, PDFObject, PDFStream } from "pdf-lib";
+import { isName, lookupArray, lookupDict, resolveObject } from "./pdfObjects";
+
+const STRUCT_PARENT = PDFName.of("StructParent");
+const STRUCT_PARENTS = PDFName.of("StructParents");
+const APPEARANCE_STATES = ["N", "R", "D"].map((key) => PDFName.of(key));
 
 /**
  * Page insertion copies pages, not the incoming structure tree, so an
  * inserted page's /StructParents (and its annotations' /StructParent) would
  * index into the base document's ParentTree and hand its marked content to
  * unrelated base structure elements. Untagged is honest; aliased is not.
+ * Form XObjects carry the same keys, so the walk follows the page's
+ * resources, nested form resources and annotation appearance streams.
  */
 export function dropStructureParents(document: PDFDocument, page: PDFDict) {
-  page.delete(PDFName.of("StructParents"));
+  const visited = new Set<PDFObject>();
+  page.delete(STRUCT_PARENTS);
+  dropFromResources(document, page.get(PDFName.of("Resources")), visited);
   const annots = lookupArray(document, page.get(PDFName.of("Annots")));
   if (!annots) return;
   for (let index = 0; index < annots.size(); index += 1) {
-    lookupDict(document, annots.get(index))?.delete(PDFName.of("StructParent"));
+    const annot = lookupDict(document, annots.get(index));
+    if (!annot) continue;
+    annot.delete(STRUCT_PARENT);
+    const appearances = lookupDict(document, annot.get(PDFName.of("AP")));
+    for (const state of APPEARANCE_STATES) {
+      const entry = resolveObject(document, appearances?.get(state));
+      if (entry instanceof PDFStream) {
+        dropFromForm(document, entry, visited);
+      } else if (entry instanceof PDFDict) {
+        for (const [, value] of entry.entries()) {
+          const stream = resolveObject(document, value);
+          if (stream instanceof PDFStream) dropFromForm(document, stream, visited);
+        }
+      }
+    }
   }
+}
+
+function dropFromResources(
+  document: PDFDocument,
+  raw: PDFObject | undefined,
+  visited: Set<PDFObject>,
+) {
+  const resources = lookupDict(document, raw);
+  if (!resources || visited.has(resources)) return;
+  visited.add(resources);
+  const xobjects = lookupDict(document, resources.get(PDFName.of("XObject")));
+  if (!xobjects) return;
+  for (const [, value] of xobjects.entries()) {
+    const stream = resolveObject(document, value);
+    if (stream instanceof PDFStream) dropFromForm(document, stream, visited);
+  }
+}
+
+function dropFromForm(
+  document: PDFDocument,
+  stream: PDFStream,
+  visited: Set<PDFObject>,
+) {
+  if (visited.has(stream)) return;
+  visited.add(stream);
+  if (!isName(document, stream.dict.get(PDFName.of("Subtype")), "Form")) return;
+  stream.dict.delete(STRUCT_PARENT);
+  stream.dict.delete(STRUCT_PARENTS);
+  dropFromResources(document, stream.dict.get(PDFName.of("Resources")), visited);
 }
