@@ -4,9 +4,9 @@
 
 use std::os::raw::c_int;
 
-use pdfium_render::prelude::FPDF_FONT;
+use pdfium_render::prelude::{FPDF_FONT, FPDF_PAGEOBJECT, FPDF_PAGEOBJ_FORM, FPDF_PAGEOBJ_TEXT};
 
-use crate::Lib;
+use crate::{CoreError, Document, Lib, TextPage, MAX_FORM_DEPTH, PDF_FONT_FLAGS};
 
 /// A font program a page's text uses that the file embeds, as the file
 /// stores it: TrueType, OpenType (TrueType or CFF outlines), bare CFF or
@@ -240,4 +240,152 @@ pub(crate) unsafe fn glyph_outline(
         advance,
         path,
     })
+}
+
+impl Document {
+    /// The embedded fonts a page's text uses, each once, in the order the page
+    /// first uses them.
+    pub fn embedded_fonts(&self, index: u32) -> Result<Vec<EmbeddedFont>, CoreError> {
+        let page = self.page(index)?;
+        let lib = self.lib;
+        let mut seen = std::collections::HashSet::new();
+        let mut fonts = Vec::new();
+        let mut stack: Vec<(FPDF_PAGEOBJECT, usize)> = Vec::new();
+        unsafe {
+            for i in (0..lib.FPDFPage_CountObjects(page.handle)).rev() {
+                stack.push((lib.FPDFPage_GetObject(page.handle, i), 0));
+            }
+            while let Some((object, depth)) = stack.pop() {
+                if object.is_null() {
+                    continue;
+                }
+                match lib.FPDFPageObj_GetType(object) as u32 {
+                    FPDF_PAGEOBJ_FORM if depth < MAX_FORM_DEPTH => {
+                        for i in (0..lib.FPDFFormObj_CountObjects(object)).rev() {
+                            stack.push((lib.FPDFFormObj_GetObject(object, i as _), depth + 1));
+                        }
+                    }
+                    FPDF_PAGEOBJ_TEXT => {
+                        let font = lib.FPDFTextObj_GetFont(object);
+                        if font.is_null()
+                            || !seen.insert(font as usize)
+                            || lib.FPDFFont_GetIsEmbedded(font) != 1
+                        {
+                            continue;
+                        }
+                        let mut size = 0;
+                        lib.FPDFFont_GetFontData(font, std::ptr::null_mut(), 0, &mut size);
+                        if size == 0 {
+                            continue;
+                        }
+                        let mut data = vec![0u8; size];
+                        if lib.FPDFFont_GetFontData(font, data.as_mut_ptr(), size, &mut size) == 0 {
+                            continue;
+                        }
+                        data.truncate(size);
+                        let len = lib.FPDFFont_GetBaseFontName(font, std::ptr::null_mut(), 0);
+                        let mut name = vec![0u8; len];
+                        if len > 0 {
+                            lib.FPDFFont_GetBaseFontName(font, name.as_mut_ptr().cast(), len);
+                        }
+                        fonts.push(EmbeddedFont {
+                            name: String::from_utf8_lossy(&name)
+                                .trim_end_matches('\0')
+                                .to_string(),
+                            flags: lib.FPDFFont_GetFlags(font) & PDF_FONT_FLAGS,
+                            format: FontFormat::of(&data),
+                            data,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(fonts)
+    }
+
+    /// The named embedded fonts rebuilt from their glyphs, for the characters
+    /// this page sets in each (see `FontOutlines`). A font FreeType could not
+    /// load is drawn with a substitute and is left out, as in `embedded_fonts`.
+    pub fn font_outlines(
+        &self,
+        index: u32,
+        names: &[String],
+    ) -> Result<Vec<FontOutlines>, CoreError> {
+        let page = self.page(index)?;
+        let lib = self.lib;
+        let text = TextPage {
+            lib,
+            handle: unsafe { lib.FPDFText_LoadPage(page.handle) },
+        };
+        if text.handle.is_null() {
+            return Err(CoreError::Pdfium(format!("no text layer for page {index}")));
+        }
+        // Each wanted font's characters, in the order the page first sets them.
+        let mut order: Vec<(FPDF_FONT, String)> = Vec::new();
+        let mut chars: std::collections::HashMap<usize, Vec<u32>> =
+            std::collections::HashMap::new();
+        let mut names_of: std::collections::HashMap<usize, Option<String>> =
+            std::collections::HashMap::new();
+        let mut seen = std::collections::HashSet::new();
+        unsafe {
+            let count = lib.FPDFText_CountChars(text.handle).max(0);
+            for i in 0..count {
+                if lib.FPDFText_IsGenerated(text.handle, i) == 1 {
+                    continue;
+                }
+                let unicode = lib.FPDFText_GetUnicode(text.handle, i);
+                // Controls, and the halves of a pair UTF-16 splits: a face
+                // maps whole characters.
+                if unicode < 0x20 || (0xd800..0xe000).contains(&unicode) {
+                    continue;
+                }
+                let object = lib.FPDFText_GetTextObject(text.handle, i);
+                if object.is_null() {
+                    continue;
+                }
+                let font = lib.FPDFTextObj_GetFont(object);
+                if font.is_null() {
+                    continue;
+                }
+                let key = font as usize;
+                let name = names_of.entry(key).or_insert_with(|| {
+                    if lib.FPDFFont_GetIsEmbedded(font) != 1 {
+                        return None;
+                    }
+                    let name = base_font_name(lib, font);
+                    names.contains(&name).then_some(name)
+                });
+                let Some(name) = name.clone() else {
+                    continue;
+                };
+                let list = chars.entry(key).or_insert_with(|| {
+                    order.push((font, name));
+                    Vec::new()
+                });
+                if list.len() < MAX_OUTLINE_GLYPHS && seen.insert((key, unicode)) {
+                    list.push(unicode);
+                }
+            }
+            Ok(order
+                .into_iter()
+                .map(|(font, name)| {
+                    let (mut ascent, mut descent) = (0f32, 0f32);
+                    lib.FPDFFont_GetAscent(font, 1000.0, &mut ascent);
+                    lib.FPDFFont_GetDescent(font, 1000.0, &mut descent);
+                    let glyphs = chars[&(font as usize)]
+                        .iter()
+                        .filter_map(|&unicode| glyph_outline(lib, font, unicode))
+                        .collect();
+                    FontOutlines {
+                        name,
+                        flags: lib.FPDFFont_GetFlags(font) & PDF_FONT_FLAGS,
+                        ascent,
+                        descent,
+                        glyphs,
+                    }
+                })
+                .collect())
+        }
+    }
 }
