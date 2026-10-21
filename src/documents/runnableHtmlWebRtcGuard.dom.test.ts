@@ -94,4 +94,24 @@ describe("run frame WebRTC guard in a real DOM", () => {
     (svg as unknown as { setHTMLUnsafe: (html: string) => void }).setHTMLUnsafe(markup);
     expect(received).toEqual([markup]);
   });
+
+  test("a deep insertion is scanned in time linear in its size", async () => {
+    const win = new Window({ url: "http://localhost/" });
+    const doc = win.document as unknown as Document;
+    const proto = win.Element.prototype as unknown as { querySelectorAll: (s: string) => unknown };
+    const native = proto.querySelectorAll;
+    let scanned = 0;
+    proto.querySelectorAll = function (this: Element, selector: string) {
+      scanned += this.getElementsByTagName("*").length;
+      return native.call(this, selector);
+    };
+    Object.defineProperty(doc, "currentScript", { value: { src: "data:text/javascript,guard" } });
+    new Function("window", "document", WEBRTC_GUARD)(win, doc);
+    let parent: Element = doc.body;
+    for (let i = 0; i < 1200; i++) parent = parent.appendChild(doc.createElement("div"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // One pass over the 1,200 new elements, not one per level (about 720,000).
+    expect(scanned).toBeLessThan(10_000);
+    await win.happyDOM.close();
+  });
 });

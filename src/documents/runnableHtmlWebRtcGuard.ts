@@ -59,6 +59,8 @@ export const WEBRTC_GUARD = `(function () {
   var setAttr = elementProto && elementProto.setAttribute;
   var queryElement = elementProto && elementProto.querySelectorAll;
   var queryFragment = fragmentProto && fragmentProto.querySelectorAll;
+  var queryDocument = runWindow.Document && runWindow.Document.prototype.querySelectorAll;
+  var rootOf = nodeProto && nodeProto.getRootNode;
   var createElement = runWindow.Document && runWindow.Document.prototype.createElement;
   var localNameOf = getterOf(elementProto, "localName");
   var nodeTypeOf = getterOf(nodeProto, "nodeType");
@@ -113,7 +115,7 @@ export const WEBRTC_GUARD = `(function () {
   function prefixWithin(node) {
     var type = 0;
     try { type = nodeTypeOf ? apply(nodeTypeOf, node, []) : 0; } catch (e) { return; }
-    var query = type === 1 ? queryElement : type === 11 ? queryFragment : null;
+    var query = type === 1 ? queryElement : type === 11 ? queryFragment : type === 9 ? queryDocument : null;
     if (!query) return;
     if (type === 1) prefixFrame(node);
     var list;
@@ -143,13 +145,30 @@ export const WEBRTC_GUARD = `(function () {
     prefixDeep(apply(templateContentOf, template, []));
     args[0] = apply(innerHtml.get, template, []);
   }
+  // Past this many added nodes in one batch, one query per observed root is
+  // cheaper than one per node: a deep insertion queues a record per level,
+  // and each per-node query would rescan everything below it.
+  var BATCH_SCAN_LIMIT = 32;
   function onRecords(records) {
     try {
+      var nodes = [];
       for (var r = 0; r < records.length; r++) {
         var record = records[r];
         if (record.type === "attributes") { prefixFrame(record.target); continue; }
         var added = record.addedNodes;
-        for (var a = 0; a < added.length; a++) prefixWithin(added[a]);
+        for (var a = 0; a < added.length; a++) nodes[nodes.length] = added[a];
+      }
+      if (nodes.length <= BATCH_SCAN_LIMIT || !rootOf) {
+        for (var n = 0; n < nodes.length; n++) prefixWithin(nodes[n]);
+      } else {
+        var roots = [];
+        for (var m = 0; m < nodes.length; m++) {
+          var root = null;
+          try { root = apply(rootOf, nodes[m], []); } catch (e) {}
+          var seen = false;
+          for (var k = 0; k < roots.length; k++) if (roots[k] === root) { seen = true; break; }
+          if (root && !seen) { roots[roots.length] = root; prefixWithin(root); }
+        }
       }
     } catch (e) {}
     sweep();
