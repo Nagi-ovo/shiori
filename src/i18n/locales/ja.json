@@ -246,7 +246,8 @@
     "runDepsKindFrame": "フレーム",
     "runDepsKindFont": "フォント",
     "runDepsKindConnect": "通信",
-    "runDepsKindOther": "その他"
+    "runDepsKindOther": "その他",
+    "runDepsAppImagesOnly": "アプリの実行モードで読み込めるのはリモートの https 画像だけです。スクリプト、スタイルシート、メディアはブロックされたままです。"
   },
   "meta": {
     "ppAbbr": "ページ",

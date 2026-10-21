@@ -246,7 +246,8 @@
     "runDepsKindFrame": "内嵌页面",
     "runDepsKindFont": "字体",
     "runDepsKindConnect": "网络请求",
-    "runDepsKindOther": "其他"
+    "runDepsKindOther": "其他",
+    "runDepsAppImagesOnly": "在应用中，运行模式只能加载远程 https 图片，脚本、样式表和媒体仍会被拦截。"
   },
   "meta": {
     "ppAbbr": "页",

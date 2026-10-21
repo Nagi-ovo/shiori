@@ -43,6 +43,36 @@ describe("document image resources", () => {
     expect(result.html.match(/data-shiori-blocked-remote-src/g)?.length).toBe(2);
   });
 
+  // Each of these resolves to a remote host from tauri://localhost or
+  // http://tauri.localhost (and the backslash forms from a web origin too).
+  test("counts and blocks remote URLs the browser repairs, and background images", async () => {
+    const result = await resolveDocumentImageResources(
+      [
+        '<img src="https:evil.example/pixel.png">',
+        '<img src="https:\\\\evil.example/slash.png">',
+        '<img src="\\\\evil.example/unc.png">',
+        '<img src="/\\evil.example/mixed.png">',
+        '<table background="https://evil.example/table.png"><tr><td background="//evil.example/cell.png">x</td></tr></table>',
+      ].join(""),
+      { allowRemoteImages: false },
+    );
+
+    expect(result.summary.remoteImages).toBe(6);
+    expect(result.summary.blockedRemoteImages).toBe(6);
+    expect(result.html).not.toContain("evil.example");
+  });
+
+  test("keeps a scheme-only https image when remote images are allowed", async () => {
+    const result = await resolveDocumentImageResources(
+      '<img src="https:example.com/image.png">',
+      { allowRemoteImages: true },
+    );
+
+    expect(result.summary.remoteImages).toBe(1);
+    expect(result.summary.blockedRemoteImages).toBe(0);
+    expect(result.html).toContain('src="https:example.com/image.png"');
+  });
+
   test("rewrites local relative images to data URLs", async () => {
     const result = await resolveDocumentImageResources(
       '<img src="./figures/chart.png">',
@@ -64,6 +94,27 @@ describe("document image resources", () => {
     expect(result.summary.localImages).toBe(1);
     expect(result.summary.failedLocalImages).toBe(0);
     expect(result.html).toContain('src="data:image/png;base64,abc"');
+  });
+
+  // The desktop reader percent-decodes the src itself (text_images.rs), so a
+  // second decode here turned 100%25.png into an invalid "100%.png" and
+  // a%2520b.png into "a b.png".
+  test("hands the local image src to the reader still percent-encoded", async () => {
+    const seen: string[] = [];
+    const result = await resolveDocumentImageResources(
+      '<img src="100%25.png?v=1"><img src="a%2520b.png#x"><img src="my%20chart.png">',
+      {
+        allowRemoteImages: false,
+        documentPath: "/tmp/notes/doc.md",
+        readLocalImage: async (_documentPath, imageSrc) => {
+          seen.push(imageSrc);
+          return { dataUrl: "data:image/png;base64,abc", mime: "image/png", size: 3 };
+        },
+      },
+    );
+
+    expect(seen).toEqual(["100%25.png", "a%2520b.png", "my%20chart.png"]);
+    expect(result.summary.localImages).toBe(3);
   });
 
   test("leaves data images alone", async () => {
@@ -110,6 +161,25 @@ describe("document image resources", () => {
     expect(result.html).toContain("data:image/png;base64,abc");
     expect(result.summary.remoteImages).toBe(6);
     expect(result.summary.blockedRemoteImages).toBe(6);
+  });
+
+  // A filter primitive fetches its href like an <img>, and DOMPurify keeps it.
+  test("treats an SVG feImage href as a remote image", async () => {
+    const svg = [
+      '<svg xmlns:xlink="http://www.w3.org/1999/xlink"><filter id="f">',
+      '<feImage href="https://tracker.example/a.png"></feImage>',
+      '<feImage xlink:href="https://tracker.example/b.png"></feImage>',
+      '</filter><rect width="10" height="10" filter="url(#f)"></rect></svg>',
+    ].join("");
+
+    const blocked = await resolveDocumentImageResources(svg, { allowRemoteImages: false });
+    expect(blocked.html).not.toContain("tracker.example");
+    expect(blocked.summary.remoteImages).toBe(2);
+    expect(blocked.summary.blockedRemoteImages).toBe(2);
+
+    const allowed = await resolveDocumentImageResources(svg, { allowRemoteImages: true });
+    expect(allowed.html).toContain("https://tracker.example/a.png");
+    expect(allowed.summary.blockedRemoteImages).toBe(0);
   });
 
   test("injects static document CSP with image policy", async () => {

@@ -13,6 +13,7 @@ export type LocalImageData = {
   size: number;
 };
 
+// imageSrc is the URL path as written, percent-encoded, without ?query/#hash.
 export type ReadLocalImage = (
   documentPath: string,
   imageSrc: string,
@@ -39,8 +40,11 @@ const REMOTE_RESOURCE_ATTRS = [
   { selector: "video[src], video[poster]", attrs: ["src", "poster"], policy: "always-block" },
   { selector: "audio[src]", attrs: ["src"], policy: "always-block" },
   { selector: "track[src]", attrs: ["src"], policy: "always-block" },
+  // Legacy table/body background images, which DOMPurify keeps.
+  { selector: "[background]", attrs: ["background"], policy: "image" },
+  // SVG <feImage> fetches its href like <image> does.
   {
-    selector: "image[href], image[xlink\\:href]",
+    selector: "image[href], image[xlink\\:href], feImage[href], feImage[xlink\\:href]",
     attrs: ["href", "xlink:href"],
     policy: "image",
   },
@@ -82,7 +86,7 @@ export async function resolveDocumentImageResources(
 
     if (!isLocalRelativeImageSrc(rawSrc)) continue;
 
-    const imageSrc = decodeLocalImageSrc(rawSrc);
+    const imageSrc = localImageSrcPath(rawSrc);
     if (!imageSrc || !options.documentPath || !options.readLocalImage) {
       blockImage(img, "local");
       summary.failedLocalImages += 1;
@@ -170,12 +174,25 @@ function injectStaticDocumentCsp(doc: Document, allowRemoteImages: boolean) {
   doc.head.prepend(csp);
 }
 
+// Classified the way the browser will load it, not by prefix: the URL parser
+// repairs "https:host/x" and "https:\host/x" to https://host/x, and reads
+// "\\host/x" or "/\host/x" as another host. Relative references resolve
+// against a fixed special-scheme base so every platform gets one answer
+// (macOS documents resolve against tauri://, where "\" is not a slash).
+const RELATIVE_URL_ORIGIN = "https://shiori-document.invalid";
+
 function getRemoteUrlKind(src: string): RemoteUrlKind | null {
   const trimmed = src.trim();
-  if (/^https:\/\//i.test(trimmed)) return "https";
-  if (/^http:\/\//i.test(trimmed)) return "http";
-  if (/^\/\//.test(trimmed)) return "protocol-relative";
-  return null;
+  try {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+      const { protocol } = new URL(trimmed);
+      return protocol === "https:" ? "https" : protocol === "http:" ? "http" : null;
+    }
+    const { origin } = new URL(trimmed, `${RELATIVE_URL_ORIGIN}/`);
+    return origin === RELATIVE_URL_ORIGIN ? null : "protocol-relative";
+  } catch {
+    return null;
+  }
 }
 
 function shouldBlockImageUrl(
@@ -193,15 +210,12 @@ function isLocalRelativeImageSrc(src: string): boolean {
   return true;
 }
 
-function decodeLocalImageSrc(src: string): string | null {
+// Still percent-encoded: the reader decodes it once (text_images.rs), and a
+// second decode here would misread a file whose name contains "%".
+function localImageSrcPath(src: string): string | null {
   const withoutHash = src.split("#", 1)[0] ?? "";
   const withoutQuery = withoutHash.split("?", 1)[0]?.trim() ?? "";
-  if (!withoutQuery) return null;
-  try {
-    return decodeURIComponent(withoutQuery);
-  } catch {
-    return withoutQuery;
-  }
+  return withoutQuery || null;
 }
 
 function scrubRemoteResourceAttributes(

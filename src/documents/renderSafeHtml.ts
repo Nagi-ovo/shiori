@@ -155,10 +155,13 @@ export function extractMarkdownFrontMatter(text: string): {
         ? trimmed === "---" || trimmed === "..."
         : trimmed === "+++";
     if (closed) {
-      return {
-        body: lines.slice(index + 1).join("\n"),
-        metadata: parseFrontMatter(rawLines.join("\n"), delimiter),
-      };
+      const metadata = parseFrontMatter(rawLines.join("\n"), delimiter);
+      // Content with no metadata in it is a section between horizontal
+      // rules, not front matter; the live editor shows it as source too.
+      if (metadata.length === 0 && rawLines.some((raw) => raw.trim())) {
+        return { body: text, metadata: [] };
+      }
+      return { body: lines.slice(index + 1).join("\n"), metadata };
     }
     rawLines.push(line);
   }
@@ -172,7 +175,19 @@ function parseFrontMatter(
 ): MarkdownMetadataEntry[] {
   const jsonEntries = parseJsonMetadata(raw);
   if (jsonEntries) return jsonEntries;
-  return delimiter === "+++" ? parseTomlMetadata(raw) : parseYamlMetadata(raw);
+  if (delimiter === "+++") return parseTomlMetadata(raw);
+  return isYamlMappingBlock(raw) ? parseYamlMetadata(raw) : [];
+}
+
+// "---" is also a horizontal rule, so a block is front matter only when
+// every top-level line is a key, a comment or an unindented list entry;
+// one prose line makes it a section of the document.
+function isYamlMappingBlock(raw: string): boolean {
+  return raw.split("\n").every((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || startsIndented(line)) return true;
+    return /^- /.test(trimmed) || trimmed === "-" || /^([^:#][^:]*?)\s*:/.test(line);
+  });
 }
 
 function parseYamlMetadata(raw: string): MarkdownMetadataEntry[] {

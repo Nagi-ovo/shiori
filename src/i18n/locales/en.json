@@ -248,7 +248,8 @@
     "runDepsKindFrame": "Frame",
     "runDepsKindFont": "Font",
     "runDepsKindConnect": "Network",
-    "runDepsKindOther": "Other"
+    "runDepsKindOther": "Other",
+    "runDepsAppImagesOnly": "In the app, run mode can only load remote https images; scripts, stylesheets and media stay blocked."
   },
   "meta": {
     "ppAbbr": "PP",

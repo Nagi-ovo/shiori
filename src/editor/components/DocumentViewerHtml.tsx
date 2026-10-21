@@ -19,6 +19,7 @@ import {
   type RemoteDependencyKind,
 } from "../../documents/runnableHtml";
 import { T } from "../../design/tokens";
+import { followDocumentLink } from "../../documents/documentLinks";
 import { openExternalUrl } from "../../platform";
 import { Ic } from "./icons";
 import { IconBtn } from "./ui";
@@ -30,12 +31,12 @@ import {
 import {
   eventClientPoint,
   gestureScale,
-  isElementTarget,
   scrollerCenter,
   useDebouncedScrollTopChange,
   useScrollableZoomGestures,
   wheelZoomFactor,
 } from "./documentViewerGestures";
+import { RunDependencyNotice } from "./RunDependencyNotice";
 
 const RUN_FRAME_MIN_HEIGHT = 320;
 
@@ -50,219 +51,6 @@ const EMPTY_APPROVAL_KEYS: ReadonlySet<string> = new Set();
 // default for executing remote code. Durable persistence would need a stable
 // document id that survives sessions.
 const sessionRunApprovals = new Map<string, ReadonlySet<string>>();
-
-const REMOTE_DEPENDENCY_KIND_KEYS: Record<RemoteDependencyKind, string> = {
-  script: "documents.runDepsKindScript",
-  stylesheet: "documents.runDepsKindStylesheet",
-  image: "documents.runDepsKindImage",
-  media: "documents.runDepsKindMedia",
-  frame: "documents.runDepsKindFrame",
-  font: "documents.runDepsKindFont",
-  connect: "documents.runDepsKindConnect",
-  other: "documents.runDepsKindOther",
-};
-
-// Slim disclosure bar above the run frame: run mode is offline by design, so
-// every remote dependency the document references is blocked — this explains
-// the otherwise silent "Can't find variable: THREE"-class failures. Approvable
-// kinds carry a checkbox; applying the selection rebuilds the frame with those
-// origins added to the matching CSP directives only.
-function RunDependencyNotice({
-  dependencies,
-  appliedKeys,
-  selectedKeys,
-  selectionDirty,
-  onToggle,
-  onApply,
-}: {
-  dependencies: RemoteDependency[];
-  appliedKeys: ReadonlySet<string>;
-  selectedKeys: ReadonlySet<string>;
-  selectionDirty: boolean;
-  onToggle: (dependencyKey: string) => void;
-  onApply: () => void;
-}) {
-  const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(false);
-  const blockedCount = dependencies.filter(
-    (dependency) => !appliedKeys.has(remoteDependencyKey(dependency)),
-  ).length;
-  const hasApprovable = dependencies.some((dependency) =>
-    isApprovableDependencyKind(dependency.kind),
-  );
-  return (
-    <div
-      style={{
-        flex: "0 0 auto",
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-        padding: "6px 12px",
-        background: T.cream,
-        borderBottom: `1px solid ${T.rule}`,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span
-          style={{
-            minWidth: 0,
-            flex: 1,
-            color: T.ink2,
-            font: `500 12px/1.35 ${T.sans}`,
-          }}
-        >
-          {blockedCount > 0
-            ? t("documents.runDepsBlocked", { count: blockedCount })
-            : t("documents.runDepsAllowed", {
-                count: dependencies.length - blockedCount,
-              })}
-        </span>
-        <button
-          type="button"
-          onClick={() => setExpanded((value) => !value)}
-          aria-expanded={expanded}
-          style={{
-            flex: "0 0 auto",
-            height: 26,
-            padding: "0 9px",
-            borderRadius: 6,
-            border: `1px solid ${T.rule}`,
-            background: T.surface,
-            color: T.ink2,
-            font: `500 12px/1 ${T.sans}`,
-            cursor: "pointer",
-          }}
-        >
-          {expanded ? t("documents.runDepsHide") : t("documents.runDepsShow")}
-        </button>
-      </div>
-      {expanded ? (
-        <>
-          <ul
-            style={{
-              listStyle: "none",
-              margin: 0,
-              padding: "2px 0 0",
-              maxHeight: 168,
-              overflow: "auto",
-              display: "flex",
-              flexDirection: "column",
-              gap: 4,
-            }}
-          >
-            {dependencies.map((dependency) => {
-              const dependencyKey = remoteDependencyKey(dependency);
-              const approvable = isApprovableDependencyKind(dependency.kind);
-              const details = (
-                <>
-                  <span
-                    style={{
-                      flex: "0 0 auto",
-                      color: T.dim,
-                      font: `600 10px/1.6 ${T.mono}`,
-                      letterSpacing: 0.4,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {t(REMOTE_DEPENDENCY_KIND_KEYS[dependency.kind])}
-                  </span>
-                  <span
-                    style={{
-                      flex: "0 0 auto",
-                      color: T.ink2,
-                      font: `600 12px/1.4 ${T.sans}`,
-                    }}
-                  >
-                    {dependency.origin}
-                  </span>
-                  <span
-                    style={{
-                      minWidth: 0,
-                      color: T.dim,
-                      font: `500 11px/1.4 ${T.mono}`,
-                      overflowWrap: "anywhere",
-                    }}
-                  >
-                    {dependency.url}
-                  </span>
-                </>
-              );
-              return (
-                <li key={dependencyKey} style={{ minWidth: 0 }}>
-                  {approvable ? (
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "baseline",
-                        gap: 8,
-                        minWidth: 0,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedKeys.has(dependencyKey)}
-                        onChange={() => onToggle(dependencyKey)}
-                        style={{
-                          flex: "0 0 auto",
-                          margin: 0,
-                          accentColor: T.accent,
-                          transform: "translateY(2px)",
-                        }}
-                      />
-                      {details}
-                    </label>
-                  ) : (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "baseline",
-                        gap: 8,
-                        minWidth: 0,
-                        // Keep text columns aligned with checkbox rows.
-                        paddingLeft: 21,
-                      }}
-                    >
-                      {details}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-          {hasApprovable ? (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                padding: "2px 0 4px",
-              }}
-            >
-              <button
-                type="button"
-                onClick={onApply}
-                disabled={!selectionDirty}
-                style={{
-                  flex: "0 0 auto",
-                  height: 26,
-                  padding: "0 12px",
-                  borderRadius: 6,
-                  border: `1px solid ${selectionDirty ? T.accent : T.rule}`,
-                  background: selectionDirty ? T.accent : T.surface,
-                  color: selectionDirty ? T.onAccent : T.dim,
-                  font: `600 12px/1 ${T.sans}`,
-                  cursor: selectionDirty ? "pointer" : "default",
-                }}
-              >
-                {t("documents.runDepsAllowSelected")}
-              </button>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-    </div>
-  );
-}
 
 function HtmlRefreshButton({ onClick }: { onClick: () => void }) {
   const { t } = useTranslation();
@@ -348,14 +136,10 @@ function HtmlDocumentFrame({
     timerIds.push(window.setTimeout(syncScroll, 0));
     timerIds.push(window.setTimeout(syncScroll, 50));
 
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target;
-      if (!isElementTarget(target)) return;
-      const anchor = target.closest<HTMLAnchorElement>("a[href]");
-      if (!anchor?.href) return;
-      event.preventDefault();
-      void openExternalUrl(anchor.href).catch(onLinkOpenFailed);
-    };
+    const handleClick = (event: MouseEvent) =>
+      followDocumentLink(event, doc, (url) => {
+        void openExternalUrl(url).catch(onLinkOpenFailed);
+      });
     doc.addEventListener("click", handleClick);
     win.addEventListener("scroll", handleFrameScroll, { passive: true });
 
@@ -1044,10 +828,10 @@ function RunHtmlFrame({
             className="shioriHtmlFrame"
             title={title}
             // Opaque-origin sandbox: scripts run, but the frame has NO access to
-            // the app's origin, DOM, storage, or Tauri IPC. Combined with the CSP
-            // injected by buildRunnableHtml (connect-src 'none', generated data:
-            // scripts), the content can animate but cannot phone home, fetch
-            // remote code, or read anything outside its own box. NEVER add
+            // the app's origin, DOM, storage, or Tauri IPC. The CSP injected by
+            // buildRunnableHtml blocks fetches and unapproved remote code, and
+            // the app's frame-src stops the frame navigating away (see
+            // runnableHtml.ts). NEVER add
             // allow-same-origin — that would let the frame escape the sandbox.
             sandbox="allow-scripts"
             referrerPolicy="no-referrer"

