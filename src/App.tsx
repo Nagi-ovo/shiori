@@ -211,16 +211,6 @@ function AppContent({
   const flushPendingTextSources = textSources.flush;
   useEffect(() => () => textSources.dispose(), [textSources]);
 
-  useEffect(() => {
-    pdfRuntime.connect({
-      activeEditor: getActiveEditorStore,
-      flushDraft: flushActiveDraftOrThrow,
-      onFlushFailed: (tab, error) => {
-        console.error("Failed to persist PDF before switching documents", error);
-        toast.error(t("drafts.saveFailedToast"), tab.title);
-      },
-    });
-  }, [flushActiveDraftOrThrow, getActiveEditorStore, pdfRuntime, t]);
   const persistActivePdfSession = pdfRuntime.persistLeaving;
 
   const [tabFlows] = useState(() =>
@@ -232,6 +222,14 @@ function AppContent({
       showEditor: activateEditorStore,
     }),
   );
+  useEffect(() => {
+    pdfRuntime.connect({
+      activeEditor: getActiveEditorStore,
+      flushDraft: flushActiveDraftOrThrow,
+      discardRefusedEdits: () => draftControllerRef.current?.discardRefusedEdits() ?? false,
+      closeDiscardedTab: (tabId) => void tabFlows.close(tabId, { changesDiscarded: true }),
+    });
+  }, [flushActiveDraftOrThrow, getActiveEditorStore, pdfRuntime, tabFlows]);
   // Before the intake connect below: an open can activate a tab.
   useEffect(() => {
     tabFlows.connect({
@@ -240,6 +238,7 @@ function AppContent({
       setPendingPassword,
       setTransitioning: setLiveContextTransitioning,
       flushActiveDraft: flushActiveDraftOrThrow,
+      discardRefusedEdits: () => draftControllerRef.current?.discardRefusedEdits() ?? false,
       activeNeedsExport: () =>
         exportControllerRef.current?.status.kind === "needsExport",
     });

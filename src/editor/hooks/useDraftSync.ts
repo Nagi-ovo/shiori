@@ -42,6 +42,9 @@ export type DraftSyncState = {
   // `status`/`error` without creating unhandled promise rejections. A save
   // refused for another window's newer draft passes once `isExported` holds.
   flushNowOrThrow: () => Promise<void>;
+  // The reader chose to drop the copy such a refusal left unsaved, so the
+  // strict flush lets the blocked leave go on. False when no copy was refused.
+  discardRefusedEdits: () => boolean;
 };
 
 export const SAVE_DEBOUNCE_MS = 800;
@@ -438,6 +441,17 @@ export function useDraftSync(
     }
   }, [drainLatestSave, disabled, isExported]);
 
+  // Nothing is written: the other window's row stays, and no crash log was
+  // kept since the refusal. The next edit is unsaved and protected again.
+  const discardRefusedEdits = useCallback(() => {
+    const { draftId: current } = latestRef.current;
+    if (!current || conflictedDraftIdRef.current !== current) return false;
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+    dirtyRef.current = false;
+    return true;
+  }, []);
+
   const flushNow = useCallback(
     () => flushPendingSave(false),
     [flushPendingSave],
@@ -460,8 +474,10 @@ export function useDraftSync(
       persisted,
       flushNow,
       flushNowOrThrow,
+      discardRefusedEdits,
     }),
     [
+      discardRefusedEdits,
       error,
       errorKind,
       flushNow,

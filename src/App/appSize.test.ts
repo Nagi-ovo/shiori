@@ -10,7 +10,7 @@ import { describe, expect, test } from "bun:test";
  * When an extraction shrinks the file, lower MAX_LINES to the new count in the
  * same change. Raising it needs a reason in the commit message.
  */
-const MAX_LINES = 452;
+const MAX_LINES = 450;
 
 describe("App.tsx size ratchet", () => {
   test(`stays at or under ${MAX_LINES} lines`, async () => {

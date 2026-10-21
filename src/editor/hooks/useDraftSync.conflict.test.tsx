@@ -184,6 +184,56 @@ describe("useDraftSync across windows", () => {
     }
   });
 
+  // Instead of exporting, the reader may drop the refused copy: the blocked
+  // leave goes on, the other window's draft stays, and no crash log can bring
+  // this copy back on the next open as if it had been saved.
+  test("a refused window can discard its copy and leave", async () => {
+    const { readOperationLog } = await import("../../storage/operationLog");
+    const w = await twoWindowsOnOneHandle();
+    try {
+      w.openInThisWindow(await w.saveInWindowA("a-1"));
+      await w.saveInWindowA("a-2");
+      w.edit("b-1");
+      await act(() => Bun.sleep(400));
+      expect(await w.flush()).not.toBeNull();
+
+      let discarded = false;
+      act(() => {
+        discarded = w.view.result.current.discardRefusedEdits();
+      });
+      expect(discarded).toBe(true);
+      expect(await w.flush()).toBeNull();
+      expect(await w.overlays()).toEqual(["a-2"]);
+      expect(readOperationLog(w.id)).toBeNull();
+      await act(() => Bun.sleep(900));
+      expect(await w.overlays()).toEqual(["a-2"]);
+      expect(readOperationLog(w.id)).toBeNull();
+
+      // A new edit is unsaved again: leaving would lose it.
+      expect(await w.editAndFlush("b-2")).not.toBeNull();
+      expect(await w.overlays()).toEqual(["a-2"]);
+    } finally {
+      await w.dispose();
+    }
+  });
+
+  test("discarding never drops edits a save can still keep", async () => {
+    const w = await twoWindowsOnOneHandle();
+    try {
+      w.openInThisWindow(await w.saveInWindowA("a-1"));
+      w.edit("b-1");
+      let discarded = true;
+      act(() => {
+        discarded = w.view.result.current.discardRefusedEdits();
+      });
+      expect(discarded).toBe(false);
+      expect(await w.flush()).toBeNull();
+      expect(await w.overlays()).toEqual(["b-1"]);
+    } finally {
+      await w.dispose();
+    }
+  });
+
   // The crash log lands at 250 ms, before the 800 ms save that would find
   // the conflict. A crash between the two must not let it outrank A's draft.
   test("a crash log written before the refusal does not outrank the other's draft", async () => {

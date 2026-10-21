@@ -141,10 +141,19 @@ function snapshot(store: WorkspaceStore, tabId: string): Snapshot {
   return { tabs, activeTabId, index, closing: tabs[index] };
 }
 
+export type CloseTabOptions = {
+  /**
+   * The reader discarded the active copy, refused for another window's newer
+   * draft (useDraftSync.discardRefusedEdits): none of it was kept.
+   */
+  changesDiscarded?: boolean;
+};
+
 /** Closes one tab. Callers serialize calls (App queues them). */
 export async function closeTab(
   tabId: string,
   ports: CloseTabPorts,
+  options: CloseTabOptions = {},
 ): Promise<void> {
   const { store } = ports;
   let current = snapshot(store, tabId);
@@ -182,8 +191,10 @@ export async function closeTab(
     if (!current.closing) return;
     // A draft is not an exported PDF. Closing with unexported changes is
     // allowed; the cue says reopening restores the draft and exporting is what
-    // produces a shareable file.
-    if (ports.activeNeedsExport()) ports.reportClosedUnexported(current.closing);
+    // produces a shareable file. A discarded copy has no draft to reopen.
+    if (!options.changesDiscarded && ports.activeNeedsExport()) {
+      ports.reportClosedUnexported(current.closing);
+    }
   } else if (
     current.closing.kind === "pdf" &&
     ports.inactiveNeedsExport(current.closing)

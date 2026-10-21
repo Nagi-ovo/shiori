@@ -234,6 +234,21 @@ describe("goHome", () => {
 });
 
 describe("closeTab", () => {
+  // After the reader discards a copy refused for another window's newer
+  // draft, nothing of it was kept, so the "saved as a draft" cue would lie.
+  test("closing a discarded copy does not say its edits were kept as a draft", async () => {
+    const store = workspace(["a", "b"], "a");
+    const { ports, reports, released } = closePorts(store, {
+      activeNeedsExport: () => true,
+    });
+
+    await closeTab("a", ports, { changesDiscarded: true });
+
+    expect(ids(store)).toEqual(["b"]);
+    expect(released).toEqual(["a"]);
+    expect(reports).toEqual([]);
+  });
+
   test("closing the active tab activates the neighbour at its position", async () => {
     const store = workspace(["a", "b", "c"], "b");
     const { ports, activated, released } = closePorts(store);

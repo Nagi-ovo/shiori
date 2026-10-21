@@ -28,9 +28,11 @@ import {
   activateTab,
   closeTab,
   goHome,
+  type CloseTabOptions,
 } from "../workspace/tabLifecycle";
 import { workspaceCacheIdsForTab } from "../workspace/tabSources";
 import type { WorkspaceRuntimeTab } from "../workspace/types";
+import { draftConflictChoice } from "./draftConflictChoice";
 import { planTabActivation } from "./tabActivation";
 import { recordTextRecent } from "./textRecents";
 import type { createAppTextSources } from "./textSourcePorts";
@@ -83,6 +85,8 @@ type Live = {
   setPendingPassword: (pending: PendingPassword | null) => void;
   setTransitioning: (transitioning: boolean) => void;
   flushActiveDraft: () => Promise<void>;
+  /** useDraftSync.discardRefusedEdits for the document on screen. */
+  discardRefusedEdits: () => boolean;
   activeNeedsExport: () => boolean;
 };
 
@@ -106,6 +110,7 @@ export function createAppTabs(deps: {
     setPendingPassword: () => {},
     setTransitioning: () => {},
     flushActiveDraft: async () => {},
+    discardRefusedEdits: () => false,
     activeNeedsExport: () => false,
   };
   // Closing can await draft/cache writes. Keep those transitions in click
@@ -163,27 +168,11 @@ export function createAppTabs(deps: {
     live.setPendingPassword(null);
   };
 
-  return {
-    activate: (tabId: string) =>
-      activateTab(tabId, {
-        store: workspaceStore(),
-        flushTextSources: textSources.flush,
-        persistActivePdf: pdfRuntime.persistLeaving,
-        beforeActivate: () => {
-          clearPasswordPrompt();
-          useAppStore.getState().setError(null);
-        },
-        applyActivation,
-        setTransitioning: (on) => live.setTransitioning(on),
-        reportTextSaveFailed: (leaving, error) => {
-          console.error("Failed to persist text document before switching tabs", error);
-          toast.error(t("documents.textSaveFailed"), leaving?.title);
-        },
-      }),
-
-    close: (tabId: string) =>
-      enqueueTabClose(() =>
-        closeTab(tabId, {
+  const close = (tabId: string, options?: CloseTabOptions): Promise<void> =>
+    enqueueTabClose(() =>
+      closeTab(
+        tabId,
+        {
           store: workspaceStore(),
           flushTextSources: textSources.flush,
           recordTextRecent,
@@ -207,6 +196,12 @@ export function createAppTabs(deps: {
             toast.error(t("documents.textSaveFailed"), closing.title);
           },
           reportDraftSaveFailed: (closing, error) => {
+            // Refused for another window's newer draft: export or discard.
+            const asked = draftConflictChoice.offer(error, {
+              discardRefusedEdits: () => live.discardRefusedEdits(),
+              leave: () => void close(tabId, { changesDiscarded: true }),
+            });
+            if (asked) return;
             console.error("Failed to persist PDF before closing", error);
             toast.error(t("drafts.saveFailedToast"), closing.title);
           },
@@ -214,8 +209,30 @@ export function createAppTabs(deps: {
             toast.show(t("export.closedUnexported"), closing.title),
           clearPasswordPrompt: () => live.setPendingPassword(null),
           applyActivation,
-        }),
+        },
+        options,
       ),
+    );
+
+  return {
+    activate: (tabId: string) =>
+      activateTab(tabId, {
+        store: workspaceStore(),
+        flushTextSources: textSources.flush,
+        persistActivePdf: pdfRuntime.persistLeaving,
+        beforeActivate: () => {
+          clearPasswordPrompt();
+          useAppStore.getState().setError(null);
+        },
+        applyActivation,
+        setTransitioning: (on) => live.setTransitioning(on),
+        reportTextSaveFailed: (leaving, error) => {
+          console.error("Failed to persist text document before switching tabs", error);
+          toast.error(t("documents.textSaveFailed"), leaving?.title);
+        },
+      }),
+
+    close,
 
     /** The logo: back to the Landing without closing anything. */
     goHome: () =>
