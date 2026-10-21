@@ -9,7 +9,7 @@ import {
 import { useEditorStore } from "../store/store";
 import drafts, { DraftSaveError } from "../../storage/drafts";
 import { isModelClean } from "../../pdf/model/clean";
-import { readStorageEstimate } from "../../platform";
+import { useDraftStorageUsage } from "./useDraftStorageUsage";
 import {
   clearOperationLog,
   readOperationLog,
@@ -85,10 +85,8 @@ export function useDraftSync(
   const [lastTouched, setLastTouched] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorKind, setErrorKind] = useState<DraftSaveError["kind"] | null>(null);
-  const [usedBytes, setUsedBytes] = useState<number>(0);
-  const [realUsedBytes, setRealUsedBytes] = useState<number | null>(null);
-  const [quotaBytes, setQuotaBytes] = useState<number | null>(null);
-  const [persisted, setPersisted] = useState<boolean | null>(null);
+  const { usedBytes, realUsedBytes, quotaBytes, persisted, refreshAfterSave } =
+    useDraftStorageUsage();
 
   const timerRef = useRef<number | null>(null);
   const operationLogTimerRef = useRef<number | null>(null);
@@ -110,7 +108,6 @@ export function useDraftSync(
   // open reads the row again.
   const conflictedDraftIdRef = useRef<string | null>(null);
   const ownLogStampRef = useRef<number | null>(null);
-  const mountedRef = useRef(true);
   const revisionRef = useRef(0);
   const saveDrainInFlightRef = useRef<Promise<void> | null>(null);
   // Keep a mutable snapshot of the latest inputs so the timer callback always
@@ -205,37 +202,6 @@ export function useDraftSync(
     [],
   );
 
-  useEffect(() => {
-    // Reset on mount (not just at init): under StrictMode the dev remount would
-    // otherwise leave this stuck false and drop post-save estimate refreshes.
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // One-time fetch of current storage usage.
-  useEffect(() => {
-    let cancelled = false;
-    const refresh = () => {
-      void drafts.totalBytes().then((n) => {
-        if (!cancelled) setUsedBytes(n);
-      });
-      void readStorageEstimate().then((estimate) => {
-        if (cancelled) return;
-        setRealUsedBytes(estimate.usage);
-        setQuotaBytes(estimate.quota);
-        setPersisted(estimate.persisted);
-      });
-    };
-    refresh();
-    const unsubscribe = drafts.subscribe(refresh);
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, []);
-
   // Persist one immutable revision. Only that same revision may clear dirty
   // state or the crash-recovery operation log; if the user edits while the
   // write is awaiting IndexedDB, the drain loop below immediately saves again.
@@ -312,19 +278,7 @@ export function useDraftSync(
         dirtyRef.current = false;
       }
 
-      // Storage telemetry is informative, not part of the durability
-      // transaction. Never hold close/quit open because an estimate API stalls.
-      void Promise.all([drafts.totalBytes(), readStorageEstimate()])
-        .then(([total, estimate]) => {
-          if (!mountedRef.current) return;
-          setUsedBytes(total);
-          setRealUsedBytes(estimate.usage);
-          setQuotaBytes(estimate.quota);
-          setPersisted(estimate.persisted);
-        })
-        .catch((err) => {
-          console.warn("Failed to refresh draft storage usage:", err);
-        });
+      refreshAfterSave();
     } catch (err) {
       console.error("Draft save failed:", err);
       const draftError = err instanceof DraftSaveError ? err : null;
@@ -342,7 +296,7 @@ export function useDraftSync(
       setStatus("error");
       throw err;
     }
-  }, []);
+  }, [refreshAfterSave]);
 
   // One shared drain serializes autosave, explicit close, tab switching, and
   // app exit. Every caller joins the same promise; a revision that arrives
