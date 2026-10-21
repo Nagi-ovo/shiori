@@ -1,5 +1,95 @@
 # What's new
 
+## [Unreleased]
+
+### Export
+
+- **Exporting some of the pages no longer carries the others along.** In some PDFs, exporting a single page used to leave content from other pages quietly inside the file.
+- **Layers hidden by default stay hidden after export, and form calculations keep working.** A worksheet's answer layer no longer shows up in the export or in print, and right-to-left books keep their reading direction and two-page layout.
+- **Rotated text boxes, stamps, rectangles, signatures and images keep their angle in the export.** The same goes for sidebar thumbnails and Small file exports.
+- **Small file exports keep images and signatures, and the document's title and author.** Placed images and signatures now show in the sidebar thumbnails too.
+- **Exporting an edit to the original text really removes the old text from the file.** In the rare cases where it can't, Shiori warns you before exporting: the old text is covered, but it can still be found and copied.
+
+### Annotation import and export
+
+- **Comments on annotations from Zotero, Preview and Acrobat are no longer wiped on export.** Comments on highlights, underlines, strikeouts, rectangles and ink all survive.
+- **Hidden, locked and non-printing annotations stay that way after export.** Hidden annotations no longer become visible, and sticky notes keep their icon, open state and review state.
+- **Text boxes and translucent marks from other apps look the way they did there.** Text boxes keep their fill, border and opacity on screen and in exports, and translucent ink, rectangles, underlines and strikeouts no longer turn opaque.
+- **Annotation authors and replies come through export intact.** Chinese, Japanese and other non-Latin author names no longer turn into garbage, and replies stay attached to the annotation they answer.
+- **Imported annotations land with the right page, colour and orientation.** In PDFs with an unusual page structure they no longer end up on another page, rectangle fills are no longer lost, the odd colour is no longer read wrong, and text notes on rotated pages no longer come in sideways.
+
+### Editing
+
+- **Annotations copied in one PDF can be pasted into another tab.** Duplicating an ink stroke with Cmd+D also offsets the copy instead of stacking it exactly on the original.
+- **Undo history is cleaner.** Dragging in the colour picker counts as one step, Delete or the arrow keys on a locked annotation no longer leave an empty step, and your text selection no longer disappears after undo or redo.
+- **You can click a paragraph on a two-column page and edit its original text.** Editing the original text of a merged PDF no longer picks the wrong font, either.
+- **Arrows, Space and Enter go to the focused button, thumbnail rail or tab.** The arrow keys used to move the selected annotation instead.
+
+### Find and text
+
+- **Find matches phrases split by a line wrap.** Chinese and Japanese phrases across a wrap and words hyphenated across lines are found, and a match no longer runs into the next column or paragraph or stops halfway through an emoji or accented letter.
+- **Right-to-left text such as Hebrew and Arabic, and rotated text, can be searched and selected properly.** Stray spaces and line breaks used to appear inside words.
+
+### Reading and pages
+
+- **Moving the window to another screen redraws pages at that screen's sharpness.** Pages also stay sharp through continuous zooming and window resizing.
+- **PDFs that record page sizes in an unusual way show pages at the right size.** Some A4 documents used to be treated as Letter.
+- **More PDFs accept inserted pages and pasted images.** PDFs edited by other tools, or with an empty form, were often refused; inserted pages are also no longer mistaken by screen readers for paragraphs of the original document.
+
+### Markdown and text files
+
+- **If another editor changed the file, Cmd+S asks before overwriting it instead of doing so silently.**
+- **Files that aren't UTF-8 open read-only, so saving can't garble them.** Saving also keeps the file's line endings and byte order mark, so fixing one typo in a file written on Windows no longer rewrites every line.
+- **The Markdown preview is more dependable.** Documents that open with a "---" rule no longer lose their first section, in-page links and tables of contents scroll to their target, and local images with a % in the file name display.
+- **Switching tabs tells you when a text edit could not be saved, instead of silently staying put.**
+
+### Drafts and recovery
+
+- **Cleanup no longer deletes documents you have open.** When storage runs low, annotation drafts of open tabs (in other windows too) are protected, and documents still opening, such as several PDFs dropped at once or one waiting for its password, are no longer lost.
+- **The last few edits before you close a web tab are saved, and undo history is still there when you reopen.**
+
+### Web
+
+- **Chrome and Edge can open several files at once.** Downloading an export in Safari no longer fails now and then.
+
+### Security
+
+- **Tightened isolation for running HTML documents and for the Markdown preview.** This fixes several issues a malicious file could exploit, the "never load remote images" setting covers more cases, and on desktop the run approval only lists what it can actually allow.
+- **Certain damaged or crafted PDFs and passwords no longer crash the app.** On web and mobile, a failed open no longer holds on to memory.
+
+### Browser panel
+
+- **Pages ask before handing off to another app, such as mail, phone, messages or maps.**
+- **Back and the address bar are more accurate.** Back no longer greys out after you follow links back and forth, and frames inside a page no longer change the address bar or history.
+- **On iPhone and iPad, links that open a new window and a page's dialogs work.** On Android, a temporary session no longer mixes with your saved logins, and if the system WebView can't keep them apart, Shiori says so.
+
+### Terminal
+
+- **Pasting a large block of text into the built-in terminal no longer freezes the app.** Closing a terminal also ends the programs running in the background.
+- **The built-in and external terminals open in the right folder when its name has spaces or special characters.** In the built-in Windows terminal with cmd, `start` with a web address opens in the Browser panel.
+
+### Desktop
+
+- **On Linux, opening a file or link in a system app no longer freezes Shiori.** Saving also handles its temporary file more safely, and files with very long names save normally.
+- **The resource panel on macOS counts the web content processes, so memory and CPU figures are realistic.** The "About Shiori" menu item now follows the app language too.
+
+### Android and iOS
+
+- **Sharing a link or a piece of text to Shiori on Android opens it as a Markdown document.**
+- **Direct updates on Android tell you when the install fails or is cancelled.** Once the system installer has the update you can close the update window, and coming back to Shiori from Recents no longer reopens an old file or shows a permission error.
+- **Tightened what Shiori accepts and shares as files on Android and iOS.**
+
+### Accessibility and interface
+
+- **Screen readers can name more of the interface.** Rectangle, image, signature and original-text annotations are no longer read as English code words; the export range, address bar and text box editing fields have names; each draft's delete button names its file.
+- **Focus in dialogs and Settings behaves better.** The page behind Settings is out of keyboard reach while it is open, focus returns to the button you used after a slow dialog closes, notifications stay clickable while a dialog is open, and the export quality warning is readable in dark themes.
+
+### Command line
+
+- **The CLI installs more reliably.** After a PowerShell install on Windows it handles PDFs from any folder, an interrupted npm install no longer leaves a half-installed version behind, and a piped install that fails partway now reports the failure instead of claiming success.
+- **search and extract are more accurate and sturdier.** Search boxes land on the right characters, a large file with many annotations no longer stalls extract, and Word files are reported as unsupported straight away.
+- **app annotate is more dependable.** Blank replies in the document or several replies to one annotation no longer make it fail, it finds the app again after a restart, the same annotations can be applied again with `--nonce`, and option values starting with "-" point you to the `--name=value` form.
+
 ## 26.10.20
 
 > A Risky Racket
