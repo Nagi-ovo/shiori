@@ -198,9 +198,10 @@ refunds nothing, so uploads stay refused until the month resets. If a tag run st
 workflow on `main` and re-run with `workflow_dispatch` (`tag=vX.Y.Z`,
 `publish_to_release_repo=true`) rather than moving the tag. That run builds
 `main`, not the tag: release.yml's checkouts take no `ref`, and the version
-check compares only the tag to `tauri.conf.json`. So first confirm `main`
-carries no app change since the tag,
-`git diff --quiet vX.Y.Z main -- . ':(exclude).github'`; if it does, stop and
+check compares only the tag to `tauri.conf.json`. So first confirm the
+remote `main` the dispatch will build carries no app change since the tag,
+`git fetch origin && git diff --quiet vX.Y.Z origin/main -- . ':(exclude).github'`
+(a local `main` can be behind or ahead of it); if it does, stop and
 ask the user, since Windows, Linux and Android would ship `main`'s code under
 a tag whose macOS build is the tag's. A test APK for device checks
 comes from a dispatch with `android_only=true`, `android_artifacts=apk`,
