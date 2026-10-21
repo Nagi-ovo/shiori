@@ -70,6 +70,8 @@ export type LiveAnnotationResult = {
   dryRun: boolean;
   annotationCount: number;
   operationId: string;
+  /** The app had this operation's receipt, so it re-added nothing. */
+  alreadyApplied?: true;
 };
 
 export type LiveSuccessEnvelope = {
@@ -262,6 +264,7 @@ export function parseAnnotationResult(value: unknown): LiveAnnotationResult {
     dryRun,
     annotationCount,
     operationId,
+    alreadyApplied,
   } = value;
   if (
     !isBoundedString(documentId, 512) ||
@@ -277,7 +280,8 @@ export function parseAnnotationResult(value: unknown): LiveAnnotationResult {
     typeof dryRun !== "boolean" ||
     !isNonNegativeInteger(annotationCount) ||
     typeof operationId !== "string" ||
-    !SHA256_PATTERN.test(operationId)
+    !SHA256_PATTERN.test(operationId) ||
+    (alreadyApplied !== undefined && alreadyApplied !== true)
   ) {
     throw unavailable("Shiori live API returned an invalid annotation result");
   }
@@ -290,6 +294,7 @@ export function parseAnnotationResult(value: unknown): LiveAnnotationResult {
     dryRun,
     annotationCount: Number(annotationCount),
     operationId,
+    ...(alreadyApplied === true ? { alreadyApplied: true as const } : {}),
   };
 }
 

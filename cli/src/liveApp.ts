@@ -62,6 +62,24 @@ export type LiveAnnotateResponse = {
   data: LiveAnnotationResult;
 };
 
+/**
+ * The human summary of an annotate result. A spec whose operation the app
+ * already applied adds nothing however its annotations fared since (its
+ * receipt outlives Undo and a discarded draft), so say why and how to apply
+ * it again rather than a bare "Applied 0".
+ */
+export function describeAnnotateResult({
+  context,
+  data,
+}: LiveAnnotateResponse): string {
+  const repeated = data.alreadyApplied
+    ? " This exact spec was already applied to this PDF, so Shiori does not re-add it, even after Undo; change the spec to apply it again."
+    : "";
+  return data.dryRun
+    ? `Dry run: ${data.added} annotations ready for ${context.name}.${repeated}`
+    : `Applied ${data.added} annotations to ${context.name}.${repeated}`;
+}
+
 type LiveTarget = Pick<
   LiveAppContext,
   "documentId" | "sha256" | "pageTopologyHash"

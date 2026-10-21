@@ -81,6 +81,11 @@ export type LiveApiSuccessData = {
   annotationIds: string[];
   dryRun: boolean;
   annotationCount: number;
+  /**
+   * Present (true) only when this operation's receipt already exists, so
+   * nothing was re-added even if its annotations are gone (Undo, discard).
+   */
+  alreadyApplied?: true;
 };
 
 export type LiveApiError = {

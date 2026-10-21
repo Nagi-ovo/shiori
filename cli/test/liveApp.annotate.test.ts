@@ -9,7 +9,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { annotateLiveApp } from "../src/liveApp";
+import { annotateLiveApp, describeAnnotateResult } from "../src/liveApp";
 import {
   CONTEXT,
   EMPTY_SPEC,
@@ -141,6 +141,38 @@ describe("app annotate", () => {
             annotateLiveApp(null, { descriptorPath, spec }),
           ).rejects.toMatchObject({ code: "ERR_APP_OUTCOME_UNKNOWN" });
         }
+      },
+    );
+  });
+
+  test("says so when the app already applied this exact spec", async () => {
+    // The operation id hashes the spec, and its receipt outlives Undo and a
+    // discarded draft, so sending the same spec again on purpose adds nothing.
+    // "Applied 0 annotations" read like a no-op bug; the agent needs the
+    // reason and the way out (change the spec).
+    const spec = {
+      annotations: [{ type: "calloutReply", replyTo: "c1", text: "again" }],
+    };
+    let result: Record<string, unknown> = {};
+    await withFixture(
+      appHandler(() => result),
+      async ({ descriptorPath }) => {
+        result = { added: 0, annotationIds: ["c1"], alreadyApplied: true };
+        const repeated = await annotateLiveApp(null, { descriptorPath, spec });
+        expect(repeated.data.alreadyApplied).toBe(true);
+        expect(describeAnnotateResult(repeated)).toContain("already applied");
+
+        result = { added: 1, annotationIds: ["c1"] };
+        const fresh = await annotateLiveApp(null, { descriptorPath, spec });
+        expect(fresh.data.alreadyApplied).toBeUndefined();
+        expect(describeAnnotateResult(fresh)).toBe(
+          `Applied 1 annotations to ${CONTEXT.name}.`,
+        );
+
+        result = { added: 0, annotationIds: ["c1"], alreadyApplied: "yes" };
+        await expect(
+          annotateLiveApp(null, { descriptorPath, spec }),
+        ).rejects.toMatchObject({ code: "ERR_APP_OUTCOME_UNKNOWN" });
       },
     );
   });

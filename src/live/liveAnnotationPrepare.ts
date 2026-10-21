@@ -215,6 +215,7 @@ export function prepareLiveAnnotationRequest(
         // Post-operation count in both modes: a dry run reports the projected
         // total rather than mixing a hypothetical `added` with a current count.
         annotationCount: latest.overlays.length + missing.length,
+        ...(operationAlreadyCompleted ? { alreadyApplied: true as const } : {}),
       },
     },
   };
@@ -397,6 +398,7 @@ function prepareLiveCalloutReplies(
         dryRun: request.dryRun,
         // Replies patch existing overlays; the annotation count is unchanged.
         annotationCount: latest.overlays.length,
+        ...(operationAlreadyCompleted ? { alreadyApplied: true as const } : {}),
       },
     },
   };

@@ -93,6 +93,7 @@ import { BoundedFileError, readFileWithinLimit } from "./safeRead";
 import {
   LiveAppError,
   annotateLiveApp,
+  describeAnnotateResult,
   getLiveAppContextDetails,
   type LiveAppContext,
   type LiveAppErrorCode,
@@ -1249,17 +1250,7 @@ async function liveAppAnnotate(
         : {}),
     }),
   );
-  if (options.format === "human") {
-    if (result.data.dryRun) {
-      console.log(
-        `Dry run: ${result.data.added} annotations ready for ${result.context.name}.`,
-      );
-    } else {
-      console.log(
-        `Applied ${result.data.added} annotations to ${result.context.name}.`,
-      );
-    }
-  }
+  if (options.format === "human") console.log(describeAnnotateResult(result));
   return result.data;
 }
 

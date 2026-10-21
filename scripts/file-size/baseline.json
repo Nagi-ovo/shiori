@@ -1,7 +1,7 @@
 {
   ".github/workflows/release.yml": 38814,
   "cli/build.ts": 26214,
-  "cli/src/main.ts": 87917,
+  "cli/src/main.ts": 87711,
   "cli/test/annotate.test.ts": 37998,
   "cli/test/liveApp.test.ts": 33462,
   "crates/shiori-core/src/encryption.rs": 53963,
