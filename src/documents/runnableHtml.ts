@@ -286,10 +286,11 @@ export function buildRunnableHtml(
   // A srcdoc child is its own opaque origin, out of the run frame's reach, so
   // it runs the shim (and its WebRTC guard) itself, ahead of its own scripts.
   const { externalizeScript } = options;
+  let srcdocTag: string | undefined;
   prefixSrcdocFrames(parsed, () =>
-    externalizeScript
+    (srcdocTag ??= externalizeScript
       ? `<script src="${escapeAttribute(externalizeScript(STORAGE_SHIM))}"></script>`
-      : `<script nonce="${nonce}">${STORAGE_SHIM}</script>`,
+      : `<script nonce="${nonce}">${STORAGE_SHIM}</script>`),
   );
 
   if (options.externalizeScript) {
@@ -316,13 +317,26 @@ function createRunNonce(): string {
   );
 }
 
-function prefixSrcdocFrames(doc: Document, scriptTag: () => string) {
-  const frames = Array.from(doc.querySelectorAll("iframe[srcdoc]"));
-  if (!frames.length) return;
-  const tag = scriptTag();
-  for (const frame of frames) {
-    frame.setAttribute("srcdoc", tag + (frame.getAttribute("srcdoc") ?? ""));
+// Template contents count too: the browser's parser turns
+// <template shadowrootmode> into a live shadow root (DOMParser does not), and
+// a page can clone any template into the document. So does a srcdoc inside a
+// srcdoc: the child's own parser inserts it, out of the child's reach.
+function prefixSrcdocFrames(root: ParentNode, scriptTag: () => string) {
+  for (const template of Array.from(root.querySelectorAll("template"))) {
+    prefixSrcdocFrames((template as HTMLTemplateElement).content, scriptTag);
   }
+  for (const frame of Array.from(root.querySelectorAll("iframe[srcdoc]"))) {
+    const srcdoc = prefixNestedSrcdoc(frame.getAttribute("srcdoc") ?? "", scriptTag);
+    frame.setAttribute("srcdoc", scriptTag() + srcdoc);
+  }
+}
+
+function prefixNestedSrcdoc(srcdoc: string, scriptTag: () => string): string {
+  // Only an <iframe or <template tag can open a frame; others stay verbatim.
+  if (!/<(iframe|template)/i.test(srcdoc)) return srcdoc;
+  const doc = new window.DOMParser().parseFromString(srcdoc, "text/html");
+  prefixSrcdocFrames(doc, scriptTag);
+  return `<!doctype html>${doc.documentElement.outerHTML}`;
 }
 
 function escapeAttribute(value: string): string {

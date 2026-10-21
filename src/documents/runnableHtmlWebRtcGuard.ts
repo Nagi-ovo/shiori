@@ -22,15 +22,17 @@
 // derived from document.currentScript, so it carries itself to grandchildren
 // and matches the run CSP (a data: URL on desktop, the nonce on web).
 //
-// Not covered: a srcdoc written by an HTML-parsing route (innerHTML,
-// insertAdjacentHTML, document.write, setHTMLUnsafe, a template or a
-// declarative shadow root) or through an Attr node; and a realm reached
-// between a DOM call this list misses and the next mutation microtask. No
-// engine is known to enforce `webrtc 'block'`, so nothing backs these up.
-// None of it is browser-verified (probe: a run document that builds a nested about:blank
-// frame and opens a data channel from it against its own STUN host, with the
-// network panel open). Like the other frame scripts, it must never contain the
-// literal script-closing sequence.
+// Every other route that writes a srcdoc (an HTML-parsing setter, an Attr
+// node, a cloned template, a fragment, document.write) is caught by the
+// mutation observer, which prefixes the frame before its srcdoc navigation
+// runs; shadow roots get the observer as they are attached, and setHTMLUnsafe
+// markup is prefixed before it is parsed, since its declarative shadow roots
+// are never observed. Still open: a closed shadow root built by
+// Document.parseHTMLUnsafe and then adopted. No engine is known to enforce
+// `webrtc 'block'`, so nothing backs these up. Browser check: a run document
+// that inserts a srcdoc frame through each route and opens a data channel
+// against a STUN host from it; no server-reflexive candidate may come back. Like the other frame scripts, it must
+// never contain the literal script-closing sequence.
 //
 // The document's scripts run after the guard in the same realm, so every
 // built-in the guard calls later (descriptor lookup and definition, function
@@ -48,6 +50,21 @@ export const WEBRTC_GUARD = `(function () {
   var copyArgs = Array.prototype.slice;
   var indexOf = String.prototype.indexOf;
   var toLower = String.prototype.toLowerCase;
+  var elementProto = runWindow.Element && runWindow.Element.prototype;
+  var nodeProto = runWindow.Node && runWindow.Node.prototype;
+  var fragmentProto = runWindow.DocumentFragment && runWindow.DocumentFragment.prototype;
+  var templateProto = runWindow.HTMLTemplateElement && runWindow.HTMLTemplateElement.prototype;
+  var getAttr = elementProto && elementProto.getAttribute;
+  var hasAttr = elementProto && elementProto.hasAttribute;
+  var setAttr = elementProto && elementProto.setAttribute;
+  var queryElement = elementProto && elementProto.querySelectorAll;
+  var queryFragment = fragmentProto && fragmentProto.querySelectorAll;
+  var createElement = runWindow.Document && runWindow.Document.prototype.createElement;
+  var localNameOf = getterOf(elementProto, "localName");
+  var nodeTypeOf = getterOf(nodeProto, "nodeType");
+  var templateContentOf = getterOf(templateProto, "content");
+  var innerHtml = elementProto && describe(elementProto, "innerHTML");
+  var OBSERVED = { childList: true, subtree: true, attributes: true, attributeFilter: ["srcdoc"] };
   var srcdocPrefix = scriptTagOf(runDocument.currentScript);
   var RTC = ["RTCPeerConnection", "webkitRTCPeerConnection", "mozRTCPeerConnection"];
   var FRAME_ELEMENTS = ["HTMLIFrameElement", "HTMLFrameElement", "HTMLObjectElement"];
@@ -70,6 +87,68 @@ export const WEBRTC_GUARD = `(function () {
       var nonce = script.nonce ? ' nonce="' + script.nonce.replace(/&/g, "&amp;").replace(/"/g, "&quot;") + '"' : "";
       return "<script" + nonce + ">" + script.textContent + close;
     } catch (e) { return ""; }
+  }
+  function getterOf(proto, name) {
+    var d = proto && describe(proto, name);
+    return d && d.get;
+  }
+  function isFrame(element) {
+    try { return !!localNameOf && apply(localNameOf, element, []) === "iframe"; }
+    catch (e) { return false; }
+  }
+  // Every route that puts a srcdoc frame into a document (an HTML-parsing
+  // setter, an Attr node, a cloned template, a fragment) shows up as a
+  // mutation record, and records are delivered at the next microtask, before
+  // the frame's srcdoc navigation runs. Setting the attribute again starts a
+  // new navigation that replaces the pending one.
+  function prefixFrame(element) {
+    if (!srcdocPrefix || !getAttr || !isFrame(element)) return;
+    try {
+      if (!apply(hasAttr, element, ["srcdoc"])) return;
+      var value = apply(getAttr, element, ["srcdoc"]);
+      var next = guardedSrcdoc(value);
+      if (next !== value) apply(setAttr, element, ["srcdoc", next]);
+    } catch (e) {}
+  }
+  function prefixWithin(node) {
+    var type = 0;
+    try { type = nodeTypeOf ? apply(nodeTypeOf, node, []) : 0; } catch (e) { return; }
+    var query = type === 1 ? queryElement : type === 11 ? queryFragment : null;
+    if (!query) return;
+    if (type === 1) prefixFrame(node);
+    var list;
+    try { list = apply(query, node, ["iframe[srcdoc]"]); } catch (e) { return; }
+    for (var i = 0; i < list.length; i++) prefixFrame(list[i]);
+  }
+  // Template content is inert, so its frames are caught once a clone is
+  // inserted; but setHTMLUnsafe turns <template shadowrootmode> into a live
+  // shadow root no observer is watching, so its markup is prefixed first.
+  function prefixDeep(fragment) {
+    prefixWithin(fragment);
+    var templates;
+    try { templates = apply(queryFragment, fragment, ["template"]); } catch (e) { return; }
+    for (var i = 0; i < templates.length; i++) {
+      try { prefixDeep(apply(templateContentOf, templates[i], [])); } catch (e) {}
+    }
+  }
+  function prefixMarkup(self, args) {
+    if (!args.length || !srcdocPrefix || !createElement || !innerHtml || !templateContentOf || !queryFragment) return;
+    args[0] = "" + args[0];
+    var template = apply(createElement, runDocument, ["template"]);
+    apply(innerHtml.set, template, [args[0]]);
+    prefixDeep(apply(templateContentOf, template, []));
+    args[0] = apply(innerHtml.get, template, []);
+  }
+  function onRecords(records) {
+    try {
+      for (var r = 0; r < records.length; r++) {
+        var record = records[r];
+        if (record.type === "attributes") { prefixFrame(record.target); continue; }
+        var added = record.addedNodes;
+        for (var a = 0; a < added.length; a++) prefixWithin(added[a]);
+      }
+    } catch (e) {}
+    sweep();
   }
   function guardedSrcdoc(value) {
     var text = "" + value;
@@ -157,6 +236,12 @@ export const WEBRTC_GUARD = `(function () {
     if (embedProto) {
       try { wrap(embedProto, "getSVGDocument", "value", hardenView); } catch (e) {}
     }
+    if (srcdocPrefix) {
+      var shadowProto = prototypeOf(w, "ShadowRoot");
+      var hostProto = prototypeOf(w, "Element");
+      try { if (hostProto) wrap(hostProto, "setHTMLUnsafe", "value", sweep, prefixMarkup); } catch (e) {}
+      try { if (shadowProto) wrap(shadowProto, "setHTMLUnsafe", "value", sweep, prefixMarkup); } catch (e) {}
+    }
     for (var k = 0; k < INSERTS.length; k++) {
       var proto = prototypeOf(w, INSERTS[k][0]);
       if (!proto) continue;
@@ -169,16 +254,31 @@ export const WEBRTC_GUARD = `(function () {
         try { wrap(proto, setters[s], "set", sweep); } catch (e) {}
       }
     }
-    try { new w.MutationObserver(sweep).observe(d, { childList: true, subtree: true }); } catch (e) {}
+    var observer = null;
+    var observe = null;
+    try {
+      observe = w.MutationObserver.prototype.observe;
+      observer = new w.MutationObserver(onRecords);
+      apply(observe, observer, [d, OBSERVED]);
+    } catch (e) {}
+    // A shadow root is outside the document's subtree, so each one the page
+    // attaches gets the same observer.
+    var elementType = prototypeOf(w, "Element");
+    if (observer && elementType) {
+      try {
+        wrap(elementType, "attachShadow", "value", function (root) {
+          if (root) apply(observe, observer, [root, OBSERVED]);
+        });
+      } catch (e) {}
+    }
     try { d.addEventListener("load", sweep, true); } catch (e) {}
   }
   function hookSrcdoc(w) {
     var frameProto = prototypeOf(w, "HTMLIFrameElement");
     var elementProto = prototypeOf(w, "Element");
-    var localName = elementProto && describe(elementProto, "localName");
-    var localNameOf = localName && localName.get;
-    function isFrame(element) {
-      return !!localNameOf && apply(localNameOf, element, []) === "iframe";
+    var realmLocalName = getterOf(elementProto, "localName");
+    function isFrameHere(element) {
+      return !!realmLocalName && apply(realmLocalName, element, []) === "iframe";
     }
     if (frameProto) {
       wrap(frameProto, "srcdoc", "set", null, function (self, args) {
@@ -191,14 +291,14 @@ export const WEBRTC_GUARD = `(function () {
     wrap(elementProto, "setAttribute", "value", null, function (self, args) {
       if (args.length < 2) return;
       args[0] = "" + args[0];
-      if (apply(toLower, args[0], []) === "srcdoc" && isFrame(self)) args[1] = guardedSrcdoc(args[1]);
+      if (apply(toLower, args[0], []) === "srcdoc" && isFrameHere(self)) args[1] = guardedSrcdoc(args[1]);
     });
     wrap(elementProto, "setAttributeNS", "value", null, function (self, args) {
       if (args.length < 3) return;
       if (args[0] !== null && args[0] !== undefined) args[0] = "" + args[0];
       if (args[0] !== null && args[0] !== undefined && args[0] !== "") return;
       args[1] = "" + args[1];
-      if (args[1] === "srcdoc" && isFrame(self)) args[2] = guardedSrcdoc(args[2]);
+      if (args[1] === "srcdoc" && isFrameHere(self)) args[2] = guardedSrcdoc(args[2]);
     });
   }
   harden(runWindow, runDocument);

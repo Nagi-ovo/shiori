@@ -1,6 +1,8 @@
 import "../test/setupDom";
 import { describe, expect, test } from "bun:test";
+import { Window } from "happy-dom";
 import { buildRunnableHtml, STORAGE_SHIM } from "./runnableHtml";
+import { WEBRTC_GUARD } from "./runnableHtmlWebRtcGuard";
 
 // The run frame's CSP stops every fetched child frame (default-src 'none'),
 // but an about:blank or srcdoc child is never fetched. Where the engine makes
@@ -328,6 +330,125 @@ describe("run frame WebRTC guard in nested frames", () => {
       expect(first).toBe(STORAGE_SHIM);
       expect(scripts.map((script) => script.textContent).at(-1)).toBe(user);
       expect(scripts).toHaveLength(2);
+    }
+  });
+
+  test("a srcdoc inside a template runs the guard before its own scripts", () => {
+    // The browser's parser turns <template shadowrootmode> into a live shadow
+    // root, and a page can clone any template into the document.
+    const user = "new RTCPeerConnection()";
+    const frame = `<iframe srcdoc="<script>${user}</script>"></iframe>`;
+    const parse = (html: string) => new window.DOMParser().parseFromString(html, "text/html");
+    const frameIn = (root: ParentNode): Element | null => {
+      const found = root.querySelector("iframe");
+      if (found) return found;
+      for (const template of Array.from(root.querySelectorAll("template"))) {
+        const inner = frameIn((template as HTMLTemplateElement).content);
+        if (inner) return inner;
+      }
+      return null;
+    };
+    const wrappers = [
+      `<template>${frame}</template>`,
+      `<div><template shadowrootmode="open">${frame}</template></div>`,
+      `<div><template shadowrootmode="closed">${frame}</template></div>`,
+      `<template><p><template>${frame}</template></p></template>`,
+    ];
+    for (const raw of wrappers) {
+      const { html } = buildRunnableHtml(raw);
+      const srcdoc = frameIn(parse(html))?.getAttribute("srcdoc") ?? "";
+      const scripts = Array.from(parse(srcdoc).querySelectorAll("script"));
+
+      expect(scripts[0]?.textContent).toBe(STORAGE_SHIM);
+      expect(scripts.at(-1)?.textContent).toBe(user);
+    }
+  });
+
+  test("a srcdoc nested in a srcdoc runs the guard before its own scripts", () => {
+    // The child's own parser inserts the grandchild, which is again an opaque
+    // origin the child cannot reach.
+    const user = "new RTCPeerConnection()";
+    const parse = (html: string) => new window.DOMParser().parseFromString(html, "text/html");
+    const inner = `<iframe srcdoc="<script>${user}</script>"></iframe>`;
+    const raw = `<iframe srcdoc="${inner.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}"></iframe>`;
+    const { html } = buildRunnableHtml(raw);
+    const childSrcdoc = parse(html).querySelector("iframe")?.getAttribute("srcdoc") ?? "";
+    const child = parse(childSrcdoc);
+    const grandchildSrcdoc = child.querySelector("iframe")?.getAttribute("srcdoc") ?? "";
+    const scripts = Array.from(parse(grandchildSrcdoc).querySelectorAll("script"));
+
+    expect(child.querySelector("script")?.textContent).toBe(STORAGE_SHIM);
+    expect(scripts[0]?.textContent).toBe(STORAGE_SHIM);
+    expect(scripts.at(-1)?.textContent).toBe(user);
+  });
+
+  test("a srcdoc frame put in by any route runs the guard before its own scripts", async () => {
+    // Each route here got a working peer connection, with server-reflexive
+    // candidates, in Chrome on 2026-10-21 before the observer prefixed them.
+    // Runs against a real DOM so the mutation records are the engine's.
+    const guard = "data:text/javascript,guard";
+    const prefix = `<script src="${guard}"></script>`;
+    const user = "<p>user</p>";
+    const tag = `<iframe srcdoc="${user}"></iframe>`;
+    type Route = (doc: Document, host: HTMLElement) => ParentNode;
+    const routes: Record<string, Route> = {
+      innerHTML: (_doc, host) => {
+        host.innerHTML = tag;
+        return host;
+      },
+      insertAdjacentHTML: (_doc, host) => {
+        host.insertAdjacentHTML("beforeend", tag);
+        return host;
+      },
+      outerHTML: (doc, host) => {
+        host.appendChild(doc.createElement("div")).outerHTML = tag;
+        return host;
+      },
+      setAttributeNode: (doc, host) => {
+        const frame = doc.createElement("iframe");
+        const attr = doc.createAttribute("srcdoc");
+        attr.value = user;
+        frame.setAttributeNode(attr);
+        host.appendChild(frame);
+        return host;
+      },
+      attrValueAfterInsert: (doc, host) => {
+        const frame = host.appendChild(doc.createElement("iframe"));
+        frame.setAttribute("srcdoc", "<p>x</p>");
+        frame.getAttributeNode("srcdoc")!.value = user;
+        return host;
+      },
+      templateClone: (doc, host) => {
+        const template = doc.createElement("template");
+        template.innerHTML = tag;
+        host.appendChild(template.content.cloneNode(true));
+        return host;
+      },
+      contextualFragment: (doc, host) => {
+        host.appendChild(doc.createRange().createContextualFragment(tag));
+        return host;
+      },
+      closedShadowRoot: (_doc, host) => {
+        const root = host.attachShadow({ mode: "closed" });
+        root.innerHTML = tag;
+        return root;
+      },
+    };
+    for (const [name, route] of Object.entries(routes)) {
+      const win = new Window({ url: "http://localhost/" });
+      const doc = win.document as unknown as Document;
+      Object.defineProperty(doc, "currentScript", { value: { src: guard } });
+      new Function("window", "document", WEBRTC_GUARD)(win, doc);
+      const host = doc.body.appendChild(doc.createElement("div"));
+      const scope = route(doc, host);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const frames = Array.from(scope.querySelectorAll("iframe"));
+      expect({ name, count: frames.length }).toEqual({ name, count: 1 });
+      expect({ name, srcdoc: frames[0]!.getAttribute("srcdoc") }).toEqual({
+        name,
+        srcdoc: prefix + user,
+      });
+      await win.happyDOM.close();
     }
   });
 
