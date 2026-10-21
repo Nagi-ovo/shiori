@@ -200,6 +200,27 @@ describe("shiori-core in wasm", () => {
     }
   });
 
+  test("tells apart dictionaries that part past the first 256 codes and loads neither as it is, as the native core does", () => {
+    // Liberation Sans under two Identity-H dictionaries that give U+0400 to
+    // the glyphs of "Ő" and "ő", GIDs 274 and 275 (audit B108).
+    const bytes = readFileSync(join(ROOT, "crates/shiori-core/tests/fixtures/shared-truetype-high.pdf"));
+    const doc = wasm.CoreDocument.open(bytes, undefined);
+    const native = openCoreDocument(bytes);
+    try {
+      const fonts = decodeEmbeddedFonts(doc.embeddedFonts(0));
+      expect(fonts.map((font) => font.ownCmap)).toEqual([true, false, false]);
+      const ids = fonts.map((font) => font.id);
+      expect(new Set(ids).size).toBe(3);
+      const glyphs = JSON.parse(doc.pageText(0)).glyphs as PdfiumGlyph[];
+      const drawn = (all: PdfiumGlyph[]) => all.filter((g) => g.text === "Ѐ").map((g) => g.fontId);
+      expect(drawn(glyphs)).toEqual(ids.slice(1));
+      expect(drawn(native.glyphs(0))).toEqual(ids.slice(1));
+    } finally {
+      doc.free();
+      native.close();
+    }
+  });
+
   test("rebuilds embedded fonts a browser refuses so they draw as PDFium draws them", async () => {
     // Bare CFF (as XeTeX and InDesign embed) and pdf-lib's TrueType subset,
     // rebuilt from PDFium's glyphs, then set at the runs' own positions in a

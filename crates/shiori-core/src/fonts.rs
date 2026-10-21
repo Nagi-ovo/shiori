@@ -11,8 +11,9 @@ use crate::{CoreError, Document, Lib, TextPage, MAX_FORM_DEPTH, PDF_FONT_FLAGS};
 mod id;
 mod own_cmap;
 mod reach;
-pub(crate) use id::font_id;
+mod seen;
 use id::font_identity;
+pub(crate) use seen::Seen;
 
 /// A font program a page's text uses that the file embeds, as the file
 /// stores it: TrueType, OpenType (TrueType or CFF outlines), bare CFF or
@@ -31,7 +32,8 @@ pub struct EmbeddedFont {
     pub format: FontFormat,
     /// Whether the program as it is, through its own cmap and advances,
     /// draws every character this dictionary maps (the probe's and those
-    /// past it) the way the dictionary does (`own_cmap::draws_alike`). Only then may a browser
+    /// past it) the way the dictionary does (`own_cmap::draws_alike`), the
+    /// dictionary's mapping read whole (`reach`). Only then may a browser
     /// load the program as a face; otherwise the reading layer rebuilds it.
     pub own_cmap: bool,
     pub data: Vec<u8>,
@@ -307,19 +309,17 @@ impl Document {
                         if font.is_null() || !seen.insert(font as usize) {
                             continue;
                         }
-                        let Some(data) = font_program(lib, font) else {
+                        let (Some(data), Some(facts)) =
+                            (font_program(lib, font), self.font_facts(font))
+                        else {
                             continue;
                         };
-                        let beyond = reach::mapped_beyond_probe(lib, self.handle, font);
                         fonts.push(EmbeddedFont {
                             name: base_font_name(lib, font),
-                            id: font_identity(lib, font, &data, &beyond),
+                            id: facts.id,
                             flags: lib.FPDFFont_GetFlags(font) & PDF_FONT_FLAGS,
                             format: FontFormat::of(&data),
-                            own_cmap: matches!(
-                                FontFormat::of(&data),
-                                FontFormat::TrueType | FontFormat::OpenType
-                            ) && own_cmap::draws_alike(lib, font, &data, &beyond),
+                            own_cmap: facts.own_cmap,
                             data,
                         });
                     }
@@ -406,7 +406,7 @@ impl Document {
                         .collect();
                     FontOutlines {
                         name,
-                        id: font_id(lib, self.handle, font),
+                        id: self.font_facts(font).map(|f| f.id).unwrap_or_default(),
                         flags: lib.FPDFFont_GetFlags(font) & PDF_FONT_FLAGS,
                         ascent,
                         descent,

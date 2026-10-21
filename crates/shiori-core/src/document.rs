@@ -1,8 +1,11 @@
 //! The open document handle and its lifetime.
 
+use std::cell::RefCell;
+
 use pdfium_render::prelude::{FPDF_DOCUMENT, FPDF_FORMFILLINFO, FPDF_FORMHANDLE};
 
 use crate::encryption::{EncryptionError, SourceEncryption};
+use crate::fonts::Seen;
 use crate::Lib;
 
 /// An open PDF. Dropping it closes the document.
@@ -16,6 +19,8 @@ pub struct Document {
     pub(crate) _bytes: Vec<u8>,
     /// For an encrypted file, its handler unlocked, or why it cannot be reproduced.
     pub(crate) encryption: Option<Result<SourceEncryption, EncryptionError>>,
+    /// The fonts worked out so far, held loaded (`fonts::seen`).
+    pub(crate) fonts: RefCell<Seen>,
 }
 
 // A document may move to another thread, but only the thread that owns it
@@ -33,6 +38,7 @@ unsafe impl Send for Document {}
 impl Drop for Document {
     fn drop(&mut self) {
         unsafe {
+            self.fonts.get_mut().release(self.lib);
             if !self.form.is_null() {
                 self.lib.FPDFDOC_ExitFormFillEnvironment(self.form);
             }

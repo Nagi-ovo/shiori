@@ -583,9 +583,13 @@ console.log(subsetsOut);
 // three, written plainly; the second only "plain" and "grave", in object
 // streams with a compressed /ToUnicode, as a merge writes them, so a
 // dictionary's id can be checked not to depend on the others in its file.
-for (const [file, keys, objectStreams] of [
-  ["shared-program-unicode.pdf", ["Plain", "Acute", "Grave"], false],
-  ["shared-program-unicode-alone.pdf", ["Plain", "Grave"], true],
+// shared-program-presentation.pdf is the first with U+FE8E (ARABIC LETTER
+// ALEF FINAL FORM) for U+0400, which PDFium's text page reads back as
+// U+0627 (review of the audit fixes).
+for (const [file, keys, objectStreams, unicode] of [
+  ["shared-program-unicode.pdf", ["Plain", "Acute", "Grave"], false, "0400"],
+  ["shared-program-unicode-alone.pdf", ["Plain", "Grave"], true, "0400"],
+  ["shared-program-presentation.pdf", ["Plain", "Acute", "Grave"], false, "FE8E"],
 ] as const) {
   const shared = await PDFDocument.create();
   const program = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "fonts/FoxitSerif.pfb"));
@@ -619,7 +623,7 @@ for (const [file, keys, objectStreams] of [
     "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
     "/CMapName /Adobe-Identity-UCS def /CMapType 2 def",
     "1 begincodespacerange <00> <FF> endcodespacerange",
-    "1 beginbfchar <80> <0400> endbfchar",
+    `1 beginbfchar <80> <${unicode}> endbfchar`,
     "endcmap CMapName currentdict /CMap defineresource pop end end",
   ].join("\n");
   const dict = (glyph?: string) =>
@@ -703,4 +707,57 @@ for (const [file, keys, objectStreams] of [
   const beyondOut = join(dirname(fileURLToPath(import.meta.url)), "shared-truetype-beyond.pdf");
   writeFileSync(beyondOut, await shared.save({ useObjectStreams: false }));
   console.log(beyondOut);
+}
+
+// shared-truetype-high.pdf: three Type0 dictionaries on one whole Liberation
+// Sans program (tests/fonts.rs, review of the audit fixes for B108).
+// "plain" is pdf-lib's own, setting "aAŐő"; "upper" and "lower" share its
+// descendant font and give U+0400 to the glyph of "Ő" and of "ő", GIDs 274
+// and 275, codes past the first 256 under Identity-H. The same width, the
+// same answer for every probe character, two glyphs; the program's own cmap
+// draws U+0400 as its Cyrillic Ѐ.
+{
+  const shared = await PDFDocument.create();
+  shared.registerFontkit(fontkit);
+  const program = readFileSync(join(root, "node_modules/@docx-editor.dev/fonts/assets/LiberationSans-Regular.ttf"));
+  const plain = await shared.embedFont(program, { subset: false });
+  const page = shared.addPage([300, 200]);
+  page.drawText("aA\u0150\u0151", { x: 20, y: 150, size: 20, font: plain });
+  await shared.flush();
+  const ctx = shared.context;
+  const plainDict = ctx.lookup(plain.ref) as PDFDict;
+  const face = fontkit.create(program);
+  ([
+    ["Upper", 0x150, 100],
+    ["Lower", 0x151, 50],
+  ] as const).forEach(([key, codePoint, y]) => {
+    const gid = face.glyphForCodePoint(codePoint).id.toString(16).toUpperCase().padStart(4, "0");
+    const toUnicode = ctx.register(
+      ctx.stream(
+        [
+          "/CIDInit /ProcSet findresource begin 12 dict begin begincmap",
+          "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+          "/CMapName /Adobe-Identity-UCS def /CMapType 2 def",
+          "1 begincodespacerange <0000> <FFFF> endcodespacerange",
+          `1 beginbfchar <${gid}> <0400> endbfchar`,
+          "endcmap CMapName currentdict /CMap defineresource pop end end",
+        ].join("\n"),
+      ),
+    );
+    const remap = ctx.register(
+      ctx.obj({
+        Type: "Font",
+        Subtype: "Type0",
+        BaseFont: plainDict.get(PDFName.of("BaseFont")),
+        Encoding: "Identity-H",
+        DescendantFonts: plainDict.get(PDFName.of("DescendantFonts")),
+        ToUnicode: toUnicode,
+      }),
+    );
+    page.node.setFontDictionary(PDFName.of(key), remap);
+    page.pushOperators(beginText(), setFontAndSize(key, 20), moveText(20, y), showText(PDFHexString.of(gid)), endText());
+  });
+  const highOut = join(dirname(fileURLToPath(import.meta.url)), "shared-truetype-high.pdf");
+  writeFileSync(highOut, await shared.save({ useObjectStreams: false }));
+  console.log(highOut);
 }

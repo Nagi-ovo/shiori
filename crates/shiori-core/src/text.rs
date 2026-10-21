@@ -3,11 +3,10 @@
 
 use std::os::raw::c_int;
 
-use pdfium_render::prelude::{FPDF_DOCUMENT, FS_MATRIX, FS_RECTF};
+use pdfium_render::prelude::{FS_MATRIX, FS_RECTF};
 
-use crate::fonts::font_id;
 use crate::{
-    decode, normalized, same_point, CoreError, Document, Lib, Rect, TextPage, BOX_SLACK_PT,
+    decode, normalized, same_point, CoreError, Document, Rect, TextPage, BOX_SLACK_PT,
     PDF_FONT_FLAGS,
 };
 
@@ -102,20 +101,19 @@ impl Document {
         }
         let mut fonts = std::collections::HashMap::new();
         let raw: Vec<RawChar> = (0..count)
-            .map(|i| raw_char(self.lib, self.handle, &text, i, &mut fonts))
+            .map(|i| raw_char(self, &text, i, &mut fonts))
             .collect();
         Ok(assemble(&raw))
     }
 }
 
 fn raw_char(
-    lib: &Lib,
-    document: FPDF_DOCUMENT,
+    document: &Document,
     text: &TextPage<'_>,
     i: c_int,
     fonts: &mut std::collections::HashMap<usize, FontInfo>,
 ) -> RawChar {
-    let tp = text.handle;
+    let (lib, tp) = (document.lib, text.handle);
     unsafe {
         let (mut x, mut y) = (0.0f64, 0.0f64);
         lib.FPDFText_GetCharOrigin(tp, i, &mut x, &mut y);
@@ -160,7 +158,7 @@ fn raw_char(
                             name: String::from_utf8_lossy(&name)
                                 .trim_end_matches('\0')
                                 .to_string(),
-                            id: font_id(lib, document, font),
+                            id: document.font_facts(font).map(|f| f.id).unwrap_or_default(),
                             flags: flags & PDF_FONT_FLAGS,
                             ascent,
                             descent,

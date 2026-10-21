@@ -300,3 +300,59 @@ fn a_dictionary_parting_from_its_program_past_the_probe_is_rebuilt() {
     };
     assert_eq!(path(&fonts[1].id, '\u{400}'), path(&fonts[0].id, 'A'));
 }
+
+#[test]
+fn dictionaries_parting_past_the_first_256_codes_differ() {
+    // Two dictionaries share pdf-lib's whole Liberation Sans and give U+0400
+    // to the glyph of "Ő" and of "ő", GIDs 274 and 275: Identity-H codes
+    // past any one-byte scan. The program's own cmap draws U+0400 as Ѐ, so
+    // neither may load as it is, and a face rebuilt for one would draw the
+    // other's glyph.
+    let doc = core()
+        .open(fixture("shared-truetype-high.pdf"), None)
+        .unwrap();
+    let glyphs = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    let [upper, lower] = <[String; 2]>::try_from(ids_of(&glyphs, "\u{400}")).unwrap();
+    let plain = font_of(&glyphs, "a").1;
+    assert_ne!(upper, lower);
+
+    let fonts = doc.embedded_fonts(0).unwrap();
+    let own: Vec<(&str, bool)> = fonts
+        .iter()
+        .map(|font| (font.id.as_str(), font.own_cmap))
+        .collect();
+    assert_eq!(
+        own,
+        [
+            (plain.as_str(), true),
+            (upper.as_str(), false),
+            (lower.as_str(), false)
+        ]
+    );
+
+    let rebuilt = doc.font_outlines(0, &[fonts[0].name.clone()]).unwrap();
+    let path = |id: &str, unicode: char| {
+        let font = rebuilt.iter().find(|font| font.id == id).unwrap();
+        let glyph = font.glyphs.iter().find(|g| g.unicode == unicode as u32);
+        glyph.unwrap().path.clone()
+    };
+    assert_eq!(path(&upper, '\u{400}'), path(&plain, '\u{150}'));
+    assert_eq!(path(&lower, '\u{400}'), path(&plain, '\u{151}'));
+}
+
+#[test]
+fn dictionaries_parting_at_a_presentation_form_differ() {
+    // shared-program-unicode.pdf with U+FE8E, an Arabic presentation form,
+    // for U+0400: PDFium's text page reads both dictionaries' code 128 back
+    // as U+0627, which neither maps, though one draws eacute there and the
+    // other egrave.
+    let doc = core()
+        .open(fixture("shared-program-presentation.pdf"), None)
+        .unwrap();
+    let glyphs = doc.chars(0, MAX_PAGE_CHARS).unwrap();
+    let [acute, grave] = <[String; 2]>::try_from(ids_of(&glyphs, "\u{627}")).unwrap();
+    let plain = font_of(&glyphs, "é").1;
+    assert_ne!(acute, grave);
+    assert_ne!(plain, acute);
+    assert_ne!(plain, grave);
+}

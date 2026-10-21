@@ -36,7 +36,7 @@ const ADVANCE_SLACK: i32 = 1;
 /// dictionary maps and the program does not does, since the face could not
 /// draw that text. A program PDFium cannot load on its own does not match.
 ///
-/// Costs a second load of the program and its cmap per font per page read:
+/// Costs a second load of the program and its cmap once per font per document:
 /// tens of microseconds for a subset, milliseconds for a whole CJK font.
 pub(crate) unsafe fn draws_alike(
     lib: &Lib,
