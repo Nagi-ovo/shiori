@@ -4,6 +4,7 @@
 import {
   LineCapStyle,
   LineJoinStyle,
+  PDFDict,
   PDFHexString,
   PDFName,
   PDFNumber,
@@ -40,7 +41,13 @@ import {
   type FontFamily,
   type FreeTextFontEntry,
 } from "./annotationFonts";
-import { fmt, hexToRgbArr, shioriAnnotationName } from "./annotationShared";
+import {
+  fmt,
+  freeRotation,
+  hexToRgbArr,
+  shioriAnnotationName,
+  type FreeRotation,
+} from "./annotationShared";
 import { baseTextDirection, hasNonAscii } from "./textScripts";
 import { measureTextWidth, wrapText } from "./textWrap";
 import { drawPathText } from "./vectorText";
@@ -54,25 +61,32 @@ export function buildStampFreeText(
   const [r, g, b] = hexToRgbArr(o.color);
   const size = Math.max(6, o.rect.h * 0.9);
   const da = `${fontName.asString()} ${fmt(size)} Tf ${fmt(r)} ${fmt(g)} ${fmt(b)} rg`;
-  const appearanceRef = buildStampAppearance(page, o);
-  return ctx.register(
-    ctx.obj({
-      Type: "Annot",
-      Subtype: "FreeText",
-      Rect: [o.rect.x, o.rect.y, o.rect.x + o.rect.w, o.rect.y + o.rect.h],
-      Contents: PDFHexString.fromText(stampGlyph(o.kind)),
-      DA: PDFString.of(da),
-      AP: ctx.obj({ N: appearanceRef }),
-      C: [r, g, b],
-      BS: ctx.obj({ W: o.strokeWidth }),
-      Q: 1,
-      F: 4,
-      NM: shioriAnnotationName(o.id),
-    }),
-  );
+  const turn = freeRotation(o.rect, o.angle);
+  const appearanceRef = buildStampAppearance(page, o, turn);
+  const dict = ctx.obj({
+    Type: "Annot",
+    Subtype: "FreeText",
+    Rect: turn?.rect ?? [o.rect.x, o.rect.y, o.rect.x + o.rect.w, o.rect.y + o.rect.h],
+    Contents: PDFHexString.fromText(stampGlyph(o.kind)),
+    DA: PDFString.of(da),
+    AP: ctx.obj({ N: appearanceRef }),
+    C: [r, g, b],
+    BS: ctx.obj({ W: o.strokeWidth }),
+    Q: 1,
+    F: 4,
+    NM: shioriAnnotationName(o.id),
+  });
+  setFreeTextRotate(dict, turn);
+  return ctx.register(dict);
 }
 
-function buildStampAppearance(page: PDFPage, o: StampOverlay): PDFRef {
+// Acrobat turns a FreeText's content by its /Rotate, so a quarter turn is
+// written there too and reads upright when the box is edited there.
+function setFreeTextRotate(dict: PDFDict, turn: FreeRotation | null): void {
+  if (turn?.rotate) dict.set(PDFName.of("Rotate"), PDFNumber.of(turn.rotate));
+}
+
+function buildStampAppearance(page: PDFPage, o: StampOverlay, turn: FreeRotation | null): PDFRef {
   const ctx = page.doc.context;
   const color = hexToRgbArr(o.color);
   const paths = stampPaths(o.kind, o.rect.w, o.rect.h);
@@ -94,7 +108,7 @@ function buildStampAppearance(page: PDFPage, o: StampOverlay): PDFRef {
   operators.push(stroke(), popGraphicsState());
   const stream = ctx.formXObject(operators, {
     BBox: ctx.obj([0, 0, o.rect.w, o.rect.h]),
-    Matrix: ctx.obj([1, 0, 0, 1, 0, 0]),
+    Matrix: ctx.obj(turn?.matrix ?? [1, 0, 0, 1, 0, 0]),
   });
   return ctx.register(stream);
 }
@@ -111,11 +125,12 @@ export function buildFreeText(
   // PDFName.asString().
   const da = `${picked.entry.name.asString()} ${o.fontSize} Tf ${fmt(r)} ${fmt(g)} ${fmt(b)} rg`;
   const q = o.align === "center" ? 1 : o.align === "right" ? 2 : 0;
-  const appearanceRef = buildFreeTextAppearance(page, o, picked);
+  const turn = freeRotation(o.rect, o.angle);
+  const appearanceRef = buildFreeTextAppearance(page, o, picked, turn);
   const dict = ctx.obj({
     Type: "Annot",
     Subtype: "FreeText",
-    Rect: [o.rect.x, o.rect.y, o.rect.x + o.rect.w, o.rect.y + o.rect.h],
+    Rect: turn?.rect ?? [o.rect.x, o.rect.y, o.rect.x + o.rect.w, o.rect.y + o.rect.h],
     Contents: PDFHexString.fromText(o.text ?? ""),
     DA: PDFString.of(da),
     AP: ctx.obj({ N: appearanceRef }),
@@ -123,6 +138,7 @@ export function buildFreeText(
     F: 4,
     NM: shioriAnnotationName(o.id),
   });
+  setFreeTextRotate(dict, turn);
   if (o.fill) dict.set(PDFName.of("C"), ctx.obj(hexToRgbArr(o.fill)));
   if (o.borderWidth !== undefined) {
     dict.set(PDFName.of("BS"), ctx.obj({ W: o.borderWidth }));
@@ -158,6 +174,7 @@ function buildFreeTextAppearance(
   page: PDFPage,
   o: TextOverlay,
   picked: { entry: FreeTextFontEntry; family: FontFamily; bold: boolean; italic: boolean },
+  turn: FreeRotation | null,
 ): PDFRef {
   const ctx = page.doc.context;
   const font = picked.entry;
@@ -246,7 +263,7 @@ function buildFreeTextAppearance(
   const stream = ctx.formXObject(operators, {
     Resources: resources,
     BBox: ctx.obj([0, 0, o.rect.w, o.rect.h]),
-    Matrix: ctx.obj([1, 0, 0, 1, 0, 0]),
+    Matrix: ctx.obj(turn?.matrix ?? [1, 0, 0, 1, 0, 0]),
   });
   return ctx.register(stream);
 }
