@@ -46,13 +46,14 @@ pub(crate) struct WebPanelState {
 // drive the address bar and back/forward enablement — actual traversal
 // uses the webview's own history via `history.back()/forward()`. A commit
 // is a traversal only when the panel's own Back/Forward asked for one
-// (`pending_traversal`) and the URL is that neighbour; anything else, a
-// link back to the previous page included, is a new entry.
+// (`pending_steps`, negative for Back) and the URL is an entry within those
+// steps; anything else, a link back to the previous page included, is a new
+// entry.
 #[derive(Default)]
 struct WebPanelInner {
     history: Vec<String>,
     cursor: usize,
-    pending_traversal: Option<navigation::Traversal>,
+    pending_steps: i32,
     persist_session: Option<bool>,
     // Whether the child webview is currently shown. Lets set_bounds skip a
     // redundant show() every frame: on Windows WebView2, Show() forces a
@@ -136,6 +137,7 @@ pub(crate) fn web_panel_open<R: Runtime>(
             .is_some_and(|current| current != persist_session);
         inner.history.clear();
         inner.cursor = 0;
+        inner.pending_steps = 0;
         inner.history.push(parsed.to_string());
         inner.persist_session = Some(persist_session);
         recreate
@@ -359,8 +361,10 @@ pub(crate) fn web_panel_back<R: Runtime>(
 ) -> Result<(), String> {
     enforce_main_webview(&caller)?;
     if let Some(webview) = app.get_webview(WEB_PANEL_LABEL) {
-        lock_web_panel(&app.state::<WebPanelState>()).pending_traversal =
-            Some(navigation::Traversal::Back);
+        navigation::request_traversal(
+            &mut lock_web_panel(&app.state::<WebPanelState>()),
+            navigation::Traversal::Back,
+        );
         webview
             .eval("history.back()")
             .map_err(|err| err.to_string())?;
@@ -389,8 +393,10 @@ pub(crate) fn web_panel_forward<R: Runtime>(
 ) -> Result<(), String> {
     enforce_main_webview(&caller)?;
     if let Some(webview) = app.get_webview(WEB_PANEL_LABEL) {
-        lock_web_panel(&app.state::<WebPanelState>()).pending_traversal =
-            Some(navigation::Traversal::Forward);
+        navigation::request_traversal(
+            &mut lock_web_panel(&app.state::<WebPanelState>()),
+            navigation::Traversal::Forward,
+        );
         webview
             .eval("history.forward()")
             .map_err(|err| err.to_string())?;
@@ -455,6 +461,7 @@ pub(crate) fn web_panel_close<R: Runtime>(
     let mut inner = lock_web_panel(&state);
     inner.history.clear();
     inner.cursor = 0;
+    inner.pending_steps = 0;
     inner.persist_session = None;
     inner.visible = false;
     Ok(())

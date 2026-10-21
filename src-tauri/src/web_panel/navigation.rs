@@ -81,33 +81,48 @@ pub(super) fn web_panel_allows_navigation(raw: &str) -> bool {
 }
 
 // Which way the panel's own Back/Forward buttons asked the webview to go.
+#[cfg_attr(mobile, allow(dead_code))]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Traversal {
     Back,
     Forward,
 }
 
+// The panel's Back/Forward button asked the webview to traverse. Requests
+// add up: the button stays enabled until the first commit's nav event
+// arrives, and a single flag turned a second quick Back into a new entry.
+#[cfg_attr(mobile, allow(dead_code))]
+pub(super) fn request_traversal(inner: &mut WebPanelInner, traversal: Traversal) {
+    inner.pending_steps += match traversal {
+        Traversal::Back => -1,
+        Traversal::Forward => 1,
+    };
+}
+
 // Classify a committed navigation. Only the URL reaches us, so moving the
 // cursor on a match with a neighbour alone turned a link back to the
 // previous page (A -> B -> A) into a Back and disabled the Back button; the
-// match counts only when Back/Forward was asked for.
+// match counts only within the steps Back/Forward asked for, nearest first
+// (WebKit may commit two queued Backs as one).
 pub(super) fn record_web_navigation(inner: &mut WebPanelInner, url: &str) {
-    let traversal = inner.pending_traversal.take();
-    let current = inner.history.get(inner.cursor).map(String::as_str);
-    if current == Some(url) {
+    let pending = std::mem::take(&mut inner.pending_steps);
+    if inner.history.get(inner.cursor).map(String::as_str) == Some(url) {
+        inner.pending_steps = pending;
         return; // reload / re-entrant fire of the same page
     }
-    let neighbour = |index: usize| inner.history.get(index).map(String::as_str) == Some(url);
-    match traversal {
-        Some(Traversal::Back) if inner.cursor > 0 && neighbour(inner.cursor - 1) => {
-            inner.cursor -= 1;
-            return;
-        }
-        Some(Traversal::Forward) if neighbour(inner.cursor + 1) => {
-            inner.cursor += 1;
-            return;
-        }
-        _ => {}
+    let cursor = inner.cursor;
+    let target = (1..=pending.unsigned_abs() as usize).find_map(|k| {
+        let index = if pending < 0 {
+            cursor.checked_sub(k)?
+        } else {
+            cursor + k
+        };
+        (inner.history.get(index).map(String::as_str) == Some(url)).then_some((k, index))
+    });
+    if let Some((k, index)) = target {
+        inner.cursor = index;
+        inner.pending_steps = pending - pending.signum() * k as i32;
+        return;
     }
     if !inner.history.is_empty() {
         inner.history.truncate(inner.cursor + 1);
@@ -233,18 +248,18 @@ mod tests {
 
         // Back: the Back button, then the previous neighbour commits; the
         // cursor moves back without growing history.
-        inner.pending_traversal = Some(super::Traversal::Back);
+        super::request_traversal(&mut inner, super::Traversal::Back);
         super::record_web_navigation(&mut inner, "https://b.com");
         assert_eq!(inner.cursor, 1);
         assert_eq!(inner.history.len(), 3);
 
         // Forward: the Forward button, then the next neighbour commits.
-        inner.pending_traversal = Some(super::Traversal::Forward);
+        super::request_traversal(&mut inner, super::Traversal::Forward);
         super::record_web_navigation(&mut inner, "https://c.com");
         assert_eq!(inner.cursor, 2);
 
         // Go back, then a brand-new navigation truncates the forward entry.
-        inner.pending_traversal = Some(super::Traversal::Back);
+        super::request_traversal(&mut inner, super::Traversal::Back);
         super::record_web_navigation(&mut inner, "https://b.com");
         super::record_web_navigation(&mut inner, "https://d.com");
         assert_eq!(inner.cursor, 2);
@@ -252,6 +267,37 @@ mod tests {
             inner.history,
             vec!["https://a.com", "https://b.com", "https://d.com"]
         );
+    }
+
+    // Back is still enabled until the first commit's nav event arrives, so
+    // two quick clicks walk two entries; both must move the cursor, or the
+    // panel thinks the webview is three deep with nothing forward.
+    #[test]
+    fn web_navigation_two_quick_backs_walk_two_entries() {
+        let mut inner = super::WebPanelInner::default();
+        for url in ["https://a.com", "https://b.com", "https://c.com"] {
+            super::record_web_navigation(&mut inner, url);
+        }
+        super::request_traversal(&mut inner, super::Traversal::Back);
+        super::request_traversal(&mut inner, super::Traversal::Back);
+        super::record_web_navigation(&mut inner, "https://b.com");
+        super::record_web_navigation(&mut inner, "https://a.com");
+        assert_eq!(inner.cursor, 0);
+        assert_eq!(inner.history.len(), 3, "Forward must stay available");
+    }
+
+    // WebKit may fold two queued traversals into one commit two entries back.
+    #[test]
+    fn web_navigation_two_backs_committed_at_once_land_two_back() {
+        let mut inner = super::WebPanelInner::default();
+        for url in ["https://a.com", "https://b.com", "https://c.com"] {
+            super::record_web_navigation(&mut inner, url);
+        }
+        super::request_traversal(&mut inner, super::Traversal::Back);
+        super::request_traversal(&mut inner, super::Traversal::Back);
+        super::record_web_navigation(&mut inner, "https://a.com");
+        assert_eq!(inner.cursor, 0);
+        assert_eq!(inner.history.len(), 3);
     }
 
     // Following links A -> B -> A is three pages deep, not a Back: the
