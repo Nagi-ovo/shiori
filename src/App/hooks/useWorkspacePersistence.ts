@@ -149,8 +149,13 @@ export function useWorkspacePersistence<T>({
         if (protectedCacheIds.has(id)) releaseWorkspaceSource(id);
         else protectedCacheIds.add(id);
       }
-      for (const id of workspaceSourcesOfOtherWindows()) protectedCacheIds.add(id);
-      void cleanupWorkspaceSources(protectedCacheIds);
+      // Another window may reserve a row while the sweep runs: ask again.
+      void cleanupWorkspaceSources({
+        has: (id) =>
+          protectedCacheIds.has(id) ||
+          reservedWorkspaceSourceIds().includes(id) ||
+          workspaceSourcesOfOtherWindows().includes(id),
+      });
     }, 1000);
     return () => window.clearTimeout(timer);
   }, [protectedWorkspaceCacheKey, cacheIdsForTab, getTabs]);

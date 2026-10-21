@@ -74,13 +74,17 @@ export function protectedWorkspaceCacheIds(
 
 const enqueueSourceWrite = createSerialQueue();
 
+/** The protected rows as they are whenever a deletion asks. */
+const liveProtectedWorkspaceCacheIds = {
+  has: (id: string) => protectedWorkspaceCacheIds().has(id),
+};
+
 /**
  * Writes a cache row nothing references yet. It is reserved before the write
  * so the orphan sweep and quota eviction leave it alone until a tab or recent
  * owns it or its writer gives it up (removeWorkspaceSourceIfUnreferenced).
- * Writes run one at a time: each one's admission and quota sweep use the
- * protected set taken when it starts, so a write running alongside would
- * treat the other's fresh row as unprotected and delete it.
+ * Writes in this window run one at a time; every deletion re-reads the
+ * protected rows, as another window may reserve and write one meanwhile.
  */
 export function putReservedWorkspaceSource(
   source: Parameters<typeof putWorkspaceSource>[0],
@@ -89,7 +93,7 @@ export function putReservedWorkspaceSource(
   reserveWorkspaceSource(id);
   return enqueueSourceWrite(async () => {
     try {
-      return await putWorkspaceSource({ ...source, id }, protectedWorkspaceCacheIds());
+      return await putWorkspaceSource({ ...source, id }, liveProtectedWorkspaceCacheIds);
     } catch (error) {
       releaseWorkspaceSource(id);
       throw error;

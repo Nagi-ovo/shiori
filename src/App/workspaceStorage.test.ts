@@ -72,6 +72,40 @@ describe("reserved workspace source writes", () => {
     }
   });
 
+  // Window B reserves and writes its row after this window's write began.
+  // Every deletion this write makes must see B's reservation, not the
+  // protected set taken when it started.
+  test("a write's quota sweep keeps a row another window reserved after it began", async () => {
+    const { putWorkspaceSource } = await import("../storage/workspace");
+    let heldByB: string[] = [];
+    const windowB = createDraftProtection({
+      storage: () => localStorage,
+      now: Date.now,
+      setTimeout: () => 0,
+      clearTimeout: () => undefined,
+      target: null,
+      sessionId: "window-b",
+      locks: null,
+      keyPrefix: WORKSPACE_SOURCE_KEY_PREFIX,
+    });
+    const closeB = windowB.protectOpenDrafts(() => heldByB);
+    try {
+      __workspaceTest.setSourceCapBytes(30);
+      const writingA = putReservedWorkspaceSource({ ...source("a.md", 2), id: "row-a" });
+      // A's write has started and taken its protected set.
+      await Promise.resolve();
+      await Promise.resolve();
+      heldByB = ["row-b"];
+      windowB.republishOpenDrafts();
+      await putWorkspaceSource({ ...source("b.md", 1), id: "row-b" }, new Set(["row-a", "row-b"]));
+      await writingA.catch(() => undefined);
+
+      expect(await getWorkspaceSource("row-b")).toBeDefined();
+    } finally {
+      closeB();
+    }
+  });
+
   // Its tab would only have appeared after the password, so nothing else
   // gives the dropped file's reserved row back.
   test("dismissing the password prompt of a dropped PDF gives up its cache row", async () => {

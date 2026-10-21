@@ -153,6 +153,44 @@ describe("workspace persistence scheduling", () => {
     }
   });
 
+  test("the sweep keeps a row another window reserves while it runs", async () => {
+    // The sweep deletes orphans, then evicts down to the cap. Window B's drop
+    // lands in between; the eviction must see B's reservation.
+    const { __workspaceTest, getWorkspaceSource, putWorkspaceSource } = await import(
+      "../../storage/workspace"
+    );
+    const row = (id: string, savedAt: number) => ({
+      id, kind: "pdf" as const, name: `${id}.pdf`, size: 20, bytes: new Uint8Array(20), savedAt,
+    });
+    await putWorkspaceSource(row("orphan-row", 1));
+    await putWorkspaceSource(row("held-row", 3));
+    __workspaceTest.setSourceCapBytes(30);
+    let heldByB: string[] = [];
+    const windowB = otherWindowSources("window-b");
+    const closeB = windowB.protectOpenDrafts(() => heldByB);
+    const { sources } = __workspaceTest.db;
+    const bulkDelete = sources.bulkDelete;
+    sources.bulkDelete = async (keys) => {
+      await bulkDelete.call(sources, keys);
+      heldByB = ["row-b"];
+      windowB.republishOpenDrafts();
+      await sources.put(row("row-b", 2));
+    };
+    const held: WorkspaceTabMeta = { ...baseTab, kind: "pdf", source: { type: "cache", id: "held-row" } };
+    const view = render(<Harness tabs={[held]} />);
+    try {
+      await act(() => Bun.sleep(1100));
+      expect(await getWorkspaceSource("orphan-row")).toBeUndefined();
+      expect(await getWorkspaceSource("row-b")).toBeDefined();
+    } finally {
+      sources.bulkDelete = bulkDelete;
+      __workspaceTest.setSourceCapBytes(undefined);
+      closeB();
+      view.unmount();
+      await __workspaceTest.reset();
+    }
+  });
+
   test("this window's still-opening and open cache rows are protected in other windows", async () => {
     const { ensureWorkspaceSource } = await import("../workspaceStorage");
     const windowB = otherWindowSources("window-b");
