@@ -346,8 +346,14 @@ pub(crate) fn web_panel_set_bounds<R: Runtime>(
 pub(crate) fn web_panel_hide<R: Runtime>(
     caller: Webview<R>,
     app: AppHandle<R>,
+    rail_closed: Option<bool>,
 ) -> Result<(), String> {
     enforce_main_webview(&caller)?;
+    // Closing the rail keeps the page but ends the panel session; an overlay
+    // hiding it does not (navigation::restart_external_open_gate).
+    if rail_closed == Some(true) {
+        navigation::restart_external_open_gate(&app.state::<WebPanelState>());
+    }
     // Gate on `creating` BEFORE get_webview (see web_panel_set_bounds): during
     // add_child's nested pump the webview is built but not yet in the manager,
     // so get_webview() can be None while creating==true. Do NOT drop the hide —
@@ -377,9 +383,11 @@ pub(crate) fn web_panel_hide<R: Runtime>(
 pub(crate) fn web_panel_hide<R: Runtime>(
     caller: Webview<R>,
     app: AppHandle<R>,
+    rail_closed: Option<bool>,
 ) -> Result<(), String> {
     use tauri_plugin_shiori_browser::ShioriBrowserExt;
     enforce_main_webview(&caller)?;
+    let _ = rail_closed; // no native mailto throttle on mobile
     app.shiori_browser().hide().map_err(|err| err.to_string())
 }
 

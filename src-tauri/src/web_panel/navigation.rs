@@ -97,11 +97,11 @@ fn external_open_request_allowed(state: &WebPanelState, now: Instant) -> bool {
 }
 
 // The gate belongs to one panel session and one page the user went to.
-// Opening, closing, a typed address and the panel's Back, Forward and Reload
-// start it afresh: a quiet period stretched by an earlier page's requests
-// silently dropped the next page's mailto click. Only the main webview can
-// call those commands, so a page cannot reset the gate; its own navigations
-// and history calls keep it.
+// Opening, closing (the rail too), a typed address and the panel's Back,
+// Forward and Reload start it afresh: a quiet period stretched by an earlier
+// page's requests silently dropped the next page's mailto click. Only the
+// main webview can call those commands, so a page cannot reset the gate; its
+// own navigations and history calls keep it.
 #[cfg(not(mobile))]
 pub(super) fn restart_external_open_gate(state: &WebPanelState) {
     *state

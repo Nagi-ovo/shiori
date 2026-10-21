@@ -175,9 +175,9 @@ async webPanelSetBounds(bounds: WebPanelBounds) : Promise<Result<null, string>> 
     else return { status: "error", error: e  as any };
 }
 },
-async webPanelHide() : Promise<Result<null, string>> {
+async webPanelHide(railClosed: boolean | null) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("web_panel_hide") };
+    return { status: "ok", data: await TAURI_INVOKE("web_panel_hide", { railClosed }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };

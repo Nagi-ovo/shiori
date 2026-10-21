@@ -5,7 +5,6 @@ import { Ic } from "./icons";
 import { MiniIconBtn } from "./ui";
 import { useAppStore } from "../store/store";
 import {
-  hideWebPanel,
   openUrlInSystemBrowser,
   openUrlInWebPanel,
   resolveAddressBarInput,
@@ -22,6 +21,7 @@ import {
 } from "../../platform/webPanel";
 import { safeUnlisten } from "../../platform/ipc";
 import { createExternalOpenPrompt } from "./browserExternalOpen";
+import { hideWebPanel } from "./browserPanelPlatform";
 
 // The last navigation request nonce the Browser panel acted on. Module-level
 // (not a ref) so it survives the panel unmounting when the rail is closed:
@@ -202,14 +202,15 @@ export const BrowserPanel = memo(function BrowserPanel({
   }, [t]);
 
   // Closing the rail entirely unmounts the panel — hide the webview so it
-  // doesn't float over the canvas.
+  // doesn't float over the canvas, and say the rail closed: the page lives
+  // on for the next open, but its mailto: throttle does not.
   useEffect(() => {
     return () => {
       if (pendingBoundsRafRef.current !== null) {
         cancelAnimationFrame(pendingBoundsRafRef.current);
         pendingBoundsRafRef.current = null;
       }
-      void hideWebPanel().catch(() => undefined);
+      void hideWebPanel({ railClosed: true }).catch(() => undefined);
     };
   }, []);
 

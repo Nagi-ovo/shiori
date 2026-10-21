@@ -87,10 +87,12 @@ export async function setWebPanelBounds(bounds: WebPanelBounds): Promise<void> {
   unwrapCommand(await commands.webPanelSetBounds(bounds));
 }
 
-export async function hideWebPanel(): Promise<void> {
+// `railClosed`: the rail closed, not just something covering the panel. The
+// page stays alive, but its mailto: throttle starts afresh.
+export async function hideWebPanel(options?: { railClosed?: boolean }): Promise<void> {
   if (!CAPABILITIES.embeddedBrowserPanel) return;
   const { commands, unwrapCommand } = await import("./ipc");
-  unwrapCommand(await commands.webPanelHide());
+  unwrapCommand(await commands.webPanelHide(options?.railClosed ?? null));
 }
 
 export async function webPanelBack(): Promise<void> {
