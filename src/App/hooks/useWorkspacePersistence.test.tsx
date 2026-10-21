@@ -6,7 +6,7 @@ import {
   IDBKeyRange as FakeIDBKeyRange,
   indexedDB as fakeIndexedDB,
 } from "fake-indexeddb";
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { WorkspaceTabMeta } from "../../storage/workspace";
 
 Dexie.dependencies.indexedDB = fakeIndexedDB as unknown as IDBFactory;
@@ -14,6 +14,7 @@ Dexie.dependencies.IDBKeyRange = FakeIDBKeyRange as unknown as typeof IDBKeyRang
 // Loaded after the fake is wired: Dexie binds its IndexedDB at construction.
 const { loadWorkspaceState } = await import("../../storage/workspace");
 const { useWorkspacePersistence } = await import("./useWorkspacePersistence");
+const { createDraftProtection } = await import("../../storage/draftProtection");
 
 const baseTab: WorkspaceTabMeta = {
   id: "tab-a",
@@ -28,9 +29,14 @@ function cacheIdsOf(tab: WorkspaceTabMeta): string[] {
   return tab.source.type === "cache" ? [tab.source.id] : [];
 }
 
+// Module-level, like App's mapper: a fresh function per render would re-register
+// draft protection on every render and hide a missed republish.
+const identityMeta = (tab: WorkspaceTabMeta) => tab;
+
 function Harness({ tabs }: { tabs: WorkspaceTabMeta[] }) {
   const ref = useRef(tabs);
-  useEffect(() => {
+  // Current by the time the hook's layout effects run, like App's store read.
+  useLayoutEffect(() => {
     ref.current = tabs;
   }, [tabs]);
   const [getTabs] = useState(() => () => ref.current);
@@ -38,7 +44,7 @@ function Harness({ tabs }: { tabs: WorkspaceTabMeta[] }) {
     tabs,
     activeTabId: tabs[0]?.id ?? null,
     getTabs,
-    toMeta: (tab) => tab,
+    toMeta: identityMeta,
     cacheIdsForTab: cacheIdsOf,
     folderPaths: [],
   });
@@ -138,6 +144,29 @@ describe("workspace persistence scheduling", () => {
       __draftsTest.setQuotaCapBytes(undefined);
       view.unmount();
       await __draftsTest.reset();
+    }
+  });
+
+  test("a document opened in a tab is protected in other windows at once", () => {
+    // Another window's autosave can run its quota sweep any moment after this
+    // window opens an old annotated PDF, long before the next heartbeat.
+    const otherWindow = createDraftProtection({
+      storage: () => localStorage,
+      now: Date.now,
+      setTimeout: () => 0,
+      clearTimeout: () => undefined,
+      target: null,
+      sessionId: "other-window",
+      locks: null,
+    });
+    const view = render(<Harness tabs={[]} />);
+    try {
+      view.rerender(<Harness tabs={[{ ...baseTab, kind: "pdf", hash: "fresh" }]} />);
+      expect(otherWindow.isDraftProtected("fresh")).toBe(true);
+      view.rerender(<Harness tabs={[]} />);
+      expect(otherWindow.isDraftProtected("fresh")).toBe(false);
+    } finally {
+      view.unmount();
     }
   });
 });
