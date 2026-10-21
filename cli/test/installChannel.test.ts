@@ -318,6 +318,68 @@ describe("CLI install channel", () => {
     });
   });
 
+  // The curl and PowerShell installers extract in place and leave no marker.
+  // Their directory can be reused only when it holds everything the
+  // package's manifest lists at full size: tar stopped inside the engine
+  // addon leaves the addon there but short, and a run launching that tree
+  // fails every PDF command.
+  test("npm runner reuses a whole curl install and replaces a cut-short one", async () => {
+    if (!target) return;
+    await withTempDir(async (dir) => {
+      const executable = target.startsWith("win32") ? "shiori.exe" : "shiori";
+      const { server } = await serveCliArchive(
+        makeArchive(mkdtempSync(join(dir, "pkg-")), executable),
+        target,
+      );
+      servers.push(server);
+      const packaged: Record<string, string> = {
+        [executable]: "#!/bin/sh\necho shiori-curl\n",
+        "native/shiori_core.node": "a".repeat(4096),
+        "assets/fonts/NotoSansSC-Regular.otf": "f".repeat(4096),
+      };
+      // `extracted` maps each path tar got to before it stopped to how many
+      // of its bytes landed.
+      const seedCurlInstall = (home: string, extracted: Record<string, number>) => {
+        const version = join(home, "cli", "0.1.25");
+        for (const [path, length] of Object.entries(extracted)) {
+          mkdirSync(dirname(join(version, path)), { recursive: true });
+          writeFileSync(join(version, path), packaged[path].slice(0, length));
+        }
+        writeFileSync(
+          join(version, "manifest.json"),
+          JSON.stringify({
+            schema: "shiori.cli-distribution/v2",
+            files: Object.entries(packaged).map(([path, body]) => ({
+              path,
+              size: Buffer.byteLength(body),
+              sha256: createHash("sha256").update(body).digest("hex"),
+            })),
+          }),
+        );
+      };
+      const install = (home: string) =>
+        ensureCliBinary({
+          api: `http://127.0.0.1:${server.port}/api/cli`,
+          env: { SHIORI_CLI_HOME: home, SHIORI_CLI_ALLOW_HTTP: "1" },
+          target,
+        });
+
+      const whole = join(dir, "whole");
+      seedCurlInstall(
+        whole,
+        Object.fromEntries(Object.entries(packaged).map(([path, body]) => [path, body.length])),
+      );
+      expect(readFileSync(await install(whole), "utf8")).toContain("shiori-curl");
+
+      const cut = join(dir, "cut");
+      seedCurlInstall(cut, {
+        [executable]: packaged[executable].length,
+        "native/shiori_core.node": 1024,
+      });
+      expect(readFileSync(await install(cut), "utf8")).toContain("shiori-ok");
+    });
+  });
+
   // The archive used to go through a fixed name in the shared temp
   // directory, written with a plain truncate-and-write: whatever sat at that
   // name, another user's file or a symlink to one of ours, got the bytes.

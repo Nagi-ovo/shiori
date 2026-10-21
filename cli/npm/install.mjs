@@ -5,8 +5,10 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -73,12 +75,25 @@ const INSTALL_COMPLETE_MARKER = ".shiori-install-complete";
 
 function isCompleteInstall(dir, target) {
   if (!existsSync(join(dir, executableName(target)))) return false;
+  if (existsSync(join(dir, INSTALL_COMPLETE_MARKER))) return true;
   // The curl and PowerShell installers extract into the same directory
-  // without the marker; theirs is complete once the engine addon is there.
-  return (
-    existsSync(join(dir, INSTALL_COMPLETE_MARKER)) ||
-    existsSync(join(dir, "native", "shiori_core.node"))
-  );
+  // without the marker. Theirs is complete when every file the package's
+  // manifest lists is there at its full size: tar stopped part way leaves
+  // the file it was writing short and the ones after it missing.
+  try {
+    const { files } = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+    return (
+      Array.isArray(files) &&
+      files.length > 0 &&
+      files.every(
+        (file) =>
+          typeof file?.path === "string" &&
+          statSync(join(dir, file.path)).size === file.size,
+      )
+    );
+  } catch {
+    return false;
+  }
 }
 
 function publishInstall(staging, dest, target) {
