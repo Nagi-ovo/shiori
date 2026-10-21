@@ -101,13 +101,19 @@ export type IntakePorts = {
   };
 
   drafts: {
-    get: (hash: string) => Promise<Draft | undefined>;
+    /**
+     * Hands a durable source the unreachable draft of its bytes, if any
+     * (storage/draftClaim.ts); resolves to the draft id to read.
+     */
+    claim: (hash: string, draftId: string) => Promise<string>;
+    /** By draft id (storage/draftIdentity.ts), not by hash. */
+    get: (draftId: string) => Promise<Draft | undefined>;
     getLiveOperationReceipts: (hash: string) => Promise<string[]>;
     mergeLiveOperationReceipts: (
       hash: string,
       ids: string[],
     ) => Promise<unknown>;
-    readOperationLog: (hash: string) => OperationLogEntry | null;
+    readOperationLog: (draftId: string) => OperationLogEntry | null;
   };
 
   editors: {

@@ -203,6 +203,55 @@ describe("useDraftSync disabled gate", () => {
     await drafts.remove(HASH);
   });
 
+  test("the same bytes at two paths save two drafts, receipts by content", async () => {
+    const { useEditorStore } = await import("../store/store");
+    const { default: drafts } = await import("../../storage/drafts");
+    const { draftIdFor } = await import("../../storage/draftIdentity");
+    const { useDraftSync } = await import("./useDraftSync");
+    const atA = draftIdFor(HASH, { type: "path", path: "/docs/paper.pdf" });
+    const atB = draftIdFor(HASH, { type: "path", path: "/docs/paper copy.pdf" });
+    const operationId = "c".repeat(64);
+    const view = renderHook(() => useDraftSync(HASH, false));
+    const edit = async (path: string, id: string) => {
+      act(() => {
+        useEditorStore.getState().setOpened(
+          {
+            fileName: "paper.pdf",
+            fileSize: 4,
+            doc: {} as PDFDocumentProxy,
+            bytes: new Uint8Array([1, 2, 3, 4]),
+            path,
+          },
+          [page],
+        );
+      });
+      act(() => {
+        useEditorStore.setState({ completedLiveOperationIds: new Set([operationId]) });
+        useEditorStore.getState().commit({
+          overlays: [
+            { type: "highlight", id, pageId: "p1", rects: [{ x: 0, y: 0, w: 1, h: 1 }], color: "#ffff00", opacity: 0.4 },
+          ],
+        });
+      });
+      await act(async () => {
+        await view.result.current.flushNowOrThrow();
+      });
+    };
+    try {
+      await edit("/docs/paper.pdf", "a");
+      await edit("/docs/paper copy.pdf", "b");
+      const overlays = async (id: string) =>
+        (await drafts.get(id))?.model.overlays.map((overlay) => overlay.id);
+      expect(await overlays(atA)).toEqual(["a"]);
+      expect(await overlays(atB)).toEqual(["b"]);
+      expect(await drafts.get(HASH)).toBeUndefined();
+      expect(await drafts.getLiveOperationReceipts(HASH)).toEqual([operationId]);
+    } finally {
+      view.unmount();
+      await Promise.all([drafts.remove(atA), drafts.remove(atB), drafts.remove(HASH)]);
+    }
+  });
+
   test("suspension writes the crash-recovery log before IndexedDB finishes", async () => {
     // pagehide (a web tab closing) may tear the page down before the async
     // IndexedDB put is issued, so the synchronous tier must already hold the

@@ -6,6 +6,8 @@ import type { WorkspaceTabMeta } from "../storage/workspace";
 export type PendingRestore = {
   file: File;
   hash: string;
+  /** The draft row this came from (storage/draftIdentity.ts). */
+  draftId: string;
   pages: PageModel[];
   fileSize: number;
   lastTouched: number;

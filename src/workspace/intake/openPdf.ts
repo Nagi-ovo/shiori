@@ -16,6 +16,7 @@ import {
   assertPdfWithinPageLimit,
   classifyPdfOpenError,
 } from "../../pdf/openPolicy";
+import { draftIdFor } from "../../storage/draftIdentity";
 import { sha256Hex } from "../../storage/hash";
 import { restoreSuspendedPdfSnapshot } from "../../storage/runtimeSessions";
 import { defaultPdfView, pdfViewForLayout, pdfViewFromStore } from "../pdfView";
@@ -154,13 +155,18 @@ async function runPdfOpen(
       importedModel ?? { pages: nextPages, overlays: [] },
     );
 
-    // Receipt tombstones live outside recoverable drafts. Await them before
-    // the document goes on screen so it cannot publish a writable Live
-    // context during a lost-response retry window.
+    // Drafts are per source (fact 4), receipts per content. Receipt
+    // tombstones live outside recoverable drafts. Await them before the
+    // document goes on screen so it cannot publish a writable Live context
+    // during a lost-response retry window.
+    const draftId = draftIdFor(hash, tabSource);
+    const readDraftId = options.runtimeSnapshot
+      ? draftId
+      : await ports.drafts.claim(hash, draftId);
     const [draft, persistedReceipts] = options.runtimeSnapshot
       ? [null, options.runtimeSnapshot.completedLiveOperationIds]
       : await Promise.all([
-          ports.drafts.get(hash),
+          ports.drafts.get(readDraftId),
           ports.drafts.getLiveOperationReceipts(hash),
         ]);
     const completedLiveOperationIds = [
@@ -186,7 +192,7 @@ async function runPdfOpen(
     }
     const recovery = chooseDraftRecovery(
       draft,
-      options.runtimeSnapshot ? null : ports.drafts.readOperationLog(hash),
+      options.runtimeSnapshot ? null : ports.drafts.readOperationLog(readDraftId),
       nextPages,
       completedLiveOperationIds,
     );
@@ -262,6 +268,7 @@ async function runPdfOpen(
       const recoveryDraft: PendingRestore = {
         file: fileLike,
         hash,
+        draftId,
         pages: nextPages,
         fileSize: input.size,
         lastTouched: recovery.lastTouched,

@@ -19,8 +19,8 @@ import type { WorkspaceStore } from "./workspaceStore";
 export type DraftDecisionPorts = {
   store: WorkspaceStore;
   editor: () => PdfEditorStoreApi;
-  /** Deletes the draft but keeps its Live receipts (see discardDraft). */
-  removeDraft: (hash: string) => void;
+  /** Deletes the draft (by draft id) but keeps its Live receipts. */
+  removeDraft: (draftId: string) => void;
 };
 
 function updateActiveTab(
@@ -77,7 +77,7 @@ export function restoreDraft({ store, editor }: DraftDecisionPorts): void {
 export function discardDraft({ store, editor, removeDraft }: DraftDecisionPorts): void {
   const { pendingRestore } = store.getState().session;
   if (!pendingRestore) return;
-  removeDraft(pendingRestore.hash);
+  removeDraft(pendingRestore.draftId);
   const target = editor();
   keepCollapsedFor(target, target.getState().model.overlays);
   clearDraftNotices(store);

@@ -17,6 +17,7 @@ const original: DocumentModel = { pages: [page("p1")], overlays: [] };
 
 const draft = {
   hash: "h",
+  draftId: "h|path:/docs/paper.pdf",
   lastTouched: 1,
   draftModelPages: [page("p1"), page("added")],
   draftModelOverlays: [],
@@ -34,7 +35,7 @@ function setup(session: Partial<ReturnType<ReturnType<typeof createWorkspaceStor
   const ports: DraftDecisionPorts = {
     store,
     editor: () => editor,
-    removeDraft: (hash) => removed.push(hash),
+    removeDraft: (draftId) => removed.push(draftId),
   };
   const pageIds = () => editor.getState().model.pages.map((p) => p.id);
   const tabNow = () => store.getState().tabs[0]!;
@@ -57,7 +58,7 @@ describe("a draft set aside or in conflict", () => {
 
     discardDraft(ports);
 
-    expect(removed).toEqual(["h"]);
+    expect(removed).toEqual(["h|path:/docs/paper.pdf"]);
     expect(pageIds()).toEqual(["p1"]);
     expect(store.getState().session.pendingRestore).toBeNull();
   });

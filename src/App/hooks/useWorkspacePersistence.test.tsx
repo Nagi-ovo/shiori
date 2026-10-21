@@ -15,6 +15,7 @@ Dexie.dependencies.IDBKeyRange = FakeIDBKeyRange as unknown as typeof IDBKeyRang
 const { loadWorkspaceState } = await import("../../storage/workspace");
 const { useWorkspacePersistence } = await import("./useWorkspacePersistence");
 const { createDraftProtection } = await import("../../storage/draftProtection");
+const { draftIdFor } = await import("../../storage/draftIdentity");
 
 const baseTab: WorkspaceTabMeta = {
   id: "tab-a",
@@ -125,21 +126,23 @@ describe("workspace persistence scheduling", () => {
       hash: "pinned",
       pinned: true,
     };
+    // A path tab's draft is keyed by its bytes and its path.
+    const pinned = draftIdFor("pinned", openTab.source);
     const view = render(<Harness tabs={[openTab]} />);
     __draftsTest.setQuotaCapBytes(3500);
     try {
-      await drafts.put(draft("pinned", 1));
+      await drafts.put(draft(pinned, 1));
       await drafts.put(draft("other-a", 2));
       await drafts.put(draft("other-b", 3));
       expect((await drafts.list()).map((row) => row.id).sort()).toEqual([
         "other-b",
-        "pinned",
+        pinned,
       ]);
 
       // The startup sweep runs beside the restore; it must honour open tabs too.
       __draftsTest.setQuotaCapBytes(2000);
       await drafts.cleanup();
-      expect((await drafts.list()).map((row) => row.id)).toEqual(["pinned"]);
+      expect((await drafts.list()).map((row) => row.id)).toEqual([pinned]);
     } finally {
       __draftsTest.setQuotaCapBytes(undefined);
       view.unmount();
@@ -160,11 +163,14 @@ describe("workspace persistence scheduling", () => {
       locks: null,
     });
     const view = render(<Harness tabs={[]} />);
+    const fresh = draftIdFor("fresh", baseTab.source);
     try {
       view.rerender(<Harness tabs={[{ ...baseTab, kind: "pdf", hash: "fresh" }]} />);
-      expect(otherWindow.isDraftProtected("fresh")).toBe(true);
+      expect(otherWindow.isDraftProtected(fresh)).toBe(true);
+      // It holds its own draft, not the bytes' hash-only one.
+      expect(otherWindow.isDraftOpen("fresh")).toBe(false);
       view.rerender(<Harness tabs={[]} />);
-      expect(otherWindow.isDraftProtected("fresh")).toBe(false);
+      expect(otherWindow.isDraftProtected(fresh)).toBe(false);
     } finally {
       view.unmount();
     }
