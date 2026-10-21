@@ -11,12 +11,16 @@ Last reconciled against reality: **2026-10-21**.
 - **The 2026-10-20 audit fixes are on local `main`, not pushed** (2026-10-21):
   all 119 handled; B102 is not a bug. Every fix was then reviewed by Codex
   gpt-6-astra (sol for the parts it had missed) and the 28 findings answered
-  (`CHANGELOG.md` `[未发布]` → 复审补修). Still open (未完成): B027
-  (run-mode isolation; Codex gpt-6-astra is finishing it on `fu5/b027-astra`)
-  and B034 (a refused window may now also discard after confirming; Opus on
-  `fu5/b034-discard`). Left as they are by Jesse's call (有意不再修): B108
-  (no PDFium API up to chromium/8111) and B088 (wry gesture signals on
-  three engines, two unverifiable here). Gates green on main: verify
+  (`CHANGELOG.md` `[未发布]` → 复审补修, 收尾). B034 is done: a refused
+  window may export or discard (desktop close/quit unit-tested only). Still
+  open (未完成): B027, two routes marked `test.failing` in the opt-in Chromium
+  suite (`SHIORI_BROWSER_TEST=1 bun test
+  src/documents/runnableHtmlWebRtcGuard.browser.test.ts`); the shadow-root
+  one needs Jesse to pick between disabling declarative shadow DOM in run
+  frames and turning WebRTC off at the host. Web tab close/reload still drops
+  a refused copy silently (predates B034). Left as they are by Jesse's call
+  (有意不再修): B108 (no PDFium API up to chromium/8111) and B088 (wry
+  gesture signals on three engines, two unverifiable here). Gates green on main: verify
   (2440), test:core, src-tauri cargo test, `tauri build`. Waiting on Jesse:
   push, and whether the audit doc's exploit detail stays public.
   Android/iOS/Windows/Linux changes are unverified on device. Worktrees
