@@ -206,23 +206,43 @@ function Install-ShioriCli {
     }
 
     Write-Host 'Linking shiori into PATH'
-    $binDir = Join-Path $root 'bin'
-    New-Item -ItemType Directory -Force -Path $binDir | Out-Null
-    $linked = Join-Path $binDir 'shiori.exe'
-    Remove-Item -LiteralPath $linked -Force -ErrorAction SilentlyContinue
-    # A real executable on PATH, not a .cmd shim: an agent spawning `shiori`
+    # PATH gets cli\current, a junction to the version directory, the way
+    # install.sh points cli/current at it. Windows keeps the path a program
+    # was started by, and the CLI looks for native\ and assets\ beside that
+    # path: a hard link or copy in bin\ ran without its engine. A real
+    # executable on PATH, not a .cmd shim: an agent spawning `shiori`
     # without a shell resolves .exe through CreateProcess but never .cmd.
-    try {
-        New-Item -ItemType HardLink -Path $linked -Target $executable -ErrorAction Stop | Out-Null
-    } catch {
-        Copy-Item -LiteralPath $executable -Destination $linked -Force
+    $current = Join-Path (Join-Path $root 'cli') 'current'
+    $previous = Get-Item -LiteralPath $current -Force -ErrorAction SilentlyContinue
+    if ($null -ne $previous) {
+        if (($previous.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            # Delete() without recursion removes the junction alone. Remove-Item
+            # -Recurse on Windows PowerShell 5.1 follows it and empties the
+            # version directory it points at.
+            $previous.Delete()
+        } else {
+            Remove-Item -LiteralPath $current -Recurse -Force
+        }
+    }
+    # A junction needs an absolute target; SHIORI_CLI_HOME may be relative.
+    $junctionTarget = (Resolve-Path -LiteralPath $destination).ProviderPath
+    New-Item -ItemType Junction -Path $current -Target $junctionTarget | Out-Null
+
+    # Earlier installs put that engine-less copy in bin\, which stays on PATH
+    # ahead of cli\current; left there it would keep shadowing this one.
+    $stale = Join-Path (Join-Path $root 'bin') 'shiori.exe'
+    if (Test-Path -LiteralPath $stale) {
+        Remove-Item -LiteralPath $stale -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $stale) {
+            Write-Host "Could not remove the old $stale. Close any running shiori and delete it."
+        }
     }
     # SHIORI_CLI_SKIP_PATH exists so the installer can be exercised end to end
     # without mutating the machine's user PATH, and so someone who manages
     # PATH themselves can opt out.
     $added = $false
     if ($env:SHIORI_CLI_SKIP_PATH -ne '1') {
-        $added = Add-ShioriCliToPath $binDir
+        $added = Add-ShioriCliToPath $current
     }
 
     Write-Host ''

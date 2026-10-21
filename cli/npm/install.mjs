@@ -1,7 +1,17 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const CLI_RELEASE_API = "https://shiori.nagi.fun/api/cli";
@@ -59,6 +69,97 @@ export function cachedBinaryPath(home, version, target) {
   return join(home, "cli", version, executableName(target));
 }
 
+// Written into the staging directory last, so a version directory carrying
+// it was extracted whole before it was renamed into place.
+const INSTALL_COMPLETE_MARKER = ".shiori-install-complete";
+
+function isCompleteInstall(dir, target) {
+  if (!existsSync(join(dir, executableName(target)))) return false;
+  if (existsSync(join(dir, INSTALL_COMPLETE_MARKER))) return true;
+  // The curl and PowerShell installers extract into the same directory
+  // without the marker. Theirs is complete when every file the package's
+  // manifest lists is there at its full size: tar stopped part way leaves
+  // the file it was writing short and the ones after it missing.
+  try {
+    const { files } = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+    return (
+      Array.isArray(files) &&
+      files.length > 0 &&
+      files.every(
+        (file) =>
+          typeof file?.path === "string" &&
+          statSync(join(dir, file.path)).size === file.size,
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+// The locked step is two renames; a lock older than this was left by a run
+// killed while holding it.
+const INSTALL_LOCK_STALE_MS = 10_000;
+
+function withInstallLock(lock, isDone, critical) {
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
+    try {
+      mkdirSync(lock);
+      break;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+    // The holder may be publishing the very install this run is after.
+    if (isDone()) return;
+    try {
+      if (Date.now() - statSync(lock).mtimeMs > INSTALL_LOCK_STALE_MS) {
+        rmSync(lock, { recursive: true, force: true });
+      }
+    } catch {
+      // Released between the mkdir and the stat.
+    }
+    Atomics.wait(pause, 0, 0, 20);
+  }
+  try {
+    critical();
+  } finally {
+    rmSync(lock, { recursive: true, force: true });
+  }
+}
+
+function publishInstall(staging, dest, target, lock) {
+  try {
+    renameSync(staging, dest);
+    return;
+  } catch {
+    // Another run got there first, or an older runner left a partial tree.
+    if (isCompleteInstall(dest, target)) return;
+  }
+  // Replacing that tree is the one step that removes anything, so runs take
+  // it in turn and look again once they hold the lock: by then the tree may
+  // be the whole install of the run before. It is moved aside, not deleted
+  // in place, so dest is only ever the old tree, absent, or a whole one.
+  const done = () => isCompleteInstall(dest, target);
+  withInstallLock(lock, done, () => {
+    if (done()) return;
+    const stale = `${staging}-stale`;
+    try {
+      try {
+        renameSync(dest, stale);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      try {
+        renameSync(staging, dest);
+      } catch (error) {
+        if (!done()) throw error;
+      }
+    } finally {
+      rmSync(stale, { recursive: true, force: true });
+    }
+  });
+}
+
 export async function fetchCliManifest(api = CLI_RELEASE_API) {
   const response = await fetch(api, {
     headers: { Accept: "application/json" },
@@ -96,31 +197,43 @@ export async function ensureCliBinary(options = {}) {
   }
   const home = resolveInstallHome(options.env);
   const binary = cachedBinaryPath(home, manifest.version, target);
-  if (existsSync(binary)) return binary;
-
   const dest = join(home, "cli", manifest.version);
-  mkdirSync(dest, { recursive: true });
-  const archive = join(
-    tmpdir(),
-    `shiori-cli-${manifest.version}-${target}.tar.gz`,
-  );
+  if (isCompleteInstall(dest, target)) return binary;
+
   const bytes = Buffer.from(await (await fetch(asset.url)).arrayBuffer());
   const digest = createHash("sha256").update(bytes).digest("hex");
   if (digest !== asset.sha256) {
     throw new Error("Archive digest mismatch");
   }
-  writeFileSync(archive, bytes);
-  const extracted = spawnSync("tar", ["-xzf", archive, "-C", dest], {
-    encoding: "utf8",
-  });
-  rmSync(archive, { force: true });
-  if (extracted.status !== 0) {
-    throw new Error(extracted.stderr || "Could not extract Shiori CLI");
+  // The verified bytes go straight into tar, and tar writes into a private
+  // directory beside the destination: nothing passes through a shared temp
+  // path, and the version directory only appears once it is whole.
+  mkdirSync(join(home, "cli"), { recursive: true });
+  const staging = mkdtempSync(join(home, "cli", `.${manifest.version}-staging-`));
+  try {
+    const extracted = spawnSync("tar", ["-xzf", "-", "-C", staging], {
+      encoding: "utf8",
+      input: bytes,
+    });
+    if (extracted.error) throw extracted.error;
+    if (extracted.status !== 0) {
+      throw new Error(extracted.stderr || "Could not extract Shiori CLI");
+    }
+    const staged = join(staging, executableName(target));
+    if (!existsSync(staged)) {
+      throw new Error("Archive did not contain the Shiori CLI executable");
+    }
+    if (!target.startsWith("win32")) chmodSync(staged, 0o755);
+    writeFileSync(join(staging, INSTALL_COMPLETE_MARKER), "");
+    publishInstall(
+      staging,
+      dest,
+      target,
+      join(home, "cli", `.${manifest.version}.lock`),
+    );
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
   }
-  if (!existsSync(binary)) {
-    throw new Error("Archive did not contain the Shiori CLI executable");
-  }
-  if (!target.startsWith("win32")) chmodSync(binary, 0o755);
   return binary;
 }
 
