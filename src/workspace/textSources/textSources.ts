@@ -24,6 +24,8 @@ export type TextSourceNotice =
   | { kind: "saveEncodingUnsupported"; title: string }
   /** The file changed on disk since Shiori read it; `overwrite` saves anyway. */
   | { kind: "saveSourceChanged"; title: string; overwrite: () => Promise<void> }
+  /** Shiori cannot tell what the file held when the edits began; `overwrite` saves anyway. */
+  | { kind: "saveSourceUnverified"; title: string; overwrite: () => Promise<void> }
   | { kind: "saveFailed"; title: string; error: unknown };
 
 export type TextSourcePorts = {
@@ -283,15 +285,20 @@ export function createTextSources(ports: TextSourcePorts) {
         try {
           // Read when the write runs, not when it was asked for: an earlier
           // save still in the queue moves it.
-          const expected = options.overwrite
+          const expected = store
+            .getState()
+            .tabs.find((entry) => entry.id === tabId)?.sourceHash;
+          // An unknown baseline (edits restored from their working copy) can
+          // vouch for no file, so it counts as changed. Still asked through
+          // write: a browser without writable handles downloads instead.
+          const unchanged = options.overwrite
             ? undefined
-            : store.getState().tabs.find((entry) => entry.id === tabId)?.sourceHash;
+            : async (current: Uint8Array) =>
+                expected !== undefined && (await sha256Hex(current)) === expected;
           const result = await ports.writeBack.write(
             target,
             textDocumentContents(text, tab.textBom),
-            expected
-              ? async (current) => (await sha256Hex(current)) === expected
-              : undefined,
+            unchanged,
           );
           if (result.status === "written") {
             await markSaved(true);
@@ -307,7 +314,7 @@ export function createTextSources(ports: TextSourcePorts) {
             // Another program (an editor, git) wrote the file since Shiori
             // read it. Replacing it silently would lose that version.
             ports.notify({
-              kind: "saveSourceChanged",
+              kind: expected === undefined ? "saveSourceUnverified" : "saveSourceChanged",
               title: tab.title,
               overwrite: () => api.saveToSource(tabId, { overwrite: true }),
             });

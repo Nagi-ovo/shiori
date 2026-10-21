@@ -270,6 +270,42 @@ describe("saving to the source file", () => {
     expect(tabNow().textDirty).toBe(false);
   });
 
+  test("a file whose opened version is unknown is only overwritten when the reader says so", async () => {
+    // A restore of unsaved edits never read its file, so there is no hash to
+    // compare: the file may hold a newer version from another program.
+    const writes: string[] = [];
+    const { sources, notices, tabNow } = setup(markdown({ text: "restored edits", textDirty: true }), {
+      writeBack: {
+        target: (source) =>
+          source.type === "path" ? { kind: "desktopPath", path: source.path } : null,
+        write: async (_target, text, unchanged) => {
+          if (unchanged && !(await unchanged(new TextEncoder().encode("theirs")))) {
+            return { status: "changed" };
+          }
+          writes.push(text);
+          return { status: "written" };
+        },
+        saveAs: async () => ({ status: "cancelled" }),
+        requiresOrigin: true,
+      },
+    });
+
+    await sources.saveToSource("md");
+
+    expect(writes).toEqual([]);
+    expect(tabNow().textDirty).toBe(true);
+    const prompt = notices.at(-1);
+    expect(prompt).toMatchObject({ kind: "saveSourceUnverified", title: "notes.md" });
+
+    await (prompt as Extract<TextSourceNotice, { kind: "saveSourceUnverified" }>).overwrite();
+
+    expect(writes).toEqual(["restored edits"]);
+    expect(tabNow()).toMatchObject({
+      textDirty: false,
+      sourceHash: await sha256Hex(new TextEncoder().encode("restored edits")),
+    });
+  });
+
   test("a clean document is not written", async () => {
     const { sources, writes, notices } = setup(markdown({ textDirty: false }));
 
