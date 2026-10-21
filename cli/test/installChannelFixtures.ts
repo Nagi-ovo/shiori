@@ -141,7 +141,9 @@ export function spawnNpmRun(
   dir: string,
   run: { api: string; target: string; home: string; startAt?: number },
 ) {
-  const child = join(dir, "npm-run.mjs");
+  // Its own script: rewriting a shared one could truncate it under a run
+  // still loading it.
+  const child = join(dir, `npm-run-${randomBytes(4).toString("hex")}.mjs`);
   writeFileSync(
     child,
     [
