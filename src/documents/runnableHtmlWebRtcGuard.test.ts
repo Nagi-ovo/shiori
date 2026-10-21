@@ -38,8 +38,10 @@ function fakeRealm(): Realm {
     setAttribute(this: FakeElement, name: string, value: string) {
       this.attrs[name.toLowerCase()] = value;
     },
-    setAttributeNS(this: FakeElement, ns: string | null, name: string, value: string) {
-      this.attrs[ns ? `${ns}|${name}` : name] = value;
+    setAttributeNS(this: FakeElement, ns: unknown, name: string, value: string) {
+      // Like the engine: a non-null namespace is a string, and "" means none.
+      const space = ns === null || ns === undefined ? "" : String(ns);
+      this.attrs[space ? `${space}|${name}` : name] = value;
     },
   };
   Object.defineProperty(elementProto, "localName", {
@@ -284,6 +286,25 @@ describe("run frame WebRTC guard in nested frames", () => {
       }) as Settable;
       div.setAttribute("srcdoc", user);
       expect(div.attrs.srcdoc).toBe(user);
+
+      // An object whose toString throws once, then returns the document.
+      let calls = 0;
+      const flaky = {
+        toString() {
+          calls += 1;
+          if (calls === 1) throw new Error("first call");
+          return user;
+        },
+      } as unknown as string;
+      const once = frameOf(top.win, fakeRealm()) as Settable;
+      expect(() => {
+        once.srcdoc = flaky;
+      }).toThrow("first call");
+      expect(once.attrs.srcdoc).toBeUndefined();
+
+      const unnamed = frameOf(top.win, fakeRealm()) as Settable;
+      unnamed.setAttributeNS({ toString: () => "" } as unknown as null, "srcdoc", user);
+      expect(unnamed.attrs.srcdoc).toBe(prefix + user);
     }
   });
 

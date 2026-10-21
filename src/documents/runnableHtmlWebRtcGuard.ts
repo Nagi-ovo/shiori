@@ -124,8 +124,10 @@ export const WEBRTC_GUARD = `(function () {
     var replacement = function () {
       var args = arguments;
       if (before) {
+        // Not caught: a value whose coercion throws fails the call, as the
+        // native setter would, instead of reaching it uncoerced.
         args = apply(copyArgs, arguments, []);
-        try { before(this, args); } catch (e) {}
+        before(this, args);
       }
       var result;
       try { result = apply(original, this, args); }
@@ -192,7 +194,9 @@ export const WEBRTC_GUARD = `(function () {
       if (apply(toLower, args[0], []) === "srcdoc" && isFrame(self)) args[1] = guardedSrcdoc(args[1]);
     });
     wrap(elementProto, "setAttributeNS", "value", null, function (self, args) {
-      if (args.length < 3 || (args[0] !== null && args[0] !== undefined && args[0] !== "")) return;
+      if (args.length < 3) return;
+      if (args[0] !== null && args[0] !== undefined) args[0] = "" + args[0];
+      if (args[0] !== null && args[0] !== undefined && args[0] !== "") return;
       args[1] = "" + args[1];
       if (args[1] === "srcdoc" && isFrame(self)) args[2] = guardedSrcdoc(args[2]);
     });
