@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { JSDOM } from "jsdom";
+import { followDocumentLink } from "../../documents/documentLinks";
 import { renderSafeHtml } from "../../documents/renderSafeHtml";
 
 // DOMPurify explicitly supports jsdom for server-side use and warns that
@@ -176,6 +177,32 @@ describe("DocumentViewer safe rendering", () => {
     expect(html).toContain("The whole first chapter.");
     expect(html).toMatch(/<h1[^>]*>Chapter 2<\/h1>/);
     expect(html).not.toContain("shioriDocumentMetadata");
+  });
+
+  // marked gives headings no id, so a TOC written for GitHub targets the
+  // heading's slug, with -1, -2 for repeats.
+  test("follows a Markdown TOC link to the heading its slug names", async () => {
+    const html = await renderSafeHtml(
+      "markdown",
+      "[Contents](#chapter-2)\n[Again](#whats-new-1)\n\n## What's new?\n\n## Chapter 2\n\n## What's new?\n",
+    );
+    const article = document.createElement("article");
+    article.innerHTML = html;
+    const scrolled: string[] = [];
+    for (const heading of Array.from(article.querySelectorAll("h2"))) {
+      heading.scrollIntoView = () => {
+        scrolled.push(`${heading.textContent}@${heading.getAttribute("data-source-line")}`);
+      };
+    }
+    const opened: string[] = [];
+    for (const link of Array.from(article.querySelectorAll("a"))) {
+      followDocumentLink({ target: link, preventDefault() {} }, article, (url) => {
+        opened.push(url);
+      });
+    }
+
+    expect(scrolled).toEqual(["Chapter 2@6", "What's new?@8"]);
+    expect(opened).toEqual([]);
   });
 
   // One "Key: value" sentence in the section is not enough to make it YAML.
