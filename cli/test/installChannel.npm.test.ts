@@ -5,13 +5,11 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
+  statSync,
   symlinkSync,
-  utimesSync,
   writeFileSync,
 } from "node:fs";
-import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { detectCliInstallTarget } from "../distribution";
 import { ensureCliBinary } from "../npm/install.mjs";
@@ -178,10 +176,49 @@ describe("CLI install channel: npm runner", () => {
     });
   });
 
+  // A CLI launched from the tree may still be loading files from it when a
+  // later run finds part of that tree cut short. The runner used to move
+  // the whole tree aside to replace it, and a run held up anywhere in that
+  // step (stopped, asleep, its lock judged stale) could resume and take
+  // apart an install another run had published and launched since. Only
+  // the cut-short files are put in place; the whole ones stay where they are.
+  test.skipIf(process.platform === "win32")(
+    "npm runner repairs a cut-short install around the files a CLI is using",
+    async () => {
+      if (!target) return;
+      await withTempDir(async (dir) => {
+        const addon = "a".repeat(4096);
+        const { server } = await serveCliArchive(
+          makeArchive(mkdtempSync(join(dir, "pkg-")), "shiori", {
+            "native/shiori_core.node": addon,
+          }),
+          target,
+        );
+        servers.push(server);
+        const install = () =>
+          ensureCliBinary({
+            api: `http://127.0.0.1:${server.port}/api/cli`,
+            env: { SHIORI_CLI_HOME: join(dir, ".shiori"), SHIORI_CLI_ALLOW_HTTP: "1" },
+            target,
+          });
+        const running = await install();
+        const inUse = statSync(running).ino;
+        writeFileSync(join(dirname(running), "native", "shiori_core.node"), addon.slice(0, 1024));
+
+        const binary = await install();
+        expect(binary).toBe(running);
+        expect(statSync(binary).ino).toBe(inUse);
+        expect(readFileSync(join(dirname(binary), "native", "shiori_core.node"), "utf8")).toBe(
+          addon,
+        );
+      });
+    },
+  );
+
   // Several agents starting `npx @nagi-ovo/shiori` over a half-written
-  // version directory each extract and then replace it. Without one run at
-  // a time doing the replacing, a run deleted the tree another had just
-  // published, and the others failed on a rename into a non-empty directory.
+  // version directory each extract and then repair it. A run used to delete
+  // the tree another had just published, and the others failed on a rename
+  // into a non-empty directory.
   // Skipped on Windows, where a scanner holding a handle can fail any rename.
   test.skipIf(process.platform === "win32")(
     "concurrent npm runs all recover a half-extracted version directory",
@@ -216,62 +253,6 @@ describe("CLI install channel: npm runner", () => {
           runs.map(async (run) => (await new Response(run.stdout).text()).trim()),
         );
         expect(outcomes).toEqual(Array(6).fill("whole"));
-      });
-    },
-    30_000,
-  );
-
-  // A run holding the replace lock can be held up past the lock's age
-  // limit: stopped, swapped out, or asleep with the laptop. Another run
-  // used to take the lock over then, publish, and launch, and the first one,
-  // resuming, moved that published tree aside under it. While the holder is
-  // alive its lock stands. The owner record below is what a holding run
-  // writes; it is the contract between runs.
-  test.skipIf(process.platform === "win32")(
-    "npm runner waits out a live holder of an old replace lock",
-    async () => {
-      if (!target) return;
-      await withTempDir(async (dir) => {
-        const { server } = await serveCliArchive(
-          makeArchive(mkdtempSync(join(dir, "pkg-")), "shiori", {
-            "native/shiori_core.node": "addon",
-          }),
-          target,
-        );
-        servers.push(server);
-        const home = join(dir, ".shiori");
-        const partial = join(home, "cli", "0.1.25");
-        mkdirSync(partial, { recursive: true });
-        writeFileSync(join(partial, "shiori"), "#!/bin/sh\necho shiori-partial\n");
-        const holder = Bun.spawn([process.execPath, "-e", "setTimeout(() => {}, 60000)"]);
-        const lock = join(home, "cli", ".0.1.25.lock");
-        mkdirSync(lock);
-        writeFileSync(
-          join(lock, "owner"),
-          JSON.stringify({ host: hostname(), pid: holder.pid, token: "held" }),
-        );
-        const minuteAgo = new Date(Date.now() - 60_000);
-        utimesSync(lock, minuteAgo, minuteAgo);
-
-        const run = spawnNpmRun(dir, {
-          api: `http://127.0.0.1:${server.port}/api/cli`,
-          target,
-          home,
-        });
-        try {
-          const staged = async () => {
-            while (!readdirSync(join(home, "cli")).some((name) => name.includes("-staging-"))) {
-              await Bun.sleep(10);
-            }
-          };
-          await Promise.race([run.exited, staged()]);
-          await Bun.sleep(500);
-          expect(readFileSync(join(partial, "shiori"), "utf8")).toContain("shiori-partial");
-        } finally {
-          holder.kill();
-          await holder.exited;
-        }
-        expect((await new Response(run.stdout).text()).trim()).toBe("whole");
       });
     },
     30_000,
