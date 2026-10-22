@@ -57,6 +57,7 @@ export function PdfDraftController({
     draftState,
     flushPendingTextSources,
     hasPendingTextSourceWrites,
+    isExported,
   });
 
   useLayoutEffect(() => {
