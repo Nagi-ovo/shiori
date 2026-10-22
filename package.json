@@ -2,7 +2,7 @@
   "name": "shiori",
   "private": true,
   "license": "MIT",
-  "version": "26.10.20",
+  "version": "26.10.23",
   "type": "module",
   "scripts": {
     "prepare": "bun scripts/file-size/install-hook.ts",

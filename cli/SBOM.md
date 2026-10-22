@@ -1,6 +1,6 @@
 # Shiori CLI bundled-component inventory
 
-This is the reviewed dependency inventory for CLI version 0.1.25. The release
+This is the reviewed dependency inventory for CLI version 0.1.26. The release
 build copies the corresponding license texts next to the executable. The
 prebundled `@pdf-lib/fontkit` graph was reconstructed from its upstream v1.1.x
 Rollup build and checked against the shipped unminified bundle. The audited

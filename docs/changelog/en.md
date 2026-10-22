@@ -1,6 +1,8 @@
 # What's new
 
-## [Unreleased]
+## 26.10.23
+
+> A Problematic Past
 
 ### Export
 
@@ -13,7 +15,7 @@
 ### Annotation import and export
 
 - **Comments on annotations from Zotero, Preview and Acrobat are no longer wiped on export.** Comments on highlights, underlines, strikeouts, rectangles and ink all survive.
-- **Hidden, locked and non-printing annotations stay that way after export.** Hidden annotations no longer become visible, and sticky notes keep their icon, open state and review state.
+- **Hidden, locked and non-printing annotations stay that way after export.** Hidden annotations no longer become visible, and sticky notes keep their icon, open state, review state and rotation.
 - **Text boxes and translucent marks from other apps look the way they did there.** Text boxes keep their fill, border and opacity on screen and in exports, and translucent ink, rectangles, underlines and strikeouts no longer turn opaque.
 - **Annotation authors and replies come through export intact.** Chinese, Japanese and other non-Latin author names no longer turn into garbage, and replies stay attached to the annotation they answer.
 - **Imported annotations land with the right page, colour and orientation.** In PDFs with an unusual page structure they no longer end up on another page, rectangle fills are no longer lost, the odd colour is no longer read wrong, and text notes on rotated pages no longer come in sideways.
@@ -39,7 +41,7 @@
 ### Markdown and text files
 
 - **If another editor changed the file, Cmd+S asks before overwriting it instead of doing so silently.**
-- **Files that aren't UTF-8 open read-only, so saving can't garble them.** Saving also keeps the file's line endings and byte order mark, so fixing one typo in a file written on Windows no longer rewrites every line.
+- **Files that aren't UTF-8 open read-only, so saving can't garble them.** Saving also keeps the file's line endings and byte order mark, so fixing one typo in a file written on Windows no longer rewrites every line, and undo after switching a CRLF Markdown file between preview and editing no longer changes its line endings.
 - **The Markdown preview is more dependable.** Documents that open with a "---" rule no longer lose their first section, in-page links and tables of contents scroll to their target, and local images with a % in the file name display.
 - **Switching tabs tells you when a text edit could not be saved, instead of silently staying put.**
 
@@ -48,7 +50,6 @@
 - **Cleanup no longer deletes documents you have open.** When storage runs low, annotation drafts of open tabs (in other windows too) are protected, and documents still opening, such as several PDFs dropped at once or one waiting for its password, are no longer lost.
 - **Two copies of the same PDF in different places keep their own annotations.** Editing both used to lose one copy's annotations after a restart. Closing the page right after undoing back to the original also no longer brings an undone annotation back now and then.
 - **Editing one file in two windows no longer overwrites either window's work.** The window that saves second asks you to export its changes or discard them before it closes. On the web, closing or reloading that tab asks first.
-- **On Windows, the minimize, maximize and close buttons stay clickable while Settings is open.** A rotated sticky note keeps its angle through export and reopen, and undo after switching a CRLF Markdown file between preview and editing no longer changes its line endings.
 - **The last few edits before you close a web tab are saved, and undo history is still there when you reopen.**
 
 ### Web
@@ -57,7 +58,7 @@
 
 ### Security
 
-- **Tightened isolation for running HTML documents and for the Markdown preview.** This fixes several issues a malicious file could exploit, the "never load remote images" setting covers more cases, and on desktop the run approval only lists what it can actually allow. Run mode no longer renders declarative shadow DOM (`<template shadowrootmode>`).
+- **Tightened isolation for running HTML documents and for the Markdown preview.** This fixes several issues a malicious file could exploit, the "never load remote images" setting covers more cases, and on desktop the run approval only lists what it can actually allow. Run mode no longer shows content written with declarative shadow DOM.
 - **Certain damaged or crafted PDFs and passwords no longer crash the app.** On web and mobile, a failed open no longer holds on to memory.
 
 ### Browser panel
@@ -73,6 +74,7 @@
 
 ### Desktop
 
+- **On Windows, the minimize, maximize and close buttons stay clickable while Settings is open.**
 - **On Linux, opening a file or link in a system app no longer freezes Shiori.** Saving also handles its temporary file more safely, and files with very long names save normally.
 - **The resource panel on macOS counts the web content processes, so memory and CPU figures are realistic.** The "About Shiori" menu item now follows the app language too.
 

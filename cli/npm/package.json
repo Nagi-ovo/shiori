@@ -1,6 +1,6 @@
 {
   "name": "@nagi-ovo/shiori",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "private": false,
   "license": "MIT",
   "description": "Downloads the Shiori CLI binary and runs it. Not the CLI source.",
