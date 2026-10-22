@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useEditorStore } from "../store/store";
 import drafts, { DraftSaveError } from "../../storage/drafts";
+import type { DraftSyncState, SaveStatus } from "./draftSyncState";
 import { isModelClean } from "../../pdf/model/clean";
 import { useDraftStorageUsage } from "./useDraftStorageUsage";
 import {
@@ -21,31 +22,7 @@ import {
   rememberDraftVersion,
 } from "../../storage/draftVersions";
 
-export type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
-
-export type DraftSyncState = {
-  status: SaveStatus;
-  hash: string | null;
-  lastTouched: number | null;
-  error: string | null;
-  errorKind: DraftSaveError["kind"] | null;
-  usedBytes: number;
-  realUsedBytes: number | null;
-  quotaBytes: number | null;
-  persisted: boolean | null;
-  // Cancel the debounce timer and synchronously flush the current model to
-  // IndexedDB. Awaiting this before closing the document guarantees no
-  // last-moment edits (within the 800ms debounce window) are lost.
-  flushNow: () => Promise<void>;
-  // Close/exit paths use the strict variant so a failed durable write keeps
-  // the document and window alive. Normal autosave still reports through
-  // `status`/`error` without creating unhandled promise rejections. A save
-  // refused for another window's newer draft passes once `isExported` holds.
-  flushNowOrThrow: () => Promise<void>;
-  // The reader chose to drop the copy such a refusal left unsaved, so the
-  // strict flush lets the blocked leave go on. False when no copy was refused.
-  discardRefusedEdits: () => boolean;
-};
+export type { DraftSyncState, SaveStatus } from "./draftSyncState";
 
 export const SAVE_DEBOUNCE_MS = 800;
 const OPERATION_LOG_DEBOUNCE_MS = 250;
@@ -88,6 +65,7 @@ export function useDraftSync(
   const [lastTouched, setLastTouched] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorKind, setErrorKind] = useState<DraftSaveError["kind"] | null>(null);
+  const [holdsRefusedEdits, setHoldsRefusedEdits] = useState(false);
   const { usedBytes, realUsedBytes, quotaBytes, persisted, refreshAfterSave } =
     useDraftStorageUsage();
 
@@ -187,6 +165,7 @@ export function useDraftSync(
     setLastTouched(null);
     setError(null);
     setErrorKind(null);
+    setHoldsRefusedEdits(false);
     dirtyRef.current = false;
     if (timerRef.current !== null) {
       window.clearTimeout(timerRef.current);
@@ -291,6 +270,7 @@ export function useDraftSync(
         setStatus(clean ? "idle" : "saved");
         setError(null);
         setErrorKind(null);
+        setHoldsRefusedEdits(false);
         dirtyRef.current = false;
       }
 
@@ -300,6 +280,7 @@ export function useDraftSync(
       const draftError = err instanceof DraftSaveError ? err : null;
       if (draftError?.kind === "conflict") {
         conflictedDraftIdRef.current = snap.draftId;
+        if (discardGenerationRef.current === generation) setHoldsRefusedEdits(true);
         if (operationLogTimerRef.current !== null) {
           window.clearTimeout(operationLogTimerRef.current);
           operationLogTimerRef.current = null;
@@ -466,6 +447,7 @@ export function useDraftSync(
     timerRef.current = null;
     dirtyRef.current = false;
     discardGenerationRef.current += 1;
+    setHoldsRefusedEdits(false);
     return true;
   }, []);
 
@@ -492,6 +474,7 @@ export function useDraftSync(
       flushNow,
       flushNowOrThrow,
       discardRefusedEdits,
+      holdsRefusedEdits,
     }),
     [
       discardRefusedEdits,
@@ -500,6 +483,7 @@ export function useDraftSync(
       flushNow,
       flushNowOrThrow,
       hash,
+      holdsRefusedEdits,
       lastTouched,
       persisted,
       quotaBytes,

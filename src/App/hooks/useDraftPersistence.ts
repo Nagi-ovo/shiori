@@ -14,6 +14,8 @@ interface DraftPersistenceParams {
   draftState: DraftSyncState;
   flushPendingTextSources: (tabId?: string) => Promise<void>;
   hasPendingTextSourceWrites: boolean;
+  /** Whether the document on screen has nothing left to export. */
+  isExported: () => boolean;
 }
 
 /**
@@ -23,7 +25,8 @@ interface DraftPersistenceParams {
  * and the Tauri native close-requested guard — and surface draft save
  * failures as a toast. A close or quit blocked by a copy refused for another
  * window's newer draft asks the reader to export or discard it instead
- * (leaveGuard.ts).
+ * (leaveGuard.ts); on the web, the browser's own prompt holds the tab while
+ * such a copy is unexported.
  *
  * The flush primitives (draftState, flushPendingTextSources) stay owned by
  * App because other call sites — workspace tab close, the menu exit wire —
@@ -34,6 +37,7 @@ export function useDraftPersistence({
   draftState,
   flushPendingTextSources,
   hasPendingTextSourceWrites,
+  isExported,
 }: DraftPersistenceParams): {
   completeNativeExitRequest: () => Promise<void>;
 } {
@@ -44,7 +48,7 @@ export function useDraftPersistence({
 
   const flushDraftNow = draftState.flushNowOrThrow;
   const flushDraftBeforeSuspension = draftState.flushNow;
-  const { discardRefusedEdits } = draftState;
+  const { discardRefusedEdits, holdsRefusedEdits } = draftState;
 
   const persistThen = useCallback(
     (context: string, leave: () => Promise<void>): LeaveSteps => ({
@@ -88,15 +92,24 @@ export function useDraftPersistence({
   }, [flushDraftBeforeSuspension, flushPendingTextSources]);
 
   useEffect(() => {
-    if (CAPABILITIES.nativeWindowChrome || !hasPendingTextSourceWrites) return;
+    if (CAPABILITIES.nativeWindowChrome) return;
+    if (!hasPendingTextSourceWrites && !holdsRefusedEdits) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       void flushPendingTextSources();
+      // Unloading skips the in-app export-or-discard dialog, and no flush
+      // keeps a refused copy; once it is exported, nothing is lost.
+      if (!hasPendingTextSourceWrites && isExported()) return;
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [flushPendingTextSources, hasPendingTextSourceWrites]);
+  }, [
+    flushPendingTextSources,
+    hasPendingTextSourceWrites,
+    holdsRefusedEdits,
+    isExported,
+  ]);
 
   useEffect(() => {
     if (!CAPABILITIES.nativeWindowChrome) return;
