@@ -390,6 +390,10 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
   WebRTC：这样一处代码覆盖网页版和所有引擎。代价：声明式 shadow DOM 的内容在运行模式里不显示；
   每次 `document.write` 被补成完整片段，跨几次调用才写完的标签会提前闭合；限制性的 Trusted Types
   策略可能挡住 HTML 插入。Chromium 测试 72/72，WebKit 没跑（审计 B027，Codex gpt-6-astra 实现）。
+- **网页版关标签或刷新时，先替被拒绝保存的副本问一句（`3ac9d05`，按 Jesse 的选择）。** 之前 `pagehide`
+  只走非严格保存、`beforeunload` 只管文本源，副本不提示就丢了。现在副本还没导出时，浏览器会弹自带的
+  「确定离开吗？」；导出、放弃或之后保存成功就撤掉。网页 E2E 见
+  `test-artifacts/from-worktrees/web-leave-prompt/`，导出那条只有 hook 测试（Opus 实现）。
 - **守卫不再把 SVG 改坏（`4fa4238`）。** 守卫找 srcdoc 时改为按写入位置的上下文解析，SVG、MathML、
   表格、`<script>`/`<style>` 文本保持原样（审计 B027，Codex gpt-6-astra 实现）。
 
@@ -413,9 +417,6 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
 
 - **B027 只在 Chromium 上验证过。** macOS 桌面的 WebKit、Linux 的 WebKitGTK 没跑浏览器测试；
   位置型和流式 HTML 方法在本机 Chrome 里还不存在，对应的拦截没有实际跑过。
-- **网页版关浏览器标签或刷新**时，被拒绝保存的副本不提示就丢了（`pagehide` 走非严格保存，
-  `beforeunload` 只管文本源）。这是 B034 之前就有的缺口，没有改。
-
 ### 有意不再修（2026-10-21 定）
 
 - **B108（部分）：** 一个编码读回多个字符且都映射不回去（如 `<04000400>`），或无法验证的编码给出

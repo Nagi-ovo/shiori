@@ -47,7 +47,7 @@
 
 - **Cleanup no longer deletes documents you have open.** When storage runs low, annotation drafts of open tabs (in other windows too) are protected, and documents still opening, such as several PDFs dropped at once or one waiting for its password, are no longer lost.
 - **Two copies of the same PDF in different places keep their own annotations.** Editing both used to lose one copy's annotations after a restart. Closing the page right after undoing back to the original also no longer brings an undone annotation back now and then.
-- **Editing one file in two windows no longer overwrites either window's work.** The window that saves second asks you to export its changes or discard them before it closes.
+- **Editing one file in two windows no longer overwrites either window's work.** The window that saves second asks you to export its changes or discard them before it closes. On the web, closing or reloading that tab asks first.
 - **On Windows, the minimize, maximize and close buttons stay clickable while Settings is open.** A rotated sticky note keeps its angle through export and reopen, and undo after switching a CRLF Markdown file between preview and editing no longer changes its line endings.
 - **The last few edits before you close a web tab are saved, and undo history is still there when you reopen.**
 

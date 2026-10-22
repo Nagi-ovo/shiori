@@ -17,8 +17,8 @@ Last reconciled against reality: **2026-10-21**.
   pick), verified in Chromium only (`SHIORI_BROWSER_TEST=1 bun test
   src/documents/runnableHtmlWebRtcGuard.browser.test.ts`), not on WebKit.
   A "fully trusted" run tier that re-enables declarative shadow DOM was
-  discussed and deferred until a real file needs it. Web tab close/reload still drops
-  a refused copy silently (predates B034). Left as they are by Jesse's call
+  discussed and deferred until a real file needs it. On the web, closing or
+  reloading a tab with an unexported refused copy now asks first. Left as they are by Jesse's call
   (有意不再修): B108 (no PDFium API up to chromium/8111) and B088 (wry
   gesture signals on three engines, two unverifiable here). Gates green on main: verify
   (2440), test:core, src-tauri cargo test, `tauri build`. Waiting on Jesse:
