@@ -23,9 +23,9 @@ Last reconciled against reality: **2026-10-21**.
   gesture signals on three engines, two unverifiable here). Gates green on main: verify
   (2440), test:core, src-tauri cargo test, `tauri build`. Waiting on Jesse:
   push, and whether the audit doc's exploit detail stays public.
-  Android/iOS/Windows/Linux changes are unverified on device. Worktrees
-  `../shiori-fix/*`, `../shiori-fu/*` (branches `fix/*`, `fu*/*`,
-  `audit-fixes`) and `_cargo-target` can go once Jesse agrees.
+  Android/iOS/Windows/Linux changes are unverified on device. The fix
+  worktrees and branches are gone (2026-10-23); their E2E artifacts are in
+  `test-artifacts/from-worktrees/` (gitignored).
 
 - **Shiori is open source** (2026-10-18). `Nagi-ovo/shiori` is the public
   source repo (formerly `shiori-releases`; releases, tags and the updater's
