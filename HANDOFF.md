@@ -78,9 +78,7 @@ Last reconciled against reality: **2026-10-23**.
    APK URL to `shiori-releases` for 26.9.27 and older. Once those need not
    self-update, delete `legacyApkDownloadUrl` and `wantsLegacyApkPath` in
    `site/functions/_release.ts`.
-6. **Housekeeping:** delete the unused Cloudflare projects
-   `shiori-promotion` / `shiori-app` (Jesse said yes; needs
-   `wrangler login` on this Mac). The old private repo `shiori-dev` stays
+6. **Housekeeping:** The old private repo `shiori-dev` stays
    private as is: it alone holds the pre-open-source history (~1428
    commits) and 3 open issues. The local web build's recents still hold
    B027 probe files.
