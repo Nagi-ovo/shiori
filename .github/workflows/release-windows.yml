@@ -91,7 +91,7 @@ jobs:
           # Pin to the exact version used on the dev machine so Windows
           # installs reproduce the same lockfile resolution. Bump in lockstep
           # with local bun upgrades.
-          bun-version: 1.3.12
+          bun-version: 1.4.4
           # Windows runners occasionally fail immediately after restoring
           # setup-bun's own cache. Rust still carries the expensive cache; this
           # tiny download is more reliable than losing the whole release job.

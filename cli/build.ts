@@ -92,7 +92,7 @@ export const AUDITED_NOTO_SC_SHA256 =
   "faa6c9df652116dde789d351359f3d7e5d2285a2b2a1f04a2d7244df706d5ea9";
 export const AUDITED_NOTO_JP_SHA256 =
   "dff723ba59d57d136764a04b9b2d03205544f7cd785a711442d6d2d085ac5073";
-export const AUDITED_BUN_VERSION = "1.3.12";
+export const AUDITED_BUN_VERSION = "1.4.4";
 export const AUDITED_NODE_VERSION = "26.5.0";
 export const AUDITED_LICENSE_TREE_SHA256 =
   "95df4336ace1280caaea39706ef2f119e43c01c9a1ed232fee09ca8ab27ad7b3";
@@ -213,7 +213,6 @@ async function main(): Promise<void> {
   await mkdir(outputDir, { recursive: true });
 
   const bundlePath = join(buildDir, "shiori.mjs");
-  const metafilePath = join(buildDir, "bundle-meta.json");
   const build = await Bun.build({
     entrypoints: [join(CLI_ROOT, "src", "main.ts")],
     outdir: buildDir,
@@ -222,13 +221,14 @@ async function main(): Promise<void> {
     format: "esm",
     packages: "bundle",
     minify: true,
-    metafile: metafilePath,
+    // Not a path: bun 1.4 resolves one against outdir.
+    metafile: true,
     sourcemap: "none",
   });
   if (!build.success) {
     throw new AggregateError(build.logs, "Could not bundle Shiori CLI");
   }
-  await assertAuditedBundleMetafile(metafilePath);
+  assertAuditedBundleMetafile(build.metafile);
   assertBundleDefinesEachErrorClassOnce(await readFile(bundlePath, "utf8"));
 
   const seaConfigPath = join(buildDir, "sea-config.json");
@@ -434,11 +434,10 @@ export function assertBundleDefinesEachErrorClassOnce(bundle: string): void {
   }
 }
 
-async function assertAuditedBundleMetafile(path: string): Promise<void> {
-  const metafile = JSON.parse(await readFile(path, "utf8")) as {
-    inputs?: Record<string, { imports?: MetafileImport[] }>;
-    outputs?: Record<string, unknown>;
-  };
+function assertAuditedBundleMetafile(metafile: {
+  inputs?: Record<string, { imports?: MetafileImport[] }>;
+  outputs?: Record<string, unknown>;
+} = {}): void {
   if (!metafile.inputs || !metafile.outputs) {
     throw new Error("CLI bundle metafile is missing inputs or outputs");
   }

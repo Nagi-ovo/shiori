@@ -126,8 +126,9 @@ function isFallbackContinuation(character: string): boolean {
 }
 
 // Indic_Conjunct_Break=Linker and =Consonant, read off Intl.Segmenter by
-// probing "क" + L + "क" and "क्" + C for one grapheme (bun 1.4 ICU);
-// probe again when searchClusters.test.ts finds the two apart.
+// probing "क" + L + "क" and "क्" + C for one grapheme (bun 1.4, ICU 78,
+// Unicode 17); probe again, and extend searchClusters.test.ts, when a later
+// Unicode adds to either property.
 const CONJUNCT_LINKER =
   /^[्্્୍్്္្᩠᭄᮫꧀꫶\u{10A3F}\u{11133}\u{113D0}\u{1193E}\u{11A47}\u{11A99}\u{11F42}]$/u;
 const CONJUNCT_CONSONANT =

@@ -186,7 +186,7 @@ runs the release binary.
 
 `cli:build` is a local verification build and uses an ad-hoc signature on
 macOS. Releases must be built on a matching OS/architecture runner with
-Node.js 26.5.0 and Bun 1.3.12 pinned, then Developer ID signed + notarized on macOS and
+Node.js 26.5.0 and Bun 1.4.4 pinned, then Developer ID signed + notarized on macOS and
 Authenticode signed on Windows. Sign the executable and the native libraries
 in `native/` (the shiori-core addon and PDFium). The generated manifest hashes every packaged file, but it is
 not itself a signature. After platform signing, run `bun run cli:manifest` to

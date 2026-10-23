@@ -1,5 +1,5 @@
 {
-  "cli/build.ts": 26214,
+  "cli/build.ts": 26115,
   "cli/src/main.ts": 74064,
   "cli/test/annotate.test.ts": 37998,
   "cli/test/liveApp.test.ts": 33462,
