@@ -213,7 +213,6 @@ async function main(): Promise<void> {
   await mkdir(outputDir, { recursive: true });
 
   const bundlePath = join(buildDir, "shiori.mjs");
-  const metafilePath = join(buildDir, "bundle-meta.json");
   const build = await Bun.build({
     entrypoints: [join(CLI_ROOT, "src", "main.ts")],
     outdir: buildDir,
@@ -222,13 +221,14 @@ async function main(): Promise<void> {
     format: "esm",
     packages: "bundle",
     minify: true,
-    metafile: metafilePath,
+    // Not a path: bun 1.4 resolves one against outdir.
+    metafile: true,
     sourcemap: "none",
   });
   if (!build.success) {
     throw new AggregateError(build.logs, "Could not bundle Shiori CLI");
   }
-  await assertAuditedBundleMetafile(metafilePath);
+  assertAuditedBundleMetafile(build.metafile);
   assertBundleDefinesEachErrorClassOnce(await readFile(bundlePath, "utf8"));
 
   const seaConfigPath = join(buildDir, "sea-config.json");
@@ -434,11 +434,10 @@ export function assertBundleDefinesEachErrorClassOnce(bundle: string): void {
   }
 }
 
-async function assertAuditedBundleMetafile(path: string): Promise<void> {
-  const metafile = JSON.parse(await readFile(path, "utf8")) as {
-    inputs?: Record<string, { imports?: MetafileImport[] }>;
-    outputs?: Record<string, unknown>;
-  };
+function assertAuditedBundleMetafile(metafile: {
+  inputs?: Record<string, { imports?: MetafileImport[] }>;
+  outputs?: Record<string, unknown>;
+} = {}): void {
   if (!metafile.inputs || !metafile.outputs) {
     throw new Error("CLI bundle metafile is missing inputs or outputs");
   }
