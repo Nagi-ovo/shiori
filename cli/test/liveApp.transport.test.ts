@@ -16,9 +16,12 @@ describe("live API transport", () => {
       hungUp = () => resolve("closed");
     });
     await withFixture(
-      (_request, response) => {
+      (request, response) => {
         served = response;
-        response.on("close", hungUp);
+        // The connection closing is the hang-up itself. ServerResponse's own
+        // "close" is not a portable signal: bun 1.3.12 never emits it when
+        // the peer resets, though the socket and request report it.
+        request.socket.on("close", hungUp);
         response.writeHead(200, { "Content-Type": "text/plain" });
         stream = setInterval(() => response.write("x".repeat(1024)), 5);
       },
