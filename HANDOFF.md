@@ -14,9 +14,8 @@ Last reconciled against reality: **2026-10-23**.
   verifier passes on all four desktop platforms. Shipped without device
   checks and not announced, both by Jesse's choice. The GitHub release is
   not flagged latest (`gh release edit --latest` returned 422; the
-  latest-release API answers 404). The oracle-arm Discord bot may have
-  auto-posted it to `shiori-zh` / `shiori-en`; Jesse decides whether to
-  delete.
+  latest-release API answers 404). The oracle-arm Discord bot posted it to
+  `shiori-zh` / `shiori-en`; that is the only announcement (no QQ).
 - **CLI 0.1.27 is live** on curl, PowerShell and npm
   (`@nagi-ovo/shiori`, first time on npm). Its first archives crashed on
   every Mac (POSTMORTEMS 2026-10-23); nobody had installed them, so they
@@ -79,10 +78,12 @@ Last reconciled against reality: **2026-10-23**.
    APK URL to `shiori-releases` for 26.9.27 and older. Once those need not
    self-update, delete `legacyApkDownloadUrl` and `wantsLegacyApkPath` in
    `site/functions/_release.ts`.
-6. **Housekeeping:** archive the old private repo `shiori-dev` (Actions
-   off); delete the Cloudflare projects `shiori-promotion` / `shiori-app`
-   once rollback is no longer wanted (Jesse's call). The local web build's
-   recents still hold B027 probe files.
+6. **Housekeeping:** delete the unused Cloudflare projects
+   `shiori-promotion` / `shiori-app` (Jesse said yes; needs
+   `wrangler login` on this Mac). The old private repo `shiori-dev` stays
+   private as is: it alone holds the pre-open-source history (~1428
+   commits) and 3 open issues. The local web build's recents still hold
+   B027 probe files.
 7. Target-page-first open: on a 500-page synthetic PDF the prep chain (load
    + page info + annotation import) takes a median 154 ms; measure
    first-target-page time on a large real PDF before splitting it.
