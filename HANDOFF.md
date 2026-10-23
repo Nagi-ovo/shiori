@@ -59,9 +59,10 @@ Last reconciled against reality: **2026-10-23**.
   on every Mac (Developer ID hardened runtime without `allow-jit`,
   POSTMORTEMS 2026-10-23); nobody had installed it, so the release was
   re-run from main (`b2067ab`) and the archives replaced in place, tag still
-  on `c955880`. The curl install on this Mac runs, notarized. Next: publish
-  the npm fetcher (`@nagi-ovo/shiori` is a 404 on npm although the site
-  advertises it; needs Jesse's `npm login`). No announcement planned.
+  on `c955880`. The curl install on this Mac runs, notarized. The npm
+  fetcher `@nagi-ovo/shiori@0.1.27` is published (first time on npm;
+  publishing needs Jesse's `npm login` and a browser 2FA) and
+  `npm install -g` runs here. No announcement planned.
   Also next release: `rustls-webpki` >= 0.103.16 (eMudhra intermediates
   blocklist) and rustls >= 0.23.45 (Dependabot).
 - **App 26.10.20 (四面楚歌)** (2026-10-20) was the first release
