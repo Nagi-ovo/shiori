@@ -53,7 +53,7 @@ Last reconciled against reality: **2026-10-23**.
 - **App 26.10.23 (唯我独尊) is the live release** (2026-10-23): the whole
   2026-10-20 audit batch, shipped without device checks by Jesse's decision.
   macOS local signed + notarized, Windows/Linux/Android from CI; the live
-  verifier passes on all four desktop platforms. Not announced yet.
+  verifier passes on all four desktop platforms. Not announced, by choice.
   **CLI 0.1.27 is live** (2026-10-23; 0.1.26 never published, CI's bun
   1.3.12 broke its tests, now pinned to 1.4.4). Its first archives crashed
   on every Mac (Developer ID hardened runtime without `allow-jit`,
@@ -61,7 +61,7 @@ Last reconciled against reality: **2026-10-23**.
   re-run from main (`b2067ab`) and the archives replaced in place, tag still
   on `c955880`. The curl install on this Mac runs, notarized. Next: publish
   the npm fetcher (`@nagi-ovo/shiori` is a 404 on npm although the site
-  advertises it; needs Jesse's `npm login`), then announce 26.10.23.
+  advertises it; needs Jesse's `npm login`). No announcement planned.
   Also next release: `rustls-webpki` >= 0.103.16 (eMudhra intermediates
   blocklist) and rustls >= 0.23.45 (Dependabot).
 - **App 26.10.20 (四面楚歌)** (2026-10-20) was the first release
