@@ -4,7 +4,7 @@ Current state and next steps only. History lives in `git log`, `CHANGELOG.md`
 and `docs/POSTMORTEMS.md` — when an item here is done, delete it rather than
 marking it done.
 
-Last reconciled against reality: **2026-10-21**.
+Last reconciled against reality: **2026-10-23**.
 
 ## Current state
 
@@ -50,7 +50,21 @@ Last reconciled against reality: **2026-10-21**.
 - **Open product question:** a signed PDF whose print copy needs a rebuild
   (overlays) is refused printing, though paper has no signature to break.
 
-- **App 26.10.20 (四面楚歌) is the live release** (2026-10-20), the first
+- **App 26.10.23 (唯我独尊) is the live release** (2026-10-23): the whole
+  2026-10-20 audit batch, shipped without device checks by Jesse's decision.
+  macOS local signed + notarized, Windows/Linux/Android from CI; the live
+  verifier passes on all four desktop platforms. Not announced yet.
+  **CLI 0.1.26 did not ship:** `cli-v0.1.26` failed `bun test cli/test` on
+  every target (`liveApp.transport.test.ts`, "hangs up on a response that is
+  not JSON"); CI pins bun 1.3.12, local is 1.4.0. main's ci is red on that
+  plus three more tests that pass locally (B027 guard DOM test, HTML fragment
+  link, emoji search without Intl.Segmenter). Next: reproduce under 1.3.12,
+  likely move the CI pin to bun 1.4.4 (also the eMudhra CA fix), cut
+  `cli-v0.1.27`, then publish the npm fetcher (`@nagi-ovo/shiori` is a 404
+  on npm although the site advertises it; needs Jesse's `npm login`).
+  Also next release: `rustls-webpki` >= 0.103.16 (eMudhra intermediates
+  blocklist) and rustls >= 0.23.45 (Dependabot).
+- **App 26.10.20 (四面楚歌)** (2026-10-20) was the first release
   from the public repo: macOS (local signed + notarized), Windows, Linux,
   Android direct APK (versionCode 26010020); `alpha/latest.json` points at
   `Nagi-ovo/shiori` assets and the live verifier passes on all four desktop
