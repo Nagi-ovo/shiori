@@ -108,8 +108,9 @@ describe("macOS code signing", () => {
     // workflow checks the entitlement on the signed binary instead.
     const args = cliCodesignArgs("darwin", "Developer ID", exe, CLI_ENTITLEMENTS);
     expect(args?.[args.indexOf("--entitlements") + 1]).toBe(CLI_ENTITLEMENTS);
-    expect(readFileSync(CLI_ENTITLEMENTS, "utf8")).toContain(
-      "<key>com.apple.security.cs.allow-jit</key>\n  <true/>",
+    // Any whitespace between key and value: Windows checkouts get CRLF.
+    expect(readFileSync(CLI_ENTITLEMENTS, "utf8")).toMatch(
+      /<key>com\.apple\.security\.cs\.allow-jit<\/key>\s*<true\/>/,
     );
     expect(release).toContain("com.apple.security.cs.allow-jit");
   });
