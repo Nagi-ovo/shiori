@@ -179,6 +179,11 @@ jobs:
           # Fail the release rather than ship something that says "adhoc".
           codesign -dvv cli/dist/darwin-arm64/shiori 2>&1 | tee /dev/stderr \
             | grep -q "Authority=Developer ID Application"
+          # Under the hardened runtime V8 dies at startup without allow-jit
+          # (0.1.27). This runner does not enforce that, so the smoke test
+          # below passes either way; check the entitlement itself.
+          codesign -d --entitlements - cli/dist/darwin-arm64/shiori 2>&1 \
+            | grep -q "com.apple.security.cs.allow-jit"
 
       - name: Smoke-test packaged executable
         run: bun run cli:smoke

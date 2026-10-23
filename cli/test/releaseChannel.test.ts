@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { SUPPORTED_CLI_INSTALL_TARGETS } from "../distribution";
-import { cliCodesignArgs } from "../build";
+import { CLI_ENTITLEMENTS, cliCodesignArgs } from "../build";
 import rootPackage from "../../package.json" with { type: "json" };
 
 const release = readFileSync(
@@ -99,6 +99,19 @@ describe("macOS code signing", () => {
     // expires, instead of staying valid for what was signed while it was live.
     expect(args).toContain("--timestamp");
     expect(args).not.toContain("-");
+  });
+
+  test("lets the hardened executable JIT", () => {
+    // V8 cannot reserve executable memory under the hardened runtime without
+    // allow-jit: 0.1.27 crashed at startup on every Mac. GitHub's macOS
+    // runners do not enforce it, so the release smoke passed anyway and the
+    // workflow checks the entitlement on the signed binary instead.
+    const args = cliCodesignArgs("darwin", "Developer ID", exe, CLI_ENTITLEMENTS);
+    expect(args?.[args.indexOf("--entitlements") + 1]).toBe(CLI_ENTITLEMENTS);
+    expect(readFileSync(CLI_ENTITLEMENTS, "utf8")).toContain(
+      "<key>com.apple.security.cs.allow-jit</key>\n  <true/>",
+    );
+    expect(release).toContain("com.apple.security.cs.allow-jit");
   });
 
   test("does not try to codesign anywhere but macOS", () => {

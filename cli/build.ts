@@ -15,6 +15,7 @@ import {
 import { arch, platform } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CLI_ENTITLEMENTS, cliCodesignArgs } from "./codesign";
 import packageJson from "./package.json" with { type: "json" };
 import {
   PDFIUM_ARCHIVES,
@@ -53,37 +54,7 @@ export function seaStripArgs(
   return operatingSystem === "darwin" ? ["-x"] : null;
 }
 
-/**
- * codesign arguments for the packaged executable.
- *
- * An ad-hoc signature (`--sign -`) is the floor, not a choice: arm64 macOS
- * refuses to execute an unsigned Mach-O at all. It carries no identity, so a
- * user who acquires the archive through a browser — which stamps quarantine —
- * gets "Apple cannot check it for malicious software".
- *
- * With an identity we sign for real and turn on the hardened runtime, which
- * notarization requires. `--timestamp` matters because a signature without
- * one stops verifying the day the certificate expires, rather than staying
- * valid for what was signed while it was live.
- */
-export function cliCodesignArgs(
-  operatingSystem: NodeJS.Platform,
-  identity: string | undefined,
-  executable: string,
-): string[] | null {
-  if (operatingSystem !== "darwin") return null;
-  const trimmed = identity?.trim();
-  if (!trimmed) return ["--force", "--sign", "-", executable];
-  return [
-    "--force",
-    "--sign",
-    trimmed,
-    "--options",
-    "runtime",
-    "--timestamp",
-    executable,
-  ];
-}
+export { CLI_ENTITLEMENTS, cliCodesignArgs } from "./codesign";
 
 const CURRENT_TARGET = cliTargetName(platform(), arch());
 export const AUDITED_FONTKIT_SHA256 =
@@ -257,6 +228,7 @@ async function main(): Promise<void> {
       platform(),
       process.env.SHIORI_CLI_SIGN_IDENTITY,
       executable,
+      CLI_ENTITLEMENTS,
     );
     if (signArgs) await run("codesign", signArgs);
   }

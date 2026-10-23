@@ -6,6 +6,28 @@
 
 ---
 
+## 2026-10-23 · CLI 0.1.27 在每台 Mac 上一启动就崩：hardened runtime 没给 JIT
+
+**症状。** `curl -fsSL https://shiori.nagi.fun/cli | sh` 装上的 0.1.27，运行任何命令都只打出一个
+`#`，或者报 `Fatal process out of memory: Failed to reserve virtual memory for CodeRange`，
+崩在 `node::NewIsolate`。CI 的 `cli:smoke` 是绿的，本地构建的包也能跑。
+
+**根因。** 0.1.27 是第一个用 Developer ID 签名的 CLI（`1d0cf953`）。为了能公证，签名打开了
+hardened runtime，但没带 entitlement。这样 V8 拿不到 JIT 要用的可写可执行内存，Node 在创建
+isolate 时就退出了。0.1.25 和本地构建都是 ad-hoc 签名，不开 hardened runtime，所以没事。
+GitHub 的 macOS runner 不执行这项限制，签名后的 smoke 照样通过。
+
+**修法。** 可执行文件签名时带上 `cli/entitlements.plist`，里面只有
+`com.apple.security.cs.allow-jit`；`native/` 下的库不需要。因为 runner 上的 smoke 测不出来，
+`cli-release.yml` 改成直接检查签名后的二进制带没带这个 entitlement。本地复现：
+`SHIORI_CLI_SIGN_IDENTITY="Developer ID Application: …" bun run cli:build && bun run cli:smoke`，
+修之前崩，修之后通过。
+
+**更早暴露。** 签名方式一改，就在本机用真证书签一次再跑 smoke；CI runner 上能跑，不代表用户的
+Mac 上能跑。
+
+---
+
 ## 2026-09-25 · 沙箱里 `tauri build` 签名失败：「A timestamp was expected but was not found」
 
 **症状。** 编译完成，打包阶段给 `Frameworks/libpdfium.dylib` 签名时失败，重试不变；
