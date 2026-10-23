@@ -8,6 +8,19 @@
 
 ---
 
+## [未发布]
+
+### 修复
+
+#### CLI
+
+- **macOS 版 CLI 0.1.27 一启动就崩，0.1.28 修好（`d994fc1`）。** 0.1.27 首次用 Developer ID 签名并打开
+  hardened runtime，却没给 `allow-jit`，V8 创建 isolate 时拿不到可执行内存。可执行文件现在带
+  `cli/entitlements.plist`；GitHub 的 macOS runner 不执行这项限制，发版流程改为直接检查签名里的
+  entitlement。复盘见 `docs/POSTMORTEMS.md` 2026-10-23。
+
+---
+
 ## [26.10.23]
 
 本节的修复来自 2026-10-20 的全面审计（`docs/AUDIT-2026-10-20.md`，119 条 bug），每条注明审计编号；
