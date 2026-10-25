@@ -29,7 +29,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Same ref as validate-release-version in release.yml.
           ref: ${{ inputs.publish_to_release_repo && format('refs/tags/{0}', inputs.tag) || github.ref }}
@@ -44,7 +44,7 @@ jobs:
       # scripts/pdfium/build-wasm.ts (run by `bun run build`) installs the
       # pinned wasm-bindgen CLI into vendor/tools on a miss.
       - name: Cache wasm-bindgen CLI
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: vendor/tools
           key: wasm-bindgen-0.2.129-${{ runner.os }}-${{ runner.arch }}
@@ -77,7 +77,7 @@ jobs:
       # compiles it) is its own workspace; left out, it compiled cold on
       # every run.
       - name: Cache Rust build (deps + registry)
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: |
             src-tauri -> target
@@ -133,7 +133,7 @@ jobs:
         # (v26.9.26 run 36201079252), hence continue-on-error.
         if: github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.publish_to_release_repo != true
         continue-on-error: true
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: shiori-windows
           retention-days: 3
