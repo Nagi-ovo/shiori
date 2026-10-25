@@ -102,7 +102,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Publishing builds the tag itself, even from a dispatch on main;
           # every other run builds the ref it ran on (see the top of this
@@ -168,7 +168,7 @@ jobs:
         os: [windows-latest, ubuntu-22.04]
     steps:
       - name: Checkout source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -179,7 +179,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Cache wasm-bindgen CLI
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: vendor/tools
           key: wasm-bindgen-0.2.129-${{ runner.os }}-${{ runner.arch }}
@@ -195,7 +195,7 @@ jobs:
           Add-MpPreference -ExclusionProcess "link.exe" -ErrorAction SilentlyContinue
 
       - name: Cache Rust build (deps + registry)
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: |
             src-tauri -> target
