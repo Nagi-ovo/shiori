@@ -6,10 +6,10 @@
 
    LXGW WenKai Screen sets every UI string, Latin and CJK alike
    (`--opx-font-sans`, and the CJK fallback of the serif and mono stacks).
-   Its ~250 unicode-range chunks load only for the glyphs on screen.
-   The package declares them at 400; `scripts/build/uiFontFaces.ts`
-   widens them to 400–700, the face's one real weight, so bold UI text
-   never gets a synthesized bold.
+   Its ~250 unicode-range chunks load only for the glyphs on screen. The package declares them at 400 and upright;
+   `scripts/build/uiFontFaces.ts` widens them to 400–700 and to italic
+   slopes, so the face's one real cut serves bold and italic UI text and
+   the browser synthesizes neither.
 
    The other faces are Latin only; their `unicode-range` declarations
    mirror Google Fonts' official split. Weights referenced by inline

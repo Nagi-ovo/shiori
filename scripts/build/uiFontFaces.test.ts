@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import postcss from "postcss";
-import { UI_FONT_FAMILY, UI_FONT_WEIGHTS, uiFontFaces } from "./uiFontFaces.ts";
+import { UI_FONT_FAMILY, UI_FONT_STYLES, UI_FONT_WEIGHTS, uiFontFaces } from "./uiFontFaces.ts";
 
-// Every UI string renders in LXGW WenKai Screen, which has one real weight.
-// Ways this goes wrong, each covered below:
+// Every UI string renders in LXGW WenKai Screen, which has one real face:
+// upright, one weight. Ways this goes wrong, each covered below:
 // - a face stays declared at 400 only, so 600/700 text gets a smeared faux bold;
+// - a face stays declared upright only, so CJK in an italic display heading
+//   (Instrument Serif first, WenKai behind it) gets a synthesized slant;
 // - a face keeps `local()`, so an older WenKai installed on the machine stands
 //   in for the bundled version;
 // - the rewrite reaches other families (JetBrains Mono's real 500, its local
@@ -42,9 +44,17 @@ describe("uiFontFaces", () => {
     expect(face!["font-weight"]).toBe(UI_FONT_WEIGHTS);
   });
 
-  test("adds the weight range to a face that declares none", () => {
+  test("serves italic requests from the upright face instead of a synthesized slant", () => {
+    const [face] = faces(
+      run(`@font-face{font-family:"LXGW WenKai Screen";src:url("./0.woff2") format("woff2");font-style: normal;}`),
+    );
+    expect(face!["font-style"]).toBe(UI_FONT_STYLES);
+  });
+
+  test("adds the weight and style ranges to a face that declares neither", () => {
     const [face] = faces(run(`@font-face{font-family:'LXGW WenKai Screen';src:url("./0.woff2")}`));
     expect(face!["font-weight"]).toBe(UI_FONT_WEIGHTS);
+    expect(face!["font-style"]).toBe(UI_FONT_STYLES);
   });
 
   test("drops local() sources and keeps the bundled file", () => {
@@ -57,7 +67,7 @@ describe("uiFontFaces", () => {
   });
 
   test("leaves other families as they are", () => {
-    const css = `@font-face{font-family:"JetBrains Mono";src:local("JetBrains Mono"),url("./m.woff2") format("woff2");font-weight:500}`;
+    const css = `@font-face{font-family:"JetBrains Mono";src:local("JetBrains Mono"),url("./m.woff2") format("woff2");font-style:normal;font-weight:500}`;
     expect(faces(run(css))).toEqual(faces(css));
   });
 
@@ -67,6 +77,7 @@ describe("uiFontFaces", () => {
     for (const face of declared) {
       expect(face["font-family"]).toBe(`"${UI_FONT_FAMILY}"`);
       expect(face["font-weight"]).toBe(UI_FONT_WEIGHTS);
+      expect(face["font-style"]).toBe(UI_FONT_STYLES);
       expect(face.src).not.toContain("local(");
       expect(face.src).toMatch(/^url\("\.\/\d+\.woff2"\) format\("woff2"\)$/);
     }
