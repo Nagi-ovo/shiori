@@ -9,14 +9,14 @@ export function fontFamilyCss(family: TextOverlay["fontFamily"]): string {
     return "'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif";
   }
   if (family === "serif") return T.bodySerif;
-  if (family === "mono") return T.mono;
-  return T.sans;
+  if (family === "mono") return T.readingMono;
+  return T.readingSans;
 }
 
 // contentText (original-text) edits must mirror the EXPORT fallback's
-// metrics — PDF Standard-14 Times / Helvetica / Courier — not the app's
-// UI faces (Inter, JetBrains Mono), whose widths differ and would make
-// the on-screen edit disagree with the exported layout. Each stack ends
+// metrics — PDF Standard-14 Times / Helvetica / Courier — not the faces
+// new text boxes use (Inter Tight, JetBrains Mono), whose widths differ and
+// would make the on-screen edit disagree with the exported layout. Each stack ends
 // in a bundled Liberation face with identical glyph widths, so the
 // resolution is deterministic even where none of the system fonts exist
 // (Android WebView, bare Linux).

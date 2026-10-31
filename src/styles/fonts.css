@@ -5,8 +5,9 @@
    system.
 
    LXGW WenKai Screen sets every UI string, Latin and CJK alike
-   (`--opx-font-sans`, and the CJK fallback of the serif and mono stacks).
-   Its ~250 unicode-range chunks load only for the glyphs on screen. The package declares them at 400 and upright;
+   (`--opx-font-sans`, and the CJK fallback of the serif and mono stacks;
+   see fontStacks.css). Its ~250 unicode-range chunks load only for the
+   glyphs on screen. The package declares them at 400 and upright;
    `scripts/build/uiFontFaces.ts` widens them to 400–700 and to italic
    slopes, so the face's one real cut serves bold and italic UI text and
    the browser synthesizes neither.

@@ -1,53 +1,8 @@
 /* Self-hosted webfonts — Vite inlines this at build so the woff2 files
    are copied into dist/assets and the app stays network-free. */
 @import "./styles/fonts.css";
-
-/* Intentional native-feel trade-off (REFACTOR_PLAN A3): the chrome ships
-   its own webfonts rather than the system UI font. LXGW WenKai Screen sets
-   every UI string, Latin and CJK; Instrument Serif keeps display headings
-   and JetBrains Mono the labels and numbers. The typeface is part of
-   Shiori's identity — do not "correct" this to -apple-system/Segoe.
-
-   Font stacks are CSS variables so the UI follows the document language
-   without per-component wiring. Root defaults target Latin scripts; the
-   `html[lang^="zh"]` / `html[lang^="ja"]` overrides only change the system
-   fallbacks behind WenKai (Han glyph variants: 说 vs 說 vs 説). The values
-   mirror `T.sans / T.serif / T.mono / T.sansZh / T.serifZh / T.monoZh /
-   T.sansJa / T.serifJa / T.monoJa` in `src/design/tokens.ts`. Keep in sync
-   manually — we don't inject these from TS to avoid a runtime dependency
-   on the design tokens module at first paint. */
-:root {
-  --opx-font-sans: "LXGW WenKai Screen", -apple-system, "Helvetica Neue",
-    Helvetica, Arial, sans-serif;
-  --opx-font-serif: "Instrument Serif", "LXGW WenKai Screen", "Spectral",
-    Charter, "Iowan Old Style", Georgia, serif;
-  --opx-font-mono: "JetBrains Mono", "LXGW WenKai Screen", "IBM Plex Mono",
-    "SF Mono", Menlo, "Cascadia Code", "Cascadia Mono", Consolas, monospace;
-}
-
-html[lang^="zh"] {
-  --opx-font-sans: "LXGW WenKai Screen", "PingFang SC", "Heiti SC",
-    "Microsoft YaHei", "Source Han Sans SC", "Noto Sans SC", -apple-system,
-    Helvetica, Arial, sans-serif;
-  --opx-font-serif: "Instrument Serif", "LXGW WenKai Screen", "Songti SC",
-    "STSong", "Source Han Serif SC", "Noto Serif SC", Georgia, serif;
-  --opx-font-mono: "JetBrains Mono", "LXGW WenKai Screen", "SF Mono", Menlo,
-    "Cascadia Code", "Cascadia Mono", Consolas, "PingFang SC", "Heiti SC",
-    "Microsoft YaHei", monospace;
-}
-
-html[lang^="ja"] {
-  --opx-font-sans: "LXGW WenKai Screen", "Hiragino Sans", "Yu Gothic",
-    "Yu Gothic UI", "Meiryo", "Meiryo UI", "MS PGothic", "MS Gothic",
-    "Source Han Sans JP", "Noto Sans JP", -apple-system, Helvetica, Arial,
-    sans-serif;
-  --opx-font-serif: "Instrument Serif", "LXGW WenKai Screen",
-    "Hiragino Mincho ProN", "Yu Mincho", "MS PMincho", "MS Mincho",
-    "Shippori Mincho", "Source Han Serif JP", "Noto Serif JP", Georgia, serif;
-  --opx-font-mono: "JetBrains Mono", "LXGW WenKai Screen", "SF Mono", Menlo,
-    "Cascadia Code", "Cascadia Mono", Consolas, "Hiragino Sans", "Yu Gothic",
-    "Meiryo", monospace;
-}
+/* --opx-font-* (chrome) and --opx-font-reading-* (documents). */
+@import "./styles/fontStacks.css";
 
 html,
 body,
@@ -626,7 +581,7 @@ button {
 }
 
 .shioriDocumentViewer {
-  font: 16px/1.7 var(--opx-font-sans);
+  font: 16px/1.7 var(--opx-font-reading-sans);
 }
 
 .shioriDocumentMetadata {
@@ -647,7 +602,7 @@ button {
 .shioriDocumentMetadata dt {
   min-width: 0;
   color: var(--opx-dim);
-  font: 700 10.5px/1.45 var(--opx-font-mono);
+  font: 700 10.5px/1.45 var(--opx-font-reading-mono);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   overflow-wrap: anywhere;
@@ -657,7 +612,7 @@ button {
   min-width: 0;
   margin: 0;
   color: var(--opx-ink2);
-  font: 500 13px/1.5 var(--opx-font-sans);
+  font: 500 13px/1.5 var(--opx-font-reading-sans);
   overflow-wrap: anywhere;
 }
 
@@ -717,7 +672,7 @@ button {
 
 .shioriDocumentViewer code,
 .shioriDocumentViewer pre {
-  font-family: var(--shiori-markdown-code-font, var(--opx-font-mono));
+  font-family: var(--shiori-markdown-code-font, var(--opx-font-reading-mono));
 }
 
 .shioriDocumentViewer :not(pre) > code {

@@ -269,11 +269,12 @@ export function markdownFontFamilyCss(
     font?.source === "builtin"
       ? BUILTIN_MARKDOWN_FONTS.find((entry) => entry.family === font.family)
       : undefined;
+  // Documents read in the reading stacks, not the UI face (fontStacks.css).
   const fallbackCss =
     fallback === "code" || builtin?.category === "mono"
-      ? "var(--opx-font-mono)"
+      ? "var(--opx-font-reading-mono)"
       : builtin?.category === "serif"
-        ? "var(--opx-font-serif)"
-        : "var(--opx-font-sans)";
+        ? "var(--opx-font-reading-serif)"
+        : "var(--opx-font-reading-sans)";
   return font ? `${quoteCssFontFamily(font.family)}, ${fallbackCss}` : fallbackCss;
 }

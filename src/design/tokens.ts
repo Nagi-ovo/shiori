@@ -64,14 +64,19 @@ export const T = {
   displayStyle: "var(--opx-displayStyle)",
   // Primary UI stacks resolve through CSS variables so the whole app
   // tracks `<html lang>` without per-component wiring. Defaults are
-  // Latin; `html[lang^="zh"]` / `html[lang^="ja"]` in `app.css` swap in
-  // CJK-appropriate fallbacks (important for Han glyph variants).
+  // Latin; `html[lang^="zh"]` / `html[lang^="ja"]` in
+  // `styles/fontStacks.css` swap in CJK-appropriate fallbacks (important
+  // for Han glyph variants).
   serif: "var(--opx-font-serif)",
   sans: "var(--opx-font-sans)",
   mono: "var(--opx-font-mono)",
+  // What the user reads and writes (PDF text boxes; Markdown goes through
+  // markdownFontFamilyCss) stays out of the UI face.
+  readingSans: "var(--opx-font-reading-sans)",
+  readingMono: "var(--opx-font-reading-mono)",
   // Explicit per-language stacks are kept for cases like ChangelogModal
   // that render a specific language regardless of app-wide locale. They
-  // must stay in sync with the CSS variable overrides in app.css.
+  // must stay in sync with the CSS variable overrides in fontStacks.css.
   serifZh:
     "'Instrument Serif', 'LXGW WenKai Screen', 'Songti SC', 'STSong', 'Source Han Serif SC', 'Noto Serif SC', Georgia, serif",
   serifJa:
