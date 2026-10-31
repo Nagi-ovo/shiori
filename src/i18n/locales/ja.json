@@ -258,7 +258,6 @@
   "meta": {
     "ppAbbr": "ページ",
     "local": "ローカル",
-    "localOnly": "● ローカルのみ",
     "editsNotSaved": "未保存の変更",
     "pageShort": "ページ",
     "pageLabel": "{{page}} ページ",

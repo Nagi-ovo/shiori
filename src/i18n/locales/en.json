@@ -260,7 +260,6 @@
   "meta": {
     "ppAbbr": "PP",
     "local": "LOCAL",
-    "localOnly": "● Local only",
     "editsNotSaved": "edits not saved",
     "pageShort": "Page",
     "pageLabel": "PAGE {{page}}",

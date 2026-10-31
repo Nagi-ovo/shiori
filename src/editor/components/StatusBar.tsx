@@ -368,8 +368,6 @@ function DesktopStatusBar({
       >
         {storageLabel}
       </button>
-      <Dot />
-      <span style={{ color: T.ink }}>{t("meta.localOnly")}</span>
     </div>
   );
 }
