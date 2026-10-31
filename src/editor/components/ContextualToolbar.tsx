@@ -1190,7 +1190,7 @@ export function InspectorRow({
     >
       <div
         style={{
-          font: isMobile ? `13px/1 ${T.bodySerif}` : `14.5px/1 ${T.bodySerif}`,
+          font: isMobile ? `13px/1 ${T.sans}` : `14.5px/1 ${T.sans}`,
           color: T.ink,
           marginRight: isMobile ? 2 : 6,
           // Sized by its text. The old 88px reservation was alignment

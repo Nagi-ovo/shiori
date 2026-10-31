@@ -67,6 +67,8 @@
         "globals": "^17.5.0",
         "happy-dom": "^20.9.0",
         "jsdom": "^30.0.1",
+        "lxgw-wenkai-screen-web": "1.530.0",
+        "postcss": "^8.5.26",
         "subset-font": "^2.5.0",
         "typescript": "~6.0.2",
         "typescript-eslint": "^8.67.0",
@@ -702,6 +704,8 @@
     "lru-cache": ["lru-cache@11.5.2", "", {}, "sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g=="],
 
     "lucide-react": ["lucide-react@1.28.0", "", { "peerDependencies": { "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-fARAFJULsGuDDydjp6+6blekG/sBIM29TerzLjc9bQUKAcEfrSc4ZQKb25KRz4OMKd87cZTb5dgq0w/T6KufVg=="],
+
+    "lxgw-wenkai-screen-web": ["lxgw-wenkai-screen-web@1.530.0", "", {}, "sha512-E7gsH4/TpQpUtoRmjjQpKcHwELOW7zwnsC2cR+g1kSofCLb1qNEzcLmQckMb44NCiwEubDG8UpYGham9qr8U+g=="],
 
     "lz-string": ["lz-string@1.5.0", "", { "bin": { "lz-string": "bin/bin.js" } }, "sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ=="],
 

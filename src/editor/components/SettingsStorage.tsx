@@ -210,7 +210,7 @@ export function StorageControls() {
       {list.length === 0 ? (
         <div
           style={{
-            font: `13px/1.5 ${T.bodySerif}`,
+            font: `13px/1.5 ${T.sans}`,
             color: T.dim,
             padding: "8px 0",
           }}
