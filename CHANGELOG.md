@@ -10,6 +10,22 @@
 
 ## [未发布]
 
+### 界面
+
+- **界面文字统一用霞鹜文楷 Screen（`8ff638b` `41a3005` `e4f57a1`）。** `--opx-font-sans` 换成 LXGW
+  WenKai Screen 1.530（`lxgw-wenkai-screen-web`：253 个按 unicode-range 切分的 woff2，随包打包，只加载
+  屏幕上用到的字形），拉丁与中日文同一字体。Instrument Serif 仍管展示标题、JetBrains Mono 仍管标签和
+  数字，两者之后都接 WenKai 兜中日文和符号，界面里不再出现 PingFang、宋体、冬青黑体或 Menlo。WenKai
+  只有一个直立字重：`scripts/build/uiFontFaces.ts`（PostCSS）把每个分片声明为 `font-weight: 400 700`、
+  `font-style: oblique 0deg 20deg` 并去掉 `local()`，600/700 和斜体请求都落到真字形，浏览器不再合成粗体
+  或斜体；中日文斜体展示标题因此直立，拉丁斜体仍是 Instrument Serif 的真斜体。首页引言、两处空状态和
+  工具名原先用 Times（`T.bodySerif`），改用界面字体。`formatBytes` 的数字与单位之间改为不换行空格，
+  「200.0 MB」不再折成两行。文档内容不换字体：Markdown「自动」字体、代码字体和 PDF 文本框改走
+  `--opx-font-reading-*`（即换字体前的字体栈，与界面栈同在 `src/styles/fontStacks.css`），粗体照旧。
+  web `dist/` 37.3 → 50.4 MiB，桌面前端 31.0 → 44.1 MiB，主样式表 26 KB → 239 KB（gzip 83 KB）。
+- **状态栏去掉「仅本地」（`7729635`）。** 这个标签在每个文档上都一样，读者没法据此做任何事；状态栏
+  现在止于存储按钮，前面的分隔点一起去掉，`meta.localOnly` 从 en/zh/ja 移除。
+
 ### 修复
 
 #### CLI
