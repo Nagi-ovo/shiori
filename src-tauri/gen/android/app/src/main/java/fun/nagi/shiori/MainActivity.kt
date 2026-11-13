@@ -30,12 +30,10 @@ import org.json.JSONObject
 class MainActivity : TauriActivity() {
   private var webView: WebView? = null
 
-  // Touched from the main thread (onCreate/onNewIntent enqueue) and the
-  // WebView JavaBridge thread (bridge drain); every access must hold
-  // synchronized(pendingDocumentOpens). @Synchronized cannot express this:
-  // on activity methods it locks the activity, on the inner bridge method it
-  // locks the bridge instance — two different monitors, no mutual exclusion.
-  private val pendingDocumentOpens = mutableListOf<DocumentOpenPayload>()
+  // Process-scoped, not this instance's: a recreated Activity drains what
+  // the one before it enqueued. The queue holds its own lock for the main
+  // thread (enqueue) vs the WebView JavaBridge thread (drain).
+  private val pendingDocumentOpens = PendingDocumentOpens.queue
 
   // Owned by the main thread: the bridge entry point posts via runOnUiThread.
   private var immersiveEnabled = false
@@ -50,11 +48,14 @@ class MainActivity : TauriActivity() {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     applySystemBarInsets()
-    // A recreated activity (process death) or a relaunch from Recents gets
-    // the task's original VIEW/SEND intent back; its URI grant is usually
-    // gone, so opening it again only reports an error or duplicates a tab.
-    val replayed = savedInstanceState != null ||
-      (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+    // A recreated activity or a relaunch from Recents gets the task's
+    // original VIEW/SEND intent back. After a configuration change its
+    // payload is still in the process queue; after process death or from
+    // Recents its URI grant is usually gone. Either way, don't enqueue it.
+    val replayed = isReplayedLaunch(
+      hasSavedState = savedInstanceState != null,
+      launchedFromHistory = (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0,
+    )
     if (!replayed) enqueueDocumentIntent(intent)
     // The export share chooser's only reliable feedback is the
     // "user picked a target" broadcast (dismissal emits nothing) — the
@@ -73,6 +74,10 @@ class MainActivity : TauriActivity() {
     } catch (_: IllegalArgumentException) {
       // Already unregistered — nothing to clean up.
     }
+    // The queue outlives a recreation, not the reader leaving: a document
+    // still waiting when the Activity finishes for good must not surface on
+    // some later launch, after its URI grant has gone with this task.
+    if (isFinishing && !isChangingConfigurations) pendingDocumentOpens.clear()
     super.onDestroy()
   }
 
@@ -189,13 +194,7 @@ class MainActivity : TauriActivity() {
     val payloads = (documentUris + listOfNotNull(sharedText))
       .map { uri -> documentOpenPayload(uri) }
       .distinct()
-    synchronized(pendingDocumentOpens) {
-      payloads.forEach { payload ->
-        if (pendingDocumentOpens.none { it.uri == payload.uri }) {
-          pendingDocumentOpens.add(payload)
-        }
-      }
-    }
+    pendingDocumentOpens.enqueue(payloads)
     notifyPendingDocumentUris()
   }
 
@@ -252,8 +251,7 @@ class MainActivity : TauriActivity() {
 
   private fun notifyPendingDocumentUris() {
     val view = webView ?: return
-    val hasPending = synchronized(pendingDocumentOpens) { pendingDocumentOpens.isNotEmpty() }
-    if (!hasPending) return
+    if (!pendingDocumentOpens.hasPending()) return
     view.post {
       view.evaluateJavascript(
         """
@@ -330,13 +328,7 @@ class MainActivity : TauriActivity() {
   private inner class ShioriAndroidBridge {
     @JavascriptInterface
     fun drainPendingDocumentOpens(): String {
-      // Copy-and-clear atomically so an enqueue between the two steps can
-      // neither be wiped undelivered nor mutate the list mid-iteration.
-      val opens = synchronized(pendingDocumentOpens) {
-        val drained = pendingDocumentOpens.toList()
-        pendingDocumentOpens.clear()
-        drained
-      }
+      val opens = pendingDocumentOpens.drain()
       return JSONArray(opens.map { payload -> payload.toJson() }).toString()
     }
 
@@ -522,18 +514,4 @@ private data class SafeAreaInsets(
     .put("bottom", bottom.toDouble())
     .put("left", left.toDouble())
     .put("right", right.toDouble())
-}
-
-private data class DocumentOpenPayload(
-  val uri: String,
-  val name: String?,
-  val size: Long?,
-) {
-  fun toJson(): JSONObject {
-    val json = JSONObject()
-      .put("uri", uri)
-    if (!name.isNullOrBlank()) json.put("name", name)
-    if (size != null && size >= 0) json.put("size", size)
-    return json
-  }
 }
