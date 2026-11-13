@@ -34,6 +34,7 @@ import {
 } from "./tabStripLayout";
 import { useEscapeClose } from "./useEscapeClose";
 import { DocumentPreviewSurface } from "./DocumentPreviewSurface";
+import { TabOutline } from "./TabOutline";
 import {
   hasDocumentPreviewVisual,
   type DocumentPreviewData,
@@ -46,8 +47,10 @@ import {
  * rather than as the top of the pane below.
  */
 const TAB_HEIGHT = 34;
-/** Radius of the active tab's concave bottom corners, as its top ones. */
+/** Radius of the active tab's concave bottom corners (its feet). */
 const TAB_FOOT = 7;
+/** Radius of the active tab's top corners. */
+const TAB_RADIUS = 7;
 
 export type TabStripItem = {
   id: string;
@@ -82,27 +85,6 @@ type Props = {
 // Titles plus the gap separate them; the active tab's shape does the rest.
 const STRIP_CSS = `
 .shioriTab { container-type: inline-size; }
-/* The active tab's feet: a concave fillet at each bottom corner, so its
-   sides curve out into the strip's rule instead of meeting it square. Each
-   is an arc of the rule colour with paper outside it, one column wider
-   than the radius to cover the tab's own side border below the arc. */
-.shioriTabActive::before,
-.shioriTabActive::after {
-  content: "";
-  position: absolute;
-  bottom: -1px;
-  width: ${TAB_FOOT + 1}px;
-  height: ${TAB_FOOT}px;
-  pointer-events: none;
-}
-.shioriTabActive::before {
-  left: -${TAB_FOOT + 1}px;
-  background: radial-gradient(circle at 0 0, transparent ${TAB_FOOT - 1}px, ${T.rule} ${TAB_FOOT - 1}px, ${T.rule} ${TAB_FOOT}px, ${T.paper} ${TAB_FOOT + 0.5}px);
-}
-.shioriTabActive::after {
-  right: -${TAB_FOOT + 1}px;
-  background: radial-gradient(circle at 100% 0, transparent ${TAB_FOOT - 1}px, ${T.rule} ${TAB_FOOT - 1}px, ${T.rule} ${TAB_FOOT}px, ${T.paper} ${TAB_FOOT + 0.5}px);
-}
 @container (max-width: 119px) {
   .shioriTabExt { display: none; }
 }
@@ -466,7 +448,7 @@ function TabStripComponent({
           display: "flex",
           alignItems: "flex-end",
           gap: TAB_GAP,
-          // Room for the edge tabs' feet inside the clip (see STRIP_CSS);
+          // Room for the edge tabs' feet inside the clip (see TabOutline);
           // the band's own padding gives up as much on the left.
           paddingLeft: isMobile
             ? "calc(8px + var(--shiori-safe-left, 0px))"
@@ -1078,11 +1060,11 @@ function SortableTab({
         // active one is a shape that rises out of the strip and bites into
         // the rule underneath, which is how a tab says "this pane is mine".
         // A tab picked up to reorder takes the active shape too, so the
-        // whole tab moves rather than a floating label.
-        border: active || isDragging ? `1px solid ${T.rule}` : "1px solid transparent",
-        borderBottom: active || isDragging ? `1px solid ${T.paper}` : "1px solid transparent",
-        borderRadius: "7px 7px 0 0",
-        background: active || isDragging ? T.paper : "transparent",
+        // whole tab moves rather than a floating label. The shape is drawn
+        // by TabOutline; the transparent border only keeps every tab's box
+        // the size it was when the active one had a real border.
+        border: "1px solid transparent",
+        borderRadius: `${TAB_RADIUS}px ${TAB_RADIUS}px 0 0`,
         // The thumbnails' lift shadow, so both reorder gestures read alike.
         boxShadow: isDragging ? "0 4px 12px rgba(10,14,24,0.12)" : undefined,
         color: tab.unavailable ? T.dim : active ? T.ink : T.dim,
@@ -1099,6 +1081,9 @@ function SortableTab({
         zIndex: isDragging ? 2 : active ? 1 : undefined,
       }}
     >
+      {active || isDragging ? (
+        <TabOutline radius={TAB_RADIUS} foot={TAB_FOOT} />
+      ) : null}
       <span
         style={{
           minWidth: 0,

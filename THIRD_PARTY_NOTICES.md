@@ -297,6 +297,16 @@ adapted from Everforest by sainnhe (https://github.com/sainnhe/everforest),
 Copyright (c) 2019 sainnhe, MIT License (text as in the CodeMirror section
 above).
 
+## chrome-tabs
+
+The active document tab's outline (`src/editor/components/tabOutlineGeometry.ts`
+and `TabOutline.tsx`) follows the technique of chrome-tabs by Adam Schwartz
+(https://github.com/adamschwartz/chrome-tabs): the tab's outline and its
+concave bottom corners drawn as one SVG path with a fill and a stroke, in
+place of CSS borders. Shiori's path keeps its own proportions and is drawn at
+the tab's width rather than in mirrored halves. Copyright (c) 2013 Adam Schwartz,
+MIT License (text as in the CodeMirror section above).
+
 ## WebGL Fluid Simulation
 
 The ink animation's fluid solver (`src/brand/fluid/simulation.ts`) is a
