@@ -108,6 +108,12 @@ type WorkspaceActions = {
    * queued job dequeues: a late claim outranks what the reader did since.
    */
   claimOpen: (foregroundIntent?: number) => NavigationClaim;
+  /**
+   * Follows the current claim without superseding it: owns the foreground
+   * only until anyone claims again. For a load that must not outrank what the
+   * reader already started, such as a restore retrying after it lost.
+   */
+  observeNavigation: () => NavigationClaim;
   /** Starts a foreground intent that several sequential opens will share. */
   claimForegroundIntent: () => number;
 };
@@ -165,6 +171,16 @@ export function createWorkspaceStore(
       setSession: (patch) => set({ session: { ...get().session, ...patch } }),
       claimNavigation: () => claim(),
       claimOpen: (joinIntent) => claim(joinIntent),
+      observeNavigation: () => {
+        const { generation, foregroundIntent } = get().navigation;
+        const isCurrent = () => get().navigation.generation === generation;
+        return {
+          isCurrent,
+          ownsForeground: () =>
+            isCurrent() &&
+            get().navigation.foregroundIntent === foregroundIntent,
+        };
+      },
       claimForegroundIntent: () => {
         const foregroundIntent = get().navigation.foregroundIntent + 1;
         set({ navigation: { ...get().navigation, foregroundIntent } });

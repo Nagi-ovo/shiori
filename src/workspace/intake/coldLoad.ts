@@ -39,42 +39,72 @@ const needsLoad = (tab: WorkspaceRuntimeTab | undefined) =>
  * active tab on launch, a tab switched to after it was suspended or never
  * opened, a retry. Every path that can put such a tab on screen calls this.
  */
-export function loadActiveTab(ports: ColdLoadPorts): void {
+export function loadActiveTab(
+  ports: ColdLoadPorts,
+  options: ColdLoadOptions = {},
+): Promise<void> {
   const { tabs, activeTabId } = ports.store.getState();
   const tab = tabs.find((candidate) => candidate.id === activeTabId);
-  if (tab && needsLoad(tab)) void coldLoadTab(tab.id, ports);
+  if (tab && needsLoad(tab)) return coldLoadTab(tab.id, ports, options);
+  return Promise.resolve();
 }
+
+export type ColdLoadOptions = {
+  /**
+   * Load without superseding any open already in flight. A restore retrying
+   * after it lost its claim must not outrank the open that took it: at launch
+   * that is the document handed in by the CLI, Finder or an Android intent,
+   * and a fresh claim here put the saved workspace's tab back on screen in
+   * its place. For the same reason it never opens the password dialog, whose
+   * one slot may hold that open's prompt: an encrypted tab is left "password
+   * required" for the reader to unlock from the tab.
+   */
+  follow?: boolean;
+};
 
 /**
  * Settles a restore that gave up. A tab left saying "loading" is one this
  * module refuses to re-enter, so it goes back to "unloaded" — and if it is
- * still the one on screen, it loads again.
+ * still the one on screen, it loads again, behind whatever superseded it.
+ * Resolves when that reload is done.
  */
 export function settleSupersededLoad(
   tabId: string | undefined,
   ports: ColdLoadPorts,
-): void {
-  if (!tabId || !supersededLoads.delete(tabId)) return;
+): Promise<void> {
+  if (!tabId || !supersededLoads.delete(tabId)) return Promise.resolve();
   ports.store
     .getState()
     .updateTab(tabId, (tab) =>
       tab.status === "loading" ? { ...tab, status: "unloaded" } : tab,
     );
-  loadActiveTab(ports);
+  return loadActiveTab(ports, { follow: true });
 }
 
-/** Reads a tab's bytes back (suspended session first, then its source) and opens them. */
+/**
+ * Reads a tab's bytes back (suspended session first, then its source) and
+ * opens them. Resolves once the tab has settled, including any reload it
+ * schedules after losing its claim.
+ */
 export async function coldLoadTab(
   tabId: string,
   ports: ColdLoadPorts,
+  options: ColdLoadOptions = {},
 ): Promise<void> {
   const { store } = ports;
   const tab = store.getState().tabs.find((candidate) => candidate.id === tabId);
   if (!tab || !needsLoad(tab)) return;
+  // Claimed now, before the reads below, not when the bytes are in hand: a
+  // claim taken after them outranked any open that began meanwhile, so a
+  // document handed in at launch lost the screen to the saved workspace's tab.
+  const claim = options.follow
+    ? store.getState().observeNavigation()
+    : store.getState().claimOpen();
   store.getState().updateTab(tabId, (current) => ({ ...current, status: "loading" }));
   const isOnScreen = () =>
     store.getState().activeTabId === tabId &&
     store.getState().tabs.some((candidate) => candidate.id === tabId);
+  let reload: Promise<void> | undefined;
   try {
     await ports.storageRepaired();
     const suspended =
@@ -101,11 +131,13 @@ export async function coldLoadTab(
         workingCopyCacheId: loaded.workingCopyCacheId,
         skipDuplicateCheck: true,
         shouldActivate: isOnScreen,
+        claim,
+        deferPassword: options.follow,
       },
       ports,
     );
     if (supersededLoads.has(tabId)) {
-      settleSupersededLoad(tabId, ports);
+      reload = settleSupersededLoad(tabId, ports);
     } else if (!isOnScreen()) {
       // The reader left before it finished; it loads again when they return.
       store
@@ -134,4 +166,5 @@ export async function coldLoadTab(
       ports.reportRestoreFailed(tab, detail);
     }
   }
+  await reload;
 }

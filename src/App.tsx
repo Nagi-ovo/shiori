@@ -361,7 +361,7 @@ function AppContent({
   // The saved workspace's active tab holds no document at launch. Every later
   // way onto a tab (switch, close, retry) loads it through tab activation.
   useEffect(() => {
-    loadActiveTab(coldLoadPorts);
+    void loadActiveTab(coldLoadPorts);
   }, [coldLoadPorts]);
 
   // Before useDocumentIntake: a Finder "Open with" at launch arrives through

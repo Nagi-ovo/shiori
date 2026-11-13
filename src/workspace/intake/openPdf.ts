@@ -396,12 +396,24 @@ async function runPdfOpen(
     void engine.destroy(loadedDoc);
     if (!shouldContinue()) return abandon();
     if (classifyPdfOpenError(err) === "password") {
+      if (options.deferPassword && options.tabId) {
+        releaseSource();
+        store.getState().updateTab(options.tabId, (tab) => ({
+          ...tab,
+          status: "unavailable",
+          unavailableDetail: "pdf-password-required",
+          updatedAt: Date.now(),
+        }));
+        return;
+      }
       ports.ui.requestPassword({
         // The full request frame: a restored tab keeps its identity, view,
         // duplicate policy and activation guard when the password retry
         // re-enters.
         input: { ...input, cacheId: pendingCacheId, password: undefined },
-        options,
+        // Not the claim: submitting the password is a new act by the reader,
+        // and the retry claims afresh like any other open.
+        options: { ...options, claim: undefined },
         wrongPassword: !!input.password,
       });
       return;
