@@ -329,7 +329,20 @@ class MainActivity : TauriActivity() {
     @JavascriptInterface
     fun drainPendingDocumentOpens(): String {
       val opens = pendingDocumentOpens.drain()
-      return JSONArray(opens.map { payload -> payload.toJson() }).toString()
+      return JSONArray(opens.map { open -> open.toJson() }).toString()
+    }
+
+    // The page calls this once it has started opening a drained delivery;
+    // until then every drain (a reloaded page's included) returns it again.
+    @JavascriptInterface
+    fun ackPendingDocumentOpens(deliveryIdsValue: String): String {
+      return try {
+        val ids = JSONArray(deliveryIdsValue)
+        pendingDocumentOpens.ack((0 until ids.length()).map { index -> ids.getString(index) })
+        bridgeResult(ok = true, message = null)
+      } catch (error: Exception) {
+        bridgeResult(ok = false, message = error.message ?: "android-open-ack-invalid")
+      }
     }
 
     @JavascriptInterface

@@ -4,35 +4,45 @@ import org.json.JSONObject
 
 /**
  * Documents handed to Shiori (VIEW / SEND intents) that the page has not
- * drained yet through the ShioriAndroid bridge.
+ * acknowledged yet through the ShioriAndroid bridge.
  *
  * Touched from the main thread (onCreate / onNewIntent enqueue) and the
- * WebView JavaBridge thread (drain), so every access holds this queue's one
- * lock. One instance lives for the process (see [PendingDocumentOpens]): an
- * Activity recreated before its page drained the queue used to take the
+ * WebView JavaBridge thread (drain, ack), so every access holds this queue's
+ * one lock. One instance lives for the process (see [PendingDocumentOpens]):
+ * an Activity recreated before its page drained the queue used to take the
  * queue down with it, and the requested document never opened.
+ *
+ * Drain does not remove: an item stays until the page acks its delivery id,
+ * so a page that reloads (or a WebView that goes away) between draining and
+ * starting the open gets the item again from the next drain. The page dedupes
+ * re-deliveries within one session by the same id.
  */
 internal class PendingDocumentOpenQueue {
   private val lock = Any()
-  private val pending = mutableListOf<DocumentOpenPayload>()
+  private val pending = mutableListOf<PendingDocumentOpen>()
+  private var nextDeliveryId = 1L
 
-  /** Adds each payload whose URI is not already waiting, in order. */
+  /**
+   * Adds one delivery (one intent): each payload gets its own delivery id,
+   * so the same URI sent again by a later intent is a new open, not a
+   * duplicate of the one still waiting — a sender may reuse one fixed
+   * content:// URI for different files. A URI listed twice within the same
+   * delivery is one open.
+   */
   fun enqueue(payloads: List<DocumentOpenPayload>) {
     synchronized(lock) {
-      payloads.forEach { payload ->
-        if (pending.none { it.uri == payload.uri }) pending.add(payload)
+      payloads.distinctBy { it.uri }.forEach { payload ->
+        pending.add(PendingDocumentOpen((nextDeliveryId++).toString(), payload))
       }
     }
   }
 
-  /**
-   * Copy-and-clear atomically so an enqueue between the two steps can
-   * neither be wiped undelivered nor mutate the list mid-iteration.
-   */
-  fun drain(): List<DocumentOpenPayload> = synchronized(lock) {
-    val drained = pending.toList()
-    pending.clear()
-    drained
+  /** Every un-acked delivery, in order, each once per call. */
+  fun drain(): List<PendingDocumentOpen> = synchronized(lock) { pending.toList() }
+
+  /** The page has started opening these deliveries; never deliver them again. */
+  fun ack(deliveryIds: Collection<String>) {
+    synchronized(lock) { pending.removeAll { it.deliveryId in deliveryIds } }
   }
 
   fun hasPending(): Boolean = synchronized(lock) { pending.isNotEmpty() }
@@ -40,6 +50,13 @@ internal class PendingDocumentOpenQueue {
   fun clear() {
     synchronized(lock) { pending.clear() }
   }
+}
+
+internal data class PendingDocumentOpen(
+  val deliveryId: String,
+  val payload: DocumentOpenPayload,
+) {
+  fun toJson(): JSONObject = payload.toJson().put("deliveryId", deliveryId)
 }
 
 /**

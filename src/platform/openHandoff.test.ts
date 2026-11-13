@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { mobileDocumentOpenKey } from "./mobileDocumentOpens";
+import type { MobileDocumentReference } from "./open";
 import { OpenHandoffQueue } from "./openHandoff";
 
 function deferred<T = void>() {
@@ -58,6 +60,31 @@ describe("OpenHandoffQueue", () => {
     await queue.whenIdle();
 
     expect(opened).toEqual(["paper.pdf", "paper.pdf"]);
+  });
+
+  test("keyed by delivery, one URI from two deliveries opens twice inside the window", async () => {
+    // An Android sender reusing one fixed content:// URI for different files.
+    const uri = "content://sender/shared";
+    const opened: string[] = [];
+    const queue = new OpenHandoffQueue<MobileDocumentReference>({
+      dedupeMs: 1000,
+      key: mobileDocumentOpenKey,
+      open: (ref) => {
+        opened.push(typeof ref === "string" ? `string:${ref}` : `${ref.uri}#${ref.deliveryId ?? "-"}`);
+      },
+    });
+
+    queue.enqueue({ uri, deliveryId: "1" });
+    queue.enqueue({ uri, deliveryId: "1" });
+    await queue.whenIdle();
+    queue.enqueue({ uri, deliveryId: "1" }); // same delivery, inside the window
+    queue.enqueue({ uri, deliveryId: "2" }); // a new intent, same URI
+    // No delivery id (iOS, `file-open`): still one open per URI per window.
+    queue.enqueue(uri);
+    queue.enqueue({ uri });
+    await queue.whenIdle();
+
+    expect(opened).toEqual([`${uri}#1`, `${uri}#2`, `string:${uri}`]);
   });
 
   test("opens distinct targets sequentially", async () => {

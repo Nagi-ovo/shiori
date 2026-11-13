@@ -29,6 +29,9 @@ export type MobileDocumentReference =
       uri: string;
       name?: string;
       size?: number;
+      // Android shell: one intent's document, for the drain/ack handshake
+      // and dedupe (src/platform/mobileDocumentOpens.ts).
+      deliveryId?: string;
     };
 
 export type PlatformPdfOpenErrorCode =
