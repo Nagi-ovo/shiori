@@ -76,7 +76,7 @@ jobs:
             runner: windows-2025
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -84,7 +84,7 @@ jobs:
         with:
           bun-version: 1.4.4
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26.5.0
           check-latest: false
@@ -101,7 +101,7 @@ jobs:
           toolchain: 1.95.0
 
       - name: Cache Rust build (deps + registry)
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: "crates/shiori-core-node -> target"
           shared-key: "cli-core-${{ matrix.target }}"
@@ -127,7 +127,7 @@ jobs:
       # 2026: artifact uploads refused for hours). Upload only when asked.
       - name: Upload packed archive
         if: github.event_name == 'workflow_dispatch' && inputs.upload_archives
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: shiori-cli-archive-${{ matrix.target }}
           path: cli/dist/archives/shiori-cli-*.tar.gz
