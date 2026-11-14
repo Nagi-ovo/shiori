@@ -86,3 +86,12 @@ remain authoritative; glyph-name fallback applies only when ToUnicode is absent.
 Encoding data provenance and redistribution terms are in `DATA-NOTICE.txt`.
 No new package dependency was introduced; standard AFM/encoding data comes
 from pdf-lib's existing `@pdf-lib/standard-fonts` dependency.
+
+Surgical replacement now consumes `canEncode` through `replaceRunPage`.
+Coverage is cached per font dictionary object, and the pure compiler passes
+original codes as preferences. Missing/unverified coverage refuses; page use
+and ToUnicode alone never prove presence. See `scripts/pdf-inplace/README.md`
+for the native path/ink oracle and refusal cases. CFF's fontkit-private decoded
+encoding offset is accessed only through `cffEncodingOffset.ts`; missing,
+wrong-type or out-of-table values throw and become a font-level unverified
+coverage reason.

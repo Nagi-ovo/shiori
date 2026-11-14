@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { PDFDocument, PDFName, PDFArray, PDFDict } from 'pdf-lib';
 import { inspectRunPage, replaceRunPage } from './replaceRunPage';
+import { tinyTtf } from '../fontCoverage/fixtures/programs';
 
 const bytes = (s: string) => new TextEncoder().encode(s);
 async function fixture(cmap = '1 beginbfrange <20> <7e> <0020> endbfrange', subtype = 'TrueType') {
@@ -8,7 +9,8 @@ async function fixture(cmap = '1 beginbfrange <20> <7e> <0020> endbfrange', subt
   const page = doc.addPage();
   const f = (mapping: string) => doc.context.register(doc.context.obj({
     Type: 'Font', Subtype: subtype, BaseFont: 'AAAAAA+Same', FirstChar: 32,
-    Widths: Array(95).fill(500), ToUnicode: doc.context.register(doc.context.stream(bytes(mapping))),
+    Widths: Array(95).fill(500), Encoding: 'WinAnsiEncoding',
+    FontDescriptor: doc.context.register(doc.context.obj({ Flags: 32, FontFile2: doc.context.register(doc.context.flateStream(tinyTtf({ maps: [{ platform: 3, encoding: 1, entries: [[65, 1], [66, 2]] }] }))) })), ToUnicode: doc.context.register(doc.context.stream(bytes(mapping))),
   }));
   const f1 = f(cmap), f2 = f('1 beginbfchar <41> <005a> endbfchar');
   page.node.set(PDFName.of('Resources'), doc.context.obj({ Font: { F1: f1, F2: f2 } }));

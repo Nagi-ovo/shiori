@@ -4,8 +4,12 @@
 import { decodePDFRawStream, PDFArray, PDFDict, PDFName, PDFRawStream, PDFRef, type PDFPage } from 'pdf-lib';
 import { coalesceContentStreams } from './tokenizer';
 import { contentFontInfo } from './glyphWidths';
+import { fontCoverageFromDict } from '../fontCoverage/pdfLibAdapter';
+import type { FontCoverage } from '../fontCoverage/types';
 import { runToUnicode } from './runToUnicode';
-import { replaceRuns, sourceFingerprint, type ResolvedRunFont, type RunPlan } from './replaceRun';
+import { replaceRuns, sourceFingerprint, type Refusal, type ResolvedRunFont, type RunPlan } from './replaceRun';
+
+export type PageRunResult = { ok: true; bytes: Uint8Array } | (Refusal & { bytes?: Uint8Array });
 
 function decoded(raw: unknown): Uint8Array {
   if (!(raw instanceof PDFRawStream)) throw Error('unsupported content stream');
@@ -25,6 +29,7 @@ export function inspectRunPage(page: PDFPage):
 export function resolveRunFonts(page: PDFPage): ResolvedRunFont[] {
   const dict = page.node.Resources()?.lookupMaybe(PDFName.of('Font'), PDFDict);
   if (!dict) return [];
+  const coverageByObject = new Map<PDFDict, FontCoverage>();
   return dict.entries().flatMap(([name, ref]) => {
     if (!(ref instanceof PDFRef)) return [];
     const font = dict.context.lookup(ref);
@@ -35,7 +40,16 @@ export function resolveRunFonts(page: PDFPage): ResolvedRunFont[] {
     if (!(raw instanceof PDFRawStream)) return [];
     const mapping = runToUnicode(new TextDecoder('latin1').decode(decoded(raw)), info.bytesPerCode);
     if (!mapping) return [];
-    return [{ ...info, resourceName: name.decodeText(), objectId: ref.toString(), unicodeByCode: mapping }];
+    let coverage = coverageByObject.get(font);
+    if (!coverage) {
+      coverage = fontCoverageFromDict(font);
+      if (coverage.verification === 'unverified') {
+        const reason = coverage.missing.find(m => !m.code)?.reason ?? 'source font coverage unverified';
+        coverage.canEncode = text => ({ ok: false, reason, firstMissing: new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)[Symbol.iterator]().next().value?.segment ?? '', offset: 0 });
+      }
+      coverageByObject.set(font, coverage);
+    }
+    return [{ ...info, resourceName: name.decodeText(), objectId: ref.toString(), unicodeByCode: mapping, canEncode: coverage.canEncode }];
   });
 }
 function markedContentProperties(page: PDFPage): Map<string, readonly string[] | null> {
@@ -51,7 +65,7 @@ function markedContentProperties(page: PDFPage): Map<string, readonly string[] |
   } catch { /* An unresolvable /Properties dictionary leaves named spans unsafe. */ }
   return resolved;
 }
-export function replaceRunPage(page: PDFPage, plan: RunPlan) {
+export function replaceRunPage(page: PDFPage, plan: RunPlan): PageRunResult {
   const source = inspectRunPage(page);
   if (!source.ok) return source;
   try {

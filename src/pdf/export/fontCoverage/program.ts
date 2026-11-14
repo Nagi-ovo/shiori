@@ -1,10 +1,11 @@
 import fontkit from '@pdf-lib/fontkit';
+import { cffEncodingOffset } from './cffEncodingOffset';
 import type { Font } from '@pdf-lib/fontkit';
 import { glyphUnicode, macOsNames, standardNames } from './encodings';
 import type { FontInput } from './types';
 type Values<T> = { get(index:number):T; length:number };
 type CmapTable = {version:number;codeMap:Values<number>;firstCode:number;glyphIndices:Values<number>;segCount:number;startCode:Values<number>;endCode:Values<number>;idRangeOffset:Values<number>;idDelta:Values<number>;glyphIndexArray:Values<number>;nGroups:number;groups:Values<{startCharCode:number;endCharCode:number;glyphID:number}>};
-type Cff = {isCIDFont:boolean;topDict:{charset:string[] | {version:number;glyphs:number[];ranges:{first:number;nLeft:number;offset:number}[]};CharStrings:{offset:number;length:number}[];Encoding:string[] | {version:number;codes:number[];ranges:{first:number;nLeft:number}[];_startOffset:number}};getGlyphName(gid:number):string|null;getCharString(gid:number):Uint8Array};
+type Cff = {isCIDFont:boolean;topDict:{charset:string[] | {version:number;glyphs:number[];ranges:{first:number;nLeft:number;offset:number}[]};CharStrings:{offset:number;length:number}[];Encoding:string[] | {version:number;codes:number[];ranges:{first:number;nLeft:number}[]}};getGlyphName(gid:number):string|null;getCharString(gid:number):Uint8Array};
 type ParsedFont = Font & {
   directory:{tables:Record<string,{offset:number;length:number}>};
   cmap?:{tables:{platformID:number;encodingID:number;table:CmapTable}[]};
@@ -82,8 +83,7 @@ export function readProgram(input:FontInput) {
       // Fontkit masks bit 7 and does not decode supplements. Its decoded
       // record retains the absolute start offset; inspect the original byte.
       const table=font.directory.tables['CFF ']!;
-      const start=enc._startOffset;
-      if(!Number.isInteger(start) || start<table.offset || start>=table.offset+table.length)throw new Error('malformed CFF Encoding offset');
+      const start=cffEncodingOffset(enc,table);
       if(data[start]! & 0x80)throw new Error('unsupported CFF encoding supplements');
       builtIn=new Map();let gid=1;
       const put=(code:number)=>{const name=cff.getGlyphName(gid++);if(name)builtIn.set(code,name);};

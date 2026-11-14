@@ -1,14 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 import { replaceRuns, sourceFingerprint, type ResolvedRunFont, type RunEdit } from './replaceRun';
 import { tokenizeContentStream } from './tokenizer';
+import { createFontCoverage } from '../fontCoverage/coverage';
+import { tinyTtf } from '../fontCoverage/fixtures/programs';
 import { walkTextPlacements } from './textState';
 
 const bytes = (s: string) => new TextEncoder().encode(s);
 const text = (b: Uint8Array) => new TextDecoder().decode(b);
 const font: ResolvedRunFont = {
   resourceName: 'F1', objectId: '7 0 R', bytesPerCode: 1,
-  // This synthetic test font explicitly verifies ASCII; fallback tests unset it.
-  verifiedCodes: new Set(Array.from({ length: 95 }, (_, i) => i + 32)),
+  canEncode: createFontCoverage({ subtype: 'Type1', baseFont: 'Helvetica', encoding: 'WinAnsiEncoding' }).canEncode,
   widthOf: c => c === 32 ? 250 : 500, ascentEm: .8, descentEm: -.2,
   unicodeByCode: new Map(Array.from({ length: 95 }, (_, i) => [i + 32, String.fromCharCode(i + 32)])),
 };
@@ -67,7 +68,10 @@ describe('fixed-neighbour same-font compiler', () => {
     b.forEach((p, i) => { expect(p.x).toBeCloseTo(a[i]!.x, 8); expect(p.y).toBeCloseTo(a[i]!.y, 8); });
   });
   test('two-byte CID 32 does not receive Tw', () => {
-    const f = { ...font, bytesPerCode: 2 as const, unicodeByCode: new Map([[32, ' '], [65, 'A'], [66, 'B']]) };
+    const cidToGid = new Uint8Array(134); cidToGid[65] = 4; cidToGid[131] = 1; cidToGid[133] = 2;
+    const coverage = createFontCoverage({ subtype: 'Type0', cidSubtype: 'CIDFontType2', encoding: 'Identity-H', program: tinyTtf(), cidToGid,
+      toUnicode: '3 beginbfchar <0020> <0020> <0041> <0041> <0042> <0042> endbfchar' });
+    const f = { ...font, bytesPerCode: 2 as const, unicodeByCode: new Map([[32, ' '], [65, 'A'], [66, 'B']]), canEncode: coverage.canEncode };
     const s = bytes('BT /F1 10 Tf 4 Tw <00410020> Tj <0042> Tj ET');
     const e: RunEdit = { opIndex: 3, itemIndex: -1, fontResource: 'F1', fontObject: '7 0 R', byteStart: 0, byteEnd: 4, expected: new Uint8Array([0,65,0,32]), replacement: 'A' };
     const out = replaceRuns(s, [f], { sourceHash: sourceFingerprint(s), edits: [e] });
@@ -109,9 +113,7 @@ describe('fixed-neighbour same-font compiler', () => {
     const f = { ...font, unicodeByCode: new Map([[72, 'H']]) };
     refused(source, replaceRuns(source, [f], { sourceHash: sourceFingerprint(source), edits: [edit(source, 'Hello', 'H')] }));
   });
-  test('ambiguous Unicode codes refuse; untouched isolated clip/form contexts remain byte exact', () => {
-    const f = { ...font, unicodeByCode: new Map([...font.unicodeByCode, [200, 'H']]) };
-    refused(source, replaceRuns(source, [f], { sourceHash: sourceFingerprint(source), edits: [edit(source, 'Hello', 'Hi')] }));
+  test('untouched isolated clip/form contexts remain byte exact', () => {
     const s = bytes('q 0 0 20 20 re W n /Fm Do Q\nBT /F1 10 Tf (Hello) Tj ET');
     const out = compile(s, [edit(s, 'Hello', 'Hi')]);
     expect(out.ok).toBe(true);
@@ -176,38 +178,12 @@ describe('review regressions: marked content scope', () => {
   });
 });
 
-describe('review regressions: replacement glyph verification', () => {
+describe('replacement coverage is required even for already shown codes', () => {
   const s = bytes('BT /F1 10 Tf (Hello) Tj (tail) Tj ET');
-  const unverified = { ...font, verifiedCodes: undefined };
-  const run = (f: ResolvedRunFont, replacement: string) => replaceRuns(s, [f], {
-    sourceHash: sourceFingerprint(s), edits: [edit(s, 'Hello', replacement)],
+  for (const replacement of ['Hello', 'tail', '']) test(`missing coverage refuses ${JSON.stringify(replacement)}`, () => {
+    refused(s, replaceRuns(s, [{ ...font, canEncode: undefined }], { sourceHash: sourceFingerprint(s), edits: [edit(s, 'Hello', replacement)] }));
   });
-  test('ToUnicode-only code that the page never shows refuses with original bytes', () => {
-    const out = run(unverified, 'Z');
-    refused(s, out);
-    if (!out.ok) expect(out.reason).toBe('replacement glyph not verified in source font');
-  });
-  test('default evidence includes later shows in the same font object', () => {
-    expect(run(unverified, 'tail').ok).toBe(true);
-  });
-  test('explicit verifiedCodes allows a new code and excludes used codes outside the set', () => {
-    expect(run({ ...font, verifiedCodes: new Set([90]) }, 'Z').ok).toBe(true);
-    refused(s, run({ ...font, verifiedCodes: new Set([90]) }, 'He'));
-    refused(s, run({ ...font, verifiedCodes: new Set() }, 'He'));
-  });
-  for (const objectId of ['7 0 R', '8 0 R']) {
-    test(`used-code evidence is scoped to font object ${objectId}`, () => {
-      const source = bytes('BT /F1 10 Tf (Hello) Tj /F2 10 Tf (Z) Tj ET');
-      const out = replaceRuns(source, [unverified, { ...unverified, resourceName: 'F2', objectId }], {
-        sourceHash: sourceFingerprint(source), edits: [edit(source, 'Hello', 'Z')],
-      });
-      if (objectId === '7 0 R') expect(out.ok).toBe(true);
-      else refused(source, out);
-    });
-  }
-  test('a later unverified code refuses the entire transaction', () => {
-    const out = replaceRuns(s, [unverified], { sourceHash: sourceFingerprint(s),
-      edits: [edit(s, 'Hello', 'He'), edit(s, 'tail', 'Z')] });
-    refused(s, out);
+  test('a later missing glyph refuses the entire transaction', () => {
+    refused(s, replaceRuns(s, [font], { sourceHash: sourceFingerprint(s), edits: [edit(s, 'Hello', 'He'), edit(s, 'tail', '☃')] }));
   });
 });

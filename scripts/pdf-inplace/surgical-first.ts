@@ -4,11 +4,13 @@ import { PDFDocument, PDFName } from 'pdf-lib';
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
 import { inspectRunPage, replaceRunPage, resolveRunFonts } from '../../src/pdf/export/contentStreamEdit/replaceRunPage';
 import { type RunEdit } from '../../src/pdf/export/contentStreamEdit/replaceRun';
 import { tokenizeContentStream } from '../../src/pdf/export/contentStreamEdit/tokenizer';
-import { addObservedAsciiMappings, sourceGlyphs, readSavedGlyphs, assertSavedGlyphs } from './oracleGlyphs';
+import { addFixtureAsciiMappings, sourceGlyphs, readSavedGlyphs, assertSavedGlyphs } from './oracleGlyphs';
+import { checkNativeEvidence } from './checkNativeEvidence';
+import { nativeOracle } from './nativeOracle';
+import { negativeCases } from './negativeCases';
 import { previewCost } from './preview-cost';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -23,12 +25,12 @@ const cases = [
   { name: 'identity', fixture: 'happy', old: 'Hello World', replacement: 'Hello World', force: false, box: [65, 685, 260, 730] },
   { name: 'forced-roundtrip', fixture: 'kerning', old: 'A', replacement: 'A', force: true, box: [65, 685, 260, 735] },
   { name: 'shorter', fixture: 'happy', old: 'Hello World', replacement: 'Hello', box: [65, 685, 290, 730] },
-  { name: 'longer', fixture: 'happy', old: 'Hello World', replacement: 'World Hello Hello', box: [65, 685, 330, 730] },
+  { name: 'longer', fixture: 'happy', old: 'Hello World', replacement: 'World Hello Again', box: [65, 685, 330, 730] },
   { name: 'delete', fixture: 'happy', old: 'Hello World', replacement: '', box: [65, 685, 260, 730] },
-  { name: 'tracked', fixture: 'kerning', old: 'Tracked words here', replacement: 'Tracked words ahead', box: [65, 625, 330, 665] },
+  { name: 'tracked', fixture: 'kerning', old: 'Tracked words here', replacement: 'Tracked words gone', box: [65, 625, 330, 665] },
   { name: 'background', fixture: 'background', old: 'Blue Band Title', replacement: 'Blue Band Text', box: [65, 685, 300, 735] },
   { name: 'subset', fixture: 'subset', old: 'Liberation', replacement: 'Liberator', box: [15, 140, 170, 175] },
-  { name: 'word-mcid', fixture: 'happy', old: 'Hello World', replacement: 'World Hello Hello', tagged: true, box: [65, 685, 330, 730] },
+  { name: 'word-mcid', fixture: 'happy', old: 'Hello World', replacement: 'World Hello Again', tagged: true, box: [65, 685, 330, 730] },
   { name: 'suffix-relative', fixture: 'happy', old: 'Hello', replacement: 'Hi', custom: true, box: [65, 685, 150, 730] },
 ];
 for (const c of cases) {
@@ -42,7 +44,7 @@ for (const c of cases) {
 ${new TextDecoder().decode(original.bytes)}
 EMC`))));
   }
-  addObservedAsciiMappings(page);
+  addFixtureAsciiMappings(page);
   const source = inspectRunPage(page);
   if (!source.ok) throw Error(source.reason);
   const resolved = resolveRunFonts(page);
@@ -75,23 +77,23 @@ EMC`))));
   const changed = c.old !== c.replacement;
   for (const i of targetIndexes) beforeGlyphs[i]!.edited = changed;
   const inverse = new Map([...f.unicodeByCode].map(([code, unicode]) => [unicode, code]));
-  const replacements = Array.from(c.replacement, unicode => ({ ...beforeGlyphs[start]!, code: inverse.get(unicode)!, unicode, edited: changed }));
+  const replacements = Array.from(c.replacement, unicode => ({ ...beforeGlyphs[start]!, code: inverse.get(unicode)!, unicode, edited: changed, replacement: true }));
   const afterGlyphs = [...beforeGlyphs];
   afterGlyphs.splice(start, n, ...replacements);
   const savedAfter = await readSavedGlyphs(after);
   assertSavedGlyphs(afterGlyphs, savedAfter.glyphs);
   // Keep the EXPECTED sequence separate from independently parsed saved codes.
   const observedBefore = savedBefore.glyphs.map((g, i) => ({ ...g, edited: beforeGlyphs[i]!.edited }));
-  const observedAfter = savedAfter.glyphs.map((g, i) => ({ ...g, edited: afterGlyphs[i]!.edited }));
+  const observedAfter = savedAfter.glyphs.map((g, i) => ({ ...g, edited: afterGlyphs[i]!.edited, replacement: afterGlyphs[i]!.replacement }));
   manifest.push({ name: c.name, before: beforeName, after: afterName, beforeGlyphs: observedBefore, afterGlyphs: observedAfter,
     expectedAfterGlyphs: afterGlyphs, savedCodesVerified: true,
     fontHashes: hashes, editBox: c.box, required: c.replacement ? [c.replacement] : [], absent: changed ? [c.old] : [] });
 }
+manifest.push(...await negativeCases(out));
 await writeFile(join(out, 'manifest.json'), JSON.stringify(manifest, null, 2));
 const lib = join(process.env.SHIORI_PDFIUM_DIR ?? join(root, 'vendor/pdfium/linux-x64/lib'), 'libpdfium.so');
-const oracle = spawnSync('python3', [fileURLToPath(new URL('./native_oracle.py', import.meta.url)), lib, out], { stdio: 'inherit' });
-if (oracle.status !== 0) throw Error('native oracle failed');
+nativeOracle(lib, out);
+await checkNativeEvidence(lib, out);
 await previewCost(out);
-const preview = spawnSync('python3', [fileURLToPath(new URL('./native_oracle.py', import.meta.url)), lib, out, '--preview'], { stdio: 'inherit' });
-if (preview.status !== 0) throw Error('native preview oracle failed');
+nativeOracle(lib, out, true);
 console.log(`Artifacts: ${out}`);

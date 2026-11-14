@@ -1,5 +1,6 @@
 // Pure decoded-content compiler. The caller resolves fonts from the same
 // immutable PDF revision. No page dictionaries or PDF writer types enter here.
+import type { EncodeOptions, EncodeResult } from '../fontCoverage/types';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { tokenizeContentStream, type ContentOperand } from './tokenizer';
 import { walkTextPlacements, type ShowTextState } from './textState';
@@ -12,9 +13,9 @@ export type ResolvedRunFont = {
   ascentEm: number;
   descentEm: number;
   unicodeByCode: ReadonlyMap<number, string>;
-  // Optional caller evidence; when absent use only codes already shown by
-  // this font object in the original page. ToUnicode is encoding, not coverage.
-  verifiedCodes?: ReadonlySet<number>;
+  // Synchronous verified encoder resolved from this font object/revision.
+  // Missing coverage refuses; page usage and ToUnicode are never evidence.
+  canEncode?: (text: string, options?: EncodeOptions) => EncodeResult;
 };
 export type RunEdit = {
   fontResource: string;
@@ -34,7 +35,8 @@ export type RunPlan = {
   // Resolved /Properties key lists; missing/null named entries are unsafe.
   markedContentProperties?: ReadonlyMap<string, readonly string[] | null>;
 };
-export type RunResult = { ok: true; bytes: Uint8Array } | { ok: false; bytes: Uint8Array; reason: string };
+export type Refusal = { ok: false; reason: string; firstMissing?: string; offset?: number };
+export type RunResult = { ok: true; bytes: Uint8Array } | (Refusal & { bytes: Uint8Array });
 export function sourceFingerprint(bytes: Uint8Array): string {
   return Array.from(sha256(bytes), b => b.toString(16).padStart(2, '0')).join('');
 }
@@ -52,24 +54,18 @@ function codes(bytes: Uint8Array, size: 1 | 2): number[] {
   return Array.from({ length: bytes.length / size }, (_, i) => size === 1
     ? bytes[i]! : bytes[2 * i]! * 256 + bytes[2 * i + 1]!);
 }
-function encode(text: string, font: ResolvedRunFont, usedCodes: ReadonlySet<number>): Uint8Array {
+function encode(text: string, font: ResolvedRunFont, original: Uint8Array): EncodeResult {
   if ((/[\r\n]/.test(text) || text.includes(String.fromCharCode(0)))) throw Error('replacement is not a single text run');
-  const inverse = new Map<string, number | null>();
-  for (const [code, unicode] of font.unicodeByCode) {
-    if (Array.from(unicode).length !== 1) continue;
-    inverse.set(unicode, inverse.has(unicode) ? null : code);
-  }
-  const out: number[] = [];
-  for (const char of text) {
-    const code = inverse.get(char);
-    if (code == null || !Number.isInteger(code) || code < 0 || code >= 256 ** font.bytesPerCode) {
-      throw Error('replacement glyph absent or ambiguous in source font');
-    }
-    if (!(font.verifiedCodes ?? usedCodes).has(code)) throw Error('replacement glyph not verified in source font');
-    if (font.bytesPerCode === 2) out.push(code >> 8);
-    out.push(code & 255);
-  }
-  return new Uint8Array(out);
+  if (!font.canEncode) return { ok: false, reason: 'source font coverage unavailable', firstMissing: Array.from(text)[0] ?? '', offset: 0 };
+  const preferredCodes = codes(original, font.bytesPerCode).map((_, i) => original.slice(i * font.bytesPerCode, (i + 1) * font.bytesPerCode));
+  const result = font.canEncode(text, { preferredCodes });
+  if (!result.ok) return result;
+  if (result.codes.some(c => c.length !== font.bytesPerCode) ||
+      result.codes.reduce((n, c) => n + c.length, 0) !== result.bytes.length ||
+      !same(Uint8Array.from(result.codes.flatMap(c => [...c])), result.bytes)) throw Error('invalid verified code boundaries');
+  const decoded = codes(result.bytes, font.bytesPerCode).map(c => font.unicodeByCode.get(c));
+  if (decoded.some(c => c === undefined) || decoded.join('') !== text) throw Error('verified codes disagree with ToUnicode');
+  return result;
 }
 
 export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont[], plan: RunPlan): RunResult {
@@ -91,12 +87,6 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
     if (!walk.ok) return refuse(walk.reason);
     if (walk.unplacedText) return refuse('unaccounted source text');
     if (walk.glyphs.some(g => [...g.quad, ...g.coreQuad].some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y)))) return refuse('nonfinite transformed geometry');
-    const usedByObject = new Map<string, Set<number>>();
-    for (const glyph of walk.glyphs) {
-      const object = byName.get(glyph.fontName)!.objectId;
-      if (!usedByObject.has(object)) usedByObject.set(object, new Set());
-      usedByObject.get(object)!.add(glyph.code);
-    }
     const unsafe = new Set<number>();
     // Marked content is independent of the graphics-state q/Q stack.
     const markedContent: boolean[] = [];
@@ -156,7 +146,9 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
       if (state.fontName !== edit.fontResource) return refuse('stale show font');
       const originalCodes = codes(item.bytes, font.bytesPerCode);
       if (originalCodes.some(c => !font.unicodeByCode.has(c))) return refuse('original code missing ToUnicode');
-      const replacement = encode(edit.replacement, font, usedByObject.get(font.objectId) ?? new Set());
+      const encoded = encode(edit.replacement, font, item.bytes);
+      if (!encoded.ok) return { ...encoded, bytes: content };
+      const replacement = encoded.bytes;
       const advance = (values: number[]) => values.reduce((sum, code) => {
         const width = font.widthOf(code);
         if (!Number.isFinite(width)) throw Error('invalid glyph width');
