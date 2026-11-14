@@ -4,7 +4,7 @@ import { glyphUnicode, macOsNames, standardNames } from './encodings';
 import type { FontInput } from './types';
 type Values<T> = { get(index:number):T; length:number };
 type CmapTable = {version:number;codeMap:Values<number>;firstCode:number;glyphIndices:Values<number>;segCount:number;startCode:Values<number>;endCode:Values<number>;idRangeOffset:Values<number>;idDelta:Values<number>;glyphIndexArray:Values<number>;nGroups:number;groups:Values<{startCharCode:number;endCharCode:number;glyphID:number}>};
-type Cff = {isCIDFont:boolean;topDict:{charset:string[] | {version:number;glyphs:number[];ranges:{first:number;nLeft:number;offset:number}[]};CharStrings:{offset:number;length:number}[];Encoding:string[] | {version:number;codes:number[];ranges:{first:number;nLeft:number}[];supplement?:{code:number;glyph:number}[]}};getGlyphName(gid:number):string|null;getCharString(gid:number):Uint8Array};
+type Cff = {isCIDFont:boolean;topDict:{charset:string[] | {version:number;glyphs:number[];ranges:{first:number;nLeft:number;offset:number}[]};CharStrings:{offset:number;length:number}[];Encoding:string[] | {version:number;codes:number[];ranges:{first:number;nLeft:number}[];_startOffset:number}};getGlyphName(gid:number):string|null;getCharString(gid:number):Uint8Array};
 type ParsedFont = Font & {
   directory:{tables:Record<string,{offset:number;length:number}>};
   cmap?:{tables:{platformID:number;encodingID:number;table:CmapTable}[]};
@@ -79,23 +79,33 @@ export function readProgram(input:FontInput) {
     const enc=cff.topDict.Encoding;
     if(Array.isArray(enc))builtIn=new Map(enc.map((name,i)=>[i,name]));
     else {
+      // Fontkit masks bit 7 and does not decode supplements. Its decoded
+      // record retains the absolute start offset; inspect the original byte.
+      const table=font.directory.tables['CFF ']!;
+      const start=enc._startOffset;
+      if(!Number.isInteger(start) || start<table.offset || start>=table.offset+table.length)throw new Error('malformed CFF Encoding offset');
+      if(data[start]! & 0x80)throw new Error('unsupported CFF encoding supplements');
       builtIn=new Map();let gid=1;
       const put=(code:number)=>{const name=cff.getGlyphName(gid++);if(name)builtIn.set(code,name);};
       if(enc.version===0)for(const code of enc.codes)put(code);
       else if(enc.version===1)for(const r of enc.ranges)for(let k=0;k<=r.nLeft;k++)put(r.first+k);
       else throw new Error('unsupported CFF built-in encoding');
-      if(enc.supplement?.length)throw new Error('unsupported CFF encoding supplements');
     }
   }
-  const symbolic=!!((input.flags ?? 0)&4) || (!input.encoding && !((input.flags ?? 0)&32));
+  const flags=input.flags ?? 0;
+  const encodingName=typeof input.encoding==='string'?input.encoding:input.encoding?.base;
+  const standardEncoding=['WinAnsiEncoding','MacRomanEncoding','StandardEncoding','MacExpertEncoding'].includes(encodingName ?? '');
+  const bothFlagsWithEncoding=(flags & 36)===36 && standardEncoding;
+  const symbolic=!bothFlagsWithEncoding && (!!(flags & 4) || (!input.encoding && !(flags & 32)));
+  const symbolGids=(code:number)=>[...new Set([0,0xf000,0xf100,0xf200].map(h=>lookup(symbol!,h+code)).filter(Boolean))];
   // A symbolic font's PDF Encoding is ignored. Without ToUnicode, only
   // names established by its actual cmap/post mapping identify text safely.
   if(symbolic && !cff) {
     builtIn=new Map();
     for(let code=0;code<256;code++) {
       if(symbol) {
-        const gids=[0,0xf000,0xf100,0xf200].map(h=>lookup(symbol,h+code)).filter(Boolean);
-        if(gids.length===1) {
+        const gids=symbolGids(code);
+        if(gids.length===1 && gids[0]!<numGlyphs) {
           const name=(font.getGlyph(gids[0]!) as unknown as {name?:string}).name;
           if(name)builtIn.set(code,name);
         }
@@ -104,18 +114,16 @@ export function readProgram(input:FontInput) {
       }
     }
   }
-  const simpleGid=(code:number,name:string|undefined):number=>{
+  const simpleGid=(code:number,name:string|undefined):number | {reason:string}=>{
     if(cff)return name?names.get(name) ?? 0:0;
     if(symbolic) {
       if(symbol) {
-        // The permitted symbol range occupies one high-byte block. Refuse
-        // ambiguity rather than borrowing a glyph from another cmap.
-        const candidates=[0,0xf000,0xf100,0xf200].map(h=>lookup(symbol,h+code)).filter(Boolean);
-        if(candidates.length>1)throw new Error('ambiguous symbolic TrueType cmap');
+        const candidates=symbolGids(code);
+        if(candidates.length>1)return {reason:'ambiguous symbolic TrueType cmap'};
         return candidates[0] ?? 0;
       }
       if(mac)return lookup(mac,code);
-      throw new Error('unsupported symbolic TrueType cmap');
+      return {reason:'unsupported symbolic TrueType cmap'};
     }
     if(!name)return 0;
     const value=glyphUnicode(name);

@@ -16,7 +16,7 @@ export type FontInput = {
 export type MissingMapping = { code?: string; cluster?: string; reason: string };
 export type EncodeOptions = { preferredCodes?: readonly Uint8Array[] };
 export type EncodeResult =
-  | { ok: true; codes: Uint8Array[]; bytes: Uint8Array }
+  | { ok: true; codes: Uint8Array[]; bytes: Uint8Array; preferredApplied: boolean }
   | { ok: false; reason: string; firstMissing: string; offset: number };
 export type FontCoverage = {
   subtype: string;
@@ -30,6 +30,9 @@ export type FontCoverage = {
   /** Hex code → text, including mappings rejected by program verification. */
   codeToUnicode: Map<string, string>;
   encodable: Map<string, Uint8Array[]>;
+  /** Actual program GID selected for a code (including rejected GID 0).
+   * Standard-14/Type3 have no embedded program GIDs. */
+  glyphIds: Map<string, number>;
   definedCodes: Uint8Array[];
   canEncode(text: string, options?: EncodeOptions): EncodeResult;
 };

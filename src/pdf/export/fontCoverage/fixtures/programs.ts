@@ -14,7 +14,7 @@ export function sfnt(tables: Record<string, Uint8Array>, cff = false): Uint8Arra
   return Uint8Array.from([...(cff ? [79,84,84,79] : [0,1,0,0]), ...u16(entries.length), 0,0,0,0,0,0, ...records, ...body]);
 }
 export function tinyTtf(options: {
-  maps?: { platform: number; encoding: number; entries: [number, number][] }[];
+  maps?: { platform: number; encoding: number; entries: [number, number][]; subtable?: Uint8Array }[];
   empty?: number[];
 } = {}): Uint8Array {
   const maps = options.maps ?? [{ platform: 3, encoding: 1, entries: [[83,1],[97,2],[110,3],[100,0],[32,4],[102,5],[105,6],[65,7],[0x301,8],[0x200b,9]] }];
@@ -33,6 +33,7 @@ export function tinyTtf(options: {
   }
   offsets.push(glyf.length);
   const subtables = maps.map(m => {
+    if (m.subtable) return m.subtable;
     const sorted = [...m.entries].sort(([a],[b]) => a-b);
     return Uint8Array.from([...u16(6),...u16(10 + ((sorted.at(-1)?.[0] ?? 0)-(sorted[0]?.[0] ?? 0)+1)*2),0,0,
       ...u16(sorted[0]?.[0] ?? 0),...u16((sorted.at(-1)?.[0] ?? 0)-(sorted[0]?.[0] ?? 0)+1),
@@ -52,15 +53,45 @@ function index(items: number[][]): number[] {
   let pos = 1;
   return [...u16(items.length),1,...items.map(a=>{const p=pos;pos+=a.length;return p;}),pos,...items.flat()];
 }
-export function tinyCff(cid = true): Uint8Array {
+export function tinyCff(cid = true, supplement = false): Uint8Array {
   // Fixed-width DICT integers keep absolute charset/CharStrings offsets stable.
   const integer = (n: number) => [29,...u32(n)];
   const name = index([[84,105,110,121]]);
-  const makeDict = (charset: number, chars: number) => [
-    ...(cid ? [139,139,139,12,30] : []), ...integer(charset),15,...integer(chars),17,
+  const makeDict = (charset: number, chars: number, encoding = 0) => [
+    ...(cid ? [139,139,139,12,30] : []), ...integer(charset),15,...integer(chars),17, ...(supplement ? [...integer(encoding),16] : []),
   ];
   const prefixSize = 4 + name.length + index([makeDict(0,0)]).length + 4;
   const charset = cid ? [0,0,42,0,7] : [0,0,34,0,35]; // GID1=CID42/A, GID2=CID7/B
-  return Uint8Array.from([1,0,4,4,...name,...index([makeDict(prefixSize,prefixSize+charset.length)]),0,0,0,0,
-    ...charset,...index([[14],[139,139,21,239,139,5,14],[14]])]);
+  // Base code 65 selects SID34/A; the supplement remaps it to SID35/B.
+  const encoding = supplement ? [0x80,2,65,66,1,65,0,35] : [];
+  const chars = prefixSize + charset.length + encoding.length;
+  return Uint8Array.from([1,0,4,4,...name,...index([makeDict(prefixSize,chars,prefixSize+charset.length)]),0,0,0,0,
+    ...charset,...encoding,...index([[14],[139,139,21,239,139,5,14],[14]])]);
+}
+
+// Independent tables with known GIDs, including delta and glyph-array paths.
+// S uses glyphIndexArray value 5 + idDelta 2 = GID7. T is .notdef.
+export function format4Table(sValue = 5): Uint8Array {
+  return Uint8Array.from([
+    ...u16(4),...u16(46),0,0,...u16(6),...u16(4),...u16(1),...u16(2),
+    ...[0x42,0x55,0xffff].flatMap(u16),0,0,
+    ...[0x41,0x53,0xffff].flatMap(u16),
+    ...[-64,2,1].flatMap(u16), ...[0,4,0].flatMap(u16),
+    ...[sValue,0,1].flatMap(u16),
+  ]);
+}
+export function format12Table(sGid = 7): Uint8Array {
+  const groups = [[0x41,0x43,1],[0x53,0x53,sGid],[0x54,0x54,0],[0x10000,0x10002,5]];
+  return Uint8Array.from([...u16(12),0,0,...u32(16+groups.length*12),...u32(0),...u32(groups.length),...groups.flatMap(g=>g.flatMap(u32))]);
+}
+// Valid, sparse BMP table for high-byte symbolic aliases (format 6 would
+// overflow its 16-bit byte length when spanning the low and F000 blocks).
+export function format4Points(entries: [number,number][]): Uint8Array {
+  const points=[...entries].sort(([a],[b])=>a-b).concat([[0xffff,0]]);
+  const count=points.length,power=2**Math.floor(Math.log2(count));
+  return Uint8Array.from([
+    ...u16(4),...u16(16+count*8),0,0,...u16(count*2),...u16(power*2),...u16(Math.log2(power)),...u16(count*2-power*2),
+    ...points.flatMap(([cp])=>u16(cp)),0,0,...points.flatMap(([cp])=>u16(cp)),
+    ...points.flatMap(([cp,gid])=>u16(gid-cp)),...points.flatMap(()=>u16(0)),
+  ]);
 }

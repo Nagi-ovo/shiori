@@ -19,7 +19,7 @@ export function parseCMap(source: string): ParsedCMap {
   if (source.length > 8_000_000) throw new Error('CMap too large');
   const tokens=source.match(/%[^\r\n]*|\((?:\\.|[^\\)])*\)|<<|>>|<[^>]*>|\[|\]|[^\s<>[\]()%]+|[<>]/g) ?? [];
   const t=tokens.filter(x=>!x.startsWith('%'));
-  const result: ParsedCMap={unicode:new Map(),cids:new Map(),codeSpaces:[],vertical:/\/WMode\s+1\b/.test(source),identity:false};
+  const result: ParsedCMap={unicode:new Map(),cids:new Map(),codeSpaces:[],vertical:false,identity:false};
   const hex=(i:number): string => {
     const value=t[i];
     if (!value || !/^<(?:[0-9a-fA-F\s]+)>$/.test(value)) throw new Error('invalid CMap hex');
@@ -32,6 +32,7 @@ export function parseCMap(source: string): ParsedCMap {
   let total=0;
   for(let i=0;i<t.length;i++) {
     const op=t[i]!;
+    if(op==='/WMode' && t[i+2]==='def')result.vertical=t[i+1]==='1';
     if(op==='usecmap') {
       if(t[i-1]==='/Identity-H' || t[i-1]==='/Identity-V') {result.identity=true;result.vertical=t[i-1]==='/Identity-V';}
       else throw new Error('unsupported predefined CMap / usecmap');

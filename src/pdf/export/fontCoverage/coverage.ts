@@ -6,7 +6,7 @@ import type { EncodeOptions, EncodeResult, FontCoverage, FontInput } from './typ
 export type { FontCoverage, FontInput, EncodeOptions, EncodeResult } from './types';
 
 function encoder(report:FontCoverage,text:string,options:EncodeOptions={}):EncodeResult {
-  if(!text)return {ok:true,codes:[],bytes:new Uint8Array()};
+  if(!text)return {ok:true,codes:[],bytes:new Uint8Array(),preferredApplied:!options.preferredCodes?.length};
   const byFirst=new Map<string,string[]>();
   for(const key of report.encodable.keys()) {const c=key[0]!;const values=byFirst.get(c) ?? [];values.push(key);byFirst.set(c,values);}
   for(const values of byFirst.values())values.sort((a,b)=>b.length-a.length);
@@ -28,15 +28,19 @@ function encoder(report:FontCoverage,text:string,options:EncodeOptions={}):Encod
     return {ok:false,reason,firstMissing,offset:furthest};
   }
   const codes:Uint8Array[]=[];
+  let preferredApplied=true;
   for(let i=0;i<text.length;) {
     const step=next.get(i)!,candidates=report.encodable.get(step.cluster)!;
     const preferred=options.preferredCodes?.[codes.length];
-    const code=(preferred && candidates.find(c=>codeHex(c)===codeHex(preferred))) || candidates[0]!;
+    const matched=preferred && candidates.find(c=>codeHex(c)===codeHex(preferred));
+    if(options.preferredCodes && !matched)preferredApplied=false;
+    const code=matched || candidates[0]!;
     codes.push(code.slice());i=step.end;
   }
   const bytes=new Uint8Array(codes.reduce((n,c)=>n+c.length,0));let offset=0;
   for(const code of codes){bytes.set(code,offset);offset+=code.length;}
-  return {ok:true,codes,bytes};
+  if(options.preferredCodes && options.preferredCodes.length!==codes.length)preferredApplied=false;
+  return {ok:true,codes,bytes,preferredApplied};
 }
 /** Resolve Unicode → existing PDF codes only after independently verifying the
  * rendering code → glyph path. No shaping, font growth, or width calculation. */
@@ -44,7 +48,7 @@ export function createFontCoverage(input:FontInput):FontCoverage {
   const baseFont=input.baseFont ?? '';
   const report:FontCoverage={subtype:input.subtype,baseFont,subsetTag:/^([A-Z]{6})\+/.exec(baseFont)?.[1] ?? null,
     encodingKind:typeof input.encoding==='string'?input.encoding:input.encoding?.cmap?'embedded CMap':input.encoding?.base ?? 'built-in',
-    vertical:false,verification:'unverified',warnings:[],missing:[],codeToUnicode:new Map(),encodable:new Map(),definedCodes:[],
+    vertical:false,verification:'unverified',warnings:[],missing:[],codeToUnicode:new Map(),encodable:new Map(),glyphIds:new Map(),definedCodes:[],
     canEncode:(text,options)=>encoder(report,text,options)};
   try {
     if(input.error)throw new Error(input.error);
@@ -84,7 +88,7 @@ export function createFontCoverage(input:FontInput):FontCoverage {
         if(hex.length!==2 || !input.charProcs?.includes(names.get(codeNumber(hex)) ?? ''))reason='code not defined in /CharProcs';
       } else if(standard) {
         const name=names.get(codeNumber(hex));
-        if(hex.length!==2 || !name || standard.getWidthOfGlyph(name)===undefined)reason='glyph not in standard font';
+        if(hex.length!==2 || !name || name==='.notdef' || standard.getWidthOfGlyph(name)===undefined)reason='glyph not in standard font';
       } else {
         let gid=0;
         if(type0) {
@@ -96,7 +100,12 @@ export function createFontCoverage(input:FontInput):FontCoverage {
             gid=offset+1<map.length?map[offset]!*256+map[offset+1]!:0;
           } else gid=cid;
         } else if(hex.length!==2)reason='simple font code must be one byte';
-        else gid=program!.simpleGid(codeNumber(hex),names.get(codeNumber(hex)));
+        else {
+          const selected=program!.simpleGid(codeNumber(hex),names.get(codeNumber(hex)));
+          if(typeof selected==='number')gid=selected;
+          else reason=selected.reason;
+        }
+        if(!reason)report.glyphIds.set(hex,gid);
         reason ??= program!.presence(gid,cluster);
       }
       if(reason)report.missing.push({code:hex,cluster,reason});

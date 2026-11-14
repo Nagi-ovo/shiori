@@ -17,8 +17,13 @@ describe('font program coverage', () => {
     expect(f.missing.some(m=>m.cluster==='d' && m.reason.includes('notdef'))).toBe(true);
   });
   test('ToUnicode does not override the glyph selected by Encoding', () => {
-    const f = simple({toUnicode:cmap('1 beginbfchar <64> <0053> endbfchar')});
+    // S is present at GID1; d selects nonzero GID2, whose subset slot
+    // is absent. Looking up ToUnicode S instead of rendering d would pass.
+    const f = simple({program:tinyTtf({maps:[{platform:3,encoding:1,entries:[[83,1],[100,2]]}],empty:[2]}),
+      toUnicode:cmap('1 beginbfchar <64> <0053> endbfchar')});
     expect(f.canEncode('S').ok).toBe(false);
+    expect(f.canEncode('d').ok).toBe(false);
+    expect(f.missing).toContainEqual({code:'64',cluster:'S',reason:'absent subset glyf entry'});
   });
   test('removed glyf entry is absent, but space/mark/zero width are valid', () => {
     expect(simple({program:tinyTtf({empty:[1]})}).canEncode('S').ok).toBe(false);
@@ -57,8 +62,9 @@ describe('font program coverage', () => {
     expect(bytes(f.canEncode('A'))).toEqual([65]);
   });
   test('symbolic Mac cmap ignores Differences', () => {
-    const f = simple({flags:4,encoding:{differences:{83:'d'}},program:tinyTtf({maps:[{platform:1,encoding:0,entries:[[83,1]]}]})});
+    const f = simple({flags:4,toUnicode:undefined,encoding:{differences:{83:'d'}},program:tinyTtf({maps:[{platform:1,encoding:0,entries:[[83,1]]}]})});
     expect(bytes(f.canEncode('S'))).toEqual([83]);
+    expect(f.canEncode('d').ok).toBe(false);
   });
   test('CIDToGIDMap stream maps CID42 to GID7', () => {
     const map = new Uint8Array(86); map[85]=7;
