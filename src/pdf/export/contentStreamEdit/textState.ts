@@ -123,7 +123,14 @@ type GraphicsState = {
   fontTainted: boolean;
 };
 
+export type ShowTextState = {
+  opIndex: number; arrayItemIndex: number; fontName: string;
+  fontSize: number; charSpacing: number; wordSpacing: number;
+};
+
 export type TextWalkCallbacks = {
+  // Exact state at a source string, including empty shows.
+  onShow?: (state: ShowTextState) => void;
   // Resolve a /Font resource name. Null (unresolvable) aborts the walk; an
   // unsupported font leaves its text unplaced.
   resolveFont: (name: string) => ContentFontInfo | UnsupportedFont | null;
@@ -215,6 +222,8 @@ export function walkTextPlacements(
     if (font.bytesPerCode === 2 && bytes.length % 2 !== 0) {
       return "odd byte count in 2-byte-code show string";
     }
+    callbacks.onShow?.({ opIndex, arrayItemIndex, fontName: gs.fontName,
+      fontSize: gs.fontSize, charSpacing: gs.charSpacing, wordSpacing: gs.wordSpacing });
     for (let offset = 0; offset < bytes.length; offset += font.bytesPerCode) {
       const code =
         font.bytesPerCode === 1
