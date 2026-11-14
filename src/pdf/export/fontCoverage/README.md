@@ -95,3 +95,8 @@ for the native path/ink oracle and refusal cases. CFF's fontkit-private decoded
 encoding offset is accessed only through `cffEncodingOffset.ts`; missing,
 wrong-type or out-of-table values throw and become a font-level unverified
 coverage reason.
+
+The async `replaceRunPageWithFallback` adapter handles missing replacement
+clusters with a new independent subset; source coverage remains authoritative
+and source fonts are never extended. Its verified fallback descriptor enters
+the same pure span compiler. See `contentStreamEdit/README.md` for policies.

@@ -2,8 +2,10 @@
 // immutable PDF revision. No page dictionaries or PDF writer types enter here.
 import type { EncodeOptions, EncodeResult } from '../fontCoverage/types';
 import { sha256 } from '@noble/hashes/sha2.js';
-import { tokenizeContentStream, type ContentOperand } from './tokenizer';
+import { tokenizeContentStream } from './tokenizer';
 import { walkTextPlacements, type ShowTextState } from './textState';
+import { same, hex, pdfNumber } from './runEncoding';
+import { compileSpanItem } from './runSpan';
 
 export type ResolvedRunFont = {
   resourceName: string;
@@ -26,47 +28,26 @@ export type RunEdit = {
   byteEnd: number;
   expected: Uint8Array;
   replacement: string;
+  // Optional edit-box limit in PDF user-space points along the text baseline.
+  availablePt?: number;
 };
 export type RunPlan = {
   sourceHash: string;
   edits: readonly RunEdit[];
   forceReencode?: boolean;
   scope?: 'page' | 'form';
+  allowOverflow?: boolean;
+  fallbackFonts?: readonly ResolvedRunFont[];
   // Resolved /Properties key lists; missing/null named entries are unsafe.
   markedContentProperties?: ReadonlyMap<string, readonly string[] | null>;
 };
 export type Refusal = { ok: false; reason: string; firstMissing?: string; offset?: number };
-export type RunResult = { ok: true; bytes: Uint8Array } | (Refusal & { bytes: Uint8Array });
+export type Overflow = { availablePt: number; neededPt: number };
+export type RunResult = ({ ok: true; bytes: Uint8Array } | (Refusal & { bytes: Uint8Array })) & { overflow?: Overflow };
 export function sourceFingerprint(bytes: Uint8Array): string {
   return Array.from(sha256(bytes), b => b.toString(16).padStart(2, '0')).join('');
 }
 const ascii = new TextEncoder();
-const hex = (bytes: Uint8Array) => `<${Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')}>`;
-const same = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((v, i) => v === b[i]);
-function number(n: number): string {
-  if (!Number.isFinite(n) || Math.abs(n) > 1e12) throw Error('unrepresentable TJ compensation');
-  // PDF numbers do not permit exponent notation. Keep the rounding error well
-  // below 0.01pt even for large practical text sizes.
-  return n.toFixed(10).replace(/\.?0+$/, '') || '0';
-}
-function codes(bytes: Uint8Array, size: 1 | 2): number[] {
-  if (bytes.length % size) throw Error('unaligned source codes');
-  return Array.from({ length: bytes.length / size }, (_, i) => size === 1
-    ? bytes[i]! : bytes[2 * i]! * 256 + bytes[2 * i + 1]!);
-}
-function encode(text: string, font: ResolvedRunFont, original: Uint8Array): EncodeResult {
-  if ((/[\r\n]/.test(text) || text.includes(String.fromCharCode(0)))) throw Error('replacement is not a single text run');
-  if (!font.canEncode) return { ok: false, reason: 'source font coverage unavailable', firstMissing: Array.from(text)[0] ?? '', offset: 0 };
-  const preferredCodes = codes(original, font.bytesPerCode).map((_, i) => original.slice(i * font.bytesPerCode, (i + 1) * font.bytesPerCode));
-  const result = font.canEncode(text, { preferredCodes });
-  if (!result.ok) return result;
-  if (result.codes.some(c => c.length !== font.bytesPerCode) ||
-      result.codes.reduce((n, c) => n + c.length, 0) !== result.bytes.length ||
-      !same(Uint8Array.from(result.codes.flatMap(c => [...c])), result.bytes)) throw Error('invalid verified code boundaries');
-  const decoded = codes(result.bytes, font.bytesPerCode).map(c => font.unicodeByCode.get(c));
-  if (decoded.some(c => c === undefined) || decoded.join('') !== text) throw Error('verified codes disagree with ToUnicode');
-  return result;
-}
 
 export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont[], plan: RunPlan): RunResult {
   const refuse = (reason: string): RunResult => ({ ok: false, bytes: content, reason });
@@ -76,6 +57,11 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
     const ops = tokenizeContentStream(content);
     const byName = new Map(fonts.map(f => [f.resourceName, f]));
     if (byName.size !== fonts.length) return refuse('ambiguous font resource');
+    const resourceNames = new Set(byName.keys());
+    for (const fallback of plan.fallbackFonts ?? []) {
+      if (resourceNames.has(fallback.resourceName)) return refuse('ambiguous fallback font resource');
+      resourceNames.add(fallback.resourceName);
+    }
     const states = new Map<string, ShowTextState>();
     const walk = walkTextPlacements(ops, {
       resolveFont: name => {
@@ -126,63 +112,72 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
     if (stack.length) return refuse('unbalanced graphics state');
     if (markedContent.length) return refuse('unterminated marked content');
     const changes = new Map<number, Map<number, string>>();
-    const seen = new Set<string>();
+    const grouped = new Map<string, RunEdit[]>();
+    let overflow: Overflow | undefined;
     for (const edit of plan.edits) {
       const key = `${edit.opIndex}:${edit.itemIndex}`;
-      if (seen.has(key)) return refuse('overlapping edits');
-      seen.add(key);
+      const siblings = grouped.get(key) ?? [];
+      siblings.push(edit); grouped.set(key, siblings);
       const op = ops[edit.opIndex];
       if (!op || !['Tj', 'TJ'].includes(op.operator)) return refuse('address is not a supported show operator');
       if (unsafe.has(edit.opIndex)) return refuse('clip/graphics/semantic dependent target');
       const items = op.operator === 'TJ' && op.operands[0]?.kind === 'array' ? op.operands[0].items : null;
       const item = items ? items[edit.itemIndex] : edit.itemIndex === -1 ? op.operands[0] : undefined;
       if (!item || item.kind !== 'string') return refuse('stale string item address');
-      if (edit.byteStart !== 0 || edit.byteEnd !== item.bytes.length || !same(edit.expected, item.bytes)) return refuse('stale codes or unsupported partial span');
+      if (!Number.isInteger(edit.byteStart) || !Number.isInteger(edit.byteEnd) || edit.byteStart < 0 || edit.byteEnd < edit.byteStart || edit.byteEnd > item.bytes.length) return refuse('invalid span (cross-item spans unsupported)');
+      if (!same(edit.expected, item.bytes.slice(edit.byteStart, edit.byteEnd))) return refuse('stale span codes');
       const glyphs = walk.glyphs.filter(g => g.opIndex === edit.opIndex && g.arrayItemIndex === edit.itemIndex);
       const font = byName.get(edit.fontResource);
       const state = states.get(key);
       if (!font || font.objectId !== edit.fontObject || !state || !glyphs.every(g => g.fontName === edit.fontResource)) return refuse('stale font identity');
       // Empty shows still have font provenance via onShow.
       if (state.fontName !== edit.fontResource) return refuse('stale show font');
-      const originalCodes = codes(item.bytes, font.bytesPerCode);
-      if (originalCodes.some(c => !font.unicodeByCode.has(c))) return refuse('original code missing ToUnicode');
-      const encoded = encode(edit.replacement, font, item.bytes);
-      if (!encoded.ok) return { ...encoded, bytes: content };
-      const replacement = encoded.bytes;
-      const advance = (values: number[]) => values.reduce((sum, code) => {
-        const width = font.widthOf(code);
-        if (!Number.isFinite(width)) throw Error('invalid glyph width');
-        return sum + width + 1000 * (state.charSpacing + (font.bytesPerCode === 1 && code === 32 ? state.wordSpacing : 0)) / state.fontSize;
-      }, 0);
-      // TJ subtracts this number. New - Old restores the original text
-      // matrix without touching the line matrix, Tc/Tw/Tz, or later kerns.
-      const compensation = advance(codes(replacement, font.bytesPerCode)) - advance(originalCodes);
-      if (same(item.bytes, replacement) && !plan.forceReencode) continue;
-      if (!changes.has(edit.opIndex)) changes.set(edit.opIndex, new Map());
-      changes.get(edit.opIndex)!.set(edit.itemIndex, `${hex(replacement)} ${number(compensation)}`);
+      if (edit.byteStart % font.bytesPerCode || edit.byteEnd % font.bytesPerCode) return refuse('unaligned span codes');
     }
-    if (!changes.size) return { ok: true, bytes: content };
+    for (const edits of grouped.values()) {
+      edits.sort((a,b) => a.byteStart - b.byteStart || a.byteEnd - b.byteEnd);
+      for (let i = 1; i < edits.length; i++) {
+        if (edits[i]!.byteStart < edits[i-1]!.byteEnd || edits[i]!.byteStart === edits[i-1]!.byteStart) return refuse('overlapping edits');
+      }
+      const edit = edits[0]!, op = ops[edit.opIndex]!;
+      const item = op.operator === 'TJ' && op.operands[0]?.kind === 'array'
+        ? op.operands[0].items[edit.itemIndex]! : op.operands[0]!;
+      if (item.kind !== 'string') return refuse('stale string item address');
+      const font = byName.get(edit.fontResource)!;
+      const state = states.get(`${edit.opIndex}:${edit.itemIndex}`)!;
+      const compiled = compileSpanItem(item.bytes, font, state, edits, plan, walk.glyphs);
+      overflow ??= compiled.overflow;
+      if (compiled.overflow && !plan.allowOverflow) return { ...refuse('replacement overflows available space'), overflow: compiled.overflow };
+      if (!compiled.changed) continue;
+      if (!changes.has(edit.opIndex)) changes.set(edit.opIndex, new Map());
+      changes.get(edit.opIndex)!.set(edit.itemIndex, compiled.patch);
+    }
+    if (!changes.size) return { ok: true, bytes: content, ...(overflow ? { overflow } : {}) };
     const chunks: Uint8Array[] = [];
     let cursor = 0;
     for (const [i, op] of ops.entries()) {
       const changed = changes.get(i);
       if (!changed) continue;
       chunks.push(content.subarray(cursor, op.start));
-      const items: ContentOperand[] = op.operator === 'TJ' && op.operands[0]?.kind === 'array' ? op.operands[0].items : op.operands;
+      const items = op.operator === 'TJ' && op.operands[0]?.kind === 'array' ? op.operands[0].items : op.operands;
       const body = items.map((item, index) => {
         const patch = changed.get(op.operator === 'TJ' ? index : -1);
         if (patch !== undefined) return patch;
-        if (item.kind === 'string') return hex(item.bytes);
-        if (item.kind === 'number') return number(item.value);
+        if (item.kind === 'string') return `[${hex(item.bytes)}] TJ`;
+        if (item.kind === 'number') return `[${pdfNumber(item.value)}] TJ`;
         throw Error('malformed show item');
       }).join(' ');
-      chunks.push(ascii.encode(`[${body}] TJ`));
+      chunks.push(ascii.encode(body.replaceAll('] TJ [', ' ')));
       cursor = op.end;
     }
     chunks.push(content.subarray(cursor));
     const bytes = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
     let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-    return { ok: true, bytes };
-  } catch (error) { return refuse(error instanceof Error ? error.message : 'invalid input'); }
+    return { ok: true, bytes, ...(overflow ? { overflow } : {}) };
+  } catch (error) {
+    const detail = error as Partial<Refusal> | null;
+    return { ...refuse(error instanceof Error ? error.message : 'invalid input'),
+      ...(detail?.firstMissing !== undefined ? { firstMissing: detail.firstMissing, offset: detail.offset } : {}) };
+  }
 }

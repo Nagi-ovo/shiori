@@ -1,4 +1,4 @@
-# Surgical same-font oracle
+# Surgical span and fallback-font oracle
 
 Run from the repository root:
 
@@ -14,7 +14,7 @@ No Python, Rust build or GUI is needed.
 Outputs are under `test-artifacts/pdf-inplace/surgical-first/`: before/after
 PDFs, 144dpi PPM rasters, every native glyph's origin/box/path/ink evidence,
 extraction, JSON acceptance report, rerun command, and a report-only 300-page
-preview benchmark. All ten positive scenarios and three refusal scenarios
+preview benchmark. All twenty-two positive scenarios and seven refusal scenarios
 must pass before the command exits successfully.
 
 ## Encoding policy
@@ -43,8 +43,7 @@ the original content bytes without allocating PDF objects or changing streams.
 
 The fixed-neighbour compensation includes Tc/Tw/Tz and preserves subsequent
 TJ adjustments, relative shows and line matrices. The harness never calls
-GenerateContent. Partial string spans, fallback fonts, Type3/vertical fonts,
-Form targets, quote targets, clip/ExtGState-dependent targets and unknown
+GenerateContent. Type3/vertical fonts, Form targets, quote targets, clip/ExtGState-dependent targets and unknown
 state refuse. MCID-only and BMC spans are editable; enclosing BDC
 ActualText/Alt/E properties refuse, including named Properties resources.
 Unresolvable named properties and unbalanced marked content refuse.
@@ -146,8 +145,8 @@ Raster comparison uses exact BGRA channels at 144dpi, flags=0, no tolerance
 and edit boxes declared before rendering. Zero changed pixels are allowed
 outside the box; identity cases require zero inside too. PDFium and Poppler
 must both extract replacement text and omit the old phrase. qpdf must be clean.
-Long replacements may overlap neighbours under the fixed-position policy;
-fit/overflow UX remains a separate concern. This is active extraction, not
+Overflow defaults to atomic refusal with measured available/needed points.
+The harness explicitly opts in for its deliberately long compensation fixtures. This is active extraction, not
 forensic redaction.
 
 The preview prototype appends a changed page dictionary, new content stream,
@@ -156,3 +155,45 @@ pdf-lib defaults with object streams. Seven measured runs follow a warmup;
 both paths include complete output allocation and exclude parse/disk time.
 qpdf, pdf-lib and native PDFium verify page count and first/last-page isolation.
 This report-only prototype has no production save/encryption/signature contract.
+
+## Stage 3 span/fallback acceptance
+
+`stage3Scenarios.ts` declares nine positive and four refusal inputs before the
+oracle generator. `stage3Cases.ts` writes independently addressed partial
+Tj/TJ edits, original kerns, tracked/rising text and following lines, MCID,
+shorter/longer runs, café/em-dash/CJK mixed fallback, overflow, cross-item, quote
+and restricted-fsType refusal. Fallback cases require pdffonts to report an
+embedded subset with Unicode mapping, in addition to native path/.notdef/ink
+checks and qpdf. Expected code/font/Unicode sequences are checked exactly;
+PDFium and Poppler extracted full text is compared after collapsing inferred
+layout whitespace. Raw extraction remains in JSON/text artifacts. Edit boxes
+are declared independently of rendering.
+
+The synchronous source-font adapter remains available. The async
+`replaceRunPageWithFallback` prepares fonts in a disposable document and
+installs resources only after all edits compile and the page still matches.
+See `src/pdf/export/contentStreamEdit/README.md` for exact byte addressing,
+conservative available-space calculation, source/fallback segmentation,
+fontkit writer fixes, font classes, permissions and explicit shaping limits.
+
+`subsetFallbackCase.ts` additionally edits Sans → Sand in the real two-byte
+Liberation subset seed. It asserts d is absent from source coverage and checks
+that only the final s is replaced by an independently embedded fallback d.
+
+`wordSpacingCases.ts` replaces a simple code-32 space under Tc/Tw/Tz and
+emits a fallback CID 0x0020 space with a following replacement glyph. Native
+origin checks require the exact -3.2pt pre-compensation delta for the CID
+space (Tw=4, Tz=80%), then zero drift for untouched following text. A fallback
+B shares the space's show so PDFium retains the real whitespace object. The
+compiler acceptance input deliberately forces coverage misses for space/B;
+real source-coverage misses are independently checked by subsetFallbackCase.
+The compiler tests additionally lock literal TJ numbers and positions for
+both CID 2 and CID 32, so applying Tw to CID space fails even if text extracts.
+
+After `bun run build`, run `bun scripts/pdf-inplace/checkFallbackAssets.ts`.
+Its independent Vite probe executes the default lazy loader for all twelve
+DOCX Liberation faces and the two existing Noto URLs, checks cache/fetch
+behavior and compares emitted bytes with both source assets and app output.
+It requires exactly twelve emitted Liberation TTFs, one copy per font hash.
+The report and compiled loader are in
+`test-artifacts/pdf-inplace/review-round/asset-probe/`.

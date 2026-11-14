@@ -126,6 +126,7 @@ type GraphicsState = {
 export type ShowTextState = {
   opIndex: number; arrayItemIndex: number; fontName: string;
   fontSize: number; charSpacing: number; wordSpacing: number;
+  origin: Point; advanceVector: Point;
 };
 
 export type TextWalkCallbacks = {
@@ -223,7 +224,10 @@ export function walkTextPlacements(
       return "odd byte count in 2-byte-code show string";
     }
     callbacks.onShow?.({ opIndex, arrayItemIndex, fontName: gs.fontName,
-      fontSize: gs.fontSize, charSpacing: gs.charSpacing, wordSpacing: gs.wordSpacing });
+      fontSize: gs.fontSize, charSpacing: gs.charSpacing, wordSpacing: gs.wordSpacing,
+      origin: apply(multiply(tm, gs.ctm), { x: 0, y: gs.rise }),
+      advanceVector: { x: gs.horizontalScale * (tm[0] * gs.ctm[0] + tm[1] * gs.ctm[2]),
+        y: gs.horizontalScale * (tm[0] * gs.ctm[1] + tm[1] * gs.ctm[3]) } });
     for (let offset = 0; offset < bytes.length; offset += font.bytesPerCode) {
       const code =
         font.bytesPerCode === 1

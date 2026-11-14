@@ -9,7 +9,7 @@ import { assertSavedGlyphs, type OracleGlyph } from './oracleGlyphs';
 
 type Positive = { name: string; before: string; after: string; refused?: false;
   beforeGlyphs: OracleGlyph[]; afterGlyphs: OracleGlyph[]; expectedAfterGlyphs: OracleGlyph[];
-  fontHashes: Record<string, string>; editBox: [number, number, number, number]; required: string[]; absent: string[] };
+  fontHashes: Record<string, string>; editBox: [number, number, number, number]; required: string[]; absent: string[]; embeddedFallback?: boolean; expectedText?: string; originChecks?: { beforeIndex:number; afterIndex:number; deltaPt:number }[] };
 type Negative = { name: string; before: string; after: string; refused: true; sourceText: string;
   reason: string; firstMissing: string; offset: number };
 function command(name: string, args: string[]) {
@@ -53,6 +53,10 @@ export async function nativeOracle(library: string, out: string, preview = false
       assertSavedGlyphs(c.expectedAfterGlyphs, c.afterGlyphs);
       const before = await native.measure(beforePath, c.beforeGlyphs, c.fontHashes);
       const after = await native.measure(afterPath, c.afterGlyphs, c.fontHashes);
+      for (const check of c.originChecks ?? []) {
+        const a=before.glyphs[check.beforeIndex]!,b=after.glyphs[check.afterIndex]!;
+        assert(Math.abs(b.origin[0]!-a.origin[0]!-check.deltaPt)<=.01, `${c.name}: wrong Tw/width delta`);
+      }
       const visibleReplacementGlyphs = assertReplacementGlyphs(after.glyphs);
       const old = before.glyphs.filter(g => !g.edited), current = after.glyphs.filter(g => !g.edited);
       assert.equal(old.length, current.length);
@@ -76,14 +80,18 @@ export async function nativeOracle(library: string, out: string, preview = false
       assert.equal(outside, 0, `${c.name}: pixels outside declared box`);
       if (!before.glyphs.some(g => g.edited)) assert.equal(total, 0, `${c.name}: identity changed raster`);
       const poppler = command('pdftotext', ['-layout', afterPath, '-']);
-      for (const needle of c.required) assert(after.text.includes(needle) && poppler.includes(needle), `${c.name}: missing ${needle}`);
+      const normalized = (s:string) => s.replace(/\s+/gu,' ').trim();
+      if (c.expectedText) { assert.equal(normalized(after.text),c.expectedText); assert.equal(normalized(poppler),c.expectedText); }
+      for (const needle of c.required) assert(normalized(after.text).includes(needle) && normalized(poppler).includes(needle), `${c.name}: missing ${needle}`);
       for (const needle of c.absent) assert(!after.text.includes(needle) && !poppler.includes(needle), `${c.name}: old text active ${needle}`);
       command('qpdf', ['--check', afterPath]);
+      const pdffonts = c.embeddedFallback ? command('pdffonts',[afterPath]) : undefined;
+      if (pdffonts) assert(/ShioriFallback.*yes\s+yes\s+yes/.test(pdffonts), 'fallback must be embedded, subset and Unicode');
       writeFileSync(afterPath.replace(/\.pdf$/, '.txt'), poppler);
       const row = { name: c.name, sourceGlyphs: before.glyphs.length, editedSourceGlyphs: before.glyphs.length - old.length,
         untouchedGlyphs: old.length, outputGlyphs: after.glyphs.length, savedCodesVerified: true, maxOriginDriftPt: drift,
         changedPixels: total, changedPixelsOutsideBox: outside, editBox: c.editBox,
-        visibleReplacementGlyphs, noBlankReplacementGlyphs: true, noNotdefReplacementGlyphs: true,
+        originChecks:c.originChecks, pdffonts, visibleReplacementGlyphs, noBlankReplacementGlyphs: true, noNotdefReplacementGlyphs: true,
         fontObjects: Object.keys(c.fontHashes).sort(), PDFiumText: after.text, pdftotext: poppler, qpdf: 'clean', passed: true };
       // Raw rasters are PPM artifacts; JSON retains all native glyph evidence.
       const { pixels: beforePixels, ...beforeReport } = before;

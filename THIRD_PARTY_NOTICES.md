@@ -159,7 +159,10 @@ wasm ("Old MIT" license), and the fonts package ships metric-compatible
 document fonts: Caladea and Carlito (OFL-1.1), Liberation Sans, Serif and
 Mono (OFL-1.1) and TeX Gyre Adventor (GUST Font License). Each package's
 LICENSE, THIRD_PARTY_NOTICES.md and license texts ship unchanged under
-`licenses/docx-editor/<package>/` in the built app.
+`licenses/docx-editor/<package>/` in the built app. The fonts package declares
+`Apache-2.0 AND OFL-1.1 AND LicenseRef-GUST-Font-License`. Surgical PDF fallback
+reuses its already-bundled Liberation TTF faces (Regular, Bold, Italic and
+BoldItalic, OFL-1.1), embedding independent `+ShioriFallback` subsets.
 
 ## Fonts
 

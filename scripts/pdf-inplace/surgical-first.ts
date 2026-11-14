@@ -11,6 +11,9 @@ import { addFixtureAsciiMappings, sourceGlyphs, readSavedGlyphs, assertSavedGlyp
 import { checkNativeEvidence } from './checkNativeEvidence';
 import { nativeOracle } from './nativeOracle';
 import { negativeCases } from './negativeCases';
+import { subsetFallbackCase } from './subsetFallbackCase';
+import { wordSpacingCases } from './wordSpacingCases';
+import { stage3Cases } from './stage3Cases';
 import { previewCost } from './preview-cost';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -67,7 +70,7 @@ EMC`))));
   await writeFile(join(out, beforeName), before);
   const savedBefore = await readSavedGlyphs(before);
   assertSavedGlyphs(beforeGlyphs, savedBefore.glyphs);
-  const result = replaceRunPage(page, { sourceHash: source.sourceHash, edits: [edit], forceReencode: c.force });
+  const result = replaceRunPage(page, { sourceHash: source.sourceHash, edits: [edit], forceReencode: c.force, allowOverflow: true });
   if (!result.ok) throw Error(`${c.name}: ${result.reason}`);
   const after = await doc.save({ useObjectStreams: false, addDefaultPage: false });
   await writeFile(join(out, afterName), after);
@@ -90,6 +93,9 @@ EMC`))));
     fontHashes: hashes, editBox: c.box, required: c.replacement ? [c.replacement] : [], absent: changed ? [c.old] : [] });
 }
 manifest.push(...await negativeCases(out));
+manifest.push(...await stage3Cases(out));
+manifest.push(await subsetFallbackCase(out));
+manifest.push(...await wordSpacingCases(out));
 await writeFile(join(out, 'manifest.json'), JSON.stringify(manifest, null, 2));
 const lib = join(process.env.SHIORI_PDFIUM_DIR ?? join(root, 'vendor/pdfium/linux-x64/lib'), 'libpdfium.so');
 await nativeOracle(lib, out);

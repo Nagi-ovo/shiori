@@ -6,10 +6,11 @@ import { coalesceContentStreams } from './tokenizer';
 import { contentFontInfo } from './glyphWidths';
 import { fontCoverageFromDict } from '../fontCoverage/pdfLibAdapter';
 import type { FontCoverage } from '../fontCoverage/types';
+import { pageRunPlan, type PageRunPlan } from './pageRunPlan';
 import { runToUnicode } from './runToUnicode';
-import { replaceRuns, sourceFingerprint, type Refusal, type ResolvedRunFont, type RunPlan } from './replaceRun';
+import { replaceRuns, sourceFingerprint, type Refusal, type ResolvedRunFont, type Overflow } from './replaceRun';
 
-export type PageRunResult = { ok: true; bytes: Uint8Array } | (Refusal & { bytes?: Uint8Array });
+export type PageRunResult = ({ ok: true; bytes: Uint8Array } | (Refusal & { bytes?: Uint8Array })) & { overflow?: Overflow };
 
 function decoded(raw: unknown): Uint8Array {
   if (!(raw instanceof PDFRawStream)) throw Error('unsupported content stream');
@@ -52,7 +53,7 @@ export function resolveRunFonts(page: PDFPage): ResolvedRunFont[] {
     return [{ ...info, resourceName: name.decodeText(), objectId: ref.toString(), unicodeByCode: mapping, canEncode: coverage.canEncode }];
   });
 }
-function markedContentProperties(page: PDFPage): Map<string, readonly string[] | null> {
+export function markedContentProperties(page: PDFPage): Map<string, readonly string[] | null> {
   const resolved = new Map<string, readonly string[] | null>();
   try {
     const properties = page.node.Resources()?.lookupMaybe(PDFName.of('Properties'), PDFDict);
@@ -65,11 +66,11 @@ function markedContentProperties(page: PDFPage): Map<string, readonly string[] |
   } catch { /* An unresolvable /Properties dictionary leaves named spans unsafe. */ }
   return resolved;
 }
-export function replaceRunPage(page: PDFPage, plan: RunPlan): PageRunResult {
+export function replaceRunPage(page: PDFPage, plan: PageRunPlan): PageRunResult {
   const source = inspectRunPage(page);
   if (!source.ok) return source;
   try {
-    const result = replaceRuns(source.bytes, resolveRunFonts(page), { ...plan, markedContentProperties: markedContentProperties(page) });
+    const result = replaceRuns(source.bytes, resolveRunFonts(page), { ...pageRunPlan(plan), markedContentProperties: markedContentProperties(page) });
     if (result.ok && result.bytes !== source.bytes) {
       const stream = page.doc.context.flateStream(result.bytes);
       page.node.set(PDFName.of('Contents'), page.doc.context.register(stream));

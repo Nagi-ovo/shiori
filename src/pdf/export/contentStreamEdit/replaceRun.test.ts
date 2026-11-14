@@ -25,7 +25,7 @@ function edit(source: Uint8Array, old: string, replacement: string, occurrence =
     byteStart: 0, byteEnd: bytes(old).length, replacement };
 }
 function compile(source: Uint8Array, edits: RunEdit[], extra = {}) {
-  return replaceRuns(source, [font], { sourceHash: sourceFingerprint(source), edits, ...extra });
+  return replaceRuns(source, [font], { sourceHash: sourceFingerprint(source), edits, allowOverflow: true, ...extra });
 }
 function positions(source: Uint8Array, f = font) {
   const result = walkTextPlacements(tokenizeContentStream(source), {

@@ -88,3 +88,11 @@ test('adapter refuses a mapped replacement code absent from shown source codes',
   expect(replaceRunPage(page, { sourceHash: info.sourceHash, edits: [{ ...edit, replacement: 'C' }] }).ok).toBe(false);
   expect(page.node.get(PDFName.of('Contents'))).toBe(original);
 });
+
+test('page adapter clamps the plan to an explicitly supplied edit box',async()=>{
+  const {doc,page,info,edit}=await fixture();
+  const before=page.node.get(PDFName.of('Contents')),count=doc.context.enumerateIndirectObjects().length;
+  const out=replaceRunPage(page,{sourceHash:info.sourceHash,edits:[{...edit,editBox:{x:0,y:0,w:4,h:12}}]});
+  expect(out.ok).toBe(false);expect(out.overflow).toEqual({availablePt:4,neededPt:10});
+  expect(page.node.get(PDFName.of('Contents'))).toBe(before);expect(doc.context.enumerateIndirectObjects().length).toBe(count);
+});

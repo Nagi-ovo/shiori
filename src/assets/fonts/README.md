@@ -39,3 +39,18 @@ export fallback embeds — so on-screen contentText edits keep their line
 widths on platforms that ship none of those system fonts. Declared in
 `src/styles/fonts.css`; loaded lazily on first use. Licensed under the
 SIL Open Font License 1.1 (`metric/LICENSE-liberation.txt`).
+
+Surgical PDF fallback loads the existing Liberation TTF assets from
+`@docx-editor.dev/fonts`, which the DOCX view already bundles. Regular, Bold,
+Italic and BoldItalic variants are selected lazily by source class/style;
+loaded bytes are cached in memory. These assets retain the dependency's OFL
+notices and are embedded under a `+ShioriFallback` subset name. The dependency
+package declares `Apache-2.0 AND OFL-1.1 AND LicenseRef-GUST-Font-License`;
+Liberation itself is OFL-1.1. See THIRD_PARTY_NOTICES.md and the unmodified
+`licenses/docx-editor/fonts/` notices shipped by the existing build process.
+
+Verify asset reuse after a build with:
+
+```sh
+bun scripts/pdf-inplace/checkFallbackAssets.ts
+```
