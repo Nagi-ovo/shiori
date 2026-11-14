@@ -292,6 +292,31 @@ describe("runPrint", () => {
     expect(await run).toEqual({ kind: "printed" });
   });
 
+  // A flattened box too small for its text is cut off in the print copy;
+  // printing used to go ahead without a word.
+  test("asks before printing text cut off by its box, and stops on cancel", async () => {
+    const h = harness({
+      exported: { kind: "ready", bytes: new Uint8Array([1]), lostChars: 0, clippedChars: 4 },
+      confirm: false,
+    });
+    expect(await runPrint(h.ports)).toEqual({ kind: "cancelled" });
+    expect(h.confirms).toEqual(['export.clippedPrintConfirm {"count":4}']);
+    expect(h.log).toEqual([]);
+  });
+
+  test("prints cut-off text once the reader agrees", async () => {
+    const h = harness({
+      exported: { kind: "ready", bytes: new Uint8Array([1]), lostChars: 0, clippedChars: 4 },
+      confirm: true,
+    });
+    const run = runPrint(h.ports);
+    await settle();
+    h.load();
+    h.afterPrint();
+    expect(await run).toEqual({ kind: "printed" });
+    expect(h.confirms).toEqual(['export.clippedPrintConfirm {"count":4}']);
+  });
+
   test("does nothing when no document is open", async () => {
     const h = harness({ open: false });
     expect(await runPrint(h.ports)).toEqual({ kind: "cancelled" });

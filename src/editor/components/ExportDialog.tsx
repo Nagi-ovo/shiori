@@ -72,6 +72,7 @@ type PendingLossyExport = {
   bytes: Uint8Array;
   lostChars: number;
   unexcisedEdits: number;
+  clippedChars: number;
   completeDocument: boolean;
   snapshotKey: string;
   suggestedName: string;
@@ -470,12 +471,13 @@ export function ExportDialog({
         bytes: exportResult.bytes,
         lostChars: exportResult.lostChars,
         unexcisedEdits: exportResult.unexcisedEdits ?? 0,
+        clippedChars: exportResult.clippedChars ?? 0,
         completeDocument,
         snapshotKey: exportSnapshotKey(exportModel),
         suggestedName: `${stem}-edited.pdf`,
         diagnosticContext,
       };
-      if (prepared.lostChars > 0 || prepared.unexcisedEdits > 0) {
+      if (prepared.lostChars + prepared.unexcisedEdits + prepared.clippedChars > 0) {
         setPendingLossyExport(prepared);
         return;
       }
@@ -575,6 +577,7 @@ export function ExportDialog({
         <LossyExportNotice
           lostChars={pendingLossyExport.lostChars}
           unexcisedEdits={pendingLossyExport.unexcisedEdits}
+          clippedChars={pendingLossyExport.clippedChars}
         />
       ) : null}
 
@@ -624,7 +627,7 @@ export function ExportDialog({
               <span>
                 {busy
                   ? t("export.busy")
-                  : pendingLossyExport.unexcisedEdits > 0
+                  : pendingLossyExport.unexcisedEdits + pendingLossyExport.clippedChars > 0
                     ? t("export.unexcisedConfirmAction")
                     : t("export.lostCharsConfirmAction")}
               </span>

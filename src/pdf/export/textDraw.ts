@@ -2,10 +2,12 @@
 // and original-text (contentText) replacements, with the source-font reuse
 // path and the baseline placement those replacements need.
 import {
+  PDFArray,
+  PDFDict,
   PDFHexString,
+  PDFName,
   TextRenderingMode,
   beginText,
-  degrees,
   endText,
   popGraphicsState,
   pushGraphicsState,
@@ -27,6 +29,7 @@ import type {
   CalloutOverlay,
   ContentTextOverlay,
   Overlay,
+  PdfRect,
   TextOverlay,
 } from "../model/types";
 import {
@@ -34,6 +37,7 @@ import {
   CALLOUT_LABEL_PADDING_Y_PT,
 } from "../model/callout";
 import { sourceLinePitchPt } from "../model/baselines";
+import { fontNamesLookBold, fontNamesLookItalic } from "../model/fontStyle";
 import type { SourceFontRef } from "./contentTextRedaction";
 import { createSourceFontEncoder } from "./contentStreamEdit/sourceFontEncoder";
 import {
@@ -42,15 +46,13 @@ import {
   sanitizeFor,
   type FontSet,
 } from "./exportFonts";
-import { hasNonAscii } from "./textScripts";
-import { measureTextWidth, wrapText } from "./textWrap";
 import {
-  drawPathText,
-  pathTextLostChars,
-  type PathTextFont,
-} from "./vectorText";
-
-const SYNTHETIC_ITALIC_DEGREES = 12;
+  measureTextWidth,
+  usesPathFont,
+  wrapText,
+  type PathFontUse,
+} from "./textWrap";
+import { drawPathText, pathTextLostChars } from "./vectorText";
 
 export function annotationTextLostChars(
   overlays: readonly Overlay[],
@@ -81,12 +83,26 @@ export function annotationTextLostChars(
   return lostChars;
 }
 
+// What drawing an overlay's text could not keep: characters no font could
+// encode (drawn as "?") and characters on lines that did not fit their box
+// (left out of the page). Both reach the export dialog's confirmation.
+export type TextDrawLoss = { lostChars: number; clippedChars: number };
+
+export function addTextLoss(a: TextDrawLoss, b: TextDrawLoss): TextDrawLoss {
+  return {
+    lostChars: a.lostChars + b.lostChars,
+    clippedChars: a.clippedChars + b.clippedChars,
+  };
+}
+
+export const NO_TEXT_LOSS: TextDrawLoss = { lostChars: 0, clippedChars: 0 };
+
 export function drawContentText(
   out: PDFPage,
   o: ContentTextOverlay,
   fonts: FontSet,
   redaction?: { cleanRects: boolean[]; sourceFont: SourceFontRef | null },
-): number {
+): TextDrawLoss {
   const cleanRects = redaction?.cleanRects;
   for (let index = 0; index < o.coverRects.length; index += 1) {
     if (cleanRects?.[index]) continue;
@@ -108,7 +124,7 @@ export function drawContentText(
     redaction?.sourceFont &&
     drawContentTextWithSourceFont(out, o, redaction.sourceFont)
   ) {
-    return 0;
+    return NO_TEXT_LOSS;
   }
   return drawText(out, o, fonts);
 }
@@ -126,7 +142,13 @@ function drawContentTextWithSourceFont(
   sourceFont: SourceFontRef,
 ): boolean {
   if (!o.text) return false;
-  if (o.bold || o.italic) return false;
+  // A style the source run already has is not a toggle: a bold heading
+  // edited as bold keeps its own font. Only a style the user added or
+  // removed sends the edit to a bundled face.
+  const source = sourceFontStyle(sourceFont.dict);
+  if (o.bold !== source.bold || Boolean(o.italic) !== source.italic) {
+    return false;
+  }
   const baselines = o.sourceBaselinesPt;
   if (!baselines || baselines.length === 0) return false;
 
@@ -171,8 +193,9 @@ function drawContentTextWithSourceFont(
     else if (o.align === "right") x = o.rect.x + (o.rect.w - line.widthPt);
     // Mid-line selection start (matches the on-screen CSS text-indent).
     if (i === 0 && o.align === "left") x += o.firstLineIndentPt ?? 0;
+    // Every line is drawn, past the edit box too: the editor shows the edit
+    // with overflow visible, and dropping lines here lost text silently.
     const y = contentTextSourceBaselineY(baselines, i, lineHeight);
-    if (y < o.rect.y - lineHeight) break;
     operators.push(
       setTextMatrix(1, 0, 0, 1, x, y),
       showText(PDFHexString.of(bytesToHex(line.bytes))),
@@ -181,6 +204,22 @@ function drawContentTextWithSourceFont(
   operators.push(endText(), popGraphicsState());
   out.pushOperators(...operators);
   return true;
+}
+
+// The source font's own style, by the detector the edit inferred its style
+// with (fontNamesLookBold/Italic over the /BaseFont the text layer reports).
+// A Type0 font names its style on the descendant as well.
+function sourceFontStyle(dict: PDFDict): { bold: boolean; italic: boolean } {
+  const names = [baseFontName(dict)];
+  const descendants = dict.lookup(PDFName.of("DescendantFonts"));
+  const first = descendants instanceof PDFArray ? descendants.lookup(0) : undefined;
+  if (first instanceof PDFDict) names.push(baseFontName(first));
+  return { bold: fontNamesLookBold(names), italic: fontNamesLookItalic(names) };
+}
+
+function baseFontName(dict: PDFDict): string | undefined {
+  const name = dict.lookup(PDFName.of("BaseFont"));
+  return name instanceof PDFName ? name.decodeText() : undefined;
 }
 
 function bytesToHex(bytes: Uint8Array): string {
@@ -205,12 +244,17 @@ function contentTextSourceBaselineY(
   return last - (lineIndex - (baselines.length - 1)) * pitch;
 }
 
+// `clipRect`: the clip the caller pushed around this text (a flattened
+// callout clips its label to its rect). Every drawn character that falls
+// outside it — a baseline below its bottom, a long word past its side — is
+// counted as clipped, not only the lines left undrawn.
 export function drawText(
   out: PDFPage,
   o: TextOverlay | ContentTextOverlay | CalloutOverlay,
   fonts: FontSet,
-): number {
-  if (!o.text) return 0;
+  clipRect?: PdfRect,
+): TextDrawLoss {
+  if (!o.text) return NO_TEXT_LOSS;
   const font = pickFont(o.text, o.bold, Boolean(o.italic), fonts, o.fontFamily);
   const pathFont = pickPathFont(o.text, fonts, o.fontFamily);
   const color = hexToRgb(o.color);
@@ -224,30 +268,32 @@ export function drawText(
       }
     : o.rect;
   const lineHeight = o.fontSize * (isContentEdit ? 1 : 1.2);
-  // Wrapping, measuring and drawing must use ONE font. shouldDrawTextLineAsPath
-  // switches to the path font for a Noto family regardless of the line's script,
-  // so measurement has to do the same or ASCII lines are laid out on Helvetica
-  // advances and drawn with Noto outlines. See measureTextWidth.
-  const drawsWithPathFont =
-    o.fontFamily === "notoSansSc" || o.fontFamily === "notoSansJp";
+  // Wrapping, measuring and drawing must use ONE font per line, so all three
+  // route through usesPathFont with the same mode. A Noto family draws every
+  // line as Noto outlines; otherwise only a line the PDF font cannot encode
+  // does — WinAnsi Latin (curly quotes, dashes, accents) stays searchable
+  // text in the chosen Times/Helvetica/Courier face. See measureTextWidth.
+  const pathFontUse: PathFontUse =
+    o.fontFamily === "notoSansSc" || o.fontFamily === "notoSansJp"
+      ? "always"
+      : "unencodable";
   const lines = wrapText(
     o.text,
     font,
     o.fontSize,
     textRect.w,
     pathFont,
-    drawsWithPathFont,
+    pathFontUse,
   );
   let lostChars = 0;
+  let clippedChars = 0;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
-    const textWidth = measureTextWidth(
-      font,
-      line,
-      o.fontSize,
-      pathFont,
-      drawsWithPathFont,
-    );
+    const asPath = usesPathFont(font, line, pathFont, pathFontUse);
+    // Measured in the face this line is drawn in, prefixes included.
+    const widthOf = (text: string) =>
+      measureTextWidth(font, text, o.fontSize, asPath ? pathFont : null, asPath);
+    const textWidth = widthOf(line);
     let x = textRect.x;
     if (o.align === "center") x = textRect.x + (textRect.w - textWidth) / 2;
     else if (o.align === "right") x = textRect.x + (textRect.w - textWidth);
@@ -260,8 +306,18 @@ export function drawText(
       ? contentTextBaselineY(o, font, i, lineHeight)
       : textRect.y + textRect.h - (i + 1) * lineHeight +
         (lineHeight - o.fontSize) / 2;
-    if (y < textRect.y - lineHeight) break;
-    if (shouldDrawTextLineAsPath(o, line, pathFont)) {
+    // A box (free text, callout label, flattened note) clips at its edge, as
+    // the editor does: the lines left out are counted for the export
+    // dialog's confirmation, never dropped silently. An original-text edit
+    // renders with overflow visible in the editor, so all its lines draw.
+    if (!isContentEdit && y < textRect.y - lineHeight) {
+      clippedChars += visibleCharCount(lines.slice(i));
+      break;
+    }
+    if (clipRect) {
+      clippedChars += charsOutsideClip(line, x, y, textWidth, clipRect, widthOf);
+    }
+    if (asPath && pathFont) {
       lostChars += pathTextLostChars(pathFont, line);
       out.pushOperators(
         ...drawPathText(
@@ -271,38 +327,50 @@ export function drawText(
           y,
           o.fontSize,
           [color.red, color.green, color.blue],
-          usesSyntheticItalic(o, line),
+          // Outlines have no italic face; a Times/Helvetica line already
+          // got one from pickFont and must not be slanted twice.
+          Boolean(o.italic),
         ),
       );
       continue;
     }
     const sanitized = sanitizeFor(font, line);
     lostChars += sanitized.lostChars;
-    out.drawText(sanitized.text, {
-      x,
-      y,
-      size: o.fontSize,
-      font,
-      color,
-      ySkew: usesSyntheticItalic(o, line)
-        ? degrees(SYNTHETIC_ITALIC_DEGREES)
-        : undefined,
-    });
+    out.drawText(sanitized.text, { x, y, size: o.fontSize, font, color });
   }
-  return lostChars;
+  return { lostChars, clippedChars };
 }
 
-function shouldDrawTextLineAsPath(
-  o: TextOverlay | ContentTextOverlay | CalloutOverlay,
+function visibleCharCount(lines: readonly string[]): number {
+  return Array.from(lines.join("").replace(/\s/gu, "")).length;
+}
+
+// Characters of a drawn line the clip hides: the whole line when its
+// baseline is below the clip (at most the tops of its glyphs show), else
+// each character whose advance crosses the clip's left or right edge. A
+// half-point tolerance keeps a line that ends exactly on the edge whole.
+function charsOutsideClip(
   line: string,
-  pathFont: PathTextFont | null,
-): pathFont is PathTextFont {
-  return Boolean(
-    pathFont &&
-      (hasNonAscii(line) ||
-        o.fontFamily === "notoSansSc" ||
-        o.fontFamily === "notoSansJp"),
-  );
+  x: number,
+  y: number,
+  lineWidth: number,
+  clip: PdfRect,
+  widthOf: (text: string) => number,
+): number {
+  if (y < clip.y) return visibleCharCount([line]);
+  const left = clip.x - 0.5;
+  const right = clip.x + clip.w + 0.5;
+  if (x >= left && x + lineWidth <= right) return 0;
+  let count = 0;
+  let prefix = "";
+  for (const ch of Array.from(line)) {
+    const start = x + widthOf(prefix);
+    prefix += ch;
+    const end = x + widthOf(prefix);
+    if (/\s/u.test(ch)) continue;
+    if (start < left || end > right) count += 1;
+  }
+  return count;
 }
 
 function contentTextBaselineY(
@@ -330,18 +398,6 @@ function contentTextBaselineY(
   const sourceTop = o.rect.y + o.rect.h - coverPadPt;
   return sourceTop - font.heightAtSize(o.fontSize, { descender: false }) -
     lineIndex * lineHeight;
-}
-
-function usesSyntheticItalic(
-  o: TextOverlay | ContentTextOverlay | CalloutOverlay,
-  line: string,
-): boolean {
-  return (
-    Boolean(o.italic) &&
-    (o.fontFamily === "notoSansSc" ||
-      o.fontFamily === "notoSansJp" ||
-      hasNonAscii(line))
-  );
 }
 
 export function hexToRgb(hex: string): RGB {

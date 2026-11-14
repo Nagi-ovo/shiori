@@ -35,7 +35,7 @@
   "src/editor/components/documentViewerGestures.ts": 20331,
   "src/editor/components/overlays/OverlayDom.render.test.tsx": 28028,
   "src/editor/components/overlays/OverlayDom.tsx": 61973,
-  "src/editor/components/textHighlightGeometry.ts": 53308,
+  "src/editor/components/textHighlightGeometry.ts": 52821,
   "src/editor/components/ui.tsx": 44506,
   "src/editor/quotes.ts": 21089,
   "src/editor/store/store.test.ts": 57704,

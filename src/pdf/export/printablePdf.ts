@@ -10,7 +10,9 @@ import { exportPdf, ExportSignedSourceError, type ExportOptions } from "./export
 
 /** What the print frame gets, or why the source cannot give it. */
 export type PrintableResult =
-  | { kind: "ready"; bytes: Uint8Array; lostChars: number }
+  // clippedChars: text a flattened box cut off (ExportResult.clippedChars);
+  // absent means none.
+  | { kind: "ready"; bytes: Uint8Array; lostChars: number; clippedChars?: number }
   | { kind: "refused"; reason: PrintRefusal };
 
 /**
@@ -54,7 +56,12 @@ export async function exportPrintablePdf(
         unicodeFontUrl: fonts.unicodeFontUrl,
         unicodeJpFontUrl: fonts.unicodeJpFontUrl,
       });
-      return { kind: "ready", bytes: result.bytes, lostChars: result.lostChars } as const;
+      return {
+        kind: "ready",
+        bytes: result.bytes,
+        lostChars: result.lostChars,
+        clippedChars: result.clippedChars ?? 0,
+      } as const;
     });
   } catch (error) {
     if (error instanceof ExportSignedSourceError) return { kind: "refused", reason: "signed" };

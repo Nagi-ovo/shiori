@@ -8,11 +8,14 @@ import { T } from "../../design/tokens";
 export function LossyExportNotice({
   lostChars,
   unexcisedEdits = 0,
+  clippedChars = 0,
 }: {
   lostChars: number;
   // Original-text edits painted over without removing the old glyphs: the
   // file still answers search and copy with the text the user replaced.
   unexcisedEdits?: number;
+  // Characters on lines a flattened box clipped: left out of the page.
+  clippedChars?: number;
 }) {
   const { t } = useTranslation();
   return (
@@ -45,6 +48,14 @@ export function LossyExportNotice({
           <strong>{t("export.unexcisedConfirmTitle")}</strong>
           <div style={{ marginTop: 4 }}>
             {t("export.unexcisedConfirmBody", { count: unexcisedEdits })}
+          </div>
+        </div>
+      ) : null}
+      {clippedChars > 0 ? (
+        <div style={{ marginTop: lostChars > 0 || unexcisedEdits > 0 ? 8 : 0 }}>
+          <strong>{t("export.clippedConfirmTitle")}</strong>
+          <div style={{ marginTop: 4 }}>
+            {t("export.clippedConfirmBody", { count: clippedChars })}
           </div>
         </div>
       ) : null}

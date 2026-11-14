@@ -92,6 +92,13 @@ export async function runPrint(ports: PrintPorts): Promise<PrintOutcome> {
   ) {
     return { kind: "cancelled" };
   }
+  const clippedChars = exported.clippedChars ?? 0;
+  if (
+    clippedChars > 0 &&
+    !ports.confirm(t("export.clippedPrintConfirm", { count: clippedChars }))
+  ) {
+    return { kind: "cancelled" };
+  }
   if (!ports.isCurrent()) return { kind: "superseded" };
   return printInFrame(ports, document.fileName, exported.bytes, encrypted);
 }

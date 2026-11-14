@@ -6,6 +6,7 @@ import type {
   UnderlineOverlay,
 } from "../../pdf/model/types";
 import { displayToPdf } from "../../pdf/geometry/coords";
+import { fontNamesLookBold, fontNamesLookItalic } from "../../pdf/model/fontStyle";
 import {
   type DisplayRect,
   type RectLike,
@@ -1202,22 +1203,8 @@ function inferBold(runs: TextRunDisplayBounds[]): boolean {
   if (runs.length === 0) return false;
   let weighted = 0;
   for (const run of runs) {
-    const raw = [
-      run.fontName,
-      run.fontFamily,
-      run.cssFontFamily,
-      run.cssFontWeight,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    const numericWeight = Number.parseInt(run.cssFontWeight ?? "", 10);
-    if (
-      (Number.isFinite(numericWeight) && numericWeight >= 600) ||
-      /\b(bold|black|heavy|demi[-\s]?bold|semi[-\s]?bold)\b|cmbx|nimbus(?:rom|san)[^\s,]*[-_]?bold|nimbus(?:rom|san)[^\s,]*[-_]?med/u.test(raw)
-    ) {
-      weighted += 1;
-    }
+    const names = [run.fontName, run.fontFamily, run.cssFontFamily, run.cssFontWeight];
+    if (fontNamesLookBold(names, run.cssFontWeight)) weighted += 1;
   }
   return weighted / runs.length >= 0.5;
 }
@@ -1226,20 +1213,8 @@ function inferItalic(runs: TextRunDisplayBounds[]): boolean {
   if (runs.length === 0) return false;
   let styled = 0;
   for (const run of runs) {
-    const raw = [
-      run.fontName,
-      run.fontFamily,
-      run.cssFontFamily,
-      run.cssFontStyle,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    if (
-      /\b(italic|oblique|slanted)\b|[-_](?:it|obl|sl)(?:\b|[-_\d])|cm(?:ti|sl)|cmmib|nimbus(?:rom|san)[^\s,]*[-_]?(?:ital|obli)/u.test(raw)
-    ) {
-      styled += 1;
-    }
+    const names = [run.fontName, run.fontFamily, run.cssFontFamily, run.cssFontStyle];
+    if (fontNamesLookItalic(names)) styled += 1;
   }
   return styled / runs.length >= 0.5;
 }

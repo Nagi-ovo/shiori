@@ -165,6 +165,34 @@ describe("exportPrintablePdf", () => {
     expect(await contentStreams(result.bytes)).toBeGreaterThan(await contentStreams(source));
   });
 
+  // The print copy is flattened, so a text box too small for its text is
+  // cut off there too; the count must reach the print prompt.
+  test("reports the characters an overflowing text box leaves out", async () => {
+    const source = await (await onePage()).save();
+    const model: DocumentModel = {
+      pages: [page],
+      overlays: [
+        {
+          id: "box",
+          type: "text",
+          pageId: "p1",
+          // 30pt tall at 12pt: alpha, bravo, charlie fit; delta, echo do not.
+          rect: { x: 72, y: 600, w: 200, h: 30 },
+          text: "alpha\nbravo\ncharlie\ndelta\necho",
+          fontSize: 12,
+          color: "#1a1815",
+          bold: false,
+          align: "left",
+          fontFamily: "sans",
+        },
+      ],
+    };
+    const result = await exportPrintablePdf(unencrypted, opened(source), model);
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") return;
+    expect(result.clippedChars).toBe("delta".length + "echo".length);
+  });
+
   test("leaves document files out of the print copy", async () => {
     const result = await exportPrintablePdf(unencrypted, opened(await withAttachment()), plainModel());
     expect(result.kind).toBe("ready");

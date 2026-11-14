@@ -83,6 +83,10 @@ export type ExportResult = {
   // so search and copy return it. Absent means none (a rasterized page
   // carries no source text).
   unexcisedEdits?: number;
+  // Characters on lines that did not fit a flattened box (free text, callout
+  // label, note) and were left out of the page, as the editor clips them.
+  // Absent means none.
+  clippedChars?: number;
 };
 
 /**
@@ -139,12 +143,12 @@ export async function exportPdf(
 ): Promise<ExportResult> {
   const encryption = options.sourceEncryption;
   if (!encryption) {
-    const { bytes, lostChars, unexcisedEdits } = await rebuildPdf(
+    const { bytes, lostChars, unexcisedEdits, clippedChars } = await rebuildPdf(
       originalBytes,
       model,
       options,
     );
-    return { bytes, lostChars, unexcisedEdits };
+    return { bytes, lostChars, unexcisedEdits, clippedChars };
   }
   // Every rebuild of an encrypted source starts from its plaintext, so the
   // permissions are checked before any work and the plaintext export goes
@@ -163,12 +167,14 @@ export async function exportPdf(
       bytes: new Uint8Array(originalBytes),
       lostChars: 0,
       unexcisedEdits: 0,
+      clippedChars: 0,
     };
   }
   return {
     bytes: await encryption.encrypt(rebuilt.bytes, rebuilt.pageCount),
     lostChars: rebuilt.lostChars,
     unexcisedEdits: rebuilt.unexcisedEdits,
+    clippedChars: rebuilt.clippedChars,
   };
 }
 
