@@ -17,7 +17,7 @@ function command(name: string, args: string[]) {
   assert.equal(result.status, 0, `${name}: ${result.error ?? ''}${result.stdout}${result.stderr}`);
   return result.stdout;
 }
-export function nativeOracle(library: string, out: string, preview = false) {
+export async function nativeOracle(library: string, out: string, preview = false) {
   const native = openPdfium(library);
   try {
     if (preview) {
@@ -51,8 +51,8 @@ export function nativeOracle(library: string, out: string, preview = false) {
         continue;
       }
       assertSavedGlyphs(c.expectedAfterGlyphs, c.afterGlyphs);
-      const before = native.measure(beforePath, c.beforeGlyphs, c.fontHashes);
-      const after = native.measure(afterPath, c.afterGlyphs, c.fontHashes);
+      const before = await native.measure(beforePath, c.beforeGlyphs, c.fontHashes);
+      const after = await native.measure(afterPath, c.afterGlyphs, c.fontHashes);
       const visibleReplacementGlyphs = assertReplacementGlyphs(after.glyphs);
       const old = before.glyphs.filter(g => !g.edited), current = after.glyphs.filter(g => !g.edited);
       assert.equal(old.length, current.length);
@@ -83,7 +83,7 @@ export function nativeOracle(library: string, out: string, preview = false) {
       const row = { name: c.name, sourceGlyphs: before.glyphs.length, editedSourceGlyphs: before.glyphs.length - old.length,
         untouchedGlyphs: old.length, outputGlyphs: after.glyphs.length, savedCodesVerified: true, maxOriginDriftPt: drift,
         changedPixels: total, changedPixelsOutsideBox: outside, editBox: c.editBox,
-        visibleReplacementGlyphs, noBlankReplacementGlyphs: true,
+        visibleReplacementGlyphs, noBlankReplacementGlyphs: true, noNotdefReplacementGlyphs: true,
         fontObjects: Object.keys(c.fontHashes).sort(), PDFiumText: after.text, pdftotext: poppler, qpdf: 'clean', passed: true };
       // Raw rasters are PPM artifacts; JSON retains all native glyph evidence.
       const { pixels: beforePixels, ...beforeReport } = before;
@@ -93,6 +93,7 @@ export function nativeOracle(library: string, out: string, preview = false) {
       rows.push(row); console.log(JSON.stringify(row));
     }
     writeFileSync(join(out, 'report.json'), JSON.stringify({ nativeLibrary: resolve(library),
+      glyphPathArgument: 'Unicode scalar', notdefDiscriminator: 'native path vs known-GID0 probe; coverage GID is an extra guard',
       raster: { dpi: 144, format: 'BGRA', flags: 0, channelTolerance: 0 }, cases: rows }, null, 2));
   } finally { native.close(); }
 }

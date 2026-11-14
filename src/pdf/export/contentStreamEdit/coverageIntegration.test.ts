@@ -3,10 +3,11 @@ import { PDFDocument, PDFName } from 'pdf-lib';
 import { tinyTtf } from '../fontCoverage/fixtures/programs';
 import { createFontCoverage } from '../fontCoverage/coverage';
 import { inspectRunPage, replaceRunPage, resolveRunFonts } from './replaceRunPage';
+import { tokenizeContentStream } from './tokenizer';
 import { replaceRuns, sourceFingerprint, type ResolvedRunFont } from './replaceRun';
 
 const bytes = (s: string) => new TextEncoder().encode(s);
-async function fixture(options: { empty?: number[]; raw?: boolean; program?: Uint8Array } = {}) {
+async function fixture(options: { empty?: number[]; raw?: boolean; program?: Uint8Array; resource?: 'F1' | 'Alias' } = {}) {
   const doc = await PDFDocument.create(), ctx = doc.context, page = doc.addPage();
   const descriptor = ctx.register(ctx.obj({ Type: 'FontDescriptor', Flags: 32, Ascent: 800, Descent: -200,
     [options.raw ? 'FontFile' : 'FontFile2']: ctx.register(ctx.flateStream(options.raw ? bytes('%!PS fake Type1') : options.program ?? tinyTtf({
@@ -19,10 +20,10 @@ async function fixture(options: { empty?: number[]; raw?: boolean; program?: Uin
   other.set(PDFName.of('Encoding'), ctx.obj({ BaseEncoding: 'WinAnsiEncoding', Differences: [67, 'd'] }));
   const f2 = ctx.register(other);
   page.node.set(PDFName.of('Resources'), ctx.obj({ Font: { F1: f1, Alias: f1, F2: f2 } }));
-  page.node.set(PDFName.of('Contents'), ctx.register(ctx.flateStream('BT /F1 10 Tf (AB) Tj (d) Tj /F2 10 Tf (AB) Tj ET')));
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.flateStream(`BT /${options.resource ?? 'F1'} 10 Tf (AB) Tj (d) Tj /F2 10 Tf (AB) Tj ET`)));
   const source = inspectRunPage(page);
   if (!source.ok) throw Error(source.reason);
-  const edit = { fontResource: 'F1', fontObject: f1.toString(), opIndex: 2, itemIndex: -1,
+  const edit = { fontResource: options.resource ?? 'F1', fontObject: f1.toString(), opIndex: 2, itemIndex: -1,
     byteStart: 0, byteEnd: 2, expected: bytes('AB'), replacement: 'C' };
   return { doc, ctx, page, source, edit, f1, f2 };
 }
@@ -36,6 +37,27 @@ test('program-backed unshown glyph succeeds; same-BaseFont subset and aliases ke
   expect(replaceRunPage(page, { sourceHash: source.sourceHash, edits: [{ ...edit, fontResource: 'F2', fontObject: f2.toString(), opIndex: 5 }] })).toMatchObject({ ok: false, firstMissing: 'C', offset: 0 });
   expect(replaceRunPage(page, { sourceHash: source.sourceHash, edits: [{ ...edit, fontResource: 'Alias' }] })).toMatchObject({ ok: false }); // stale show font
   expect(replaceRunPage(page, { sourceHash: source.sourceHash, edits: [edit] }).ok).toBe(true);
+  expect(rewrittenCode(page)).toEqual(Uint8Array.of(0x43));
+});
+function rewrittenCode(page: Awaited<ReturnType<typeof fixture>>['page']) {
+  const content = inspectRunPage(page);
+  if (!content.ok) throw Error(content.reason);
+  const show = tokenizeContentStream(content.bytes)[2]!;
+  expect(show.operator).toBe('TJ');
+  const array = show.operands[0];
+  if (array?.kind !== 'array' || array.items[0]?.kind !== 'string') throw Error('replacement string missing');
+  return array.items[0].bytes;
+}
+test('a real Alias show writes the same literal C code as F1', async () => {
+  const written = [];
+  for (const resource of ['F1', 'Alias'] as const) {
+    const { page, source, edit } = await fixture({ resource });
+    expect(replaceRunPage(page, { sourceHash: source.sourceHash, edits: [edit] }).ok).toBe(true);
+    const code = rewrittenCode(page);
+    expect(code).toEqual(Uint8Array.of(0x43));
+    written.push(code);
+  }
+  expect(written[1]).toEqual(written[0]);
 });
 for (const options of [{}, { empty: [3] }, { raw: true }, { program: Uint8Array.of(0, 1, 0, 0) }]) {
   test(`coverage failure reports exact missing cluster and preserves all bytes: ${JSON.stringify(options)}`, async () => {

@@ -106,19 +106,41 @@ embedded font-program SHA-256, and one-to-one font-object/native-handle identity
 Untouched glyphs must retain font, code, order and origins within 0.01 pt.
 Generated whitespace is recorded; missing/extra/reordered source glyphs fail.
 For **every replacement non-space glyph**, including identity/forced-identity,
-it collects `FPDFFont_GetGlyphPath` using the actual source code and requires
-positive segment count, plus positive raster ink within `FPDFText_GetCharBox`.
-It also requires a positive integer GID resolved from the saved font's
-rendering encoding/program; the native font-program hash links that GID to
-the font PDFium actually loaded. This matters because .notdef can have both
-an outline and ink. `glyphEvidence.ts` refuses GID 0 and absent, empty or
-missing evidence. Native path and ink ensure extraction alone cannot stand
-in for a rendered replacement.
+it calls `FPDFFont_GetGlyphPath` with the **Unicode scalar**, then snapshots
+every native segment's type, coordinates and close flag. The vendored header
+calls the argument `glyph`; PDFium's
+[implementation](https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/7881/fpdfsdk/fpdf_edittext.cpp)
+maps it through `CharCodeFromUnicode`. A regression checks that CID PDF code 1
+queries Unicode L's seven-segment outline, rather than the ten-segment .notdef
+box returned by querying scalar 1. Positive raster ink within the native
+`FPDFText_GetCharBox` remains required.
+
+An independent native discriminator rejects outlines matching this font's
+known .notdef outline, even when .notdef has ink. Unmapped-scalar queries alone
+are insufficient: the synthetic simple TrueType returns null for unmapped
+scalars while its .notdef has an outline. `notdefProbe.ts` therefore copies
+the exact embedded program into a separate, saved `.notdef-probe.pdf`, forcing
+two probe codes to GID0 via explicit zero CIDToGIDMap entries (TrueType) or
+`.notdef` Differences (simple CFF). The two codes map to U+FFFE/U+FFFF for
+native path lookup. CID CFF probes map both codes to CID0. Native font-data
+SHA-256 must match the source program, for the probe and real font alike.
+No coverage resolver is involved in constructing or comparing these probes.
+
+`glyphEvidence.ts` requires consistent probe data and compares complete path
+geometry, rather than segment count or handle identity. A match fails with
+`native-notdef-match`; absent probe data, inconsistent probes and blank glyphs
+have distinct failure codes. A positive coverage GID is checked afterward as
+an additional guard. This GID cannot authorize a native .notdef match.
 
 `checkNativeEvidence.ts` deliberately bypasses the compiler and renders two
 bad outputs, one with an inked .notdef and one with an empty glyf entry. Both
-extract `Sand` but must fail the glyph-evidence validator. The main command
-runs this self-check and writes `oracle-selfcheck.json` plus the PDFs/rasters.
+extract `Sand`. It deliberately forges GID=7 for the inked .notdef, verifies
+positive native outline/ink, and requires precisely `native-notdef-match`.
+The empty glyph must fail specifically with `blank-native-glyph`. The main
+command runs this self-check and writes `oracle-selfcheck.json`, PDFs/rasters,
+and the separate known-GID0 probe PDFs. Focused tests cover both native
+regressions when the Linux x64 library is available, alongside the pure
+validator tests on every platform.
 
 Raster comparison uses exact BGRA channels at 144dpi, flags=0, no tolerance
 and edit boxes declared before rendering. Zero changed pixels are allowed
