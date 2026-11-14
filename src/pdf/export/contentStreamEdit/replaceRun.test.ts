@@ -7,6 +7,8 @@ const bytes = (s: string) => new TextEncoder().encode(s);
 const text = (b: Uint8Array) => new TextDecoder().decode(b);
 const font: ResolvedRunFont = {
   resourceName: 'F1', objectId: '7 0 R', bytesPerCode: 1,
+  // This synthetic test font explicitly verifies ASCII; fallback tests unset it.
+  verifiedCodes: new Set(Array.from({ length: 95 }, (_, i) => i + 32)),
   widthOf: c => c === 32 ? 250 : 500, ascentEm: .8, descentEm: -.2,
   unicodeByCode: new Map(Array.from({ length: 95 }, (_, i) => [i + 32, String.fromCharCode(i + 32)])),
 };
@@ -122,4 +124,90 @@ test('refuses zero horizontal scale and nonfinite transformed geometry', () => {
     const s = bytes(`BT /F1 10 Tf ${prefix} (Hello) Tj ET`);
     refused(s, compile(s, [edit(s, 'Hello', 'Hi')]));
   }
+});
+
+describe('review regressions: marked content scope', () => {
+  test('balanced semantic BDC does not taint a following target', () => {
+    const s = bytes('BT /F1 10 Tf /P << /ActualText (logical) >> BDC (tagged) Tj EMC (Hello) Tj ET');
+    const out = compile(s, [edit(s, 'Hello', 'He')]);
+    expect(out.ok).toBe(true);
+    expect(positions(out.bytes).slice(0, 6)).toEqual(positions(s).slice(0, 6));
+  });
+  for (const wrapper of ['/P << /MCID 0 >> BDC', '/P BMC']) {
+    test(`permits non-semantic marked content: ${wrapper}`, () => {
+      const s = bytes(`BT /F1 10 Tf ${wrapper} (Hello) Tj EMC (tail) Tj ET`);
+      const out = compile(s, [edit(s, 'Hello', 'He')]);
+      expect(out.ok).toBe(true);
+      expect(positions(out.bytes).slice(-4)).toEqual(positions(s).slice(-4));
+    });
+  }
+  for (const property of ['ActualText', 'Alt', 'E']) {
+    test(`refuses an enclosing inline /${property} property through q/Q and nested spans`, () => {
+      const s = bytes(`BT /F1 10 Tf /P << /${property} (logical) >> BDC q /Span << /MCID 0 >> BDC (Hello) Tj EMC Q EMC ET`);
+      refused(s, compile(s, [edit(s, 'Hello', 'He')]));
+    });
+  }
+  test('q/Q does not restore a semantic span that EMC already closed', () => {
+    const s = bytes('BT /F1 10 Tf /P << /ActualText (logical) >> BDC q (tagged) Tj EMC Q (Hello) Tj ET');
+    expect(compile(s, [edit(s, 'Hello', 'He')]).ok).toBe(true);
+  });
+  for (const prefix of ['0 0 20 20 re W n', '/GS gs']) {
+    test(`EMC cannot clear a surrounding graphics dependency: ${prefix}`, () => {
+      const s = bytes(`BT /F1 10 Tf q ${prefix} /P << /MCID 0 >> BDC (tagged) Tj EMC (Hello) Tj Q ET`);
+      refused(s, compile(s, [edit(s, 'Hello', 'He')]));
+    });
+  }
+  test('named MCID-only properties permit edits; unresolved and semantic properties refuse', () => {
+    const s = bytes('BT /F1 10 Tf /P /Props BDC (Hello) Tj EMC ET');
+    const e = edit(s, 'Hello', 'He');
+    expect(compile(s, [e], { markedContentProperties: new Map([['Props', ['MCID']]]) }).ok).toBe(true);
+    for (const keys of [null, ['ActualText'], ['Alt'], ['E']]) {
+      refused(s, compile(s, [e], { markedContentProperties: new Map([['Props', keys]]) }));
+    }
+    refused(s, compile(s, [e]));
+    const closed = bytes('BT /F1 10 Tf /P /Missing BDC (tagged) Tj EMC (Hello) Tj ET');
+    expect(compile(closed, [edit(closed, 'Hello', 'He')]).ok).toBe(true);
+  });
+  for (const s of [
+    'BT /F1 10 Tf EMC (Hello) Tj ET',
+    'BT /F1 10 Tf /P << /MCID 0 >> BDC (Hello) Tj ET',
+  ]) test('unbalanced marked content refuses unchanged', () => {
+    const b = bytes(s); refused(b, compile(b, [edit(b, 'Hello', 'He')]));
+  });
+});
+
+describe('review regressions: replacement glyph verification', () => {
+  const s = bytes('BT /F1 10 Tf (Hello) Tj (tail) Tj ET');
+  const unverified = { ...font, verifiedCodes: undefined };
+  const run = (f: ResolvedRunFont, replacement: string) => replaceRuns(s, [f], {
+    sourceHash: sourceFingerprint(s), edits: [edit(s, 'Hello', replacement)],
+  });
+  test('ToUnicode-only code that the page never shows refuses with original bytes', () => {
+    const out = run(unverified, 'Z');
+    refused(s, out);
+    if (!out.ok) expect(out.reason).toBe('replacement glyph not verified in source font');
+  });
+  test('default evidence includes later shows in the same font object', () => {
+    expect(run(unverified, 'tail').ok).toBe(true);
+  });
+  test('explicit verifiedCodes allows a new code and excludes used codes outside the set', () => {
+    expect(run({ ...font, verifiedCodes: new Set([90]) }, 'Z').ok).toBe(true);
+    refused(s, run({ ...font, verifiedCodes: new Set([90]) }, 'He'));
+    refused(s, run({ ...font, verifiedCodes: new Set() }, 'He'));
+  });
+  for (const objectId of ['7 0 R', '8 0 R']) {
+    test(`used-code evidence is scoped to font object ${objectId}`, () => {
+      const source = bytes('BT /F1 10 Tf (Hello) Tj /F2 10 Tf (Z) Tj ET');
+      const out = replaceRuns(source, [unverified, { ...unverified, resourceName: 'F2', objectId }], {
+        sourceHash: sourceFingerprint(source), edits: [edit(source, 'Hello', 'Z')],
+      });
+      if (objectId === '7 0 R') expect(out.ok).toBe(true);
+      else refused(source, out);
+    });
+  }
+  test('a later unverified code refuses the entire transaction', () => {
+    const out = replaceRuns(s, [unverified], { sourceHash: sourceFingerprint(s),
+      edits: [edit(s, 'Hello', 'He'), edit(s, 'tail', 'Z')] });
+    refused(s, out);
+  });
 });

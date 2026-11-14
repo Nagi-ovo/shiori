@@ -63,3 +63,26 @@ test('failed later edit leaves page stream and context unchanged', async () => {
   expect(page.node.get(PDFName.of('Contents'))).toBe(original);
   expect(doc.context.enumerateIndirectObjects().length).toBe(count);
 });
+
+for (const keys of [['MCID'], ['ActualText'], ['Alt'], ['E'], null]) {
+  test(`resolves named BDC properties from page resources: ${keys}`, async () => {
+    const { page, doc, edit } = await fixture();
+    if (keys) page.node.Resources()!.set(PDFName.of('Properties'), doc.context.obj({
+      Props: doc.context.register(doc.context.obj(Object.fromEntries(keys.map(k => [k, k === 'MCID' ? 0 : 'logical'])))),
+    }));
+    const s = bytes('BT /F1 10 Tf /P /Props BDC (AB) Tj EMC /F2 10 Tf (A) Tj ET');
+    page.node.set(PDFName.of('Contents'), doc.context.register(doc.context.stream(s)));
+    const info = inspectRunPage(page);
+    if (!info.ok) throw Error(info.reason);
+    const original = page.node.get(PDFName.of('Contents'));
+    const result = replaceRunPage(page, { sourceHash: info.sourceHash, edits: [{ ...edit, opIndex: 3 }] });
+    expect(result.ok).toBe(keys?.[0] === 'MCID');
+    if (!result.ok) expect(page.node.get(PDFName.of('Contents'))).toBe(original);
+  });
+}
+test('adapter refuses a mapped replacement code absent from shown source codes', async () => {
+  const { page, info, edit } = await fixture();
+  const original = page.node.get(PDFName.of('Contents'));
+  expect(replaceRunPage(page, { sourceHash: info.sourceHash, edits: [{ ...edit, replacement: 'C' }] }).ok).toBe(false);
+  expect(page.node.get(PDFName.of('Contents'))).toBe(original);
+});

@@ -38,11 +38,24 @@ export function resolveRunFonts(page: PDFPage): ResolvedRunFont[] {
     return [{ ...info, resourceName: name.decodeText(), objectId: ref.toString(), unicodeByCode: mapping }];
   });
 }
+function markedContentProperties(page: PDFPage): Map<string, readonly string[] | null> {
+  const resolved = new Map<string, readonly string[] | null>();
+  try {
+    const properties = page.node.Resources()?.lookupMaybe(PDFName.of('Properties'), PDFDict);
+    for (const [name, raw] of properties?.entries() ?? []) {
+      try {
+        const dict = properties!.context.lookup(raw);
+        resolved.set(name.decodeText(), dict instanceof PDFDict ? dict.keys().map(k => k.decodeText()) : null);
+      } catch { resolved.set(name.decodeText(), null); }
+    }
+  } catch { /* An unresolvable /Properties dictionary leaves named spans unsafe. */ }
+  return resolved;
+}
 export function replaceRunPage(page: PDFPage, plan: RunPlan) {
   const source = inspectRunPage(page);
   if (!source.ok) return source;
   try {
-    const result = replaceRuns(source.bytes, resolveRunFonts(page), plan);
+    const result = replaceRuns(source.bytes, resolveRunFonts(page), { ...plan, markedContentProperties: markedContentProperties(page) });
     if (result.ok && result.bytes !== source.bytes) {
       const stream = page.doc.context.flateStream(result.bytes);
       page.node.set(PDFName.of('Contents'), page.doc.context.register(stream));

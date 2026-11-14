@@ -126,6 +126,12 @@ if len(sys.argv) > 3 and sys.argv[3] == '--preview':
 manifest = json.loads((out / 'manifest.json').read_text())
 rows = []
 for case in manifest:
+    # afterGlyphs are parsed from SAVED output bytes by the TS tokenizer,
+    # independently of expectedAfterGlyphs derived from the edit plan.
+    expected, actual = case['expectedAfterGlyphs'], case['afterGlyphs']
+    assert len(expected) == len(actual), 'saved output glyph count changed'
+    for e, a in zip(expected, actual):
+        assert (e['fontObject'], e['code'], e['unicode']) == (a['fontObject'], a['code'], a['unicode']), 'saved output code/font mismatch'
     before_path, after_path = out / case['before'], out / case['after']
     before, a = measure(before_path, case['beforeGlyphs'], case['fontHashes'])
     after, b = measure(after_path, case['afterGlyphs'], case['fontHashes'])
@@ -165,7 +171,7 @@ for case in manifest:
     after_path.with_suffix('.txt').write_text(poppler)
     row = {'name': case['name'], 'sourceGlyphs': len(before['glyphs']),
            'editedSourceGlyphs': len(before['glyphs']) - len(old), 'untouchedGlyphs': len(old),
-           'outputGlyphs': len(after['glyphs']), 'maxOriginDriftPt': drift,
+           'outputGlyphs': len(after['glyphs']), 'savedCodesVerified': True, 'maxOriginDriftPt': drift,
            'changedPixels': total, 'changedPixelsOutsideBox': outside, 'editBox': case['editBox'],
            'fontObjects': sorted(case['fontHashes']), 'PDFiumText': after['text'],
            'pdftotext': poppler, 'qpdf': 'clean', 'passed': True}

@@ -12,6 +12,9 @@ export type ResolvedRunFont = {
   ascentEm: number;
   descentEm: number;
   unicodeByCode: ReadonlyMap<number, string>;
+  // Optional caller evidence; when absent use only codes already shown by
+  // this font object in the original page. ToUnicode is encoding, not coverage.
+  verifiedCodes?: ReadonlySet<number>;
 };
 export type RunEdit = {
   fontResource: string;
@@ -28,6 +31,8 @@ export type RunPlan = {
   edits: readonly RunEdit[];
   forceReencode?: boolean;
   scope?: 'page' | 'form';
+  // Resolved /Properties key lists; missing/null named entries are unsafe.
+  markedContentProperties?: ReadonlyMap<string, readonly string[] | null>;
 };
 export type RunResult = { ok: true; bytes: Uint8Array } | { ok: false; bytes: Uint8Array; reason: string };
 export function sourceFingerprint(bytes: Uint8Array): string {
@@ -47,7 +52,7 @@ function codes(bytes: Uint8Array, size: 1 | 2): number[] {
   return Array.from({ length: bytes.length / size }, (_, i) => size === 1
     ? bytes[i]! : bytes[2 * i]! * 256 + bytes[2 * i + 1]!);
 }
-function encode(text: string, font: ResolvedRunFont): Uint8Array {
+function encode(text: string, font: ResolvedRunFont, usedCodes: ReadonlySet<number>): Uint8Array {
   if ((/[\r\n]/.test(text) || text.includes(String.fromCharCode(0)))) throw Error('replacement is not a single text run');
   const inverse = new Map<string, number | null>();
   for (const [code, unicode] of font.unicodeByCode) {
@@ -60,6 +65,7 @@ function encode(text: string, font: ResolvedRunFont): Uint8Array {
     if (code == null || !Number.isInteger(code) || code < 0 || code >= 256 ** font.bytesPerCode) {
       throw Error('replacement glyph absent or ambiguous in source font');
     }
+    if (!(font.verifiedCodes ?? usedCodes).has(code)) throw Error('replacement glyph not verified in source font');
     if (font.bytesPerCode === 2) out.push(code >> 8);
     out.push(code & 255);
   }
@@ -85,7 +91,15 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
     if (!walk.ok) return refuse(walk.reason);
     if (walk.unplacedText) return refuse('unaccounted source text');
     if (walk.glyphs.some(g => [...g.quad, ...g.coreQuad].some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y)))) return refuse('nonfinite transformed geometry');
+    const usedByObject = new Map<string, Set<number>>();
+    for (const glyph of walk.glyphs) {
+      const object = byName.get(glyph.fontName)!.objectId;
+      if (!usedByObject.has(object)) usedByObject.set(object, new Set());
+      usedByObject.get(object)!.add(glyph.code);
+    }
     const unsafe = new Set<number>();
+    // Marked content is independent of the graphics-state q/Q stack.
+    const markedContent: boolean[] = [];
     const stack: boolean[] = [];
     let dependent = false;
     for (const [i, op] of ops.entries()) {
@@ -93,7 +107,22 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
       if (['q', 'Q', 'BT', 'ET'].includes(op.operator) && op.operands.length) return refuse('malformed state operator');
       if (op.operator === 'q') stack.push(dependent);
       if (op.operator === 'Q') dependent = stack.pop() ?? true;
-      if (['W', 'W*', 'gs', 'BMC', 'BDC'].includes(op.operator)) dependent = true;
+      if (['W', 'W*', 'gs'].includes(op.operator)) dependent = true;
+      if (op.operator === 'BMC' || op.operator === 'BDC') {
+        if (op.operands[0]?.kind !== 'name' || op.operands.length !== (op.operator === 'BMC' ? 1 : 2)) return refuse('malformed marked content');
+        let semantic = false;
+        if (op.operator === 'BDC') {
+          const properties = op.operands[1]!;
+          const keys = properties.kind === 'dict' ? properties.entries.map(e => e.key)
+            : properties.kind === 'name' ? plan.markedContentProperties?.get(properties.value) : null;
+          semantic = keys == null || keys.some(k => ['ActualText', 'Alt', 'E'].includes(k));
+        }
+        markedContent.push(semantic);
+      }
+      if (op.operator === 'EMC') {
+        if (op.operands.length || !markedContent.length) return refuse('unbalanced EMC');
+        markedContent.pop();
+      }
       if (op.operator === 'Tz' && op.operands[0]?.kind === 'number' && op.operands[0].value === 0) return refuse('singular text scale');
       if (op.operator === 'Tr' && op.operands[0]?.kind === 'number' && (!Number.isInteger(op.operands[0].value) || op.operands[0].value < 0 || op.operands[0].value > 7)) return refuse('invalid rendering mode');
       if (op.operator === 'cm' || op.operator === 'Tm') {
@@ -102,9 +131,10 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
           return refuse('singular or malformed matrix');
         }
       }
-      if (dependent) unsafe.add(i);
+      if (dependent || markedContent.some(Boolean)) unsafe.add(i);
     }
     if (stack.length) return refuse('unbalanced graphics state');
+    if (markedContent.length) return refuse('unterminated marked content');
     const changes = new Map<number, Map<number, string>>();
     const seen = new Set<string>();
     for (const edit of plan.edits) {
@@ -126,7 +156,7 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
       if (state.fontName !== edit.fontResource) return refuse('stale show font');
       const originalCodes = codes(item.bytes, font.bytesPerCode);
       if (originalCodes.some(c => !font.unicodeByCode.has(c))) return refuse('original code missing ToUnicode');
-      const replacement = encode(edit.replacement, font);
+      const replacement = encode(edit.replacement, font, usedByObject.get(font.objectId) ?? new Set());
       const advance = (values: number[]) => values.reduce((sum, code) => {
         const width = font.widthOf(code);
         if (!Number.isFinite(width)) throw Error('invalid glyph width');
