@@ -54,6 +54,7 @@
       "maxOriginX": null,
       "excludedGlyphs": 0
     },
+    "stroke_geometry_only_ops": 4,
     "unmatched_native": 1,
     "unproven_unicode": 0,
     "native_origin_max": 0.00011749023434504124,
@@ -137,6 +138,7 @@
       "maxOriginX": null,
       "excludedGlyphs": 0
     },
+    "stroke_geometry_only_ops": 3,
     "unmatched_native": 1,
     "unproven_unicode": 2,
     "native_origin_max": 0.00012875976563009317,
@@ -205,6 +207,7 @@
       "maxOriginX": null,
       "excludedGlyphs": 0
     },
+    "stroke_geometry_only_ops": 6,
     "unmatched_native": 1,
     "unproven_unicode": 3,
     "native_origin_max": 0.00010614648437012875,
@@ -331,6 +334,7 @@
       "maxOriginX": 300,
       "excludedGlyphs": 2057
     },
+    "stroke_geometry_only_ops": 0,
     "unmatched_native": 6,
     "unproven_unicode": 0,
     "native_origin_max": 6.41298560708492e-05,
@@ -427,6 +431,7 @@
       "maxOriginX": null,
       "excludedGlyphs": 0
     },
+    "stroke_geometry_only_ops": 0,
     "unmatched_native": 3,
     "unproven_unicode": 0,
     "native_origin_max": 0.00015088499071680417,
@@ -496,6 +501,7 @@
       "maxOriginX": 310,
       "excludedGlyphs": 1804
     },
+    "stroke_geometry_only_ops": 0,
     "unmatched_native": 2,
     "unproven_unicode": 0,
     "native_origin_max": 0.2616198477748526,

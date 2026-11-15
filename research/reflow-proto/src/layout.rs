@@ -1,39 +1,7 @@
+use crate::measured::{LineSlot, break_measured, legal_break, opportunities};
 use crate::metrics::{Fonts, Token, num};
 use serde_json::{Value, json};
-use std::collections::HashSet;
 use unicode_segmentation::UnicodeSegmentation;
-
-const CLOSE: &str = "，。、；：？！）］｝〉》」』】〕’”％‰,.!?;:%)]}";
-const OPEN: &str = "（［｛〈《「『【〔‘“([{";
-
-fn legal_break(left: &str, right: &str) -> bool {
-    !left.chars().last().is_some_and(|c| OPEN.contains(c))
-        && !right.chars().next().is_some_and(|c| CLOSE.contains(c))
-}
-
-fn opportunities(tokens: &[Token]) -> HashSet<usize> {
-    let text: String = tokens.iter().map(|t| t.text.as_str()).collect();
-    let uax: HashSet<usize> = unicode_linebreak::linebreaks(&text)
-        .map(|(n, _)| n)
-        .collect();
-    let grapheme_ends: HashSet<usize> = text
-        .grapheme_indices(true)
-        .map(|(i, g)| i + g.len())
-        .collect();
-    let mut offset = 0;
-    let mut breaks = HashSet::new();
-    for (i, t) in tokens.iter().enumerate() {
-        offset += t.text.len();
-        if i + 1 == tokens.len()
-            || (uax.contains(&offset)
-                && grapheme_ends.contains(&offset)
-                && legal_break(&t.text, &tokens[i + 1].text))
-        {
-            breaks.insert(i + 1);
-        }
-    }
-    breaks
-}
 
 fn mean(values: &[f64]) -> f64 {
     values.iter().sum::<f64>() / values.len().max(1) as f64
@@ -129,8 +97,9 @@ pub fn run(sample: &Value, edit: &str) -> Result<Value, Box<dyn std::error::Erro
     }
     tokens.extend_from_slice(&original[(at + remove).min(original.len())..]);
     let expected_text = tokens.iter().map(|t| t.text.as_str()).collect::<String>();
-    let legal = opportunities(&tokens);
     let slots = sample["slots"].as_array().unwrap();
+    let measured_slots: Vec<LineSlot> = serde_json::from_value(sample["slots"].clone())?;
+    let mut measured_origins = Vec::new();
     let mut ranges = Vec::new();
     let mut start = 0;
     let mut break_failure = false;
@@ -148,40 +117,10 @@ pub fn run(sample: &Value, edit: &str) -> Result<Value, Box<dyn std::error::Erro
             start = end;
         }
     } else {
-        while start < tokens.len() {
-            let row = ranges.len();
-            let slot = &slots[row.min(slots.len() - 1)];
-            // Overflow rows only count required lines: no extra baseline/box.
-            let mut x = num(slot, "left");
-            let mut last_break = None;
-            let mut end = start;
-            while end < tokens.len() {
-                let t = &tokens[end];
-                if x + t.advance.max(t.ink[2]) > num(slot, "right") + 0.005 {
-                    break;
-                }
-                x += t.advance;
-                if end + 1 < tokens.len()
-                    && t.source.is_some()
-                    && tokens[end + 1].source == t.source.map(|s| s + 1)
-                {
-                    x += t.gap;
-                }
-                end += 1;
-                if legal.contains(&end) {
-                    last_break = Some(end);
-                }
-            }
-            if end < tokens.len() {
-                end = last_break.unwrap_or(start);
-            }
-            if end == start {
-                break_failure = true;
-                break;
-            }
-            ranges.push((start, end));
-            start = end;
-        }
+        let layout = break_measured(&tokens, &measured_slots)?;
+        ranges = layout.ranges;
+        measured_origins = layout.origins;
+        break_failure = layout.break_failure;
     }
     let mut positioned = Vec::new();
     let mut outside_ink = 0;
@@ -194,6 +133,10 @@ pub fn run(sample: &Value, edit: &str) -> Result<Value, Box<dyn std::error::Erro
         for i in a..b {
             let t = &tokens[i];
             let mut y = slot.map(|s| num(s, "baseline"));
+            if edit != "identity" && edit != "delete" {
+                x = measured_origins[i].map(|p| p[0]).unwrap_or(0.);
+                y = measured_origins[i].map(|p| p[1]);
+            }
             if edit == "identity" || edit == "delete" {
                 // Inferred spaces have no source address; debug only.
                 if let Some(src) = t.source {
@@ -239,6 +182,9 @@ pub fn run(sample: &Value, edit: &str) -> Result<Value, Box<dyn std::error::Erro
     let pdf_errors: Vec<f64> = tokens.iter().filter_map(|t| t.pdf_error).collect();
     let raw_errors: Vec<f64> = tokens.iter().filter_map(|t| t.raw_error).collect();
     let mut notes = Vec::new();
+    if num(sample, "stroke_geometry_only_ops") > 0. {
+        notes.push("research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported".into());
+    }
     if ranges.len() > slots.len() {
         notes.push("wrap overflow: no additional baseline is authorised".to_string());
     }
@@ -257,7 +203,7 @@ pub fn run(sample: &Value, edit: &str) -> Result<Value, Box<dyn std::error::Erro
         .fold(f64::INFINITY, f64::min);
     if num(&slots[0], "left") - left > 0.5 {
         notes.push(format!(
-            "indented first slot {:.3} vs {:.3} pt: strict §4.5 refuses",
+            "first-line indent retained: first slot {:.3} vs body {:.3} pt; geometry alone is not RegionProof",
             num(&slots[0], "left"),
             left
         ));

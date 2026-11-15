@@ -63,7 +63,7 @@ def report():
             source_glyphs=len(original), inferred_spaces=s['inferred_spaces'],
             inferred_space_rules={kind: sum(g.get('inference') == kind for g in s['glyphs'])
                                   for kind in ['gap>0.12*size', 'soft-join-0.25em']},
-            column_clip=s['column_clip'],
+            column_clip=s['column_clip'], stroke_geometry_only_ops=s['stroke_geometry_only_ops'],
             unmatched_native=sum(g['nativeOrigin'] is None for g in original),
             unproven_unicode=sum(not g['unicodeProven'] for g in original),
             native_origin_max=max(drifts, default=0), native_origin_mean=sum(drifts) / max(1, len(drifts)),
@@ -79,7 +79,8 @@ def report():
         f"Linux x86_64 stripped release executable: **{result['release_binary_bytes']:,} bytes** "
         '(includes JSON CLI, shaping and diagnostic font parser; not incremental Tauri/Android size).', '',
         '## Method and definitions', '',
-        '- Bounds and baseline slots were frozen from real source placements/ink **before** edits. No blank slots, box growth, font scaling or full justification. Indents are retained by the research slots; they fail the current strict §4.5 production subset.',
+        '- Bounds and baseline slots were frozen from real source placements/ink **before** edits. No blank slots, box growth, font scaling or full justification. First-line/hanging capacities are retained per slot, matching the new §4.5 indent unit. This manually selected geometry is still not a RegionProof.',
+        '- Research extraction neutralizes Tr 1/2 only for numeric advances because the shared production walker now refuses stroked text. Counts are recorded per sample as `stroke_geometry_only_ops`. Paint semantics and stroke ink are not certified; these samples cannot acquire a RegionProof from this runner.',
         '- Chinese inserts/expansions use **fixed token index 8** (zero-based boundary after eight input tokens), which can split a word; this is not a linguistic phrase-boundary detector. Inserts add `在实际应用中`; exact joined snippets are quoted below. English inserts add `carefully ` after the first source/inferred space. Deletes remove `人工智能` or a first-line word. The table reports actual Unicode-scalar length change; +10/+30 use additional same-script prose, rounded to nearby English word boundaries.',
         '- Unchanged source codes bypass shaping. Rust recalculates advances from PDF dictionary widths, Tf/Tc/Tw/Tz and the transformed basis; measured boundary gaps are retained when original neighbours remain together. **The near-zero PDF advance error is an adapter consistency check, not an independent oracle.** Source offsets and native PDFium origins are recorded separately.',
         '- Baseline drift compares output lines in retained source slots with original baselines; it is zero by construction on this fixed grid. It says nothing about x drift, moved glyph correctness or spacing between ink envelopes. Overflow lines are counted but have **null origins**: no unauthorised baseline is invented.',
@@ -106,7 +107,7 @@ def report():
             suffix = ''.join(g['text'] for g in s['glyphs'][8:16])
             text.append(f"| {s['id']} | `{prefix}在实际应用中{suffix}…` |")
     text += ['', '## Row-level Stage-5 limiters', '',
-        '- All three Chinese paragraphs have a first-line indent of about 20 pt (106.68 versus about 86.64). arxiv-2611.17030 and .17053 are indented too. They fail the strict §4.5 paragraph subset even when the diagnostic geometry fits.',
+        '- All three Chinese paragraphs have a first-line indent of about 20 pt (106.68 versus about 86.64). arxiv-2611.17030 and .17053 are indented too. The §4.5 indent unit now models those per-line capacities; their manual boxes still lack complete source/scene/semantic proofs even when diagnostic geometry fits.',
         '- **education / insert:** diagnostic wrapping breaks after `·` and `。`, outside the §4.6 Latin-space/plain-Han whitelist. Its geometric fit is not a supported Stage-5 wrap.',
         '- **arxiv-2611.17052 / insert:** wrapping uses inferred gap spaces, so a source-code/whitespace proof is absent. Liberation advances are program metrics in this spike, not verified emitted fallback dictionary widths.',
         '- **arxiv-2611.17030 / delete:** this 15-line result is among the 10 geometric fits but exceeds the eight-line Stage-5 cap; identity also exceeds it. The count does not imply production eligibility.', '',

@@ -61,7 +61,7 @@ def prepare():
             url=page["url"], licence=page["licence"], fonts=page["fonts"],
             box=box, slots=slots, glyphs=glyphs, inferred_spaces=inferred,
             original="".join(g["text"] for g in glyphs),
-            column_clip=page["columnClip"],
+            column_clip=page["columnClip"], stroke_geometry_only_ops=page["strokeGeometryOnlyOps"],
             source_lines=[l["text"] for l in lines]))
     (BASE / "tmp/input.json").write_text(json.dumps(samples, ensure_ascii=False))
     print("Selected", [(s["id"], len(s["slots"]), len(s["glyphs"])) for s in samples])

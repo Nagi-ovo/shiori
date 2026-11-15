@@ -1,8 +1,7 @@
 import type {PDFPage} from 'pdf-lib';
 import type {Overlay,ContentTextOverlay,PdfRect} from '../../model/types';
 import {inspectRunPage,resolveRunFonts,runPageEnvironment} from '../contentStreamEdit/replaceRunPage';
-import {compileRunPageWithFallback,replaceRunPageWithFallback} from '../contentStreamEdit/fallbackPage';
-import type {FallbackOptions} from '../contentStreamEdit/fallbackFont';
+import {compileRunPageWithFallback,replaceRunPageWithFallback,type RunPageOptions} from '../contentStreamEdit/fallbackPage';
 import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {textObjectScopes} from '../contentStreamEdit/textSafety';
 import {walkTextPlacements} from '../contentStreamEdit/textState';
@@ -14,13 +13,13 @@ import type {PageRunPlan} from '../contentStreamEdit/pageRunPlan';
 const overlaps=(a:PdfRect,b:PdfRect)=>a.x<b.x+b.w && b.x<a.x+a.w && a.y<b.y+b.h && b.y<a.y+a.h;
 /** All addresses and validation are from one immutable revision. The only
  * installation is the final combined plan, after per-overlay preflight. */
-export async function applyContentTextEdits(page:PDFPage,overlays:readonly Overlay[],options:FallbackOptions={}){
+export async function applyContentTextEdits(page:PDFPage,overlays:readonly Overlay[],options:RunPageOptions={}){
  const edits=overlays.filter((o):o is ContentTextOverlay=>o.type==='contentText'),accepted=new Set<string>();
  const outcomes=new Map<string,ContentTextOutcome>(),plans=new Map<string,PageRunPlan>(),changesAdvance=new Set<string>();
  if(!edits.length)return{outcomes:[],remaining:[...overlays]};
  const source=inspectRunPage(page);
  if(!source.ok)return{outcomes:edits.map(o=>({overlayId:o.id,mode:'overlay' as const,reason:'unsupported-state' as const,detail:source.reason})),remaining:[...overlays]};
- const fonts=resolveRunFonts(page),environment=runPageEnvironment(page),ops=tokenizeContentStream(source.bytes),scopes=textObjectScopes(ops);
+ const fonts=resolveRunFonts(page,options.stage5Type1),environment=runPageEnvironment(page),ops=tokenizeContentStream(source.bytes),scopes=textObjectScopes(ops);
  const objectScopes=new Map<string,Set<number>>();
  const walk=walkTextPlacements(ops,{resolveFont:name=>{const f=fonts.find(f=>f.resourceName===name);return f?{...f,ok:true,appliesWordSpacing:f.bytesPerCode===1}:{ok:false,reason:'unsupported font'};},extGStateSetsFont:name=>environment.extGStates?.get(name)?.setsFont??null});
  for(const overlay of edits){

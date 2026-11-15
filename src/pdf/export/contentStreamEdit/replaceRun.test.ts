@@ -187,3 +187,21 @@ describe('replacement coverage is required even for already shown codes', () => 
     refused(s, replaceRuns(s, [font], { sourceHash: sourceFingerprint(s), edits: [edit(s, 'Hello', 'He'), edit(s, 'tail', '☃')] }));
   });
 });
+
+for (const tr of [1,2]) for (const show of ['(stroke) Tj','[(str) 10 (oke)] TJ']) {
+  test(`untargeted Tr ${tr} ${show} permits fill edits; targeting stroke refuses atomically`,()=>{
+    const fill='BT /F1 10 Tf 0 Tr 50 200 Td (Hello) Tj ET';
+    const stroke=`BT /F1 10 Tf ${tr} Tr 50 100 Td ${show} ET`;
+    for(const s of [bytes(`${fill} ${stroke}`),bytes(`${stroke} ${fill}`)]) {
+      const out=compile(s,[edit(s,'Hello','Hi')]);
+      expect(out.ok).toBe(true);
+      expect(text(out.bytes)).toContain(stroke);
+      const target=edit(s,show.includes('TJ')?'str':'stroke','Hi');
+      for(const edits of [[target],[edit(s,'Hello','Hi'),target]]) {
+        const result=compile(s,edits);
+        expect(result).toMatchObject({ok:false,reason:expect.stringContaining('graphics-effect-unsupported')});
+        expect(result.bytes).toBe(s);
+      }
+    }
+  });
+}

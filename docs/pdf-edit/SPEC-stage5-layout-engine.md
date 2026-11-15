@@ -80,3 +80,24 @@ PDF identity. Production can reuse B1's existing validated font/path adapter;
 this spike does not require another font parser in the shipping binary.
 No font discovery, OS fallback, rasterizer or font-size-to-fit is selected.
 See main §4.9 for the wire contract and mandatory compiler/native gates.
+
+## Indented-slot L1 contract amendment (2026-11-15)
+
+The §4.5 commissioned indent unit admits flush, first-line and hanging
+paragraph geometry. Every `RegionProof.lineSlots` entry carries its own
+`left`, `right`, `baseline` and `kind: observed | explicit-blank`; the proof
+also records nonnegative `indent.amountPt`, kind and optional diagnostic
+1-em / 2-em classification. The overall box never supplies first-line capacity.
+Measured ~20 pt, 24 pt, 1-em / 2-em and non-round CJK indents are supported; no
+round-em requirement or extra destination baseline is introduced.
+
+L1's standalone `measured::break_measured` seam is exercised with manually
+specified flush versus narrower first-line wraps and wider-first hanging
+wraps. Overflow rows have no authorized origin. Source PDF widths precede
+breaking and adjacent source gaps are preserved; Rust parses no Type1/Type3
+and discovers no fonts. The extractor's verified width records remain the
+hook for the parallel Type1 work. This is a research library/CLI, not the
+full §4.9 L2 codec, production whitelist/kern proof or a native saved-PDF
+oracle. Identity drift is reported per sample, including failures. R6 and
+all spacing/reflow integration flags remain default-off; no corpus acceptance
+gain follows from the new indent fixtures or geometric proto fits.

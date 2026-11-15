@@ -195,3 +195,14 @@ describe("text state walk", () => {
     if (!unknown.ok) expect(unknown.reason).toContain("unresolvable");
   });
 });
+
+test('stroke and fill+stroke stay unplaced, fill remains supported, clipping stays precise',()=>{
+  for(const tr of [1,2])expect(walk(`BT /F1 12 Tf ${tr} Tr (A) Tj ET`)).toMatchObject({ok:true,glyphs:[],unplacedText:true});
+  expect(walk('BT /F1 12 Tf 0 Tr (A) Tj ET').ok).toBe(true);
+  for(const tr of [4,5,6,7])expect(walk(`BT /F1 12 Tf ${tr} Tr (A) Tj ET`)).toMatchObject({ok:false,reason:expect.stringContaining('clipping')});
+});
+for(const tr of [1,2])test(`Tr ${tr} leaves relative shows unplaced and recovers at the next text object`,()=>{
+  const result=expectOk(walk(`BT /F1 12 Tf ${tr} Tr (A) Tj 0 Tr (B) Tj ET BT /F1 12 Tf (C) Tj ET`));
+  expect(result.unplacedText).toBe(true);
+  expect(result.glyphs.map(g=>g.code)).toEqual([67]);
+});

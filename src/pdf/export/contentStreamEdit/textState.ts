@@ -16,6 +16,8 @@
 // a vertical or CMap encoding) yields no placements and sets unplacedText,
 // so it is never removed. Its advance is unknown, so later shows on the same
 // line are unplaced too, until a line operator moves from the line start.
+// Stroked text uses the same conservative path; its unplaced reason lets the
+// run compiler reject an addressed stroke without aborting unrelated edits.
 
 import type { ContentOp, ContentOperand } from "./tokenizer";
 import type { ContentFontInfo, UnsupportedFont } from "./glyphWidths";
@@ -133,7 +135,7 @@ export type ShowTextState = {
 export type TextWalkCallbacks = {
   // Exact state at a source string, including empty shows.
   onShow?: (state: ShowTextState) => void;
-  onUnplaced?: (state: {opIndex:number;origin:Point|null;fontSizePt:number})=>void;
+  onUnplaced?: (state: {opIndex:number;origin:Point|null;fontSizePt:number;reason?:string})=>void;
   // Resolve a /Font resource name. Null (unresolvable) aborts the walk; an
   // unsupported font leaves its text unplaced.
   resolveFont: (name: string) => ContentFontInfo | UnsupportedFont | null;
@@ -215,9 +217,11 @@ export function walkTextPlacements(
     }
     const font = resolveFont(gs.fontName);
     if (font === null) return `unresolvable font /${gs.fontName}`;
-    if (gs.fontTainted || !font.ok || tmUnknown) {
+    const stroked = gs.renderMode === 1 || gs.renderMode === 2;
+    if (stroked || gs.fontTainted || !font.ok || tmUnknown) {
       unplacedText = true;
-      callbacks.onUnplaced?.({opIndex,origin:tmUnknown?null:apply(multiply(tm,gs.ctm),{x:0,y:gs.rise}),fontSizePt:Math.abs(gs.fontSize*Math.hypot(tm[2],tm[3]))});
+      callbacks.onUnplaced?.({opIndex,origin:tmUnknown?null:apply(multiply(tm,gs.ctm),{x:0,y:gs.rise}),fontSizePt:Math.abs(gs.fontSize*Math.hypot(tm[2],tm[3])),
+        ...(stroked?{reason:'graphics-effect-unsupported: stroked text (Tr 1/2)'}:{})});
       tmUnknown = true;
       return null;
     }

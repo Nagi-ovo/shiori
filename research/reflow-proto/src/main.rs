@@ -1,5 +1,5 @@
 mod layout;
-mod metrics;
+use shiori_reflow_proto::{measured, metrics};
 
 use serde_json::{Value, json};
 use std::{fs, path::Path};

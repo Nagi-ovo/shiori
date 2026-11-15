@@ -131,7 +131,7 @@
       ]
     }
   ],
-  "release_binary_bytes": 1810448,
+  "release_binary_bytes": 1840792,
   "rows": [
     {
       "after_lines": 3,
@@ -150,7 +150,8 @@
       "native_identity_control_x_max": 0.00011749023440188466,
       "native_stationary_x_max": 0.00011749023440188466,
       "notes": [
-        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
+        "first-line indent retained: first slot 106.680 vs body 86.640 pt; geometry alone is not RegionProof",
         "identity-control native source x max 0.000117 pt"
       ],
       "pdf_advance_max": 0.0,
@@ -185,8 +186,9 @@
       "native_identity_control_x_max": 0.00011749023440188466,
       "native_stationary_x_max": 0.000010820312468240445,
       "notes": [
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
         "wrap overflow: no additional baseline is authorised",
-        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 106.680 vs body 86.640 pt; geometry alone is not RegionProof",
         "identity-control native source x max 0.000117 pt"
       ],
       "pdf_advance_max": 0.0,
@@ -221,7 +223,8 @@
       "native_identity_control_x_max": 0.00011749023440188466,
       "native_stationary_x_max": 0.00011749023440188466,
       "notes": [
-        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
+        "first-line indent retained: first slot 106.680 vs body 86.640 pt; geometry alone is not RegionProof",
         "identity-control native source x max 0.000117 pt"
       ],
       "pdf_advance_max": 0.0,
@@ -256,8 +259,9 @@
       "native_identity_control_x_max": 0.00011749023440188466,
       "native_stationary_x_max": 0.000010820312468240445,
       "notes": [
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
         "wrap overflow: no additional baseline is authorised",
-        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 106.680 vs body 86.640 pt; geometry alone is not RegionProof",
         "identity-control native source x max 0.000117 pt"
       ],
       "pdf_advance_max": 0.0,
@@ -293,8 +297,9 @@
       "native_identity_control_x_max": 0.00011749023440188466,
       "native_stationary_x_max": 0.000010820312468240445,
       "notes": [
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
         "wrap overflow: no additional baseline is authorised",
-        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 106.680 vs body 86.640 pt; geometry alone is not RegionProof",
         "identity-control native source x max 0.000117 pt"
       ],
       "pdf_advance_max": 0.0,
@@ -331,7 +336,8 @@
       "native_identity_control_x_max": 0.00012875976563009317,
       "native_stationary_x_max": 0.00012875976563009317,
       "notes": [
-        "indented first slot 106.680 vs 86.650 pt: strict §4.5 refuses",
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
+        "first-line indent retained: first slot 106.680 vs body 86.650 pt; geometry alone is not RegionProof",
         "identity-control native source x max 0.000129 pt"
       ],
       "pdf_advance_max": 0.0,
@@ -369,7 +375,8 @@
       "native_identity_control_x_max": 0.00012875976563009317,
       "native_stationary_x_max": 6.410156288438884e-6,
       "notes": [
-        "indented first slot 106.680 vs 86.650 pt: strict §4.5 refuses",
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
+        "first-line indent retained: first slot 106.680 vs body 86.650 pt; geometry alone is not RegionProof",
         "diagnostic breaks after · / 。 are outside §4.6 whitelist",
         "identity-control native source x max 0.000129 pt"
       ],
@@ -408,7 +415,8 @@
       "native_identity_control_x_max": 0.00012875976563009317,
       "native_stationary_x_max": 0.00012875976563009317,
       "notes": [
-        "indented first slot 106.680 vs 86.650 pt: strict §4.5 refuses",
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
+        "first-line indent retained: first slot 106.680 vs body 86.650 pt; geometry alone is not RegionProof",
         "identity-control native source x max 0.000129 pt"
       ],
       "pdf_advance_max": 0.0,
@@ -447,8 +455,9 @@
       "native_identity_control_x_max": 0.00012875976563009317,
       "native_stationary_x_max": 6.410156288438884e-6,
       "notes": [
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
         "wrap overflow: no additional baseline is authorised",
-        "indented first slot 106.680 vs 86.650 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 106.680 vs body 86.650 pt; geometry alone is not RegionProof",
         "identity-control native source x max 0.000129 pt"
       ],
       "pdf_advance_max": 0.0,
@@ -489,8 +498,9 @@
       "native_identity_control_x_max": 0.00012875976563009317,
       "native_stationary_x_max": 6.410156288438884e-6,
       "notes": [
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
         "wrap overflow: no additional baseline is authorised",
-        "indented first slot 106.680 vs 86.650 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 106.680 vs body 86.650 pt; geometry alone is not RegionProof",
         "identity-control native source x max 0.000129 pt"
       ],
       "pdf_advance_max": 0.0,
@@ -528,7 +538,8 @@
       "native_identity_control_x_max": 0.00010614648437012875,
       "native_stationary_x_max": 0.00010614648437012875,
       "notes": [
-        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
+        "first-line indent retained: first slot 106.680 vs body 86.640 pt; geometry alone is not RegionProof",
         "identity-control native source x max 0.000106 pt"
       ],
       "pdf_advance_max": 0.0,
@@ -562,7 +573,8 @@
       "native_identity_control_x_max": 0.00010614648437012875,
       "native_stationary_x_max": 0.000010820312468240445,
       "notes": [
-        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
+        "first-line indent retained: first slot 106.680 vs body 86.640 pt; geometry alone is not RegionProof",
         "identity-control native source x max 0.000106 pt"
       ],
       "pdf_advance_max": 0.0,
@@ -596,7 +608,8 @@
       "native_identity_control_x_max": 0.00010614648437012875,
       "native_stationary_x_max": 0.00010614648437012875,
       "notes": [
-        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
+        "first-line indent retained: first slot 106.680 vs body 86.640 pt; geometry alone is not RegionProof",
         "identity-control native source x max 0.000106 pt"
       ],
       "pdf_advance_max": 0.0,
@@ -630,7 +643,8 @@
       "native_identity_control_x_max": 0.00010614648437012875,
       "native_stationary_x_max": 0.000010820312468240445,
       "notes": [
-        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
+        "first-line indent retained: first slot 106.680 vs body 86.640 pt; geometry alone is not RegionProof",
         "identity-control native source x max 0.000106 pt"
       ],
       "pdf_advance_max": 0.0,
@@ -665,9 +679,10 @@
       "native_identity_control_x_max": 0.00010614648437012875,
       "native_stationary_x_max": 0.000010820312468240445,
       "notes": [
+        "research extraction neutralizes Tr 1/2 for advances only; stroke paint semantics remain unsupported",
         "wrap overflow: no additional baseline is authorised",
         "3 ink envelopes outside fixed box",
-        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 106.680 vs body 86.640 pt; geometry alone is not RegionProof",
         "identity-control native source x max 0.000106 pt"
       ],
       "pdf_advance_max": 0.0,
@@ -714,7 +729,7 @@
       "native_identity_control_x_max": 0.0000641298560708492,
       "native_stationary_x_max": 0.0000641298560708492,
       "notes": [
-        "indented first slot 81.775 vs 70.866 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 81.775 vs body 70.866 pt; geometry alone is not RegionProof",
         "15 source lines exceed Stage-5 eight-line cap",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
         "identity-control native source x max 0.000064 pt"
@@ -776,7 +791,7 @@
       "native_stationary_x_max": 1.5258789005656581e-6,
       "notes": [
         "wrap overflow: no additional baseline is authorised",
-        "indented first slot 81.775 vs 70.866 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 81.775 vs body 70.866 pt; geometry alone is not RegionProof",
         "15 source lines exceed Stage-5 eight-line cap",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
         "wrap uses inferred gap spaces: §4.6 would refuse",
@@ -838,7 +853,7 @@
       "native_identity_control_x_max": 0.0000641298560708492,
       "native_stationary_x_max": 0.0000641298560708492,
       "notes": [
-        "indented first slot 81.775 vs 70.866 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 81.775 vs body 70.866 pt; geometry alone is not RegionProof",
         "15 source lines exceed Stage-5 eight-line cap",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
         "identity-control native source x max 0.000064 pt"
@@ -902,7 +917,7 @@
       "notes": [
         "wrap overflow: no additional baseline is authorised",
         "1 ink envelopes outside fixed box",
-        "indented first slot 81.775 vs 70.866 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 81.775 vs body 70.866 pt; geometry alone is not RegionProof",
         "15 source lines exceed Stage-5 eight-line cap",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
         "wrap uses inferred gap spaces: §4.6 would refuse",
@@ -972,7 +987,7 @@
       "notes": [
         "wrap overflow: no additional baseline is authorised",
         "2 ink envelopes outside fixed box",
-        "indented first slot 81.775 vs 70.866 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 81.775 vs body 70.866 pt; geometry alone is not RegionProof",
         "15 source lines exceed Stage-5 eight-line cap",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
         "wrap uses inferred gap spaces: §4.6 would refuse",
@@ -1073,7 +1088,7 @@
       ],
       "native_comparison_scope": "prefix-only",
       "native_identity_control_x_max": 0.00015088499071680417,
-      "native_stationary_x_max": 4.444451576546271e-6,
+      "native_stationary_x_max": 4.444451562335416e-6,
       "notes": [
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
         "wrap uses inferred gap spaces: §4.6 would refuse",
@@ -1163,7 +1178,7 @@
       ],
       "native_comparison_scope": "prefix-only",
       "native_identity_control_x_max": 0.00015088499071680417,
-      "native_stationary_x_max": 4.444451576546271e-6,
+      "native_stationary_x_max": 4.444451562335416e-6,
       "notes": [
         "wrap overflow: no additional baseline is authorised",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
@@ -1212,7 +1227,7 @@
       ],
       "native_comparison_scope": "prefix-only",
       "native_identity_control_x_max": 0.00015088499071680417,
-      "native_stationary_x_max": 4.444451576546271e-6,
+      "native_stationary_x_max": 4.444451562335416e-6,
       "notes": [
         "wrap overflow: no additional baseline is authorised",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
@@ -1258,7 +1273,7 @@
       "native_identity_control_x_max": 0.2616198477748526,
       "native_stationary_x_max": 0.2616198477748526,
       "notes": [
-        "indented first slot 81.963 vs 72.000 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 81.963 vs body 72.000 pt; geometry alone is not RegionProof",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
         "remaining-source native source x drift 0.261620 pt exceeds 0.005 pt target",
         "identity-control native source x max 0.261620 pt exceeds 0.005 pt target"
@@ -1299,7 +1314,7 @@
       "notes": [
         "wrap overflow: no additional baseline is authorised",
         "3 ink envelopes outside fixed box",
-        "indented first slot 81.963 vs 72.000 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 81.963 vs body 72.000 pt; geometry alone is not RegionProof",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
         "wrap uses inferred gap spaces: §4.6 would refuse",
         "prefix-only native source x drift 0.044914 pt exceeds 0.005 pt target",
@@ -1339,7 +1354,7 @@
       "native_identity_control_x_max": 0.2616198477748526,
       "native_stationary_x_max": 0.2616198477748526,
       "notes": [
-        "indented first slot 81.963 vs 72.000 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 81.963 vs body 72.000 pt; geometry alone is not RegionProof",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
         "remaining-source native source x drift 0.261620 pt exceeds 0.005 pt target",
         "identity-control native source x max 0.261620 pt exceeds 0.005 pt target"
@@ -1380,7 +1395,7 @@
       "notes": [
         "wrap overflow: no additional baseline is authorised",
         "3 ink envelopes outside fixed box",
-        "indented first slot 81.963 vs 72.000 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 81.963 vs body 72.000 pt; geometry alone is not RegionProof",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
         "wrap uses inferred gap spaces: §4.6 would refuse",
         "prefix-only native source x drift 0.044914 pt exceeds 0.005 pt target",
@@ -1424,7 +1439,7 @@
       "notes": [
         "wrap overflow: no additional baseline is authorised",
         "2 ink envelopes outside fixed box",
-        "indented first slot 81.963 vs 72.000 pt: strict §4.5 refuses",
+        "first-line indent retained: first slot 81.963 vs body 72.000 pt; geometry alone is not RegionProof",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
         "wrap uses inferred gap spaces: §4.6 would refuse",
         "prefix-only native source x drift 0.044914 pt exceeds 0.005 pt target",

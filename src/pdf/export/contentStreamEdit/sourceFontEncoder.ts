@@ -225,6 +225,9 @@ export function createSourceFontEncoder(
   font: PDFDict,
 ): SourceFontEncoder | null {
   try {
+    // MMType1 still supplies PDF dictionary widths for placement, but its
+    // interpolation program cannot prove codes safe for overlay redraw.
+    if (font.lookupMaybe(PDFName.of("Subtype"), PDFName)?.decodeText() === "MMType1") return null;
     const info = contentFontInfo(font);
     if (!info.ok) return null;
 

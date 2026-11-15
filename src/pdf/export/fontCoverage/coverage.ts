@@ -1,3 +1,6 @@
+import { stage5Type1, rejectType1 } from './type1Support';
+import type { Type1Options } from './type1Support';
+import { fillType1Coverage, recordType1Error } from './type1Mapping';
 import { parseCMap } from './cmap';
 import { glyphUnicode, simpleNames, standardBuiltIn, standardFont } from './encodings';
 import { readProgram } from './program';
@@ -6,6 +9,12 @@ import type { EncodeOptions, EncodeResult, FontCoverage, FontInput } from './typ
 export type { FontCoverage, FontInput, EncodeOptions, EncodeResult } from './types';
 
 function encoder(report:FontCoverage,text:string,options:EncodeOptions={}):EncodeResult {
+  if(report.replacementDisabled)return {ok:false,reason:report.replacementDisabled,firstMissing:Array.from(text)[0]??'',offset:0};
+  if(text) {
+    const diagnostic=report.failures?.find(d=>d.code==='glyph-identity-conflict'&&d.cluster&&text.includes(d.cluster))
+      ??report.failures?.find(d=>!d.hex)??report.failures?.find(d=>d.cluster&&text.includes(d.cluster));
+    if(diagnostic)return {ok:false,reason:`${diagnostic.code}: ${diagnostic.detail}`,code:diagnostic.code,detail:diagnostic.detail,data:diagnostic.data,terminal:diagnostic.code!=='glyph-unavailable',firstMissing:diagnostic.cluster??Array.from(text)[0]??'',offset:diagnostic.cluster?text.indexOf(diagnostic.cluster):0};
+  }
   if(!text)return {ok:true,codes:[],bytes:new Uint8Array(),preferredApplied:!options.preferredCodes?.length};
   const byFirst=new Map<string,string[]>();
   for(const key of report.encodable.keys()) {const c=key[0]!;const values=byFirst.get(c) ?? [];values.push(key);byFirst.set(c,values);}
@@ -25,7 +34,7 @@ function encoder(report:FontCoverage,text:string,options:EncodeOptions={}):Encod
     }
     const firstMissing=new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text.slice(furthest))[Symbol.iterator]().next().value?.segment ?? '';
     const reason=report.missing.find(m=>m.cluster===firstMissing)?.reason ?? report.missing.find(m=>!m.code)?.reason ?? 'no verified source code for cluster';
-    return {ok:false,reason,firstMissing,offset:furthest};
+    return {ok:false,reason,firstMissing,offset:furthest,...(report.mappings?{code:'glyph-unavailable' as const,terminal:false}:{})};
   }
   const codes:Uint8Array[]=[];
   let preferredApplied=true;
@@ -44,21 +53,32 @@ function encoder(report:FontCoverage,text:string,options:EncodeOptions={}):Encod
 }
 /** Resolve Unicode → existing PDF codes only after independently verifying the
  * rendering code → glyph path. No shaping, font growth, or width calculation. */
-export function createFontCoverage(input:FontInput):FontCoverage {
+export function createFontCoverage(input:FontInput,options:Type1Options={}):FontCoverage {
   const baseFont=input.baseFont ?? '';
   const report:FontCoverage={subtype:input.subtype,baseFont,subsetTag:/^([A-Z]{6})\+/.exec(baseFont)?.[1] ?? null,
     encodingKind:typeof input.encoding==='string'?input.encoding:input.encoding?.cmap?'embedded CMap':input.encoding?.base ?? 'built-in',
     vertical:false,verification:'unverified',warnings:[],missing:[],codeToUnicode:new Map(),encodable:new Map(),glyphIds:new Map(),definedCodes:[],
     canEncode:(text,options)=>encoder(report,text,options)};
   try {
+    if(input.subtype==='MMType1')rejectType1('type1-ps-unsupported','MMType1 interpolation');
+    if(input.diagnostic)rejectType1(input.diagnostic.code,input.diagnostic.detail,input.diagnostic.data);
     if(input.error)throw new Error(input.error);
     if(!['Type1','MMType1','TrueType','Type0','Type3'].includes(input.subtype))throw new Error(`unsupported font subtype ${input.subtype}`);
     const type0=input.subtype==='Type0',type3=input.subtype==='Type3';
     const standard=!input.program && !type0 && !type3?standardFont(baseFont):undefined;
+    if(input.subtype==='Type1'&&!input.program&&!standard)rejectType1('font-program-missing','font program not embedded');
     const program=(!standard && !type3)?readProgram(input):undefined;
     report.verification=type3?'defined-type3':standard?'assumed-standard':'verified';
     if(standard)report.warnings.push('non-embedded standard font');
     if(type3)report.warnings.push('type3: encode only codes already defined in /CharProcs');
+    if(program?.kind==='type1'||(standard&&(options.standard14Afm??stage5Type1.standard14Afm))) {
+      fillType1Coverage(report,input,program?.kind==='type1'?program:undefined);
+      if(program?.kind==='type1'&&!(options.sourceReuse??stage5Type1.sourceReuse)){
+        report.replacementDisabled='Stage-5 Type1 source reuse is disabled';
+        report.verification='unverified';report.missing.unshift({reason:report.replacementDisabled});
+      }
+      return report;
+    }
     const builtIn=standard?standardBuiltIn(baseFont):program?.builtIn;
     const names=type0?new Map<number,string>():program?.symbolic && !program.cff?program.builtIn:simpleNames(input,builtIn);
     const unicodeMap=input.toUnicode===undefined?new Map<string,string>():parseCMap(input.toUnicode).unicode;
@@ -116,6 +136,7 @@ export function createFontCoverage(input:FontInput):FontCoverage {
     }
     for(const values of report.encodable.values())values.sort((a,b)=>a.length-b.length || codeHex(a).localeCompare(codeHex(b)));
   } catch(error) {
+    recordType1Error(report,error);
     report.encodable.clear();report.verification='unverified';
     report.missing.push({reason:error instanceof Error?error.message:String(error)});
   }

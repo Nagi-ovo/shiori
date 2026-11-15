@@ -784,8 +784,16 @@ type TextTrace = {
 type RegionProof = {
   sourceHash: string; dependencyHash: string; bt: number;
   kind: 'paragraph' | 'explicit-line-region'; box: Rect;
-  lineSlots: readonly { baseline: number; left: number; right: number }[];
+  // Every capacity uses its own left/right, never box.x / box.w.
+  lineSlots: readonly { baseline: number; left: number; right: number;
+    kind: 'observed' | 'explicit-blank' }[];
+  indent: { kind: 'flush' | 'first-line' | 'hanging'; amountPt: number;
+    emMultiple?: 1 | 2 }; // nonnegative displacement; emMultiple diagnostic only
+  leadingPt: number;
   owned: readonly SourceAddress[]; obstacleProofHash: string;
+  boundaryProofHash: string; scopeProofHash: string;
+  tjBoundaries: readonly { opIndex: number; itemIndex: number; value: number;
+    left: SourceAddress | null; right: SourceAddress | null }[];
   // Explicit-line-region is future caller intent, never an inferred margin.
 };
 type MovedGlyph = {
@@ -964,13 +972,24 @@ proof requires all of:
    two matching observed advances. Tolerance is min(0.25 pt,
    max(0.10 pt, 1% of physical leading)). No inference of an extra blank row
    merely from a large gap.
-3. Shared left origins within min(0.50 pt, max(0.25 pt, 0.025 em)); no first
-   line indent in the initial subset. At least two nonfinal line advance
-   endpoints share a right edge within min(1.0 pt, max(0.50 pt, 0.05 em)).
-   Set the right limit to the smaller matched edge and the left limit to
-   the larger matched left origin; validate every original and proposed ink
-   envelope inside them. A ragged final line may end earlier. A centered
+3. **Flush unit:** shared left origins within min(0.50 pt,
+   max(0.25 pt, 0.025 em)). **Indented unit:** the first line may have a
+   distinct left origin beyond that tolerance, while all remaining body
+   lines (including the ragged final line) share left origins within it.
+   Further right is `indent.kind = 'first-line'`; further left is `hanging`.
+   `amountPt` is the nonnegative difference between first left and the
+   conservative body left (the larger matched body origin). Every slot
+   records its own left: the first line's measured show origin for an indent,
+   the conservative body left thereafter; flush slots use the larger
+   matched origin. No other alternating/unique later-line indent is inferred.
+   At least two nonfinal line advance endpoints share a right edge within
+   min(1.0 pt, max(0.50 pt, 0.05 em)); take the smaller matched edge for
+   every slot's right limit. Validate original/proposed conservative ink
+   within the proven box; a ragged final line may end earlier. A centered
    caption, table cell or two aligned labels is not a paragraph proof.
+   A non-round indent is eligible: CJK 1 em / 2 em and the corpus's ~20 pt
+   at ~10 pt are examples, not a quantization rule. Optional `emMultiple`
+   diagnoses 1/2 em within min(0.5 pt, 0.05 em) without affecting eligibility.
 4. The box spans the conservative ink envelopes at the first/last known
    baselines, with ≤0.5 pt raster guard, entirely inside crop/clip bounds.
    Its vertical slots are the observed baselines plus **explicitly encoded
@@ -990,12 +1009,36 @@ or uncertain column/paragraph boundary refuses. An explicit future caller
 region must still pass ownership/obstacle/clip checks and stay inside one BT;
 it cannot bypass an unknown glyph or state.
 
-An indented-paragraph unit does **not** exist in this stage's eligibility
-subset. Mandatory negative fixture: three Chinese lines in one BT, same
-font/size/leading, first line left origin 24 pt to the right of the other
-two, with otherwise matching right edges. A wrap-proof request must refuse
-`reflow-paragraph-unproven`; it cannot use the later lines' left edge to
-pretend that the indent vanished. More indent idioms need a new scoped unit.
+The indented-paragraph unit is normative. Mandatory **positive** fixture:
+three Chinese lines in one BT, matching style/leading/right edges, first
+left 24 pt to the right of the two body lines. The proof records
+`first-line`, `amountPt: 24` and the first slot's actual narrower capacity.
+Add ~20 pt / 2 em and hanging-indent positives. The proof box may begin at
+the body left (or minimum conservative source ink), but first-line wrapping
+and occupancy must use `lineSlots[0].left/right`, never that overall box.
+A leading TJ displacement can encode the indent after a flush Tm; use the
+first actual show origin, not the pre-kern anchor. The sibling adversarial
+fixture must never produce a first slot using the
+body left: that would erase the indent and overstate capacity. Two-line
+candidates, inconsistent body indents, shifted later lines, tables/captions,
+column interleaving, unencoded large gaps and unknown scope/order/whitespace
+still refuse `reflow-paragraph-unproven`. Indents grant no extra baseline,
+right-edge growth or deletion compaction (§4.1), and earn no corpus credit
+without measured/native evidence (§7.2).
+
+R6's pure `detectParagraphRegion` seam consumes tokenized operators,
+per-item full before/after `TextTrace`, explicit line-anchor snapshots,
+conservative ink and revision-bound R1/R2 scene/boundary/semantic evidence,
+including explicit plain-prose (no inline math/superscript) evidence.
+It does not infer a non-table paragraph from alignment alone. The initial
+seam requires a first absolute Tm; subsequent Tm/Td/TD/T* anchors are checked
+against saved Tlm. Whole source string items are owned in monotonic order,
+including every original TJ number and its neighbouring source addresses;
+unexplained displacement or an unowned show is not proof. Blank slots need
+an actual position anchor inside the first/last nonempty ink box. Scope,
+scene and boundary hashes must be revalidated before use; today's reduced
+ShowTextState/coreQuad cannot manufacture those inputs. R6 exports all
+three integration flags false and stays disconnected from the planner.
 
 ### 4.6 Wrap and splice only the owned tail
 
@@ -1088,7 +1131,7 @@ Failure lists and tests precede code:
 | Trace/geometry unit | Nondefault Tc/Tw/Tz/TL/Ts, Tf=1 and Tf=240 matrix scaling, Tm/Td/TD/T*, q/Q, number-only TJ, earlier-painted later glyph, negative kern, independent BT/columns and unknown-advance barriers. |
 | Budget unit | Exactly-at and beyond every cap, 10 pt examples, zero eligible gaps, literal 0x20 versus CID space, CJK without spaces, existing negative tracking, trailing Tc, mixed fallback, rounding at 1e-7 overflow tolerance, conservative ink clearance. |
 | Shift unit | Rigid following suffix only under RegionProof; mandatory same-BT neighbour past the span with no supplied box stays at its exact old origin and exhausted spacing refuses reflow-spacing-limit. Explicit anchors, unowned neighbours, shorter gap preservation, empty/identity replacement, endpoint and relative show. |
-| Paragraph/wrap unit | Three-line proof versus two labels; mandatory indented Chinese fixture refuses reflow-paragraph-unproven. Any interleaved gs/color/q/Q/clip/unowned Tm refuses reflow-context-unsupported. TJ boundary numbers move with both strings; split nonzero boundary refuses. Ragged final line, wrong leading/style/edges, obstacles, exact bottom, NBSP/graphemes, inferred spaces and hard breaks. |
+| Paragraph/wrap unit | Three-line flush/first-line/hanging proofs versus two labels; 24 pt Chinese indent proves with its own first-slot capacity, while a sibling must never borrow the body left. ~20 pt/1 em/2 em/non-round positives; inconsistent later indents refuse reflow-paragraph-unproven. Any interleaved gs/color/q/Q/clip/unowned Tm refuses reflow-context-unsupported. TJ boundary numbers move with both strings; split nonzero boundary refuses. Ragged final line, wrong leading/style/edges, obstacles, exact bottom, NBSP/graphemes, inferred spaces and hard breaks. |
 | Native PDFium | Before/after/probe PDFs and independent predicted origins for moved glyphs; after a wrapped line exercise untouched Td/T* to detect Tlm damage; original backgrounds/overlapping vector fixtures, whitespace counts, same-font/fallback CJK. Exact outside-region raster comparison and Poppler extraction; qpdf clean. |
 | Corpus | The reference fixed run reproduces the baseline; record any tighter-rule regressions separately. O0 measures spacing-only fits among 208 overflows; until published, additional corpus credit is 0/0/0 (20.7% baseline), not an estimated fit count. All 71 known eightfold expansions stay refused. Explicit-box suffix-shift is a fixture target; no inferred-box/wrap credit. See §7.2. |
 
@@ -1109,18 +1152,21 @@ are prerequisites, not optional follow-up hardening.
 | R3 | R1, O1 | Numeric budget and scoped-spacing compiler for replacement only. Cap/word-code/trailing-spacing tests plus native fixed-slot fixture. |
 | R4 | R2, R3 | Same-line relative-show suffix movement inside an explicit/proven region; residual compensation and rejoin. Independent moved-origin native fixture. |
 | R5 | R4 | Owned absolute-anchor followers + saved Tlm reconstruction. Tm/Td/T* regression fixtures; unrepresentable rejoin refuses. |
-| R6 | R1, R2 | Paragraph detection/proof only. Positive and adversarial table/column/leading fixtures; no wrap enablement. |
+| R6 | R1, R2 | Paragraph detection/proof only, including flush, first-line and hanging indent units with per-line slots. Positive 24 pt/~20 pt CJK and hanging fixtures; adversarial stolen-first-capacity/body-pattern/table/column/leading/semantic fixtures. No wrap enablement. |
 | R7 | R5, R6 | Pure greedy token-to-existing-slot layout with Latin-space/Han breaks. Expected origins specified by hand; bottom/full/unsupported-break tests. |
 | R8 | R7, O1 | Surgical wrapped-tail emitter for one replacement and existing line slots. Native inserted-Tm, untouched next-line/Tlm and exact text/raster fixtures. |
 | R9 | R8 | Atomic multi-overlay ownership checks in existing adapter seam; stale/overlap/refused-hybrid tests. One native two-edit rollback scenario. UI controls remain a later unit. |
-| L1 | R1, B1 | Standalone Rust measured-cluster layout service + mandatory PDF widths/TJ adapter from §4.9. Hand-specified metric/break/kinsoku/overflow failures; unchanged advances and original boundary identity must survive. No writer or app dependency. |
+| L1 | R1, B1 | Standalone Rust measured-cluster layout service + mandatory PDF widths/TJ adapter from §4.9. Hand-specified flush/first-line/hanging slot origins plus metric/break/kinsoku/overflow failures; unchanged advances and original boundary identity must survive. No writer or app dependency. |
 | L2 | L1, R6, O1b | Versioned JSON/FFI adapter to feed R7 with proven slots and verified source/replacement codes. UTF-8/cluster round trips, stale proof and response validation; no production enablement before R8/O1b/W1. |
 
 Near-term pillar-2 success means spacing-only within the original slot and
-suffix-shift on an **explicit fixture RegionProof**, not a corpus paragraph
-recovery claim. R8 stops at the first precise refusal plus its red fixture;
-extra interleaved operators, boundary idioms or indentation handling are a
-new unit, not more work hidden inside an afternoon emitter task.
+suffix-shift on an **explicit fixture RegionProof**, plus standalone R6
+flush/first-line/hanging proofs and L1 slot consumption. These are fixture
+capabilities, not a corpus paragraph recovery claim. R8 stops at the first
+precise refusal plus its red fixture;
+extra interleaved operators and boundary idioms are new units, not more
+work hidden inside an afternoon emitter task. R8 must consume the R6 indent
+slots exactly; it must not implement a second indent detector.
 
 ### 4.9 Layout engine selection
 
@@ -1129,7 +1175,9 @@ for newly needed fallback clusters, unicode-linebreak 0.1.5 for candidate
 breaks, unicode-segmentation 1.12.0 for graphemes and unicode-bidi 0.3.18 as
 an unsupported-direction guard. Keep source-code clusters outside Unicode
 reshaping. A small greedy breaker uses PDF advances, conservative ink and
-the existing slots from `RegionProof`; no OS metrics or font discovery.
+the existing slots from `RegionProof`, including each first/body left/right
+and observed/explicit-blank baseline; no global-box capacity substitution,
+OS metrics or font discovery.
 
 The [comparison and evidence record](SPEC-stage5-layout-engine.md) covers
 cosmic-text, Parley/Skrifa/Swash, rustybuzz plus Unicode components,
@@ -1932,10 +1980,11 @@ Assumptions:
 
 Inventory: 208 overflow + 7 reflow-required. Near-term tests target
 spacing-only inside the original slot and suffix shift on an **explicit
-fixture RegionProof**. There is no indented-paragraph unit and no proven
-corpus region inventory. The three-line indented Chinese fixture must
-refuse `reflow-paragraph-unproven`; the existing seven Chinese line-count
-mismatches earn no speculative wrap credit.
+fixture RegionProof**, together with R6 flush/first-line/hanging proofs and
+L1 consumption of those per-line slots. The commissioned indented-paragraph
+unit in §4.5 now proves the three-line 24 pt Chinese fixture while preserving
+the narrower first slot; this is not a proven corpus region inventory. The
+existing seven Chinese line-count mismatches earn no speculative wrap credit.
 
 The saved JSON records original/replacement strings and refusal detail,
 **not the encoded advances, per-gap budgets, available slot or ink clearance**.
@@ -1974,9 +2023,10 @@ Revised targets and assumptions:
   explicit fixture box proves suffix-shift behavior, not that real corpus
   selections already have such authorized boxes.
 - Once O0 is published, replace withheld credit only with identified rows
-  that fit without wrap and pass native checks. Any later indented-paragraph
-  capability is a separate unit and new forecast, not retroactive permission
-  to weaken §4.5 or accept deliberate eightfold expansions.
+  that fit without wrap and pass native checks. R6 indent fixture success
+  alone is no measured wrap gain: corpus recovery needs its own inventory
+  and native gate, never permission to weaken §4.5 or accept deliberate
+  eightfold expansions.
 
 ### 7.3 Pillar 3: fill-state subset; Form credit pending X1
 
@@ -2125,8 +2175,8 @@ These do not block implementation of the read-only/schema units:
 2. O0/R1 inventory: how many of 208 overflow rows demonstrably fit spacing-only
    inside the original slot under every cap and clearance, particularly
    Chinese's 41 and LaTeX's 84 non-eightfold candidates? This count is unknown
-   and withheld from §7. R6 has no indented-paragraph unit; the seven Chinese
-   line-count mismatches likewise earn no wrap credit.
+   and withheld from §7. R6 now models indented-paragraph slots, but the seven
+   Chinese line-count mismatches still earn no unmeasured wrap credit.
 3. X1 inventory: do the 14 loose Form classifications identify actual selected
    text-bearing Do paths or unrelated page XObjects? How many have
    structural/group/resource-chain blockers? All Form gain credit remains
@@ -2168,7 +2218,7 @@ codes by `glyph-identity-conflict` and `layout-metrics-disagreement`.
 | P0-3 inherited Form resources | §§5.3–5.5 snapshot/materialize the full effective chain, check full-chain collisions and same-object lookup for every unchanged resource operator. No-Resources inherited-font-plus-image fixture checks the edited invocation. |
 | P0-4 unproved shift | §§4.2–4.4 require finite-edge/clearance/owned-follower RegionProof before movement/wrap; only spacing inside the original slot can recover without it. No-box neighbour fixture stays unmoved with reflow-spacing-limit. |
 | P1-5 wrap range/kerns | §4.6 permits only a contiguous range of Tj/TJ, Td/TD/T* and explicitly replayed line-anchor Tms. Other operators refuse; TJ numbers stay on their two-string boundary; unowned bytes replay exactly. |
-| P1-6 indented paragraphs/gains | §§4.5, 4.7, 4.8 and 7.2 add the indented Chinese refusal fixture, restrict near-term targets to spacing-only + explicit-box suffix fixtures, withdraw unmeasured 2%-fit/wrap credit and keep all 71 known eightfold cases refused. |
+| P1-6 indented paragraphs/gains | §§4.5, 4.7, 4.8 and 7.2 now include the commissioned flush/first-line/hanging units: Chinese 24 pt proof preserves its narrower first slot; stolen-capacity/inconsistent-body adversaries refuse. Near-term proof/slot fixtures earn no unmeasured wrap credit; all 71 known eightfold cases stay refused. |
 | P1-7 tagged/Form/OCR | §7 caps tagged at 0/12/12 and Form at 0/0/0 pending subtype/invocation counts. §5.2 defines Tr3/alpha0/earlier-opaque-image visibility refusals independent of corpus category. |
 | P1-8 Type1 width units | §3.2 compares charstring width directly to /Widths in character space, tolerance ≤1, with no FontMatrix conversion or program-width substitution. Explicit 600/600, 600/601 and 600/602 tests. |
 | P1-9 symbolic zero | §3.5 separates unmapped/explicit GID0/nonzero results; any consulted explicit zero or conflicting nonzero refuses symbolic-cmap-ambiguous. Adjacent alias/zero regression fixtures are required. |
@@ -2182,8 +2232,9 @@ codes by `glyph-identity-conflict` and `layout-metrics-disagreement`.
 
 No review finding is deliberately discarded. Deliberately **not retained**
 are the old speculative paragraph/Form gains and an unmeasured spacing fit
-count. cm hull support, indented paragraphs, stroke and MM interpolation are
-not silently added to this pass. O0/F1/X1 diagnostic runs and native
+count. The commissioned indent unit is explicit in §§4.5/4.8; cm hull
+support, stroke and MM interpolation are not added to this pass. O0/F1/X1
+diagnostic runs and native
 implementation fixtures remain future implementation work; this task edits
 the specification/status only and claims no new production acceptance or
 runtime test results.
@@ -2203,8 +2254,9 @@ ranges and constrain hashes, handles, Tz, Tw and boundary splittability.
 The regenerated research report quotes the fixed token-index-8 Chinese
 insertions, identifies heuristic inferred gap/soft-join spaces (cleared of
 copied source glyph identity/proof), and carries the identity-control native
-error into every edit row. Row notes identify indentation, the eight-line
-cap, unsupported punctuation breaks and inferred-space wrapping. The
-extractor's fixed two-column x clipping is explicit. The engine choice is
-unchanged; §6 and §7 remain byte-identical to the pre-revision text, and no
-prototype result earns production acceptance credit or enables reflow.
+error into every edit row. Row notes identify preserved indent capacities
+without a RegionProof, the eight-line cap, unsupported punctuation breaks
+and inferred-space wrapping. The extractor's fixed two-column x clipping is explicit. The engine choice is
+unchanged; that layout-engine revision left §§6/7 unchanged. The later
+commissioned indent unit explicitly amends §7.2 above. No prototype result
+earns production acceptance credit or enables reflow.

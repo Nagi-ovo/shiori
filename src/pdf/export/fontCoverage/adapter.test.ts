@@ -28,3 +28,12 @@ test('Form resources are discovered without looping over recursive forms',async(
   const fonts=collectFontCoverage(doc);
   expect(fonts).toHaveLength(1); expect(fonts[0]!.resources).toEqual([{page:1,name:'Inner',path:['Form']}]);
 });
+
+test('raw FontFile segment lengths, widths and matrices reach pure Type1 proof',async()=>{
+  const {tinyType1}=await import('./fixtures/type1');const {fontCoverageFromDict}=await import('./pdfLibAdapter');
+  const f=tinyType1(),doc=await PDFDocument.create(),ctx=doc.context;
+  const font=ctx.obj({Type:'Font',Subtype:'Type1',BaseFont:'Tiny',FirstChar:65,LastChar:66,Widths:[600,600],
+    ToUnicode:ctx.register(ctx.flateStream('2 beginbfchar <41> <0041> <42> <0042> endbfchar')),
+    FontDescriptor:ctx.obj({FontFile:ctx.register(ctx.flateStream(f.program,{Length1:f.length1,Length2:f.length2,Length3:f.length3}))})});
+  expect(fontCoverageFromDict(font,{sourceReuse:true}).canEncode('A')).toMatchObject({ok:true});
+});

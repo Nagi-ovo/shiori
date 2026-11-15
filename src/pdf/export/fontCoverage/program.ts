@@ -1,4 +1,6 @@
 import fontkit from '@pdf-lib/fontkit';
+import { readType1Program } from './type1Program';
+import { rejectType1 } from './type1Support';
 import { cffEncodingOffset } from './cffEncodingOffset';
 import type { Font } from '@pdf-lib/fontkit';
 import { glyphUnicode, macOsNames, standardNames } from './encodings';
@@ -46,10 +48,11 @@ function lookup(t:CmapTable,cp:number):number {
   throw new Error(`unsupported TrueType cmap format ${t.version}`);
 }
 export function readProgram(input:FontInput) {
+  if(input.subtype==='MMType1')rejectType1('type1-ps-unsupported','MMType1 interpolation');
   if(!input.program)throw new Error('font program not embedded');
   const raw=input.program;
   const isRawCff=raw[0]===1 && raw[2]!>=4;
-  if(input.programKind==='FontFile' || raw[0]===0x25 || raw[0]===0x80)throw new Error('unsupported Type1 font program');
+  if(input.programKind==='FontFile' || raw[0]===0x25 || raw[0]===0x80)return readType1Program(input);
   const data=isRawCff?wrapCff(raw):raw;
   if(data.length<12)throw new Error('malformed font program: truncated header');
   const view=new DataView(data.buffer,data.byteOffset,data.byteLength),count=view.getUint16(4);
@@ -152,5 +155,5 @@ export function readProgram(input:FontInput) {
     if(b-a<10)return 'truncated glyf entry';
     void font.getGlyph(gid).path;
   };
-  return {numGlyphs,symbolic,cff:!!cff,cid:!!cff?.isCIDFont,builtIn,simpleGid,cidGid:(cid:number)=>cidToGid.get(cid) ?? 0,presence};
+  return {kind:'fontkit' as const,numGlyphs,symbolic,cff:!!cff,cid:!!cff?.isCIDFont,builtIn,simpleGid,cidGid:(cid:number)=>cidToGid.get(cid) ?? 0,presence};
 }

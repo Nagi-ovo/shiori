@@ -41,6 +41,8 @@ export type ExportQuality = "original" | "standard" | "compact";
 export type DocumentFilesPolicy = "auto" | "preserve" | "omit";
 
 export type ExportOptions = {
+  /** Measurement opt-in only; production Type1/AFM defaults stay disabled. */
+  stage5Type1?: import("./fontCoverage/type1Support").Type1Options;
   /** Font byte loader for non-Vite callers (CLI/corpus); same verified writer. */
   inPlaceFallback?: import("./contentStreamEdit/fallbackFont").FallbackOptions;
   mode?: ExportMode;

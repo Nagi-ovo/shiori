@@ -256,7 +256,10 @@ export async function rebuildPdf(
     inserted.setRotation(degrees(page.rotation));
     let pageOverlays = overlaysForPdfPage(page, exportedOverlays);
     if (mode !== "none") {
-      const edits = await applyContentTextEdits(inserted, pageOverlays, options.inPlaceFallback);
+      const edits = await applyContentTextEdits(inserted, pageOverlays, {
+        ...options.inPlaceFallback,
+        stage5Type1: options.stage5Type1,
+      });
       contentTextOutcomes.push(...edits.outcomes);
       pageOverlays = [...edits.remaining];
     }

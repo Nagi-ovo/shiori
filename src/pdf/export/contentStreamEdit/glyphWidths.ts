@@ -1,3 +1,8 @@
+import { fontInputFromDict } from '../fontCoverage/pdfLibAdapter';
+import { resolveStandardMetrics } from '../fontCoverage/standardMetrics';
+import { createFontCoverage } from '../fontCoverage/coverage';
+import { stage5Type1 } from '../fontCoverage/type1Support';
+import type { Type1Options, Type1Diagnostic } from '../fontCoverage/type1Support';
 // Font metrics for the glyph-removal export pass: advance widths, vertical
 // extent, and code layout, read from the PDF font dictionaries only — glyph
 // advance data lives in /Widths (simple fonts) or the descendant's /W + /DW
@@ -14,6 +19,7 @@ import { PDFArray, PDFName, PDFNumber, PDFRef } from "pdf-lib";
 
 export type ContentFontInfo = {
   ok: true;
+  verification?: 'verified' | 'assumed-standard';
   // How many bytes one glyph code occupies in show strings. 1 for simple
   // fonts; 2 for Type0/Identity-H (code == CID).
   bytesPerCode: 1 | 2;
@@ -28,7 +34,7 @@ export type ContentFontInfo = {
   appliesWordSpacing: boolean;
 };
 
-export type UnsupportedFont = { ok: false; reason: string };
+export type UnsupportedFont = { ok: false; reason: string; diagnostic?: Type1Diagnostic };
 
 const DEFAULT_ASCENT_EM = 0.8;
 const DEFAULT_DESCENT_EM = -0.2;
@@ -84,7 +90,7 @@ function simpleFontInfo(font: PDFDict): ContentFontInfo | UnsupportedFont {
     const raw = widthsRaw.get(i);
     const resolved = raw instanceof PDFRef ? font.context.lookup(raw) : raw;
     const value = numberValue(resolved);
-    if (value === null) return { ok: false, reason: "malformed /Widths entry" };
+    if (value === null || !Number.isFinite(value)) return { ok: false, reason: "malformed /Widths entry" };
     widths.push(value);
   }
   const metrics = descriptorMetrics(lookup(font, "FontDescriptor"));
@@ -193,8 +199,28 @@ function type0FontInfo(font: PDFDict): ContentFontInfo | UnsupportedFont {
 
 export function contentFontInfo(
   font: PDFDict,
+  options: Type1Options = {},
 ): ContentFontInfo | UnsupportedFont {
   const subtype = nameValue(lookup(font, "Subtype"));
+  if(subtype === 'Type1' && ((options.sourceReuse ?? stage5Type1.sourceReuse) || (options.standard14Afm ?? stage5Type1.standard14Afm))) {
+    const input=fontInputFromDict(font);
+    if(input.error)return {ok:false,reason:input.error};
+    const raw=input.program,rawType1=raw&&(input.programKind==='FontFile'||raw[0]===0x25||raw[0]===0x80);
+    if(rawType1&&(options.sourceReuse??stage5Type1.sourceReuse)) {
+      const coverage=createFontCoverage(input,{...options,sourceReuse:true});
+      const bad=coverage.failures?.find(d=>!d.hex||d.code==='font-metrics-conflict'||d.code==='font-metrics-missing');
+      if(bad)return {ok:false,reason:`${bad.code}: ${bad.detail}`,diagnostic:bad};
+      return simpleFontInfo(font);
+    }
+    if(!raw&&(options.standard14Afm??stage5Type1.standard14Afm)) {
+      const afm=resolveStandardMetrics(input);
+      if(afm&&lookup(font,'Widths')===undefined) {
+        const metrics=descriptorMetrics(lookup(font,'FontDescriptor'));
+        return {ok:true,bytesPerCode:1,appliesWordSpacing:true,ascentEm:metrics.ascentEm,descentEm:metrics.descentEm,
+          verification:'assumed-standard',widthOf:code=>afm.widthOf(code)??NaN};
+      }
+    }
+  }
   switch (subtype) {
     case "Type1":
     case "MMType1":

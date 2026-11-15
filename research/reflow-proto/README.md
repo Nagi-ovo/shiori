@@ -65,6 +65,8 @@ font registration and shipping feature/license audits remain later gates.
 | `extract.ts` | Read-only pdf-lib adapter using existing source-width, source-code/coverage and placement modules, plus independent native PDFium origins/ink. Dumps raw embedded programs; never changes PDF bytes. |
 | `prepare.py` | Hard-coded paragraph anchors, source lines/slots and box frozen before edits. Infers gap spaces at `gap > 0.12 * size` and 0.25 em soft-join spaces for lines not ending in `-`; clears source/code/GID/native-origin/Unicode proof on those spaces. No manual whitespace reconstruction or RegionProof. |
 | `src/metrics.rs` | Source-code metric adapter, verified embedded-code/GID reuse, HarfRust shaping for new fallback clusters, program-width and outline-box diagnostics. |
+| `src/measured.rs` | Standalone L1 measured-token breaker, per-slot left/right/baselines, source-gap preservation, direction/finite-input checks, no origins for overflow rows. Its UAX14 set remains diagnostic; production whitelist/codec/native gates are pending. |
+| `src/measured_tests.rs` | Hand-specified flush/first-line/hanging wrap and origin checks, PDF-width/gap influence, overflow/invalid-input/RTL failures. |
 | `src/layout.rs` | Greedy UAX14/grapheme/prohibition-filter diagnostic layout in the frozen slots, deletion/identity controls, required overflow-line counts and direction guard. |
 | `report.py` | Every case in Markdown/summary JSON; original-source provenance; six box-debug PNGs; no edited text raster. |
 | `artifacts/metrics.json` | All 30 case summaries, exact output visual lines, length deltas, errors, fallback counts, failed outcomes and controlled prohibition probes. |
@@ -86,7 +88,8 @@ refinement diagnostics paragraph, the reviewer benchmark's corpus paragraph,
 and the EHR paper's short natural-language-description paragraph. The first
 arXiv selection has 15 source lines and deliberately remains a recorded
 failure of the eight-line Stage-5 eligibility cap. Indented Chinese slots are
-kept exactly; §4.5 would refuse them, not erase the indent. Known foreign-script
+kept exactly, as required by the new §4.5 indent unit; manually selecting
+these slots does not supply a paragraph/scene proof. Known foreign-script
 labels, inferred English spaces/hyphens, unverified fonts, mixed state or
 missing native matches are also not silently promoted to editable proofs.
 
@@ -101,7 +104,9 @@ Column selection is also explicit research input: `extract.ts` drops
 `arxiv-2611.17053` glyphs with `x > 310 pt`. This manual left-column x filter
 is not an obstacle/paragraph proof or a PDF clip; exclusion counts regenerate
 in `samples.json`. All three Chinese samples and these two arXiv samples
-are indented and fail strict §4.5. Education's insert additionally breaks
+are indented; §4.5 now models those capacities, while their other proof
+requirements remain unmet by this diagnostic runner. Education's insert
+additionally breaks
 after `·`/`。` outside §4.6; `.17052` insert wraps on inferred gap spaces;
 the 15-line `.17030` deletion is one of the geometric fits but exceeds the
 eight-line cap.
@@ -148,3 +153,27 @@ No production test/UI/planner/export code or §7 arithmetic is changed.
 
 All hand-written source files stay below 20,000 bytes. No code was committed
 or pushed; dispatcher owns the git index as required by BRIEF.md.
+
+The research extractor neutralizes Tr 1/2 only for numeric advances after
+the shared production walker began refusing strokes. Per-sample
+`stroke_geometry_only_ops` counts and row notes expose this diagnostic
+adaptation. Stroke ink/paint semantics remain uncertified.
+
+## L1 checks and integration boundary
+
+```sh
+. "$HOME/.cargo/env"
+cargo test --locked --manifest-path research/reflow-proto/Cargo.toml
+cargo fmt --manifest-path research/reflow-proto/Cargo.toml --check
+cargo clippy --locked --manifest-path research/reflow-proto/Cargo.toml -- -D warnings
+```
+
+`break_measured(tokens, slots)` consumes measured PDF advances and relative
+ink, retaining gaps only between consecutive source identities. It returns
+ranges and `Option<[x,y]>` origins for authorized slots; diagnostic overflow
+rows have no origin. `src/lib.rs` exposes this standalone research seam.
+The full §4.9 request/response codec, whitelist/kern ownership proof, platform
+bindings and native saved-PDF oracle are L2/R7/R8 work. No production caller
+or wrapping flag is enabled. The Type1 integration hook remains the extractor's
+per-code `width1000`/source font records: Rust never parses Type1 or discovers
+fonts. Independent native identity drift is retained for every sample.

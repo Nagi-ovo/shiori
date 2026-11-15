@@ -1,3 +1,5 @@
+// Measurement opt-in: SHIORI_STAGE5_TYPE1_SOURCE_REUSE=1 bun scripts/pdf-corpus/run.ts
+// Standard-14 AFM remains disabled pending its native gate.
 import {PDFDocument} from 'pdf-lib';
 import {readFile,mkdir,writeFile,readdir,rm} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
@@ -11,6 +13,7 @@ import {auditCorpusSample} from './oracle';
 import {markdownReport,summarize,type CorpusRow} from './report';
 import {exportPdf} from '../../src/pdf/export/exportPdf';
 import type {PageModel} from '../../src/pdf/model/types';
+const stage5Type1=process.env.SHIORI_STAGE5_TYPE1_SOURCE_REUSE==='1'?{sourceReuse:true}:undefined;
 const started=performance.now(),out=resolve('test-artifacts/pdf-corpus');await rm(join(out,'samples'),{recursive:true,force:true});await mkdir(join(out,'samples'),{recursive:true});
 const native=openPdfium(resolve(process.env.SHIORI_PDFIUM_DIR??'vendor/pdfium/linux-x64/lib','libpdfium.so'));
 const allEntries=await readManifest(),entries=process.env.CORPUS_CATEGORY?allEntries.filter(e=>e.category===process.env.CORPUS_CATEGORY):allEntries,limit=Number(process.env.CORPUS_LIMIT??entries.length),pageLimit=Number(process.env.CORPUS_PAGES??5);
@@ -30,7 +33,7 @@ try{
    const cases=editMatrix(one.originalText).map(e=>({edit:{...one,text:e.text},kind:e.kind}));
    if(entry.category==='chinese'){
     const content=inspectRunPage(target);
-    const missing=content.ok?missingHanEdit(content.bytes,resolveRunFonts(target),one):null;
+    const missing=content.ok?missingHanEdit(content.bytes,resolveRunFonts(target,stage5Type1),one):null;
     if(missing)cases.push({edit:{...one,text:missing.text},kind:missing.kind});
     else skips.push({id:entry.id,page:pageIndex,reason:'no-provable-missing-han-target'});
    }
@@ -40,20 +43,20 @@ try{
     const start=performance.now();
     try{
      const fallbackFonts:string[]=[];
-     const result=await exportPdf(before,{pages:[page],overlays:[c.edit]},{mode:'flatten',unicodeFontBytes:sc,unicodeJpFontBytes:jp,
+     const result=await exportPdf(before,{pages:[page],overlays:[c.edit]},{mode:'flatten',stage5Type1,unicodeFontBytes:sc,unicodeJpFontBytes:jp,
       inPlaceFallback:{loadFont:name=>{fallbackFonts.push(name);return readFile(name.endsWith('.ttf')?`node_modules/@docx-editor.dev/fonts/assets/${name}`:`src/assets/fonts/${name}`);}}});
      const outcome=result.contentTextOutcomes?.[0];if(!outcome)throw Error('missing production overlay outcome');
      const row:CorpusRow={id:entry.id,category:entry.category,page:pageIndex,kind:c.kind,original:c.edit.originalText,text:c.edit.text,ms:performance.now()-start,outcome,...(fallbackFonts.length?{fallbackFonts}: {})};
      rows.push(row);
      // Preserve independent saved inputs for the native sample pass.
      if(outcome.mode!=='overlay' && (c.kind==='missing-han' || !rows.slice(0,-1).some(r=>r.id===entry.id && r.outcome.mode===outcome.mode))){
-      const name=`${entry.id}-${pageIndex}-${c.kind}`;await writeFile(join(out,'samples',`${name}.before.pdf`),before);await writeFile(join(out,'samples',`${name}.after.pdf`),result.bytes);await writeFile(join(out,'samples',`${name}.edit.json`),JSON.stringify({page,overlay:c.edit,row},null,2));
+      const name=`${entry.id}-${pageIndex}-${c.kind}`;await writeFile(join(out,'samples',`${name}.before.pdf`),before);await writeFile(join(out,'samples',`${name}.after.pdf`),result.bytes);await writeFile(join(out,'samples',`${name}.edit.json`),JSON.stringify({page,overlay:c.edit,row,stage5Type1},null,2));
      }
     }catch(error){throw new Error(`Corpus export failed: ${entry.id}/${pageIndex}/${c.kind}`,{cause:error});}
    }
    console.log(entry.id,pageIndex,summarize(rows.filter(r=>r.id===entry.id)));
   }
-  const report={categories:[...new Set(entries.slice(0,limit).map(e=>e.category))],files:Math.min(limit,entries.length),elapsedMs:performance.now()-started,rows,skips,oracle,summary:summarize(rows)};
+  const report={stage5Type1,categories:[...new Set(entries.slice(0,limit).map(e=>e.category))],files:Math.min(limit,entries.length),elapsedMs:performance.now()-started,rows,skips,oracle,summary:summarize(rows)};
   await writeFile(join(out,'report.json'),JSON.stringify(report,null,2));await writeFile(join(out,'report.md'),markdownReport(report));
  }
  const candidates=[];
@@ -61,10 +64,10 @@ try{
  candidates.sort((a,b)=>a.metadata.row.category.localeCompare(b.metadata.row.category)||Number(b.metadata.row.kind==='missing-han')-Number(a.metadata.row.kind==='missing-han')||a.metadata.row.outcome.mode.localeCompare(b.metadata.row.outcome.mode)||a.file.localeCompare(b.file));
  for(const {file,metadata} of candidates.slice(0,16)){
   const name=file.replace('.edit.json','');
-  try{const checked=await auditCorpusSample(native,name,join(out,'samples'),metadata.overlay);oracle.push(checked);console.log('oracle passed',name);}
+  try{const checked=await auditCorpusSample(native,name,join(out,'samples'),metadata.overlay,metadata.stage5Type1);oracle.push(checked);console.log('oracle passed',name);}
   catch(error){oracle.push({name,passed:false,error:String(error)});process.exitCode=1;console.error('P0 accepted edit failed native oracle',name,String(error));}
  }
- const report={categories:[...new Set(entries.slice(0,limit).map(e=>e.category))],files:Math.min(limit,entries.length),elapsedMs:performance.now()-started,rows,skips,oracle,summary:summarize(rows)};
+ const report={stage5Type1,categories:[...new Set(entries.slice(0,limit).map(e=>e.category))],files:Math.min(limit,entries.length),elapsedMs:performance.now()-started,rows,skips,oracle,summary:summarize(rows)};
  await writeFile(join(out,'report.json'),JSON.stringify(report,null,2));await writeFile(join(out,'report.md'),markdownReport(report));
 }finally{native.close();}
 console.log('Report:',join(out,'report.md'));

@@ -70,7 +70,19 @@ try {
           ? 'not checked: research only, no embedding' : 'unknown' };
     }
     const states = new Map<string, ShowTextState>();
-    const walk = walkTextPlacements(ops, {
+    // Research geometry only: Tr 1/2 does not change advances. The shared
+    // production walker now refuses strokes; neutralize these operators ONLY
+    // for numeric extraction, record the loss of paint semantics explicitly,
+    // and never call the result a RegionProof or safe editable paragraph.
+    let strokeGeometryOnlyOps = 0;
+    const geometryOps = ops.map(op => {
+      if (op.operator !== 'Tr' || op.operands.length !== 1) return op;
+      const mode = op.operands[0];
+      if (mode?.kind !== 'number' || ![1, 2].includes(mode.value)) return op;
+      strokeGeometryOnlyOps++;
+      return { ...op, operands: [{ kind: 'number' as const, value: 0 }] };
+    });
+    const walk = walkTextPlacements(geometryOps, {
       resolveFont: name => fonts.find(f => f.resourceName === name) ?? null,
       onShow: s => states.set(`${s.opIndex}/${s.arrayItemIndex}`, s),
       extGStateSetsFont: () => false, // Research extraction only; no safety proof.
@@ -120,6 +132,7 @@ try {
     lines.sort((a, b) => b[0]!.y - a[0]!.y);
     for (const l of lines) l.sort((a, b) => a.x - b.x);
     results.push({ id, page: pageIndex + 1, hash, url: provenance.url, licence: provenance.licence,
+      strokeGeometryOnlyOps,
       columnClip: { maxOriginX, excludedGlyphs: columnClippedGlyphs },
       fonts: payloads, lines: lines.map((glyphs, index) => ({ index, text: glyphs.map(g => g.text).join(''),
         baseline: glyphs[0]!.y, left: glyphs[0]!.x, right: Math.max(...glyphs.map(g => g.x + g.advance)), glyphs })) });

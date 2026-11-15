@@ -3,6 +3,7 @@ import {textObjectScopes,followsUnplaced,type RunEnvironment} from './textSafety
 // Pure decoded-content compiler. The caller resolves fonts from the same
 // immutable PDF revision. No page dictionaries or PDF writer types enter here.
 import type { EncodeOptions, EncodeResult } from '../fontCoverage/types';
+import type { Type1Diagnostic } from '../fontCoverage/type1Support';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { ContentStreamParseError, tokenizeContentStream } from './tokenizer';
 import { walkTextPlacements, type ShowTextState } from './textState';
@@ -20,6 +21,9 @@ export type ResolvedRunFont = {
   // Synchronous verified encoder resolved from this font object/revision.
   // Missing coverage refuses; page usage and ToUnicode are never evidence.
   canEncode?: (text: string, options?: EncodeOptions) => EncodeResult;
+  // Validate addressed source identities before deletion or permutation can
+  // bypass canEncode. The resolver binds this proof to the same font revision.
+  assertSource?: (codes: readonly Uint8Array[]) => void;
 };
 export type RunEdit = {
   fontResource: string;
@@ -44,7 +48,7 @@ export type RunPlan = RunEnvironment & {
   // Resolved /Properties key lists; missing/null named entries are unsafe.
   markedContentProperties?: ReadonlyMap<string, readonly string[] | null>;
 };
-export type Refusal = { ok: false; reason: string; code?:RunRefusalCode; firstMissing?: string; offset?: number };
+export type Refusal = { ok: false; reason: string; code?:RunRefusalCode; firstMissing?: string; offset?: number; terminal?: boolean; diagnostic?: Type1Diagnostic };
 export type Overflow = { availablePt: number; neededPt: number };
 export type RunResult = ({ ok: true; bytes: Uint8Array } | (Refusal & { bytes: Uint8Array })) & { overflow?: Overflow };
 export function sourceFingerprint(bytes: Uint8Array): string {
@@ -66,6 +70,7 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
       resourceNames.add(fallback.resourceName);
     }
     const states = new Map<string, ShowTextState>();
+    const unplacedReasons = new Map<number, string>();
     const unplaced:number[]=[];const scopes=textObjectScopes(ops);
     const walk = walkTextPlacements(ops, {
       resolveFont: name => {
@@ -73,7 +78,7 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
         return f ? { ...f, ok: true, appliesWordSpacing: f.bytesPerCode === 1 } : {ok:false,reason:'unsupported source font'};
       },
       extGStateSetsFont:name=>plan.extGStates?.get(name)?.setsFont??null,
-      onUnplaced:state=>unplaced.push(state.opIndex),
+      onUnplaced:state=>{unplaced.push(state.opIndex);if(state.reason)unplacedReasons.set(state.opIndex,state.reason);},
       onShow: state => states.set(`${state.opIndex}:${state.arrayItemIndex}`, state),
     });
     if (!walk.ok) return refuse(walk.reason);
@@ -125,6 +130,8 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
       const key = `${edit.opIndex}:${edit.itemIndex}`;
       const siblings = grouped.get(key) ?? [];
       siblings.push(edit); grouped.set(key, siblings);
+      const unplacedReason = unplacedReasons.get(edit.opIndex);
+      if(unplacedReason)return refuse(unplacedReason);
       if(followsUnplaced(scopes,unplaced,edit.opIndex))return refuse('target follows an unknown advance in its text object','font-unavailable');
       const op = ops[edit.opIndex];
       if (!op || !['Tj', 'TJ'].includes(op.operator)) return refuse('address is not a supported show operator');
@@ -141,6 +148,8 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
       // Empty shows still have font provenance via onShow.
       if (state.fontName !== edit.fontResource) return refuse('stale show font','stale-source');
       if (edit.byteStart % font.bytesPerCode || edit.byteEnd % font.bytesPerCode) return refuse('unaligned span codes');
+      font.assertSource?.(Array.from({length:edit.expected.length/font.bytesPerCode},(_,i)=>
+        edit.expected.slice(i*font.bytesPerCode,(i+1)*font.bytesPerCode)));
     }
     for (const edits of grouped.values()) {
       edits.sort((a,b) => a.byteStart - b.byteStart || a.byteEnd - b.byteEnd);
@@ -187,6 +196,7 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
     if(error instanceof ContentStreamParseError)return refuse(error.message);
     if(!(error instanceof RunCompileError))throw error;
     const detail=error as RunCompileError&Partial<Refusal>;
-    return {...refuse(error.message,error.code),...(detail.firstMissing!==undefined?{firstMissing:detail.firstMissing,offset:detail.offset}:{})};
+    return {...refuse(error.message,error.code),...(detail.firstMissing!==undefined?{firstMissing:detail.firstMissing,offset:detail.offset}:{}),
+      ...(detail.terminal!==undefined?{terminal:detail.terminal}:{}),...(detail.diagnostic?{diagnostic:detail.diagnostic}:{})};
   }
 }

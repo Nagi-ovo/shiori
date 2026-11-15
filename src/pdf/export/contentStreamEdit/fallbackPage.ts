@@ -5,20 +5,22 @@ import {RunCompileError} from './runRefusal';
 import { replaceRuns } from './replaceRun';
 import { pageRunPlan, type PageRunPlan } from './pageRunPlan';
 import { fallbackFontName, prepareFallback, type FallbackOptions } from './fallbackFont';
+import type { Type1Options } from '../fontCoverage/type1Support';
 
-export const replaceRunPageWithFallback=(page:PDFPage,plan:PageRunPlan,options:FallbackOptions={})=>runPage(page,plan,options,true);
-export const compileRunPageWithFallback=(page:PDFPage,plan:PageRunPlan,options:FallbackOptions={})=>runPage(page,plan,options,false);
-async function runPage(page:PDFPage,plan:PageRunPlan,options:FallbackOptions,install:boolean):Promise<PageRunResult&{usedFallback?:boolean}> {
+export type RunPageOptions = FallbackOptions & { stage5Type1?: Type1Options };
+export const replaceRunPageWithFallback=(page:PDFPage,plan:PageRunPlan,options:RunPageOptions={})=>runPage(page,plan,options,true);
+export const compileRunPageWithFallback=(page:PDFPage,plan:PageRunPlan,options:RunPageOptions={})=>runPage(page,plan,options,false);
+async function runPage(page:PDFPage,plan:PageRunPlan,options:RunPageOptions,install:boolean):Promise<PageRunResult&{usedFallback?:boolean}> {
   const source = inspectRunPage(page);
   if (!source.ok) return source;
   const originalResources = page.node.Resources();
   const originalContents = page.node.get(PDFName.of('Contents'));
   try {
     const resourceStamp = runResourceStamp(page);
-    const fonts = resolveRunFonts(page);
+    const fonts = resolveRunFonts(page, options.stage5Type1);
     const resolvedPlan = { ...pageRunPlan(plan), ...runPageEnvironment(page) };
     const initial = replaceRuns(source.bytes,fonts,resolvedPlan);
-    if(initial.ok || initial.code!=='font-coverage') {
+    if(initial.ok || initial.terminal || initial.code!=='font-coverage') {
       if (install && initial.ok && initial.bytes !== source.bytes) page.node.set(PDFName.of('Contents'),page.doc.context.register(page.doc.context.flateStream(initial.bytes)));
       return initial;
     }

@@ -4,6 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {PDFDocument,PDFDict,PDFName,PDFRawStream,PDFRef,decodePDFRawStream} from 'pdf-lib';
 import {createHash} from 'node:crypto';
 import {fontCoverageFromDict} from '../../src/pdf/export/fontCoverage/pdfLibAdapter';
+import type {Type1Options} from '../../src/pdf/export/fontCoverage/type1Support';
 import {notdefProbePdf} from '../pdf-inplace/notdefProbe';
 import {assertReplacementGlyphs,assertNativeReplacementGlyphs} from '../pdf-inplace/glyphEvidence';
 import type {openPdfium} from '../pdf-inplace/nativePdfium';
@@ -85,7 +86,7 @@ export function compareNativePages(before:Snapshot,after:Snapshot,edit:Edit){
  return{maxOriginDriftPt,changedPixels,changedPixelsOutsideBox,replacementGlyphs,replacementIndices};
 }
 const command=(name:string,args:string[])=>{const r=spawnSync(name,args,{encoding:'utf8'});assert.equal(r.status,0,`${name}: ${r.stdout}${r.stderr}`);return r.stdout;};
-export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,name:string,directory:string,edit:Edit){
+export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,name:string,directory:string,edit:Edit,stage5Type1:Type1Options={}){
  const beforePath=`${directory}/${name}.before.pdf`,afterPath=`${directory}/${name}.after.pdf`;
  const before=native.inspectPage(beforePath,0,true),after=native.inspectPage(afterPath,0,true);
  const checked=compareNativePages(before,after,edit);
@@ -107,7 +108,7 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
   const evidence=native.inspectPage(probe,0,true);assert(evidence.glyphs.every(p=>p.fontHash===hash),'native notdef probe font differs');probes.set(hash,evidence.glyphs);
  }
  const glyphEvidence=checked.replacementIndices.map(index=>{const g=actual[index]!,p=probes.get(g.fontHash!)!;
-  const id=objects.get(g.fontHash!)!.split(' ').map(Number),font=doc.context.lookup(PDFRef.of(id[0]!,id[1]!),PDFDict),coverage=fontCoverageFromDict(font),encoded=coverage.canEncode(g.text);
+  const id=objects.get(g.fontHash!)!.split(' ').map(Number),font=doc.context.lookup(PDFRef.of(id[0]!,id[1]!),PDFDict),coverage=fontCoverageFromDict(font,stage5Type1),encoded=coverage.canEncode(g.text);
   const code=encoded.ok?Array.from(encoded.bytes,b=>b.toString(16).padStart(2,'0')).join(''):'';
   return{unicode:g.text,replacement:true,glyphId:coverage.glyphIds.get(code),pathSegments:g.nativePath?.length??0,nativePath:g.nativePath??null,inkPixels:g.inkPixels??0,notdefProbes:p.map(x=>({scalar:x.text.codePointAt(0)!,path:x.nativePath??null}))};});
  assertNativeReplacementGlyphs(glyphEvidence);
@@ -115,7 +116,7 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
  for(let i=0;i<glyphEvidence.length;i++){
   const evidence=glyphEvidence[i]!,g=actual[checked.replacementIndices[i]!]!;
   if(evidence.glyphId!==undefined){assertReplacementGlyphs([evidence]);continue;}
-  // Type1 has no trusted program parser. A reused glyph still has an
+  // Type1 identities use glyph names, not GIDs. Reuse also requires an
   // independent native proof: same source font program, Unicode and full
   // outline as a real original glyph, plus the GID0 discriminator above.
   assert(before.glyphs.some(old=>old.text===g.text && old.fontHash===g.fontHash && JSON.stringify(old.nativePath)===JSON.stringify(g.nativePath)),'unverified replacement is not an existing native source glyph');
