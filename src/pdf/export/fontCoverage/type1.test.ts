@@ -107,3 +107,13 @@ test('mixed Subr/component depth shares one closure limit',()=>{
   const p=read({subrs,glyphs:{Z:root(0),A:root(9),B:widthChar(),acute:widthChar()}});
   expect(p.verify('Z')).toMatchObject({ok:false,code:'parser-budget-exceeded',data:{limit:'depth'}});
 });
+test('literal horizontal WMode is accepted while vertical WMode stays unsupported',()=>{
+ expect(read({clear:'/WMode 0 def'}).verify('A').ok).toBe(true);
+ failure(()=>read({clear:'/WMode 1 def'}),'type1-ps-unsupported');
+});
+test('Type1 ink encloses cubic controls and reachable Subrs independently of FontBBox',()=>{
+ const curve=Uint8Array.from([...nums(0,600),13,...nums(100,20),21,...nums(0),10,14]);
+ const subr=Uint8Array.from([...nums(50,200,100,-50,50,-100),8,11]);
+ expect(read({glyphs:{A:curve},subrs:[subr]}).verify('A')).toMatchObject({ok:true,inkBounds:{x:100,y:20,w:200,h:200}});
+ expect(read({glyphs:{A:widthChar()}}).verify('A')).toMatchObject({ok:true,inkBounds:null});
+});

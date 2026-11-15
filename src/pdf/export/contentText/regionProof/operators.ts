@@ -13,7 +13,7 @@ const key = (op: number, item: number) => `${op}:${item}`;
 /** Check complete string-item ownership and the actual positioning/show grammar.
  * Full trace/scene production stays at the caller's R1/R2 boundary.
  */
-export function proveOperators(input: ParagraphInput): OperatorProof {
+export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): OperatorProof {
   const { ops, lines } = input;
   const first = lines[0]!.anchor.opIndex;
   const lastLine = lines.at(-1)!;
@@ -70,11 +70,11 @@ export function proveOperators(input: ParagraphInput): OperatorProof {
         const prev = lines[lines.indexOf(line) - 1];
         // A relative first anchor needs a pre-candidate Tlm proof, not supplied
         // by this bounded seam. Later relative anchors are checked exactly.
-        if (!prev) return fail('operators', 'First anchor requires an absolute Tm snapshot');
+        if (!prev && (!beforeFirst || beforeFirst.bt!==t.bt || beforeFirst.opIndex!==i-1)) return fail('operators', 'First anchor requires an absolute Tm snapshot');
         const n = numbers(op.operands, op.operator === 'T*' ? 0 : 2);
         if (!n) return fail('operators', 'Malformed relative anchor');
         const dx = n[0] ?? 0, dy = op.operator === 'T*' ? -t.leading : n[1]!;
-        const m = prev.anchor.tlm;
+        const m = prev?.anchor.tlm ?? beforeFirst!.tlm;
         const expected = [m[0]!, m[1]!, m[2]!, m[3]!,
           m[4]! + dx * m[0]! + dy * m[2]!, m[5]! + dx * m[1]! + dy * m[3]!];
         if (!matrixEqual(t.tm, expected) || !matrixEqual(t.tlm, expected) ||

@@ -2,7 +2,7 @@ import {replaceRuns,sourceFingerprint,type ResolvedRunFont,type RunResult} from 
 import type {PageRunPlan} from '../contentStreamEdit/pageRunPlan';
 import {hex,pdfNumber,pdfName,same,codes,encodeRun} from '../contentStreamEdit/runEncoding';
 import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
-import {walkTextPlacements} from '../contentStreamEdit/textState';
+import {walkTextPlacements,type UnplacedShow} from '../contentStreamEdit/textState';
 import {RunCompileError} from '../contentStreamEdit/runRefusal';
 import {linear} from './regionProof/geometry';
 import {traceReflowSource,ReflowTraceError} from './reflowTrace';
@@ -23,7 +23,7 @@ export function compileReflowPlan(content:Uint8Array,fonts:readonly ResolvedRunF
   if(!ops[firstOp]||!ops[lastOp]||firstOp>lastOp||clusters.length!==layout.origins.length)
    return refuse('reflow-context-unsupported: invalid owned window');
   const saved=recipe.saved;
-  const trace=traceReflowSource(ops,fonts,proof.scopeProofHash);
+  const trace=traceReflowSource(ops,fonts,proof.scopeProofHash,plan);
   const current=trace.ends.get(lastOp);
   if(!current||current.fontObject!==rejoin.fontObject||current.tm.some((n,i)=>Math.abs(n-rejoin.tm[i]!)>1e-7)||
    current.tlm.some((n,i)=>Math.abs(n-rejoin.tlm[i]!)>1e-7))return refuse('reflow-context-unsupported: stale rejoin trace');
@@ -87,15 +87,20 @@ export function compileReflowPlan(content:Uint8Array,fonts:readonly ResolvedRunF
   const prefix=content.subarray(0,ops[firstOp]!.start),suffix=content.subarray(ops[lastOp]!.end);
   const bytes=new Uint8Array(prefix.length+patch.length+suffix.length);
   bytes.set(prefix);bytes.set(patch,prefix.length);bytes.set(suffix,prefix.length+patch.length);
-  const resolveFont=(name:string)=>{const font=fonts.find(f=>f.resourceName===name);return font?{...font,ok:true as const,appliesWordSpacing:font.bytesPerCode===1}:null;};
-  const before=walkTextPlacements(ops,{resolveFont}),outputOps=tokenizeContentStream(bytes),after=walkTextPlacements(outputOps,{resolveFont});
-  if(!before.ok||!after.ok||after.unplacedText)return refuse('reflow-context-unsupported: compiled walk failed');
-  const intended=clusters.flatMap((t,i)=>t.source&&t.source.opIndex<firstOp?[]:[{fontName:t.fontResource,code:codes(t.code,resolveFont(t.fontResource)!.bytesPerCode)[0]!,x:layout.origins[i]![0],y:layout.origins[i]![1]}]);
+  const resolveFont=(name:string)=>{const font=fonts.find(f=>f.resourceName===name);return font?{...font,ok:true as const,appliesWordSpacing:font.bytesPerCode===1}:{ok:false as const,reason:'unmeasurable source font'};};
+  const oldUnplaced:UnplacedShow[]=[],newUnplaced:UnplacedShow[]=[];
+  const callbacks={resolveFont,extGStateSetsFont:(name:string)=>plan.extGStates?.get(name)?.setsFont??null};
+  const before=walkTextPlacements(ops,{...callbacks,onUnplaced:s=>oldUnplaced.push(s)}),outputOps=tokenizeContentStream(bytes),after=walkTextPlacements(outputOps,{...callbacks,onUnplaced:s=>newUnplaced.push(s)});
+  if(!before.ok||!after.ok)return refuse('reflow-context-unsupported: compiled walk failed');
+  const unplacedState=(s:UnplacedShow)=>({font:s.fontName,origin:s.origin,size:s.fontSizePt,advanceKnown:s.advanceKnown,reason:s.reason,
+   glyphs:s.glyphs?.map(g=>({font:g.fontName,code:g.code,quad:g.quad,core:g.coreQuad}))});
+  if(JSON.stringify(oldUnplaced.map(unplacedState))!==JSON.stringify(newUnplaced.map(unplacedState)))return refuse('reflow-context-unsupported: unplaced text changed');
+  const intended=clusters.flatMap((t,i)=>t.source&&t.source.opIndex<firstOp?[]:[{fontName:t.fontResource,code:codes(t.code,fonts.find(f=>f.resourceName===t.fontResource)!.bytesPerCode)[0]!,x:layout.origins[i]![0],y:layout.origins[i]![1]}]);
   const unchanged=(g:typeof before.glyphs[number])=>({fontName:g.fontName,code:g.code,x:g.coreQuad[0].x,y:g.coreQuad[0].y});
   const expected=[...before.glyphs.filter(g=>g.opIndex<firstOp).map(unchanged),...intended,...before.glyphs.filter(g=>g.opIndex>lastOp).map(unchanged)];
   if(after.glyphs.length!==expected.length||after.glyphs.some((g,i)=>{const e=expected[i]!;return g.fontName!==e.fontName||g.code!==e.code||Math.hypot(g.coreQuad[0].x-e.x,g.coreQuad[0].y-e.y)>.00001;}))
    return refuse('layout-metrics-disagreement: compiled glyph destinations differ');
-  const rewalk=traceReflowSource(outputOps,fonts,proof.scopeProofHash);
+  const rewalk=traceReflowSource(outputOps,fonts,proof.scopeProofHash,plan);
   const final=outputOps.findLastIndex(op=>op.end<=prefix.length+patch.length);
   const joined=rewalk.ends.get(final);
   if(!joined||joined.tm.some((n,i)=>Math.abs(n-rejoin.tm[i]!)>1e-7)||joined.tlm.some((n,i)=>Math.abs(n-rejoin.tlm[i]!)>1e-7))

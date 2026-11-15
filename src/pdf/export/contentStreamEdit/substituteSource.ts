@@ -19,22 +19,22 @@ export function substituteSourceFonts(page:PDFPage):SubstituteSourceFont[]{
   const dict=fonts!.context.lookup(ref);if(!(dict instanceof PDFDict)||!(ref instanceof PDFRef))return [];
   const subtype=dict.lookupMaybe(PDFName.of('Subtype'),PDFName)?.decodeText();
   const child=dict.lookupMaybe(PDFName.of('DescendantFonts'),PDFArray)?.lookup(0,PDFDict);
-  if(dict.has(PDFName.of('WMode'))||child?.has(PDFName.of('WMode')))return [];
+  if((number(dict,'WMode')??0)!==0||(child&&((number(child,'WMode')??0)!==0)))return [];
   const input=fontInputFromDict(dict),matrix=array(dict,'FontMatrix');
-  if(matrix&&(matrix.length!==6||matrix.some((n,i)=>!Number.isFinite(n)||Math.abs(n-[.001,0,0,.001,0,0][i]!)>1e-10)))return [];
+  if(subtype!=='Type3'&&matrix&&(matrix.length!==6||matrix.some((n,i)=>!Number.isFinite(n)||Math.abs(n-[.001,0,0,.001,0,0][i]!)>1e-10)))return [];
   if(subtype==='Type1'&&input.program){
-   if(/\/WMode\b/u.test(new TextDecoder('latin1').decode(input.program)))return [];
+   if(/\/WMode\s+(?!0\s)[^\s]+/u.test(new TextDecoder('latin1').decode(input.program)))return [];
    if(fontCoverageFromDict(dict).failures?.some(d=>d.code==='unsupported-matrix'))return [];
   }
   const descriptor=(child??dict).lookupMaybe(PDFName.of('FontDescriptor'),PDFDict);
   let info=resolved.find(f=>f.resourceName===key.decodeText()),sourceBox:readonly number[]|undefined;
   if(subtype==='Type3'){
    const matrix=array(dict,'FontMatrix'),box=array(dict,'FontBBox');
-   if(!matrix||matrix.length!==6||matrix.some((n,i)=>Math.abs(n-[.001,0,0,.001,0,0][i]!)>1e-10)||
+   if(!matrix||matrix.length!==6||!matrix.every(Number.isFinite)||matrix[0]!<=0||matrix[3]!<=0||[1,2,4,5].some(i=>matrix[i]!==0)||
     !box||box.length!==4||!box.every(Number.isFinite)||box[3]!<=box[1]!||box[2]!<box[0]!)return [];
    const horizontal=dict.clone();horizontal.set(PDFName.of('Subtype'),PDFName.of('TrueType'));
    const metrics=contentFontInfo(horizontal);if(!metrics.ok)return [];
-   info={...metrics,ascentEm:Math.max(.4,box[3]!/1000),descentEm:Math.min(0,box[1]!/1000),resourceName:key.decodeText(),objectId:ref.toString(),unicodeByCode:new Map()};
+   info={...metrics,ascentEm:Math.max(.001,box[3]!*matrix[3]!),descentEm:Math.min(0,box[1]!*matrix[3]!),resourceName:key.decodeText(),objectId:ref.toString(),unicodeByCode:new Map()};
    sourceBox=box;
   }
   if(!info)return [];
@@ -42,18 +42,20 @@ export function substituteSourceFonts(page:PDFPage):SubstituteSourceFont[]{
   // the substitute font or a family name. Out-of-range codes are unknown too.
   const widths=array(dict,'Widths'),first=number(dict,'FirstChar');
   if(info.bytesPerCode===1&&(!widths||first===undefined))return [];
-  const widthOf=info.bytesPerCode===1?(code:number)=>widths![code-first!]??NaN:info.widthOf;
+  const widthScale=subtype==='Type3'?matrix![0]!*1000:1;
+  const widthOf=info.bytesPerCode===1?(code:number)=>(widths![code-first!]??NaN)*widthScale:info.widthOf;
   const raw=dict.lookup(PDFName.of('ToUnicode'));
   let mapping:ReadonlyMap<number,string>|null=info.unicodeByCode;
   if(raw instanceof PDFRawStream)mapping=runToUnicode(new TextDecoder('latin1').decode(raw.dict.has(PDFName.of('Filter'))?decodePDFRawStream(raw).decode():raw.getContents()),info.bytesPerCode);
-  else if(info.bytesPerCode===1){
+  if(!mapping?.size&&info.bytesPerCode===1){
    // An explicit known Encoding supplies source labels even when the font
    // program is unusable. No source glyph is reused based on these labels.
-   if(input.error||!input.encoding)return [];
+   if(!input.encoding)return [];
    try{mapping=new Map([...simpleNames(input)].flatMap(([code,name])=>{const text=glyphUnicode(name);return text?[[code,text]as const]:[];}));}catch{return [];}
   }
   if(!mapping?.size)return [];
   return [{...info,widthOf,unicodeByCode:mapping,sourceBox,base:dict.lookupMaybe(PDFName.of('BaseFont'),PDFName)?.decodeText()??'',flags:number(descriptor??dict,'Flags')??0,
-   assertSource:undefined,canEncode:(text:string)=>({ok:false as const,reason:'whole-run substitution',firstMissing:text,offset:0})}];
+   assertSource:undefined,canEncode:(text:string)=>text?{ok:false as const,reason:'whole-run substitution',firstMissing:text,offset:0}:
+    {ok:true as const,bytes:new Uint8Array(),codes:[],preferredApplied:true}}];
  });
 }

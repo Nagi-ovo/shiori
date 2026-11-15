@@ -133,7 +133,11 @@ export function readProgram(input:FontInput) {
   };
   const inkBox=(gid:number)=>{
     if(cff || !Number.isFinite(font.unitsPerEm) || font.unitsPerEm<=0)return;
-    const b=font.getGlyph(gid).cbox,u=font.unitsPerEm;
+    const glyph=font.getGlyph(gid);
+    // Real subsets may retain a nonzero glyf header bbox for an empty path.
+    // Fontkit exposes that stale cbox even though the glyph paints nothing.
+    if(!glyph.path.toSVG())return {x:0,y:0,w:0,h:0};
+    const b=glyph.cbox,u=font.unitsPerEm;
     return {x:b.minX/u,y:b.minY/u,w:(b.maxX-b.minX)/u,h:(b.maxY-b.minY)/u};
   };
   return {kind:'fontkit' as const,inkBox,numGlyphs,symbolic,cff:!!cff,cid:!!cff?.isCIDFont,builtIn,simpleGid,cidGid:(cid:number)=>cidToGid.get(cid) ?? 0,presence};

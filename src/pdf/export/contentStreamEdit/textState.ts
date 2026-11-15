@@ -131,9 +131,11 @@ export type ShowTextState = {
   fontSizePt?: number;
   fontSize: number; charSpacing: number; wordSpacing: number;
   origin: Point; advanceVector: Point;
+  renderMode?: number;
 };
 
 export type UnplacedShow = {
+  fontName?: string;
   opIndex: number; arrayItemIndex: number; origin: Point | null; fontSizePt: number;
   advanceKnown: boolean; reason?: string;
   // Measured but uneditable glyphs, never candidates for glyph removal.
@@ -227,6 +229,7 @@ export function walkTextPlacements(
     if (font === null) return `unresolvable font /${gs.fontName}`;
     const stroked = gs.renderMode === 1 || gs.renderMode === 2;
     const unplaced = {
+      fontName: gs.fontName,
       opIndex, arrayItemIndex, origin: tmUnknown ? null : apply(multiply(tm, gs.ctm), { x: 0, y: gs.rise }),
       fontSizePt: Math.abs(gs.fontSize * Math.hypot(tm[2] * gs.ctm[0] + tm[3] * gs.ctm[2], tm[2] * gs.ctm[1] + tm[3] * gs.ctm[3])),
       ...(stroked ? { reason: 'graphics-effect-unsupported: stroked text (Tr 1/2)' } : {}),
@@ -254,6 +257,7 @@ export function walkTextPlacements(
       widths.set(code, width);
     }
     if (!stroked) callbacks.onShow?.({ opIndex, arrayItemIndex, fontName: gs.fontName,
+      renderMode: gs.renderMode,
       fontSizePt: gs.fontSize * Math.hypot(tm[2] * gs.ctm[0] + tm[3] * gs.ctm[2], tm[2] * gs.ctm[1] + tm[3] * gs.ctm[3]),
       fontSize: gs.fontSize, charSpacing: gs.charSpacing, wordSpacing: gs.wordSpacing,
       origin: apply(multiply(tm, gs.ctm), { x: 0, y: gs.rise }),

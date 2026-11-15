@@ -2,6 +2,7 @@ import type {ContentOp,ContentOperand} from '../contentStreamEdit/tokenizer';
 import type {ResolvedRunFont} from '../contentStreamEdit/replaceRun';
 import {codes} from '../contentStreamEdit/runEncoding';
 import type {TextTrace} from './regionProof';
+import type {RunEnvironment} from '../contentStreamEdit/textSafety';
 export class ReflowTraceError extends Error {}
 
 const identity=()=>[1,0,0,1,0,0];
@@ -11,13 +12,13 @@ const nums=(values:readonly ContentOperand[],count:number)=>{
  if(values.length!==count||values.some(n=>n.kind!=='number'||!Number.isFinite(n.value)))throw new ReflowTraceError('malformed numeric text state');
  return values.map(n=>(n as {value:number}).value);
 };
-const inert=new Set(['rg','RG','k','K','g','G','w','J','j','M','d','ri','i','m','l','c','v','y','h','re',
+const inert=new Set(['rg','RG','k','K','g','G','cs','CS','sc','SC','scn','SCN','w','J','j','M','d','ri','i','m','l','c','v','y','h','re',
  'S','s','f','F','f*','B','B*','b','b*','n','Do','BMC','BDC','EMC','MP','DP','sh','W','W*']);
 /** Full read-only matrix/parameter trace for the bounded subset. q/Q saves
  * graphics/text parameters, never Tm/Tlm. Unknown state refuses this request.
  * This validates supplied R1 snapshots; it supplies no scene or ink proof.
  */
-export function traceReflowSource(ops:readonly ContentOp[],fonts:readonly ResolvedRunFont[],safetyHash:string){
+export function traceReflowSource(ops:readonly ContentOp[],fonts:readonly ResolvedRunFont[],safetyHash:string,environment:RunEnvironment={}){
  let state={ctm:identity(),fontObject:'',fontName:'',size:0,tc:0,tw:0,tz:100,leading:0,rise:0,renderMode:0};
  const stack:typeof state[]=[],anchors=new Map<number,TextTrace>(),ends=new Map<number,TextTrace>();
  const shows=new Map<string,{before:TextTrace;after:TextTrace}>();
@@ -34,8 +35,12 @@ export function traceReflowSource(ops:readonly ContentOp[],fonts:readonly Resolv
    case 'ET':bt=-1;break;
    case 'Tf':{
     if(n.length!==2||n[0]?.kind!=='name'||n[1]?.kind!=='number')throw new ReflowTraceError('malformed Tf');
-    const font=fonts.find(f=>f.resourceName===(n[0] as {value:string}).value);if(!font)throw new ReflowTraceError('unknown trace font');
-    state.fontName=font.resourceName;state.fontObject=font.objectId;state.size=n[1].value;break;
+    const name=(n[0] as {value:string}).value,font=fonts.find(f=>f.resourceName===name);
+    state.fontName=name;state.fontObject=font?.objectId??'';state.size=n[1].value;break;
+   }
+   case 'gs':{
+    const name=n[0];if(name?.kind!=='name')throw new ReflowTraceError('malformed gs');
+    if(environment.extGStates?.get(name.value)?.setsFont!==false){state.fontName='';state.fontObject='';}break;
    }
    case 'Tc':state.tc=nums(n,1)[0]!;break;
    case 'Tw':state.tw=nums(n,1)[0]!;break;
@@ -51,14 +56,14 @@ export function traceReflowSource(ops:readonly ContentOp[],fonts:readonly Resolv
    }
    case 'Tj':case 'TJ':{
     const items=op.operator==='TJ'&&n[0]?.kind==='array'?n[0].items:n;
-    const font=fonts.find(f=>f.resourceName===state.fontName);if(!font||bt<0)throw new ReflowTraceError('unplaced trace show');
+    const font=fonts.find(f=>f.resourceName===state.fontName);if(bt<0)throw new ReflowTraceError('unplaced trace show');
     for(const [j,item]of items.entries()){
      if(item.kind==='number'&&op.operator==='TJ')tm=translate(tm,-item.value/1000*state.size*state.tz/100,0);
      else if(item.kind==='string'){
       const before=snapshot(i);
-      const advance=codes(item.bytes,font.bytesPerCode).reduce((sum,code)=>sum+
-       (font.widthOf(code)*state.size/1000+state.tc+(font.bytesPerCode===1&&code===32?state.tw:0))*state.tz/100,0);
-      if(!Number.isFinite(advance))throw new ReflowTraceError('unknown trace advance');
+      const advance=font?codes(item.bytes,font.bytesPerCode).reduce((sum,code)=>sum+
+       (font.widthOf(code)*state.size/1000+state.tc+(font.bytesPerCode===1&&code===32?state.tw:0))*state.tz/100,0)
+       :NaN;
       tm=translate(tm,advance,0);shows.set(`${i}:${op.operator==='TJ'?j:-1}`,{before,after:snapshot(i)});
      }else throw new ReflowTraceError('malformed trace show');
     }

@@ -50,8 +50,8 @@ test('automatic Type1 wrap uses PDF widths and conservative ink',async()=>{
  const f=await requestPage(),r=await applyContentTextEdits(f.page,[{...f.overlay,text:'甲乙'}],{stage5Reflow:true,stage5Type1:{sourceReuse:true}});
  expect(r.outcomes[0]).toMatchObject({mode:'reflowed',reflow:{strategy:'wrap'}});
 });
-test('unknown paint and stroked text cannot authorize automatic growth',async()=>{
- for(const prefix of ['0 0 20 20 re f ','1 Tr ']){
+test('intersecting paint and stroked text cannot authorize automatic growth',async()=>{
+ for(const prefix of ['50 100 20 20 re f ','1 Tr ']){
   const f=await spacingPage(prefix+stream('S i i i i')),before=inspectRunPage(f.page),r=await applyContentTextEdits(f.page,[edit()]);
   expect(r.outcomes[0]!.mode).toBe('overlay');expect(inspectRunPage(f.page)).toEqual(before);
  }

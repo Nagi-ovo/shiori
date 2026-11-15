@@ -110,7 +110,7 @@ test('opt-in falls back only for unavailable clusters and retains proven source 
 });
 
 const unsupportedPrograms:[NonNullable<Parameters<typeof type1Fixture>[0]>,string][]=[
-  [{programOptions:{clear:'/WMode 0 def'}},'type1-ps-unsupported'],
+  [{programOptions:{clear:'/WMode 1 def'}},'type1-ps-unsupported'],
   [{programOptions:{private:'/OtherSubrs 1 array dup 0 {} put def'}},'type1-ps-unsupported'],
   [{brokenProgram:true},'type1-container-invalid'],
 ];

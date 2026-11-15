@@ -46,6 +46,7 @@ export function planContentText(content:Uint8Array,fonts:readonly ResolvedRunFon
       const [a,b,,d]=g.coreQuad;
       if(Math.abs(a.y-b.y)>.01 || Math.abs(a.x-d.x)>.01 || b.x<a.x)return refuse('unsupported-matrix');
       const state=states.get(`${g.opIndex}:${g.arrayItemIndex}`);
+      if(state?.renderMode===3)return refuse('graphics-effect-unsupported','invisible OCR text cannot replace visible page ink');
       if(!state || Math.abs((state.fontSizePt??state.fontSize)-overlay.fontSize)>.05)return refuse('style-change');
     }
     const lines:GlyphPlacement[][]=[];

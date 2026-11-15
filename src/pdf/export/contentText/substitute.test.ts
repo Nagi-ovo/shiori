@@ -84,9 +84,9 @@ for(const kind of ['ocr','matrix','vertical','overlap','unknown-encoding'])test(
  const result=await applyContentTextEdits(f.page,edits,{loadFont:async name=>{loads++;return loadFont(name);}});
  expect(result.outcomes.every(o=>o.mode==='overlay')).toBe(true);expect(loads).toBe(0);
 });
-test('embedded Type1 WMode and nonstandard FontMatrix stay refused with missing ToUnicode',async()=>{
+test('embedded Type1 vertical WMode and nonstandard FontMatrix stay refused with missing ToUnicode',async()=>{
  for(const wmode of [true,false]){
-  const f=await type1Fixture({programOptions:wmode?{clear:'/WMode 0 def'}:{}});f.font.delete(PDFName.of('ToUnicode'));f.font.set(PDFName.of('Encoding'),PDFName.of('WinAnsiEncoding'));
+  const f=await type1Fixture({programOptions:wmode?{clear:'/WMode 1 def'}:{}});f.font.delete(PDFName.of('ToUnicode'));f.font.set(PDFName.of('Encoding'),PDFName.of('WinAnsiEncoding'));
   if(!wmode)f.font.set(PDFName.of('FontMatrix'),f.doc.context.obj([.002,0,0,.001,0,0]));
   const result=await applyContentTextEdits(f.page,[overlay({originalText:'AB',text:'X'})],{loadFont});expect(result.outcomes[0]?.mode).toBe('overlay');
  }

@@ -42,8 +42,8 @@ export function type1Dictionary(clear:Uint8Array,privateBytes:Uint8Array):Type1D
   const endDefinition=(r:Reader)=>{if(defs.has(r.peek()?.value??''))r.take();else r.finish();};
   const define=(key:string,tokens:PSToken[],scope:string)=>{const value=JSON.stringify(tokens.map(t=>[t.kind,t.value])),id=scope+':'+key;const old=seen.get(id);if(old!==undefined&&old!==value)fail(`contradictory /${key}`);seen.set(id,value);};
   const simple=(r:Reader,key:string,scope:string)=>{
-    if(!safeKeys.has(key)&&!['FontMatrix','FontBBox','lenIV'].includes(key))fail(`unsupported definition /${key}`);
-    if(['FontMatrix','FontBBox','FontType','PaintType','FontName'].includes(key)&&scope!=='font')fail(`/${key} in unsupported dictionary`);
+    if(!safeKeys.has(key)&&!['FontMatrix','FontBBox','lenIV','WMode'].includes(key))fail(`unsupported definition /${key}`);
+    if(['FontMatrix','FontBBox','FontType','PaintType','FontName','WMode'].includes(key)&&scope!=='font')fail(`/${key} in unsupported dictionary`);
     const v=r.literal();literalSafe(v);define(key,v,scope);
     if(key==='FontMatrix'||key==='FontBBox'){
       const n=v.map(t=>t.kind==='number'?+t.value:NaN);if(n.length!==(key==='FontMatrix'?6:4)||n.some(x=>!Number.isFinite(x)))fail(`invalid /${key}`);
@@ -51,6 +51,7 @@ export function type1Dictionary(clear:Uint8Array,privateBytes:Uint8Array):Type1D
     }
     if(key==='FontType'&&(v.length!==1||v[0]!.value!=='1'))fail('non-Type1 FontType');
     if(key==='PaintType'&&(v.length!==1||v[0]!.value!=='0'))fail('non-fill PaintType');
+    if(key==='WMode'&&(v.length!==1||v[0]!.kind!=='number'||+v[0]!.value!==0))fail('nonhorizontal WMode');
     if(key==='lenIV'){if(v.length!==1||v[0]!.kind!=='number'||!Number.isInteger(+v[0]!.value)||+v[0]!.value< -1||+v[0]!.value>32)fail('invalid lenIV');result.lenIV=+v[0]!.value;}
     endDefinition(r);
   };

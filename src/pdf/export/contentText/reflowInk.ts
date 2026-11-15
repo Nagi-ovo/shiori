@@ -1,4 +1,4 @@
-import {PDFDict,PDFName,type PDFPage} from 'pdf-lib';
+import {PDFArray,PDFDict,PDFName,type PDFPage} from 'pdf-lib';
 import type {ResolvedRunFont} from '../contentStreamEdit/replaceRun';
 import {sourceFingerprint} from '../contentStreamEdit/replaceRun';
 import {fontCoverageFromDict,fontInputFromDict} from '../fontCoverage/pdfLibAdapter';
@@ -7,6 +7,9 @@ import type {GlyphIdentity,Rect,TextTrace} from './regionProof';
 import {linear,validRect,validTrace} from './regionProof/geometry';
 import type {Type1Options} from '../fontCoverage/type1Support';
 import fontkit from '@pdf-lib/fontkit';
+import {createFontCoverage} from '../fontCoverage/coverage';
+import {runToUnicode} from '../contentStreamEdit/runToUnicode';
+import {substituteInk} from '../contentStreamEdit/substituteInk';
 /** Container metadata only: the unchanged raw CFF remains the program that
  * fontkit executes for its Bezier control hull (the same R1 program reader).
  * Nonstandard top/FD FontMatrix values need a separate transform proof. */
@@ -23,23 +26,33 @@ function cffHulls(raw:Uint8Array){
  const top=font['CFF ']?.topDict;
  if(!top||[top,...(top.FDArray??[])].some(d=>d.FontMatrix&&(d.FontMatrix.length!==6||d.FontMatrix.some((n,i)=>n!==[.001,0,0,.001,0,0][i]))))return;
  const u=font.unitsPerEm;if(!(u>0&&Number.isFinite(u)))return;
- return (gid:number):Rect=>{const b=font.getGlyph(gid).cbox;return {x:b.minX/u,y:b.minY/u,w:(b.maxX-b.minX)/u,h:(b.maxY-b.minY)/u};};
+ return (gid:number):Rect=>{const glyph=font.getGlyph(gid);if(!glyph.path.toSVG())return {x:0,y:0,w:0,h:0};const b=glyph.cbox;return {x:b.minX/u,y:b.minY/u,w:(b.maxX-b.minX)/u,h:(b.maxY-b.minY)/u};};
 }
-export type ReflowInk={box:Rect;glyph:GlyphIdentity;conservative:boolean};
-/** Only embedded, measured fonts supply ink. TrueType uses a glyf control
- * hull. Type1 has no per-glyph hull: use the UNION of its declared program
- * FontBBox and an em envelope covering its PDF advance. This deliberately
- * refuses proportional faces whose envelopes cannot prove neighbour/row
- * clearance. Neither selection boxes nor coreQuad supply ink bounds.
+export type ReflowInk={box:Rect;glyph?:GlyphIdentity;conservative:boolean};
+/** Only embedded, measured fonts supply ink. TrueType/CFF use control hulls;
+ * Type1 uses the verified CharString closure's controls, including Subrs and
+ * flex moves. Unresolved composite hulls retain the union of FontBBox and
+ * an em/advance envelope. Selection boxes never supply ink bounds.
  * A prepared Type0 substitute is treated identically to an embedded CID font.
  */
-export function streamInkResolver(page:PDFPage,fonts:readonly ResolvedRunFont[],options:Type1Options={}){
+export function streamInkResolver(page:PDFPage,fonts:readonly ResolvedRunFont[],options:Type1Options={},addressOnly=false){
  const dict=page.node.Resources()?.lookupMaybe(PDFName.of('Font'),PDFDict);
  const byName=new Map<string,(code:number)=>ReflowInk|undefined>();
+ const sourceInk=addressOnly?substituteInk(page,fonts):undefined;
  for(const font of fonts){
   const raw=dict?.lookupMaybe(PDFName.of(font.resourceName),PDFDict);if(!raw)continue;
+  const child=raw.lookupMaybe(PDFName.of('DescendantFonts'),PDFArray)?.lookup(0,PDFDict),descriptor=(child??raw).lookupMaybe(PDFName.of('FontDescriptor'),PDFDict);
+  // Only the substitution transaction may use a source's declared envelope:
+  // it blanks proven source codes and embeds a different measured face. This
+  // never enables encoding or assumes a missing program has a glyph outline.
+  if(sourceInk&&(raw.has(PDFName.of('FontBBox'))||descriptor?.has(PDFName.of('FontBBox'))))byName.set(font.resourceName,code=>{
+   const box=sourceInk(font.resourceName,code);return box&&validRect(box)?{box,conservative:true}:undefined;
+  });
   const input=fontInputFromDict(raw);if(input.error||!input.program)continue;
-  const program=readProgram(input),coverage=fontCoverageFromDict(raw,options),hash=sourceFingerprint(input.program);
+  let program:ReturnType<typeof readProgram>;
+  try{program=readProgram(input);}catch{continue;}
+  const coverage=input.toUnicode&&!runToUnicode(input.toUnicode,font.bytesPerCode)&&font.bytesPerCode===1&&input.encoding?
+   createFontCoverage({...input,toUnicode:undefined},options):fontCoverageFromDict(raw,options),hash=sourceFingerprint(input.program);
   if(program.kind==='fontkit'){
    const hull=program.cff?cffHulls(input.program):program.inkBox;if(!hull)continue;
    byName.set(font.resourceName,code=>{
@@ -56,7 +69,8 @@ export function streamInkResolver(page:PDFPage,fonts:readonly ResolvedRunFont[],
     const proof=program.verify(mapping.glyph.name);if(!proof.ok)return;
     const width=font.widthOf(code);if(!Number.isFinite(width)||Math.abs(width-proof.width)>1)return;
     const x=Math.min(0,b[0]!/1000),y=Math.min(-.2,b[1]!/1000),right=Math.max(width/1000,b[2]!/1000),top=Math.max(.8,b[3]!/1000);
-    const box=/^\p{White_Space}+$/u.test(mapping.unicode)?{x:0,y:0,w:0,h:0}:{x,y,w:right-x,h:top-y};
+    const hull=proof.inkBounds;
+    const box=hull===null?{x:0,y:0,w:0,h:0}:hull?{x:hull.x/1000,y:hull.y/1000,w:hull.w/1000,h:hull.h/1000}:{x,y,w:right-x,h:top-y};
     return {box,glyph:mapping.glyph,conservative:true};
    });
   }

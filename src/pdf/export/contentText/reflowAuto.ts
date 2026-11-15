@@ -26,11 +26,11 @@ export function planStreamReflow(page:PDFPage,content:Uint8Array,fonts:readonly 
 function build(page:PDFPage,content:Uint8Array,fonts:readonly ResolvedRunFont[],overlay:ContentTextOverlay,environment:ContentTextEnvironment,options:Type1Options,replacementFont?:ResolvedRunFont):PageRunPlan|null{
  try{
   const ops=tokenizeContentStream(content),safety=runContextSafety(ops,environment);if(!safety.ok)return null;
-  const walk=walkTextPlacements(ops,{resolveFont:name=>{const f=fonts.find(f=>f.resourceName===name);return f?{...f,ok:true,appliesWordSpacing:f.bytesPerCode===1}:null;}});
-  if(!walk.ok||walk.unplacedText)return null;
+  const walk=walkTextPlacements(ops,{resolveFont:name=>{const f=fonts.find(f=>f.resourceName===name);return f?{...f,ok:true,appliesWordSpacing:f.bytesPerCode===1}:{ok:false,reason:'unmeasurable source font'};},extGStateSetsFont:name=>environment.extGStates?.get(name)?.setsFont??null});
+  if(!walk.ok)return null;
   const selected=[...new Set(removalsByRect(walk.glyphs,overlay.coverRects).flatMap(h=>[...h]))];
   if(!selected.length||selected.some(g=>safety.unsafe.has(g.opIndex)))return null;
-  const e=streamReflowEvidence(page,content,fonts,selected[0]!.opIndex,options);if(!e)return null;
+  const e=streamReflowEvidence(page,content,fonts,selected[0]!.opIndex,options,replacementFont!==undefined);if(!e)return null;
   const indices=e.source.flatMap((t,i)=>selected.some(g=>g.opIndex===t.source!.opIndex&&g.arrayItemIndex===t.source!.itemIndex&&g.byteOffset===t.source!.byteStart)?[i]:[]);
   if(indices.length!==selected.length||indices.some((v,i)=>i>0&&v!==indices[i-1]!+1))return null;
   const start=indices[0]!,end=indices.at(-1)!+1,old=e.source.slice(start,end),first=old[0]!;
