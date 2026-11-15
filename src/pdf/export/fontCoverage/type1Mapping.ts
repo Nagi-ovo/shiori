@@ -1,5 +1,6 @@
 import {parseCMap} from './cmap';
 import {glyphUnicode,simpleNames} from './encodings';
+import {sameGlyphUnicode} from './glyphIdentity';
 import type {FontCoverage,FontInput,VerifiedCode} from './types';
 import type {Type1Program} from './type1Program';
 import type {Type1Diagnostic} from './type1Support';
@@ -32,7 +33,7 @@ export function fillType1Coverage(report:FontCoverage,input:FontInput,program:Ty
     if(glyph&&!glyph.ok){fail(glyph,hex,label);continue;}
     const nameUnicode=glyphUnicode(name);
     if(nameUnicode===undefined){reject('glyph-unavailable',`no verified Unicode for /${name}`);continue;}
-    if(nameUnicode!==label){reject('glyph-identity-conflict',`ToUnicode ${JSON.stringify(label)} disagrees with /${name} (${JSON.stringify(nameUnicode)})`);continue;}
+    if(!sameGlyphUnicode(nameUnicode,label)){reject('glyph-identity-conflict',`ToUnicode ${JSON.stringify(label)} disagrees with /${name} (${JSON.stringify(nameUnicode)})`);continue;}
     let width:number|undefined,source:VerifiedCode['widthSource']='pdf-widths';
     if(input.widths!==undefined){
       if(Number.isInteger(input.firstChar)&&input.firstChar!>=0&&input.firstChar!<=255&&code>=input.firstChar!&&

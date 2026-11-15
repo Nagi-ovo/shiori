@@ -1,6 +1,7 @@
 import {createFontCoverage} from '../fontCoverage/coverage';
 import {parseCMap} from '../fontCoverage/cmap';
 import {glyphUnicode} from '../fontCoverage/encodings';
+import {sameGlyphUnicode} from '../fontCoverage/glyphIdentity';
 import {codeHex, codeNumber, type FontInput} from '../fontCoverage/types';
 import {type1RunDiagnostic, type Type1Diagnostic, type Type1Options} from '../fontCoverage/type1Support';
 import type {ResolvedRunFont} from './replaceRun';
@@ -249,7 +250,7 @@ export function recoverRunUnicode(input:FontInput, size:1|2, original:ReadonlyMa
     for (const [hex, label] of inferred) {
       if (hex.length !== size * 2) continue;
       const code = codeNumber(hex), explicit = original?.get(code);
-      if (explicit && usable(explicit) && (label === null || label !== explicit)) {
+      if (explicit && usable(explicit) && (label === null || !sameGlyphUnicode(label, explicit))) {
         conflicts.set(code, `ToUnicode ${JSON.stringify(explicit)} disagrees with selected glyph (${JSON.stringify(label)})`);
       }
       if (label && usable(label) && placeholder(explicit)) candidates.set(hex, label);
