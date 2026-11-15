@@ -304,6 +304,32 @@ describe("ExportDialog preview scheduling", () => {
     expect(saveCalls).toHaveLength(0);
   });
 
+  // A flattened text box or note that is too small clips its later lines, as
+  // the editor does; the export used to drop them with no word, so the saved
+  // PDF silently lacked text the user had typed.
+  test("requires confirmation before saving text that does not fit its box", async () => {
+    runExport = async () => ({
+      bytes: new Uint8Array(1024),
+      lostChars: 0,
+      clippedChars: 9,
+    });
+    const view = render(<ExportDialog open onClose={() => undefined} />);
+    await waitFor(() => expect(exportCalls).toEqual(["original"]), {
+      timeout: 3_000,
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "Export PDF" }));
+    await waitFor(() =>
+      expect(view.getByRole("alert").textContent).toContain(
+        "9 characters run past the edges of their boxes and will be cut off in the flattened PDF.",
+      ),
+    );
+    expect(saveCalls).toHaveLength(0);
+
+    fireEvent.click(view.getByRole("button", { name: "Export anyway" }));
+    await waitFor(() => expect(saveCalls).toHaveLength(1));
+  });
+
   test("omits document files for selected pages and explains the privacy boundary", async () => {
     const view = render(<ExportDialog open onClose={() => undefined} />);
     await waitFor(() => expect(documentFilePolicies).toEqual(["preserve"]), {

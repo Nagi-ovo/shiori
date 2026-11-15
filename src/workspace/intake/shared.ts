@@ -2,6 +2,7 @@ import { sourceKey, type DocumentKind, type DocumentSource } from "../../documen
 import { documentOpenMayContinue } from "../../editor/openIntent";
 import { canDedupeByContent } from "../tabSources";
 import type { WorkspaceRuntimeTab } from "../types";
+import type { NavigationClaim } from "../workspaceStore";
 import type { IntakePorts } from "./types";
 
 /**
@@ -20,9 +21,11 @@ export function openClaim(
     tabId?: string;
     foregroundIntent?: number;
     shouldActivate?: () => boolean;
+    claim?: NavigationClaim;
   },
 ) {
-  const claim = ports.store.getState().claimOpen(options.foregroundIntent);
+  const claim =
+    options.claim ?? ports.store.getState().claimOpen(options.foregroundIntent);
   const shouldActivate = () =>
     claim.ownsForeground() && (options.shouldActivate?.() ?? true);
   const shouldContinue = () =>

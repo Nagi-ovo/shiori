@@ -24,43 +24,20 @@ import {
   listenNativeDocumentDrops,
   listenNativeEvent,
 } from "../../platform/nativeEvents";
+import {
+  createMobileDocumentOpenQueue,
+  isMobileDocumentReference,
+  mobileDocumentReferenceUri,
+} from "../../platform/mobileDocumentOpens";
 import { OpenHandoffQueue } from "../../platform/openHandoff";
 import { showPlatformOpenError, unsupportedDocumentDetail } from "../openErrors";
 
 const DESKTOP_OPEN_DEDUPE_MS = 1000;
 const MOBILE_OPEN_DEDUPE_MS = 1500;
 
-function isMobileDocumentReference(
-  value: unknown,
-): value is MobileDocumentReference {
-  if (typeof value === "string") return value.length > 0;
-  if (!value || typeof value !== "object") return false;
-  const ref = value as Record<string, unknown>;
-  return typeof ref.uri === "string" && ref.uri.length > 0;
-}
-
-function mobileDocumentReferenceUri(ref: MobileDocumentReference): string {
-  return typeof ref === "string" ? ref : ref.uri;
-}
-
 function mobileDocumentReferenceLabel(ref: MobileDocumentReference): string {
   if (typeof ref === "string") return ref;
   return typeof ref.name === "string" && ref.name.trim() ? ref.name : ref.uri;
-}
-
-function parseMobileDocumentReferences(
-  // A thunk, not a string: the Android bridge call that produces the raw
-  // JSON crosses the WebView JavaBridge boundary and can itself throw, so it
-  // has to run inside this try/catch.
-  readRaw: () => string,
-): MobileDocumentReference[] {
-  try {
-    const parsed = JSON.parse(readRaw()) as unknown;
-    const values = Array.isArray(parsed) ? parsed : [parsed];
-    return values.filter(isMobileDocumentReference);
-  } catch {
-    return [];
-  }
 }
 
 interface DocumentIntakeParams {
@@ -301,34 +278,22 @@ export function useDocumentIntake({
         );
       }
     };
-    const openQueue = new OpenHandoffQueue<MobileDocumentReference>({
+    // Keyed by Android delivery (else URI), and acks each Android delivery
+    // as its open starts; see createMobileDocumentOpenQueue.
+    const openQueue = createMobileDocumentOpenQueue({
       dedupeMs: MOBILE_OPEN_DEDUPE_MS,
-      key: mobileDocumentReferenceUri,
       open: openMobileUrl,
     });
     void (async () => {
       const { commands, unwrapCommand } = await import("../../platform/ipc");
       if (cancelled) return;
-      const drainAndroidPending = () => {
-        const bridge = window.ShioriAndroid;
-        if (!bridge?.drainPendingDocumentOpens) return;
-        // Keep the receiver (`bridge.`): JavaBridge methods cannot be called
-        // detached. The optional call re-checks under the thunk because the
-        // guard above does not narrow inside a closure.
-        const bridgePending = parseMobileDocumentReferences(
-          () => bridge.drainPendingDocumentOpens?.() ?? "",
-        );
-        for (const documentRef of bridgePending) {
-          openQueue.enqueue(documentRef);
-        }
-      };
       const onAndroidFileOpen = (event: Event) => {
         const documentRef = (event as CustomEvent<unknown>).detail;
         if (isMobileDocumentReference(documentRef)) {
           openQueue.enqueue(documentRef);
           return;
         }
-        drainAndroidPending();
+        openQueue.drainAndroidPending();
       };
       window.addEventListener("shiori-android-file-open", onAndroidFileOpen);
       removeAndroidFileOpenListener = () => {
@@ -348,7 +313,7 @@ export function useDocumentIntake({
         removeAndroidFileOpenListener = null;
         return;
       }
-      drainAndroidPending();
+      openQueue.drainAndroidPending();
       let pending: string[] = [];
       try {
         pending = unwrapCommand(await commands.drainPendingOpenPaths());
@@ -362,6 +327,7 @@ export function useDocumentIntake({
     })().catch((err) => reportNativeRouteFailure("mobile-open", err));
     return () => {
       cancelled = true;
+      openQueue.close();
       safeUnlisten(unlisten);
       safeUnlisten(removeAndroidFileOpenListener);
     };

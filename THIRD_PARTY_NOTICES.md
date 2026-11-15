@@ -159,7 +159,10 @@ wasm ("Old MIT" license), and the fonts package ships metric-compatible
 document fonts: Caladea and Carlito (OFL-1.1), Liberation Sans, Serif and
 Mono (OFL-1.1) and TeX Gyre Adventor (GUST Font License). Each package's
 LICENSE, THIRD_PARTY_NOTICES.md and license texts ship unchanged under
-`licenses/docx-editor/<package>/` in the built app.
+`licenses/docx-editor/<package>/` in the built app. The fonts package declares
+`Apache-2.0 AND OFL-1.1 AND LicenseRef-GUST-Font-License`. Surgical PDF fallback
+reuses its already-bundled Liberation TTF faces (Regular, Bold, Italic and
+BoldItalic, OFL-1.1), embedding independent `+ShioriFallback` subsets.
 
 ## Fonts
 
@@ -307,6 +310,16 @@ The Everforest theme's light and dark palettes (`src/design/theme.ts`) are
 adapted from Everforest by sainnhe (https://github.com/sainnhe/everforest),
 Copyright (c) 2019 sainnhe, MIT License (text as in the CodeMirror section
 above).
+
+## chrome-tabs
+
+The active document tab's outline (`src/editor/components/tabOutlineGeometry.ts`
+and `TabOutline.tsx`) follows the technique of chrome-tabs by Adam Schwartz
+(https://github.com/adamschwartz/chrome-tabs): the tab's outline and its
+concave bottom corners drawn as one SVG path with a fill and a stroke, in
+place of CSS borders. Shiori's path keeps its own proportions and is drawn at
+the tab's width rather than in mirrored halves. Copyright (c) 2013 Adam Schwartz,
+MIT License (text as in the CodeMirror section above).
 
 ## WebGL Fluid Simulation
 

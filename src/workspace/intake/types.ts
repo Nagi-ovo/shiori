@@ -13,7 +13,7 @@ import type {
   WorkspaceTextViewState,
 } from "../../storage/workspace";
 import type { WorkspaceRuntimeTab } from "../types";
-import type { WorkspaceStore } from "../workspaceStore";
+import type { NavigationClaim, WorkspaceStore } from "../workspaceStore";
 
 export type PdfOpenInput = {
   file?: File;
@@ -39,6 +39,19 @@ export type PdfOpenOptions = {
   shouldActivate?: () => boolean;
   /** Joins a multi-select batch (workspaceStore claimForegroundIntent). */
   foregroundIntent?: number;
+  /**
+   * A claim taken when the load began, used instead of claiming now. A
+   * restore reads its bytes before it opens them; claiming after that read
+   * outranked a document handed in meanwhile.
+   */
+  claim?: NavigationClaim;
+  /**
+   * An encrypted document leaves its tab "password required" (retryable from
+   * the tab) instead of opening the password dialog. For a load following an
+   * open it must not outrank: the dialog has one slot, and that open's prompt
+   * may be in it.
+   */
+  deferPassword?: boolean;
 };
 
 export type TextOpenOptions = {
@@ -48,6 +61,7 @@ export type TextOpenOptions = {
   skipDuplicateCheck?: boolean;
   shouldActivate?: () => boolean;
   foregroundIntent?: number;
+  claim?: NavigationClaim;
 };
 
 export type DocumentOpenOptions = Omit<PdfOpenOptions, "password"> &

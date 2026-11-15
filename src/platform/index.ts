@@ -12,6 +12,7 @@ declare global {
     __TAURI__?: unknown;
     ShioriAndroid?: {
       drainPendingDocumentOpens?: () => string;
+      ackPendingDocumentOpens?: (deliveryIdsJson: string) => string;
       documentInfo?: (uri: string) => string;
       installDirectApk?: (requestJson: string) => string;
       shareExport?: (requestJson: string) => string;

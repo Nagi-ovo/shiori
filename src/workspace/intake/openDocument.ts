@@ -49,6 +49,8 @@ export async function openDocument(
         skipDuplicateCheck: options.skipDuplicateCheck,
         shouldActivate: options.shouldActivate,
         foregroundIntent: options.foregroundIntent,
+        claim: options.claim,
+        deferPassword: options.deferPassword,
       },
       ports,
     );

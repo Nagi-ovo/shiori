@@ -9,12 +9,12 @@ export function wrapText(
   size: number,
   maxWidth: number,
   pathFont?: PathTextFont | null,
-  alwaysUsePathFont = false,
+  pathFontUse: PathFontUse | boolean = false,
 ): string[] {
   const out: string[] = [];
   const paragraphs = text.split(/\r?\n/);
   const widthOf = (value: string): number =>
-    measureTextWidth(font, value, size, pathFont, alwaysUsePathFont);
+    measureTextWidth(font, value, size, pathFont, pathFontUse);
 
   const appendOversizedNonAsciiToken = (token: string): string => {
     let line = "";
@@ -62,22 +62,50 @@ export function wrapText(
   return out;
 }
 
-// `alwaysUsePathFont` exists because measuring and drawing must agree on which
-// face is used. Flatten mode draws with the path font whenever the overlay
-// SELECTED a Noto family, not only when the line contains non-ASCII — so for a
-// pure-ASCII line in Noto Sans SC the glyphs came from Noto while the advances
-// came from Helvetica. Noto's ASCII runs ~6.6% wider, which pushed centred
-// lines off-centre, overflowed right-aligned lines past the box, and wrapped
-// against a width the text did not actually occupy. Callers that draw by
-// family pass true here; callers that switch on the text itself do not.
+// Which face a line is drawn in when a path (outline) font is at hand.
+// Measuring and drawing must agree on it, so both ask usesPathFont:
+// - "always": the overlay SELECTED a Noto family, so every line is Noto,
+//   ASCII included. Measuring ASCII on Helvetica advances while drawing Noto
+//   outlines (~6.6% wider) pushed centred lines off-centre, overflowed
+//   right-aligned lines past the box and wrapped against the wrong width.
+// - "nonAscii": any non-ASCII line goes to outlines (the editable FreeText
+//   and callout appearance writers).
+// - "unencodable": only a line the PDF font cannot encode goes to outlines;
+//   WinAnsi Latin (curly quotes, dashes, accents) stays real, searchable
+//   text (page content: flattened boxes and original-text edits).
+// `true` / `false` are the older spellings of "always" / "nonAscii".
+export type PathFontUse = "always" | "nonAscii" | "unencodable";
+
+export function usesPathFont(
+  font: PDFFont,
+  text: string,
+  pathFont: PathTextFont | null | undefined,
+  use: PathFontUse | boolean = false,
+): pathFont is PathTextFont {
+  if (!pathFont) return false;
+  const mode = use === true ? "always" : use === false ? "nonAscii" : use;
+  if (mode === "always") return true;
+  if (mode === "nonAscii") return hasNonAscii(text);
+  return !encodesText(font, text);
+}
+
+export function encodesText(font: PDFFont, text: string): boolean {
+  try {
+    font.encodeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function measureTextWidth(
   font: PDFFont,
   text: string,
   size: number,
   pathFont?: PathTextFont | null,
-  alwaysUsePathFont = false,
+  pathFontUse: PathFontUse | boolean = false,
 ): number {
-  if (pathFont && (alwaysUsePathFont || hasNonAscii(text))) {
+  if (usesPathFont(font, text, pathFont, pathFontUse)) {
     return pathTextWidth(pathFont, text, size);
   }
   return safeWidthOf(font, text, size);

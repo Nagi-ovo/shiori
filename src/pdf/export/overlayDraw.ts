@@ -42,7 +42,14 @@ import {
 } from "../model/callout";
 import type { ContentTextRedaction } from "./contentTextRedaction";
 import type { FontSet } from "./exportFonts";
-import { drawContentText, drawText, hexToRgb } from "./textDraw";
+import {
+  addTextLoss,
+  drawContentText,
+  drawText,
+  hexToRgb,
+  NO_TEXT_LOSS,
+  type TextDrawLoss,
+} from "./textDraw";
 
 export type EmbeddedImageCache = Map<string, PDFImage>;
 
@@ -52,18 +59,13 @@ export async function drawOverlaysForPage(
   fonts: FontSet,
   embeddedImages: EmbeddedImageCache,
   contentTextRedaction?: ContentTextRedaction,
-): Promise<number> {
-  let lostChars = 0;
-  for (const o of pageOverlays) {
-    if (o.type === "contentText") {
-      lostChars += drawContentText(
-        out,
-        o,
-        fonts,
-        contentTextRedaction?.get(o.id),
-      );
-    }
-  }
+): Promise<TextDrawLoss> {
+  let loss = drawContentTextEditsForPage(
+    out,
+    pageOverlays,
+    fonts,
+    contentTextRedaction,
+  );
   for (const o of pageOverlays) {
     if (o.type === "contentText") continue;
     const turned = beginFreeRotation(out, o);
@@ -74,12 +76,12 @@ export async function drawOverlaysForPage(
     else if (o.type === "stamp") drawStamp(out, o);
     else if (o.type === "image") await drawImageOverlay(out, o, embeddedImages);
     else if (o.type === "ink") drawInk(out, o);
-    else if (o.type === "note") lostChars += drawNote(out, o, fonts);
-    else if (o.type === "text") lostChars += drawTextBox(out, o, fonts);
-    else if (o.type === "callout") lostChars += drawCallout(out, o, fonts);
+    else if (o.type === "note") loss = addTextLoss(loss, drawNote(out, o, fonts));
+    else if (o.type === "text") loss = addTextLoss(loss, drawTextBox(out, o, fonts));
+    else if (o.type === "callout") loss = addTextLoss(loss, drawCallout(out, o, fonts));
     if (turned) out.pushOperators(popGraphicsState());
   }
-  return lostChars;
+  return loss;
 }
 
 // Box overlays carry a free rotation: degrees clockwise as seen, about the
@@ -137,18 +139,16 @@ export function drawContentTextEditsForPage(
   pageOverlays: Overlay[],
   fonts: FontSet,
   contentTextRedaction?: ContentTextRedaction,
-): number {
-  let lostChars = 0;
+): TextDrawLoss {
+  let loss = NO_TEXT_LOSS;
   for (const overlay of pageOverlays) {
     if (overlay.type !== "contentText") continue;
-    lostChars += drawContentText(
-      out,
-      overlay,
-      fonts,
-      contentTextRedaction?.get(overlay.id),
+    loss = addTextLoss(
+      loss,
+      drawContentText(out, overlay, fonts, contentTextRedaction?.get(overlay.id)),
     );
   }
-  return lostChars;
+  return loss;
 }
 
 function drawHighlight(out: PDFPage, o: HighlightOverlay) {
@@ -171,7 +171,7 @@ function drawCallout(
   out: PDFPage,
   o: CalloutOverlay,
   fonts: FontSet,
-): number {
+): TextDrawLoss {
   const color = hexToRgb(o.color);
   for (const target of o.targetRects) {
     out.drawRectangle({
@@ -241,9 +241,11 @@ function drawCallout(
     clip(),
     endPath(),
   );
-  const lostChars = drawText(out, o, fonts);
+  // The clip above hides whatever of the label falls outside o.rect; drawText
+  // counts it.
+  const loss = drawText(out, o, fonts, o.rect);
   out.pushOperators(popGraphicsState());
-  return lostChars;
+  return loss;
 }
 
 function drawUnderline(out: PDFPage, o: UnderlineOverlay) {
@@ -305,7 +307,7 @@ function drawRect(out: PDFPage, o: RectOverlay) {
 // A text box imported with a fill, a frame or a /CA draws them as its
 // FreeText appearance does: the fill over the whole box, the frame inset by
 // half its width, the text on top, all at that opacity. Others draw only text.
-function drawTextBox(out: PDFPage, o: TextOverlay, fonts: FontSet): number {
+function drawTextBox(out: PDFPage, o: TextOverlay, fonts: FontSet): TextDrawLoss {
   const border = o.borderWidth ?? 0;
   const alpha = typeof o.opacity === "number" && o.opacity < 1 ? Math.max(0, o.opacity) : undefined;
   if (!o.fill && border <= 0 && alpha === undefined) return drawText(out, o, fonts);
@@ -406,7 +408,7 @@ async function drawImageOverlay(
   });
 }
 
-function drawNote(out: PDFPage, o: NoteOverlay, fonts: FontSet): number {
+function drawNote(out: PDFPage, o: NoteOverlay, fonts: FontSet): TextDrawLoss {
   const color = hexToRgb(o.color);
   out.drawRectangle({
     x: o.rect.x,
@@ -442,7 +444,7 @@ function drawNote(out: PDFPage, o: NoteOverlay, fonts: FontSet): number {
       fonts,
     );
   }
-  return 0;
+  return NO_TEXT_LOSS;
 }
 
 function stampPdfPaths(o: StampOverlay): PdfPath[] {

@@ -34,7 +34,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -55,13 +55,13 @@ jobs:
       # vendor/tools on a miss, which is a multi-minute `cargo install`.
       - name: Restore wasm-bindgen CLI
         id: wasm-bindgen-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: vendor/tools
           key: wasm-bindgen-0.2.129-${{ runner.os }}-${{ runner.arch }}
 
       - name: Cache Rust build (deps + registry)
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: |
             crates/shiori-core -> target
@@ -95,7 +95,7 @@ jobs:
 
       - name: Save wasm-bindgen CLI
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.wasm-bindgen-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: vendor/tools
           key: wasm-bindgen-0.2.129-${{ runner.os }}-${{ runner.arch }}

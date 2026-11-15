@@ -26,6 +26,7 @@ import {
   containsEventTarget,
 } from "./documentViewerGestures";
 import {
+  DOCX_AUTO_FIT_MIN_ZOOM,
   DOCX_MAX_ZOOM,
   DOCX_MIN_ZOOM,
   fitDocxZoomForWidth,
@@ -131,6 +132,9 @@ type DocxZoomPreviewSession = {
   layerLeft: number;
   layerTop: number;
   pageAnchor: ReturnType<typeof findDocxPageAnchor>;
+  scroller: HTMLElement;
+  scrollLeft: number;
+  scrollTop: number;
   previousTransform: string;
   previousTransformOrigin: string;
   previousTransition: string;
@@ -186,7 +190,12 @@ export function DocxViewer({
     fitToWidth &&
     Math.abs(zoom - 1) < 0.001 &&
     !manuallyZoomed;
-  const effectiveZoom = autoFitActive && autoFitZoom !== null ? autoFitZoom : zoom;
+  // The shared ladder and menu reach 8×; the engine stops at DOCX_MAX_ZOOM.
+  const effectiveZoom = clamp(
+    autoFitActive && autoFitZoom !== null ? autoFitZoom : zoom,
+    DOCX_AUTO_FIT_MIN_ZOOM,
+    DOCX_MAX_ZOOM,
+  );
   useLayoutEffect(() => {
     zoomRef.current = effectiveZoom;
     if (!previewSessionRef.current) visualZoomRef.current = effectiveZoom;
@@ -242,7 +251,7 @@ export function DocxViewer({
   const commitUserZoom = useCallback((nextZoom: number) => {
     setManuallyZoomed(true);
     setAutoFitZoom(null);
-    onZoomChangeRef.current?.(nextZoom);
+    onZoomChangeRef.current?.(Math.min(nextZoom, DOCX_MAX_ZOOM));
   }, []);
 
   const finishZoomPreview = useCallback(
@@ -333,6 +342,9 @@ export function DocxViewer({
         layerLeft: layerRect.left,
         layerTop: layerRect.top,
         pageAnchor: findDocxPageAnchor(host, clientX, clientY),
+        scroller,
+        scrollLeft: scroller.scrollLeft,
+        scrollTop: scroller.scrollTop,
         previousTransform: layer.style.transform,
         previousTransformOrigin: layer.style.transformOrigin,
         previousTransition: layer.style.transition,
@@ -369,10 +381,15 @@ export function DocxViewer({
       session.anchorClientX = clientX;
       session.anchorClientY = clientY;
       const ratio = nextZoom / session.baseZoom;
-      const translateX =
-        clientX - session.layerLeft - session.anchorLocalX * ratio;
-      const translateY =
-        clientY - session.layerTop - session.anchorLocalY * ratio;
+      // Android keeps panning a scroll begun before the second finger: undo
+      // it, or it stacks on the preview's own pan.
+      const { scroller } = session;
+      const layerLeft =
+        session.layerLeft - (scroller.scrollLeft - session.scrollLeft);
+      const layerTop =
+        session.layerTop - (scroller.scrollTop - session.scrollTop);
+      const translateX = clientX - layerLeft - session.anchorLocalX * ratio;
+      const translateY = clientY - layerTop - session.anchorLocalY * ratio;
       session.layer.style.transform =
         `translate3d(${translateX}px, ${translateY}px, 0) scale(${ratio})`;
     },
@@ -390,47 +407,19 @@ export function DocxViewer({
 
     const nextZoom = Number(clampDocxZoom(visualZoomRef.current).toFixed(3));
     const setZoom = onZoomChangeRef.current ? commitUserZoom : undefined;
-    const restorePreviewLayer = () => {
-      session.layer.style.transform = session.previousTransform;
-      session.layer.style.transformOrigin = session.previousTransformOrigin;
-      session.layer.style.willChange = session.previousWillChange;
-      void session.layer.offsetWidth;
-      session.layer.style.transition = session.previousTransition;
-    };
     if (
       !setZoom ||
       !hostRef.current ||
       Math.abs(nextZoom - session.baseZoom) < 0.001
     ) {
-      previewSessionRef.current = null;
-      restorePreviewLayer();
+      // No relayout, but the preview may have panned: land that.
+      finishZoomPreview(session, session.baseZoom);
       visualZoomRef.current = zoomRef.current;
       return;
     }
 
-    // Same re-anchoring as the PDF canvas: the preview's fixed point followed
-    // the fingers, so the session-start anchor no longer describes what the
-    // reader sees under them. Measure against the base layout (preview
-    // transform off for a pre-paint instant — the layoutHasCaughtUp trick) so
-    // the commit continues exactly where the preview's final frame left off.
-    const hostEl = hostRef.current;
-    const previewTransformAtCommit = session.layer.style.transform;
-    session.layer.style.transform = session.previousTransform;
-    const finalAnchor = findDocxPageAnchor(
-      hostEl,
-      session.anchorClientX,
-      session.anchorClientY,
-    );
-    const scrollerAtCommit = docxScroller(hostEl);
-    if (scrollerAtCommit) {
-      const commitRect = scrollerAtCommit.getBoundingClientRect();
-      session.contentX =
-        scrollerAtCommit.scrollLeft + session.anchorClientX - commitRect.left;
-      session.contentY =
-        scrollerAtCommit.scrollTop + session.anchorClientY - commitRect.top;
-    }
-    session.layer.style.transform = previewTransformAtCommit;
-    if (finalAnchor) session.pageAnchor = finalAnchor;
+    // Previews pin the FIRST midpoint's content (pageAnchor) to the current
+    // midpoint; finish lands that, not what lies under the final midpoint.
 
     // The compositor preview above never asks the Word engine to re-layout.
     // Commit exactly once when the gesture settles. The engine applies its
@@ -609,13 +598,23 @@ export function DocxViewer({
           },
         });
 
+    // That scroll may land after the touchmove; re-pin, or a pause strands it.
+    const onScroll = (event: Event) => {
+      const s = previewSessionRef.current;
+      if (s && !s.settling && event.target === s.scroller) {
+        zoomAtClientPoint(s.anchorClientX, s.anchorClientY, visualZoomRef.current);
+      }
+    };
+
     const options: AddEventListenerOptions = { capture: true, passive: false };
     const removeOptions: EventListenerOptions = { capture: true };
+    host.addEventListener("scroll", onScroll, true);
     host.addEventListener("wheel", onWheel, options);
     host.addEventListener("gesturestart", onGestureStart, options);
     host.addEventListener("gesturechange", onGestureChange, options);
     host.addEventListener("gestureend", onGestureEnd, options);
     return () => {
+      host.removeEventListener("scroll", onScroll, true);
       host.removeEventListener("wheel", onWheel, removeOptions);
       host.removeEventListener("gesturestart", onGestureStart, removeOptions);
       host.removeEventListener("gesturechange", onGestureChange, removeOptions);

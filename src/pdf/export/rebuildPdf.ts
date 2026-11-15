@@ -68,6 +68,7 @@ import { annotationTextLostChars } from "./textDraw";
 
 export type RebuildResult = ExportResult & {
   unexcisedEdits: number;
+  clippedChars: number;
   /** Nothing to write: `bytes` are the input's, returned as is. */
   unchanged: boolean;
   pageCount: number;
@@ -158,6 +159,7 @@ export async function rebuildPdf(
       bytes: new Uint8Array(originalBytes),
       lostChars: 0,
       unexcisedEdits: 0,
+      clippedChars: 0,
       unchanged: true,
       pageCount: sourcePages.length,
     };
@@ -196,6 +198,7 @@ export async function rebuildPdf(
   const fonts = await loadExportFonts(out, exportedOverlays, mode, options);
 
   let totalLostChars = 0;
+  let clippedChars = 0;
   let unexcisedEdits = 0;
   const embeddedImages: EmbeddedImageCache = new Map();
 
@@ -262,20 +265,24 @@ export async function rebuildPdf(
       unexcisedEdits += unexcisedEditCount(contentTextRedaction);
     }
     if (mode === "flatten") {
-      totalLostChars += await drawOverlaysForPage(
+      const loss = await drawOverlaysForPage(
         inserted,
         pageOverlays,
         fonts,
         embeddedImages,
         contentTextRedaction,
       );
+      totalLostChars += loss.lostChars;
+      clippedChars += loss.clippedChars;
     } else if (mode === "annotations") {
-      totalLostChars += drawContentTextEditsForPage(
+      const loss = drawContentTextEditsForPage(
         inserted,
         pageOverlays,
         fonts,
         contentTextRedaction,
       );
+      totalLostChars += loss.lostChars;
+      clippedChars += loss.clippedChars;
       totalLostChars += annotationTextLostChars(pageOverlays, fonts);
       await drawImageOverlaysForPage(inserted, pageOverlays, embeddedImages);
       attachAnnotationsToPage(
@@ -319,6 +326,7 @@ export async function rebuildPdf(
     bytes,
     lostChars: totalLostChars,
     unexcisedEdits,
+    clippedChars,
     unchanged: false,
     pageCount: out.getPageCount(),
   };
