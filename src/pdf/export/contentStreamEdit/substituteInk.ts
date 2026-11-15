@@ -8,6 +8,7 @@ import type {Rect} from '../contentText/regionProof';
 import {simpleNames} from '../fontCoverage/encodings';
 import {proveType3Glyph} from '../fontCoverage/type3Proof';
 import {validRect} from '../contentText/regionProof/geometry';
+import {cffHulls,isCffProgram} from '../fontCoverage/cffHulls';
 const box=(dict:PDFDict|undefined):Rect|undefined=>{
  const a=dict?.lookupMaybe(PDFName.of('FontBBox'),PDFArray)?.asArray().map(v=>dict.context.lookup(v)).map(v=>v instanceof PDFNumber?v.asNumber():NaN);
  if(a?.length===4&&a.every(Number.isFinite)&&a[2]!>a[0]!&&a[3]!>a[1]!){
@@ -28,11 +29,14 @@ export function substituteInk(page:PDFPage,fonts:readonly ResolvedRunFont[]){
   const descriptor=(child??raw).lookupMaybe(PDFName.of('FontDescriptor'),PDFDict);
   const declared=box(raw)??box(descriptor),matrix=input.subtype==='Type3'?input.fontMatrix:undefined;
   let envelope=declared&&matrix?{x:declared.x*1000*matrix[0]!,y:declared.y*1000*matrix[3]!,w:declared.w*1000*matrix[0]!,h:declared.h*1000*matrix[3]!}:declared;
+  if(envelope&&(!validRect(envelope)||envelope.w<=0||envelope.h<=0))envelope=undefined;
   let program:ReturnType<typeof readProgram>|undefined;
   try{program=readProgram(input);}catch{/* Width-only addressing does not require a reusable program. */}
   // As with reflow ink, CFF top/FD transforms invalidate a /1000 fallback,
   // including when FontFile3 decoding fails before the program is available.
-  if(descriptor?.has(PDFName.of('FontFile3'))||program?.kind==='fontkit'&&program.cff)envelope=undefined;
+  if(descriptor?.has(PDFName.of('FontFile3'))||input.program&&isCffProgram(input.program)||program?.kind==='fontkit'&&program.cff)envelope=undefined;
+  let hull:((gid:number)=>Rect|undefined)|undefined;
+  if(program?.kind==='fontkit')try{hull=program.cff?cffHulls(input.program!):program.inkBox;}catch{/* Unproved CFF hulls stay unknown. */}
   let type1Names:ReadonlyMap<number,string>|undefined;
   if(program?.kind==='type1')try{type1Names=simpleNames(input,program.builtIn);}catch{/* An unknown glyph map leaves only the declared envelope. */}
   const coverage=createFontCoverage(input.toUnicode&&!runToUnicode(input.toUnicode,font.bytesPerCode)&&font.bytesPerCode===1&&input.encoding?{...input,toUnicode:undefined}:input);
@@ -42,7 +46,7 @@ export function substituteInk(page:PDFPage,fonts:readonly ResolvedRunFont[]){
    }
    if(program?.kind==='fontkit'){
     const gid=coverage.glyphIds.get(code.toString(16).padStart(font.bytesPerCode*2,'0'));
-    if(gid){const ink=program.inkBox(gid);if(ink)return ink;}
+    if(gid)try{const ink=hull?.(gid);if(ink&&validRect(ink))return ink;}catch{/* A failed outline leaves only a valid non-CFF envelope. */}
    }
    if(program?.kind==='type1'){
     const name=type1Names?.get(code),proof=name?program.verify(name):undefined;

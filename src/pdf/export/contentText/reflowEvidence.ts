@@ -13,6 +13,8 @@ import {streamInkResolver} from './reflowInk';
 import type {ReflowCodeCluster} from './reflowTypes';
 import {reflowScene,numericArray} from './reflowScene';
 import {shortStreamRegion} from './reflowShortRegion';
+import {fontInputFromDict} from '../fontCoverage/pdfLibAdapter';
+import {isCffProgram} from '../fontCoverage/cffHulls';
 export const unionReflowBoxes=(boxes:readonly Rect[]):Rect=>{
  const x=Math.min(...boxes.map(b=>b.x)),y=Math.min(...boxes.map(b=>b.y));
  return {x,y,w:Math.max(...boxes.map(b=>b.x+b.w))-x,h:Math.max(...boxes.map(b=>b.y+b.h))-y};
@@ -32,8 +34,12 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
  if(!target||!validTrace(target))return null;
  let lines:ParagraphLine[]=[],source:ReflowCodeCluster[]=[];
  const obstacles:Rect[]=reflowScene(page,ops,media);
+ const declaredBoxes=new Map<string,number[]|undefined>();
  const declaredBox=(name:string|undefined)=>{
-  const raw=name?page.node.Resources()?.lookupMaybe(PDFName.of('Font'),PDFDict)?.lookupMaybe(PDFName.of(name),PDFDict):undefined;
+  if(!name)return;
+  if(declaredBoxes.has(name))return declaredBoxes.get(name);
+  declaredBoxes.set(name,undefined);
+  const raw=page.node.Resources()?.lookupMaybe(PDFName.of('Font'),PDFDict)?.lookupMaybe(PDFName.of(name),PDFDict);
   if(!raw)return;
   const matrix=numericArray(raw,'FontMatrix');
   if(matrix&&(matrix.length!==6||matrix.some((n,i)=>n!==[.001,0,0,.001,0,0][i])))return;
@@ -41,8 +47,11 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   // An unmeasured CFF may require an unknown top/FD transform. Its /1000
   // declaration cannot grant scene clearance either.
   if(descriptor?.has(PDFName.of('FontFile3')))return;
+  const input=fontInputFromDict(raw);
+  if(input.program&&isCffProgram(input.program))return;
   const b=numericArray(raw,'FontBBox')??(descriptor?numericArray(descriptor,'FontBBox'):undefined);
-  return b?.length===4&&b.every(Number.isFinite)&&b[2]!>b[0]!&&b[3]!>b[1]!?b:undefined;
+  const result=b?.length===4&&b.every(Number.isFinite)&&b[2]!>b[0]!&&b[3]!>b[1]!?b:undefined;
+  declaredBoxes.set(name,result);return result;
  };
  // A known origin plus a declared vertical envelope bounds an unknown
  // horizontal advance to a strip. Missing envelopes/rotation occupy the page.

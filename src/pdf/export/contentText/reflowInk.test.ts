@@ -39,6 +39,46 @@ test('Type1C control hull honours its declared nonstandard FontMatrix',async()=>
  const m=measure(f);expect(m?.box).toEqual({x:0,y:0,w:2,h:2});expect(m?.conservative).toBe(false);
 });
 
+// Failure inventory: substitution must use the same transformed hull as
+// reflow even with a declaration; neither placed nor unplaced unknown CFF
+// may use an untransformed declaration to clear a neighbouring paragraph.
+test.each(['FontFile3','FontFile2'])('proved Type1C in %s supplies substitution ink despite its declared FontBBox',async slot=>{
+ const f=await type1Fixture(),d=f.font.lookup(PDFName.of('FontDescriptor'),PDFDict);
+ d.delete(PDFName.of('FontFile'));d.set(PDFName.of('FontBBox'),f.doc.context.obj([0,0,1000,1000]));
+ d.set(PDFName.of(slot),f.doc.context.register(f.doc.context.flateStream(matrixCff(),{Subtype:'Type1C'})));
+ expect(measure(f)).toMatchObject({box:{x:0,y:0,w:2,h:2},conservative:false});
+ expect(substituteInk(f.page,substituteSourceFonts(f.page))('F1',65)).toEqual({x:0,y:0,w:.2,h:.2});
+});
+test.each([['placed','glyph'],['unplaced','glyph'],['placed','FD matrix'],['unplaced','FD matrix']])('unproved CFF in FontFile2 cannot grant %s scene clearance (%s)',async(placement,failure)=>{
+ const otherShow=placement==='placed'?'200 100 Td (A)':'200 50 Td (D)';
+ const f=await type1Fixture({stream:`BT /F1 10 Tf 14 TL 50 100 Td (AB) Tj ET BT /F2 10 Tf ${otherShow} Tj ET`}),ctx=f.doc.context;
+ const other=f.font.clone(),d=f.font.lookup(PDFName.of('FontDescriptor'),PDFDict).clone();
+ d.delete(PDFName.of('FontFile'));d.set(PDFName.of('FontBBox'),ctx.obj([0,0,100,100]));
+ other.set(PDFName.of('FontDescriptor'),ctx.register(d));f.fonts.set(PDFName.of('F2'),ctx.register(other));
+ const s=inspectRunPage(f.page);if(!s.ok)throw Error(s.reason);
+ const target=tokenizeContentStream(s.bytes).findIndex(op=>op.operator==='Tj');
+ const evidence=()=>streamReflowEvidence(f.page,s.bytes,substituteSourceFonts(f.page),target);
+ const ordinary=evidence();expect(ordinary===null).toBe(false);
+ expect(ordinary?.walk.unplacedText).toBe(placement==='unplaced');
+ const bytes=failure==='glyph'?matrixCff():fdMatrixCff([2,0,0,2,0,0]);
+ if(failure==='glyph')bytes[bytes.length-1]=15;
+ d.set(PDFName.of('FontFile2'),ctx.register(ctx.flateStream(bytes)));
+ if(failure==='glyph')expect(readProgram(fontInputFromDict(other))).toMatchObject({kind:'fontkit',cff:true});
+ else expect(()=>readProgram(fontInputFromDict(other))).toThrow();
+ expect(evidence()===null).toBe(true);
+});
+
+// A positive declaration can collapse only after the Type3 scale is applied.
+// Missing CharProcs prevent an independent outline proof from hiding the bug.
+test.each([[0,0], [0,.001], [.001,0]])('Type3 scale %j cannot turn a declaration into empty proved ink',async(sx,sy)=>{
+ const f=await type1Fixture(),fonts=resolveRunFonts(f.page),ctx=f.doc.context;
+ f.font.set(PDFName.of('Subtype'),PDFName.of('Type3'));
+ f.font.delete(PDFName.of('FontDescriptor'));
+ f.font.set(PDFName.of('FontBBox'),ctx.obj([0,0,600,700]));
+ f.font.set(PDFName.of('FontMatrix'),ctx.obj([sx,0,0,sy,0,0]));
+ expect(substituteInk(f.page,fonts)('F1',65)).toBeUndefined();
+});
+
 // Failure inventory: point/zero-width/zero-height declarations are unknown;
 // proved empty outlines stay empty; unsupported CFF transforms and failed or
 // missing glyph hulls cannot fall back to an identity-scaled declaration.
@@ -96,6 +136,19 @@ function fdMatrixCff(matrix:number[]){
  return Uint8Array.from([1,0,4,4,...name,...idx([dict(start,start+3,start+3+chars.length,fdArray)]),0,0,0,0,
   0,0,42,...chars,0,0,0,...idx([fd(privateOffset)])]);
 }
+test('CID CFF without an FD matrix operator preserves proved ink in both resolvers',async()=>{
+ const f=await type1Fixture({stream:'BT /F1 10 Tf 14 TL 50 100 Td <002a> Tj ET'}),ctx=f.doc.context;
+ const d=f.font.lookup(PDFName.of('FontDescriptor'),PDFDict);
+ d.delete(PDFName.of('FontFile'));d.set(PDFName.of('FontBBox'),ctx.obj([0,0,1000,1000]));
+ d.set(PDFName.of('FontFile3'),ctx.register(ctx.flateStream(fdMatrixCff([]),{Subtype:'CIDFontType0C'})));
+ const child=ctx.register(ctx.obj({Type:'Font',Subtype:'CIDFontType0',BaseFont:'Tiny',DW:600,FontDescriptor:f.font.get(PDFName.of('FontDescriptor')),
+  CIDSystemInfo:{Registry:'Adobe',Ordering:'Identity',Supplement:0}}));
+ f.font.set(PDFName.of('Subtype'),PDFName.of('Type0'));f.font.set(PDFName.of('Encoding'),PDFName.of('Identity-H'));
+ f.font.set(PDFName.of('DescendantFonts'),ctx.obj([child]));f.font.delete(PDFName.of('FontDescriptor'));
+ f.font.set(PDFName.of('ToUnicode'),ctx.register(ctx.flateStream('1 beginbfchar <002a> <0041> endbfchar')));
+ expect(measure(f,42)).toMatchObject({box:{x:0,y:0,w:1,h:1},conservative:false});
+ expect(substituteInk(f.page,substituteSourceFonts(f.page))('F1',42)).toEqual({x:0,y:0,w:.1,h:.1});
+});
 test.each([[[2,0,0,2,0,0]],[[1,1,0,1,0,0]]])('CID FD FontMatrix %j cannot retain an identity FontBBox',async matrix=>{
  const f=await type1Fixture({stream:'BT /F1 10 Tf 14 TL 50 100 Td <002a> Tj ET'}),ctx=f.doc.context;
  const d=f.font.lookup(PDFName.of('FontDescriptor'),PDFDict);

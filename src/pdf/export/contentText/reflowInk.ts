@@ -6,38 +6,12 @@ import {readProgram} from '../fontCoverage/program';
 import type {GlyphIdentity,Rect,TextTrace} from './regionProof';
 import {linear,validRect,validTrace} from './regionProof/geometry';
 import type {Type1Options} from '../fontCoverage/type1Support';
-import fontkit from '@pdf-lib/fontkit';
+import {cffHulls,isCffProgram} from '../fontCoverage/cffHulls';
 import {createFontCoverage} from '../fontCoverage/coverage';
 import {runToUnicode} from '../contentStreamEdit/runToUnicode';
 import {numericArray} from './reflowScene';
 import {simpleNames} from '../fontCoverage/encodings';
 import {proveType3Glyph} from '../fontCoverage/type3Proof';
-/** Container metadata only: the unchanged raw CFF remains the program that
- * fontkit executes for its Bezier control hull (the same R1 program reader).
- * Transform the control hull with the top FontMatrix; FD-local transforms
- * remain unsupported rather than silently assuming an identity. */
-function cffHulls(raw:Uint8Array){
- let data=raw;
- if(raw[0]===1&&raw[2]!>=4){
-  const head=new Uint8Array(54);new DataView(head.buffer).setUint16(18,1000);
-  const tables:[string,Uint8Array][]=[['CFF ',raw],['head',head],['maxp',Uint8Array.of(0,0,0x50,0,0xff,0xff)]];
-  data=new Uint8Array(60+tables.reduce((n,[,b])=>n+Math.ceil(b.length/4)*4,0));const v=new DataView(data.buffer);
-  data.set([79,84,84,79]);v.setUint16(4,3);let offset=60;
-  tables.forEach(([tag,b],i)=>{const p=12+i*16;data.set(Array.from(tag,c=>c.charCodeAt(0)),p);v.setUint32(p+8,offset);v.setUint32(p+12,b.length);data.set(b,offset);offset+=Math.ceil(b.length/4)*4;});
- }
- const font=fontkit.create(data) as ReturnType<typeof fontkit.create>&{'CFF '?:{topDict:{FontMatrix?:number[];FDArray?:{FontMatrix?:number[]}[]}}};
- const top=font['CFF ']?.topDict;
- if(!top||(top.FDArray??[]).some(d=>d.FontMatrix))return;
- const m=top.FontMatrix??[.001,0,0,.001,0,0];
- if(m.length!==6||!m.every(Number.isFinite))return;
- return (gid:number):Rect=>{
-  const glyph=font.getGlyph(gid);if(!glyph.path.toSVG())return {x:0,y:0,w:0,h:0};const b=glyph.cbox;
-  const points=[[b.minX,b.minY],[b.maxX,b.minY],[b.maxX,b.maxY],[b.minX,b.maxY]].map(([x,y])=>
-   [m[0]!*x!+m[2]!*y!+m[4]!,m[1]!*x!+m[3]!*y!+m[5]!]);
-  const xs=points.map(p=>p[0]!),ys=points.map(p=>p[1]!);
-  return {x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};
- };
-}
 export type ReflowInk={box:Rect;glyph?:GlyphIdentity;conservative:boolean};
 /** Outlines are preferred; a positive-area PDF FontBBox is conservative ink,
  * independent of source encoding eligibility. No selection, advance or em
@@ -63,6 +37,7 @@ export function streamInkResolver(page:PDFPage,fonts:readonly ResolvedRunFont[],
   // idiom prevents program reuse. The encoder retains its independent gate.
   byName.set(font.resourceName,fallback);
   const input=fontInputFromDict(raw);
+  if(input.program&&isCffProgram(input.program))envelope=undefined;
   if(input.subtype==='Type3'){
    byName.set(font.resourceName,code=>{const p=proveType3Glyph(input,code);return p.ok?{box:p.proof.inkBounds??{x:0,y:0,w:0,h:0},conservative:false}:undefined;});
    continue;
