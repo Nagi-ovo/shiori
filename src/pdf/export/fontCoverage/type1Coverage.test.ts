@@ -7,10 +7,11 @@ import {stage5Type1,type1RunDiagnostic} from './type1Support';
 import type {FontInput} from './types';
 const input=(extra:Partial<FontInput>={}):FontInput=>({subtype:'Type1',baseFont:'Tiny',programKind:'FontFile',...tinyType1(),firstChar:65,lastChar:66,widths:[600,600],toUnicode:'2 beginbfchar <41> <0041> <42> <0042> endbfchar',...extra});
 const coverage=(extra:Partial<FontInput>={})=>createFontCoverage(input(extra),{sourceReuse:true});
-test('raw Type1 dispatch precedes fontkit and stays production default-off',()=>{
+test('raw Type1 dispatch precedes fontkit and defaults to verified source reuse',()=>{
   expect(readProgram(input())).toMatchObject({kind:'type1'});
-  expect(stage5Type1).toEqual({sourceReuse:false,standard14Afm:false});
-  expect(createFontCoverage(input()).canEncode('A').ok).toBe(false);
+  expect(stage5Type1).toEqual({sourceReuse:true,standard14Afm:false});
+  expect(createFontCoverage(input()).canEncode('A').ok).toBe(true);
+  expect(createFontCoverage(input(),{sourceReuse:false}).canEncode('A').ok).toBe(false);
   expect(coverage().canEncode('AB')).toMatchObject({ok:true,bytes:Uint8Array.of(65,66)});
   expect(coverage().glyphIds.size).toBe(0);
   expect(coverage().mappings?.get('41')).toMatchObject({width1000:600,widthSource:'pdf-widths',glyph:{kind:'type1-name',name:'A'}});
@@ -57,8 +58,8 @@ test('unencoded glyphs and a missing nonstandard Type1 program have precise refu
   expect(createFontCoverage({subtype:'Type1',baseFont:'Tiny'}).canEncode('A')).toMatchObject({ok:false,code:'font-program-missing'});
   expect(createFontCoverage({subtype:'MMType1',baseFont:'Helvetica'}).canEncode('A')).toMatchObject({ok:false,code:'type1-ps-unsupported'});
 });
-test('the default-off gate also refuses deletion through an empty replacement',()=>{
-  expect(createFontCoverage(input()).canEncode('').ok).toBe(false);
+test('explicit-off also refuses deletion through an empty replacement',()=>{
+  expect(createFontCoverage(input(),{sourceReuse:false}).canEncode('').ok).toBe(false);
 });
 test('an unknown glyph-name Unicode is unavailable, not a proven identity conflict',()=>{
   const f=coverage({...tinyType1({glyphs:{customUnknown:widthChar()}}),encoding:{differences:{65:'customUnknown'}},toUnicode:'1 beginbfchar <41> <0041> endbfchar'});

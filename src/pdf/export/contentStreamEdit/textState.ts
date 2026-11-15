@@ -16,8 +16,9 @@
 // a vertical or CMap encoding) yields no placements and sets unplacedText,
 // so it is never removed. Its advance is unknown, so later shows on the same
 // line are unplaced too, until a line operator moves from the line start.
-// Stroked text uses the same conservative path; its unplaced reason lets the
-// run compiler reject an addressed stroke without aborting unrelated edits.
+// Stroked text remains uneditable, but known widths still advance tm. Its
+// separate placements let callers reject an addressed stroke without making
+// unrelated fill text unplaceable.
 
 import type { ContentOp, ContentOperand } from "./tokenizer";
 import type { ContentFontInfo, UnsupportedFont } from "./glyphWidths";
@@ -132,10 +133,17 @@ export type ShowTextState = {
   origin: Point; advanceVector: Point;
 };
 
+export type UnplacedShow = {
+  opIndex: number; arrayItemIndex: number; origin: Point | null; fontSizePt: number;
+  advanceKnown: boolean; reason?: string;
+  // Measured but uneditable glyphs, never candidates for glyph removal.
+  glyphs?: readonly GlyphPlacement[];
+};
+
 export type TextWalkCallbacks = {
   // Exact state at a source string, including empty shows.
   onShow?: (state: ShowTextState) => void;
-  onUnplaced?: (state: {opIndex:number;origin:Point|null;fontSizePt:number;reason?:string})=>void;
+  onUnplaced?: (state: UnplacedShow)=>void;
   // Resolve a /Font resource name. Null (unresolvable) aborts the walk; an
   // unsupported font leaves its text unplaced.
   resolveFont: (name: string) => ContentFontInfo | UnsupportedFont | null;
@@ -218,10 +226,14 @@ export function walkTextPlacements(
     const font = resolveFont(gs.fontName);
     if (font === null) return `unresolvable font /${gs.fontName}`;
     const stroked = gs.renderMode === 1 || gs.renderMode === 2;
-    if (stroked || gs.fontTainted || !font.ok || tmUnknown) {
+    const unplaced = {
+      opIndex, arrayItemIndex, origin: tmUnknown ? null : apply(multiply(tm, gs.ctm), { x: 0, y: gs.rise }),
+      fontSizePt: Math.abs(gs.fontSize * Math.hypot(tm[2] * gs.ctm[0] + tm[3] * gs.ctm[2], tm[2] * gs.ctm[1] + tm[3] * gs.ctm[3])),
+      ...(stroked ? { reason: 'graphics-effect-unsupported: stroked text (Tr 1/2)' } : {}),
+    };
+    if (gs.fontTainted || !font.ok || tmUnknown) {
       unplacedText = true;
-      callbacks.onUnplaced?.({opIndex,origin:tmUnknown?null:apply(multiply(tm,gs.ctm),{x:0,y:gs.rise}),fontSizePt:Math.abs(gs.fontSize*Math.hypot(tm[2],tm[3])),
-        ...(stroked?{reason:'graphics-effect-unsupported: stroked text (Tr 1/2)'}:{})});
+      callbacks.onUnplaced?.({ ...unplaced, advanceKnown: false });
       tmUnknown = true;
       return null;
     }
@@ -229,18 +241,31 @@ export function walkTextPlacements(
     if (font.bytesPerCode === 2 && bytes.length % 2 !== 0) {
       return "odd byte count in 2-byte-code show string";
     }
-    callbacks.onShow?.({ opIndex, arrayItemIndex, fontName: gs.fontName,
+    const widths = new Map<number, number>();
+    for (let offset = 0; offset < bytes.length; offset += font.bytesPerCode) {
+      const code = font.bytesPerCode === 1 ? bytes[offset]! : bytes[offset]! * 256 + bytes[offset + 1]!;
+      const width = font.widthOf(code);
+      if (!Number.isFinite(width)) {
+        unplacedText = true;
+        callbacks.onUnplaced?.({ ...unplaced, advanceKnown: false });
+        tmUnknown = true;
+        return null;
+      }
+      widths.set(code, width);
+    }
+    if (!stroked) callbacks.onShow?.({ opIndex, arrayItemIndex, fontName: gs.fontName,
       fontSizePt: gs.fontSize * Math.hypot(tm[2] * gs.ctm[0] + tm[3] * gs.ctm[2], tm[2] * gs.ctm[1] + tm[3] * gs.ctm[3]),
       fontSize: gs.fontSize, charSpacing: gs.charSpacing, wordSpacing: gs.wordSpacing,
       origin: apply(multiply(tm, gs.ctm), { x: 0, y: gs.rise }),
       advanceVector: { x: gs.horizontalScale * (tm[0] * gs.ctm[0] + tm[1] * gs.ctm[2]),
         y: gs.horizontalScale * (tm[0] * gs.ctm[1] + tm[1] * gs.ctm[3]) } });
+    const measured: GlyphPlacement[] = [];
     for (let offset = 0; offset < bytes.length; offset += font.bytesPerCode) {
       const code =
         font.bytesPerCode === 1
           ? bytes[offset]!
           : bytes[offset]! * 256 + bytes[offset + 1]!;
-      const w0Em = font.widthOf(code) / 1000;
+      const w0Em = widths.get(code)! / 1000;
       const isWordSpaced =
         font.appliesWordSpacing && code === 0x20 && gs.wordSpacing !== 0;
       const spacing = gs.charSpacing + (isWordSpaced ? gs.wordSpacing : 0);
@@ -272,7 +297,7 @@ export function walkTextPlacements(
         apply(trm, { x: w0Em, y: coreTopEm }),
         apply(trm, { x: 0, y: coreTopEm }),
       ];
-      glyphs.push({
+      measured.push({
         opIndex,
         arrayItemIndex,
         byteOffset: offset,
@@ -288,6 +313,10 @@ export function walkTextPlacements(
         (w0Em * gs.fontSize + spacing) * gs.horizontalScale;
       translateText(advance, 0);
     }
+    if (stroked) {
+      unplacedText = true;
+      callbacks.onUnplaced?.({ ...unplaced, advanceKnown: true, glyphs: measured });
+    } else for (const glyph of measured) glyphs.push(glyph);
     return null;
   };
 

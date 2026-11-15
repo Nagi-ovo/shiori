@@ -1,36 +1,47 @@
 import type { ContentTextOverlay } from '../../model/types';
 import type { PageRunPlan } from '../contentStreamEdit/pageRunPlan';
-import { sourceFingerprint, type ResolvedRunFont } from '../contentStreamEdit/replaceRun';
+import { sourceFingerprint, runContextSafety, type ResolvedRunFont } from '../contentStreamEdit/replaceRun';
 import { removalsByRect } from '../contentStreamEdit/removeGlyphs';
 import {ContentStreamParseError, tokenizeContentStream } from '../contentStreamEdit/tokenizer';
-import { walkTextPlacements, type GlyphPlacement, type ShowTextState } from '../contentStreamEdit/textState';
+import { walkTextPlacements, type GlyphPlacement, type ShowTextState, type UnplacedShow } from '../contentStreamEdit/textState';
 import { type ContentTextReason } from './outcomes';
-import {textObjectScopes,followsUnplaced,type RunEnvironment} from '../contentStreamEdit/textSafety';
+import {textObjectScopes,followsUnplaced} from '../contentStreamEdit/textSafety';
 import { lineChanges } from './diff';
+import {planReflow} from './reflowPlan';
+import type {ContentTextEnvironment} from './reflowTypes';
 export type ContentTextPlan = {ok:true;plan:PageRunPlan} | {ok:false;code:ContentTextReason;reason:string};
 const compact=(s:string)=>s.replace(/\s/gu,'');
 const refuse=(code:ContentTextReason,reason:string=code):ContentTextPlan=>({ok:false,code,reason});
 /** Pure mapping from the UI's source selection to byte-addressed compiler spans. */
-export function planContentText(content:Uint8Array,fonts:readonly ResolvedRunFont[],overlay:ContentTextOverlay,environment:RunEnvironment={}):ContentTextPlan {
+export function planContentText(content:Uint8Array,fonts:readonly ResolvedRunFont[],overlay:ContentTextOverlay,environment:ContentTextEnvironment={}):ContentTextPlan {
   const originals=overlay.originalText.replace(/\r\n/g,'\n').split('\n');
   const replacements=overlay.text.replace(/\r\n/g,'\n').split('\n');
-  if(originals.length!==replacements.length)return refuse('reflow-required');
+  if(originals.length!==replacements.length&&!(environment.stage5Reflow&&environment.reflowRequest))return refuse('reflow-required');
   if(overlay.angle || overlay.align!=='left')return refuse('style-change');
   if(!overlay.sourceStyle)return refuse('missing-source-style');
   if(overlay.sourceStyle && (Object.keys(overlay.sourceStyle) as (keyof NonNullable<ContentTextOverlay['sourceStyle']>)[]).some(key=>overlay[key]!==overlay.sourceStyle![key]))return refuse('style-change');
   try {
     const byName=new Map(fonts.map(f=>[f.resourceName,f]));
     const ops=tokenizeContentStream(content),states=new Map<string,ShowTextState>();
-    const unplaced:{opIndex:number;origin:{x:number;y:number}|null;fontSizePt:number}[]=[];const scopes=textObjectScopes(ops);
+    const unplaced:UnplacedShow[]=[];const scopes=textObjectScopes(ops);
     const walk=walkTextPlacements(ops,{resolveFont:name=>{
       const f=byName.get(name);return f?{...f,ok:true,appliesWordSpacing:f.bytesPerCode===1}:{ok:false,reason:'unsupported source font'};
     },extGStateSetsFont:name=>environment.extGStates?.get(name)?.setsFont??null,onUnplaced:s=>unplaced.push(s),onShow:s=>states.set(`${s.opIndex}:${s.arrayItemIndex}`,s)});
     if(!walk.ok)return refuse('unsupported-state',walk.reason);
 
     const selected=[...new Set(removalsByRect(walk.glyphs,overlay.coverRects).flatMap(s=>[...s]))];
-    if(!selected.length)return refuse(walk.unplacedText?'font-unavailable':walk.xobjects.length?'form-xobject':'source-mismatch');
-    if(selected.some(g=>followsUnplaced(scopes,unplaced.map(s=>s.opIndex),g.opIndex)))return refuse('font-unavailable','target follows an unknown advance in its text object');
-    if(unplaced.some(s=>s.origin && overlay.coverRects.some(r=>s.origin!.y>=r.y-Math.abs(s.fontSizePt) && s.origin!.y<=r.y+r.h+Math.abs(s.fontSizePt))))return refuse('font-unavailable','unplaced source text could intersect the selection');
+    // Measured stroke glyphs are uneditable, but do not make later advances
+    // unknown or poison unrelated text elsewhere in the same horizontal band.
+    const addressedStrokes=unplaced.filter(s=>s.glyphs && removalsByRect([...s.glyphs],overlay.coverRects).some(hits=>hits.size));
+    if(addressedStrokes.some(s=>Math.abs(s.fontSizePt-overlay.fontSize)>.05) || addressedStrokes.length && selected.some(g=>{
+      const state=states.get(`${g.opIndex}:${g.arrayItemIndex}`);
+      return !state || Math.abs((state.fontSizePt??state.fontSize)-overlay.fontSize)>.05;
+    }))return refuse('style-change');
+    if(addressedStrokes.length)return refuse('graphics-effect-unsupported','graphics-effect-unsupported: stroked text (Tr 1/2)');
+    const unknown=unplaced.filter(s=>!s.advanceKnown);
+    if(!selected.length)return refuse(unknown.length?'font-unavailable':walk.xobjects.length?'form-xobject':'source-mismatch');
+    if(selected.some(g=>followsUnplaced(scopes,unknown.map(s=>s.opIndex),g.opIndex)))return refuse('font-unavailable','target follows an unknown advance in its text object');
+    if(unknown.some(s=>s.origin && overlay.coverRects.some(r=>s.origin!.y>=r.y-Math.abs(s.fontSizePt) && s.origin!.y<=r.y+r.h+Math.abs(s.fontSizePt))))return refuse('font-unavailable','unplaced source text could intersect the selection');
     for(const g of selected) {
       const [a,b,,d]=g.coreQuad;
       if(Math.abs(a.y-b.y)>.01 || Math.abs(a.x-d.x)>.01 || b.x<a.x)return refuse('unsupported-matrix');
@@ -42,12 +53,18 @@ export function planContentText(content:Uint8Array,fonts:readonly ResolvedRunFon
       let line=lines.find(l=>Math.abs(l[0]!.coreQuad[0].y-g.coreQuad[0].y)<=.01);
       if(!line){line=[];lines.push(line);}line.push(g);
     }
+    if(environment.stage5Reflow&&environment.reflowRequest&&selected.every(g=>byName.get(g.fontName)?.unicodeByCode.has(g.code)))return planReflow(content,fonts,overlay,environment);
     if(lines.length!==originals.length)return refuse('reflow-required');
     const edits:PageRunPlan['edits'][number][]=[];
     for(let lineIndex=0;lineIndex<lines.length;lineIndex++) {
       const glyphs=lines[lineIndex]!,original=originals[lineIndex]!,replacement=replacements[lineIndex]!;
       const decoded=glyphs.map(g=>byName.get(g.fontName)?.unicodeByCode.get(g.code));
-      if(decoded.some(s=>s===undefined))return refuse('font-unavailable');
+      if(decoded.some(s=>s===undefined)) {
+        const safety=runContextSafety(ops,environment);
+        if(!safety.ok)return refuse(safety.code??'unsupported-state',safety.reason);
+        if(glyphs.some(g=>safety.unsafe.has(g.opIndex)))return refuse('unsupported-state','clip/graphics/semantic dependent target');
+        return refuse('font-unavailable');
+      }
       for(let i=1;i<glyphs.length;i++) {
         if(Math.abs(glyphs[i]!.coreQuad[0].x-glyphs[i-1]!.coreQuad[0].x)<.01)return refuse('ambiguous-match');
       }

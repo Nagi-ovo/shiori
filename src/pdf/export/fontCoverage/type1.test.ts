@@ -18,6 +18,15 @@ describe('bounded Type1 containers and cipher',()=>{
     expect(type1Container({subtype:'Type1',program:f.program}).encrypted).toEqual(f.binary);
     expect(read({hex}).verify('A')).toMatchObject({ok:true,width:600});
   });
+  test('hex-looking first four binary eexec bytes retry raw binary in every container',()=>{
+    // These discarded plaintext bytes independently encrypt to ASCII ABCD.
+    const f=tinyType1({eexecPrefix:Uint8Array.of(152,7,41,220)});
+    expect(f.binary.slice(0,4)).toEqual(ascii('ABCD'));
+    for(const input of [{subtype:'Type1',...f},{subtype:'Type1',program:f.program},
+      {subtype:'Type1',program:pfb([1,f.clear],[2,f.binary],[1,f.trailer])}]) {
+      expect(readType1Program(input).verify('A')).toMatchObject({ok:true,width:600});
+    }
+  });
   test('PFB multiple records and terminal without length',()=>{
     const f=tinyType1(),p=pfb([1,f.clear],[2,f.binary.slice(0,11)],[2,f.binary.slice(11)],[1,f.trailer]);
     expect(readType1Program({subtype:'Type1',program:p}).verify('A')).toMatchObject({ok:true,width:600});
@@ -60,7 +69,7 @@ describe('declarative dictionaries and reachable Type1 programs',()=>{
     expect(read({glyphs:{A:widthChar(),acute:widthChar(),Aacute:composite}}).verify('Aacute').ok).toBe(true);
     expect(read({glyphs:{A:widthChar(),Aacute:composite}}).verify('Aacute')).toMatchObject({ok:false,code:'glyph-unavailable'});
   });
-  test('OtherSubrs including unproven flex/hint replacement refuse precisely',()=>{
+  test('incomplete flex/hint replacement and unknown OtherSubrs refuse precisely',()=>{
     for(const other of [0,1,2,3,19])expect(read({glyphs:{A:Uint8Array.from([...nums(0,600),13,...nums(0,other),12,16,14])}}).verify('A')).toMatchObject({ok:false,code:'type1-other-subr-unsupported'});
   });
   test('.notdef cannot authorize replacement',()=>expect(read().verify('.notdef')).toMatchObject({ok:false,code:'glyph-unavailable'}));

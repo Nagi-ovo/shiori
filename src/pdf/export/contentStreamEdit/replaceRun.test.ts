@@ -199,7 +199,7 @@ for (const tr of [1,2]) for (const show of ['(stroke) Tj','[(str) 10 (oke)] TJ']
       const target=edit(s,show.includes('TJ')?'str':'stroke','Hi');
       for(const edits of [[target],[edit(s,'Hello','Hi'),target]]) {
         const result=compile(s,edits);
-        expect(result).toMatchObject({ok:false,reason:expect.stringContaining('graphics-effect-unsupported')});
+        expect(result).toMatchObject({ok:false,code:'graphics-effect-unsupported',reason:expect.stringContaining('graphics-effect-unsupported')});
         expect(result.bytes).toBe(s);
       }
     }

@@ -1142,6 +1142,7 @@
       "form-xobject": "暂不支持原位编辑 Form XObject 中的文字。",
       "unsupported-matrix": "暂不支持原位编辑此文字变换。",
       "unsupported-state": "无法安全修改此 PDF 文字状态。",
+      "graphics-effect-unsupported": "无法安全修改带描边的 PDF 文字。",
       "font-unavailable": "无法解析原文字体或 Unicode 映射。",
       "font-coverage": "无法验证原文或后备字体的字形覆盖。",
       "font-permission": "字体许可不允许可编辑嵌入。",

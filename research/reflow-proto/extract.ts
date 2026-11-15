@@ -6,7 +6,8 @@ import { createHash } from 'node:crypto';
 import { inspectRunPage, resolveRunFonts } from '../../src/pdf/export/contentStreamEdit/replaceRunPage';
 import { tokenizeContentStream } from '../../src/pdf/export/contentStreamEdit/tokenizer';
 import { walkTextPlacements, type ShowTextState } from '../../src/pdf/export/contentStreamEdit/textState';
-import { lookup, streamBytes, fontCoverageFromDict } from '../../src/pdf/export/fontCoverage/pdfLibAdapter';
+import { lookup, streamBytes, fontCoverageFromDict, fontInputFromDict } from '../../src/pdf/export/fontCoverage/pdfLibAdapter';
+import {type1ProgramWidths} from './type1Metrics';
 import { openPdfium } from '../../scripts/pdf-inplace/nativePdfium';
 
 const base = resolve(import.meta.dir);
@@ -32,9 +33,26 @@ try {
     const payloads: Record<string, unknown> = {};
     const codeMaps = new Map<string, Map<number, string>>();
     const glyphIds = new Map<string, Map<number, number>>();
+    const dictionaryWidths=new Map<string,(code:number)=>number>();
+    const programWidths=new Map<string,Map<number,number>>();
     for (const font of fonts) {
       const dict = fontDict.lookup(PDFName.of(font.resourceName), PDFDict);
       const coverage = fontCoverageFromDict(dict);
+      dictionaryWidths.set(font.resourceName,font.widthOf);
+      const input=fontInputFromDict(dict);
+      let metricSource='pdf-dictionary',type1MetricFailure:string|undefined,type1CodeFailures:unknown[]=[];
+      if(input.subtype==='Type1' && input.programKind==='FontFile'){
+        try{
+          const {widths,failures}=type1ProgramWidths(input),dictionaryWidth=font.widthOf;
+          programWidths.set(font.resourceName,widths);
+          type1CodeFailures=failures;
+          // PDFium's Type1 face advances use whole character-space units.
+          // Keep the parser/dictionary comparison above fractional; quantize
+          // only the proven program advance used by this native diagnostic.
+          font.widthOf=code=>{const width=widths.get(code);return width===undefined?dictionaryWidth(code):Math.trunc(width);};
+          metricSource='production-type1-program / native whole-unit advance (raw dictionary agreement <= 1 character-space unit)';
+        }catch(error){type1MetricFailure=String(error);}
+      }
       const decoded = new Map(font.unicodeByCode);
       for (const [hex, text] of coverage.codeToUnicode) {
         if (!decoded.has(parseInt(hex, 16))) decoded.set(parseInt(hex, 16), text);
@@ -60,11 +78,13 @@ try {
       for (const [code, text] of decoded) {
         const hex = code.toString(16).padStart(font.bytesPerCode * 2, '0');
         mapping[text] = { code, gid: coverage.glyphIds.get(hex) ?? null, width1000: font.widthOf(code),
+          pdfWidth1000:dictionaryWidths.get(font.resourceName)!(code),programWidth1000:programWidths.get(font.resourceName)?.get(code),
           eligible: (coverage.encodable.get(text) ?? []).some(bytes =>
             Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('') === hex) };
       }
       payloads[font.resourceName] = { name: coverage.baseFont, object: font.objectId,
         programPath, programKind, byteCount, verified: coverage.verification,
+        metricSource,type1MetricFailure,type1CodeFailures,
         mapping, ascent: font.ascentEm, descent: font.descentEm,
         fsType: desc instanceof PDFDict && lookup(desc, 'Flags') instanceof PDFNumber
           ? 'not checked: research only, no embedding' : 'unknown' };
@@ -116,6 +136,7 @@ try {
         x: origin.x, y: origin.y, size,
         advance: g.tjCompensation / 1000 * state.fontSize * state.advanceVector.x,
         width1000: font.widthOf(g.code), tc: state.charSpacing, tw: state.wordSpacing,
+        pdfWidth1000:dictionaryWidths.get(g.fontName)!(g.code),programWidth1000:programWidths.get(g.fontName)?.get(g.code),
         emX: state.fontSize * state.advanceVector.x, sizeText: state.fontSize,
         xScale: state.advanceVector.x, wordSpaced: font.appliesWordSpacing && g.code === 32,
         source: { streamHash: content.sourceHash, opIndex: g.opIndex, itemIndex: g.arrayItemIndex,

@@ -3,6 +3,7 @@ import {decryptType1} from './type1Cipher';
 import type {Type1Dictionary} from './type1Dictionary';
 import {Type1Error,rejectType1,type1Budget,type1Limits} from './type1Support';
 import type {Type1Diagnostic} from './type1Support';
+import {type1OtherSubrs} from './type1OtherSubrs';
 export type Type1Glyph={ok:true;name:string;width:number;sidebearing:readonly [number,number];dependencies:readonly string[]};
 export type Type1GlyphResult=Type1Glyph|({ok:false}&Type1Diagnostic);
 /** Proves the complete reachable closure. Widths are raw character-space units. */
@@ -17,7 +18,7 @@ export function type1CharStrings(dict:Type1Dictionary) {
     try {
       if(name==='.notdef'||!dict.chars.has(name))rejectType1('glyph-unavailable',`missing or .notdef glyph ${name}`);
       if(baseDepth>type1Limits.depth)type1Budget('type1-charstring','depth');
-      const stack:number[]=[],dependencies:string[]=[];let width:number|undefined,sb:[number,number]=[0,0],path=false;
+      const stack:number[]=[],dependencies:string[]=[],point=[0,0],others=type1OtherSubrs(name);let width:number|undefined,sb:[number,number]=[0,0],path=false;
       const bad=(s:string):never=>rejectType1('type1-charstring-invalid',`${name}: ${s}`);
       const exact=(n:number)=>{if(stack.length!==n)bad(`arity ${stack.length}, expected ${n}`);};
       const push=(n:number)=>{if(!Number.isFinite(n))bad('nonfinite operand');if(stack.length>=type1Limits.stack)type1Budget('type1-charstring','operands');stack.push(n);};
@@ -29,12 +30,14 @@ export function type1CharStrings(dict:Type1Dictionary) {
         while(p<bytes.length){
           const b=byte();
           if(b>=32){
+            others.before('number');
             let n:number;if(b<=246)n=b-139;else if(b<=250)n=(b-247)*256+byte()+108;else if(b<=254)n=-(b-251)*256-byte()-108;else n=(byte()<<24)|(byte()<<16)|(byte()<<8)|byte();
             push(n);continue;
           }
           if(++work.ops>type1Limits.glyphOps)type1Budget('type1-charstring','glyph-ops');
           if(++fontOps>type1Limits.fontOps)type1Budget('type1-charstring','font-ops');
           const op=b===12?1200+byte():b;
+          others.before(op);
           if(op===1212){const divisor=pop(),numerator=pop();if(divisor===0)bad('division by zero');push(numerator/divisor);continue;}
           if(op===10){
             const index=pop();if(!Number.isInteger(index)||!dict.subrs.has(index)||calls.includes(index))rejectType1('type1-subr-invalid',`${name}: missing/recursive Subr ${index}`);
@@ -42,11 +45,12 @@ export function type1CharStrings(dict:Type1Dictionary) {
             if(outcome==='end'){if(p!==bytes.length)bad('bytes after terminated Subr');return 'end';}continue;
           }
           if(op===11){if(!subr||p!==bytes.length)rejectType1('type1-subr-invalid',`${name}: invalid return`);return 'return';}
-          if(op===1216||op===1217)rejectType1('type1-other-subr-unsupported',`${name}: OtherSubr/pop requires a dedicated proof`);
+          if(op===1216){if(width===undefined)bad('operator before width');others.call(stack,point);continue;}
+          if(op===1217){push(others.pop());continue;}
           if(op===13||op===1207){
             if(width!==undefined)bad('duplicate width');exact(op===13?2:4);
             if(op===13){sb=[stack[0]!,0];width=stack[1]!;}else {sb=[stack[0]!,stack[1]!];width=stack[2]!;if(stack[3]!==0)bad('nonhorizontal width');}
-            stack.length=0;continue;
+            point[0]=sb[0];point[1]=sb[1];stack.length=0;continue;
           }
           if(width===undefined)bad('operator before width');
           if(op===14){exact(0);if(p!==bytes.length)bad('bytes after endchar');return 'end';}
@@ -66,8 +70,22 @@ export function type1CharStrings(dict:Type1Dictionary) {
           exact(arity);
           if([4,21,22,1233].includes(op))path=true;
           if([5,6,7,8,9,30,31].includes(op)&&!path)bad('path without initial move');
+          if([4,21,22].includes(op))others.move();
+          if(op===1233){point[0]=stack[0]!;point[1]=stack[1]!;others.setCurrentPoint();}
+          else {
+            let dx=0,dy=0;
+            if([5,21].includes(op)){dx=stack[0]!;dy=stack[1]!;}
+            if([6,22].includes(op))dx=stack[0]!;
+            if([4,7].includes(op))dy=stack[0]!;
+            if(op===8){dx=stack[0]!+stack[2]!+stack[4]!;dy=stack[1]!+stack[3]!+stack[5]!;}
+            if(op===30){dx=stack[1]!+stack[3]!;dy=stack[0]!+stack[2]!;}
+            if(op===31){dx=stack[0]!+stack[2]!;dy=stack[1]!+stack[3]!;}
+            point[0]=point[0]!+dx;point[1]=point[1]!+dy;
+          }
+          if(point.some(n=>!Number.isFinite(n)))bad('nonfinite current point');
           stack.length=0;
         }
+        others.before(14); // Preserve precise OtherSubr/pop failures at EOF too.
         return bad(subr?'Subr without return':'CharString without endchar');
       };
       if(execute(dict.chars.get(name)!,false,[])!=='end'||width===undefined)bad('invalid termination');

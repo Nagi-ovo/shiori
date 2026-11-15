@@ -1,6 +1,6 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import type { RunRefusalCode } from '../contentStreamEdit/runRefusal';
-export const stage5Type1 = Object.freeze({sourceReuse:false,standard14Afm:false});
+export const stage5Type1 = Object.freeze({sourceReuse:true,standard14Afm:false});
 export type Type1Options={sourceReuse?:boolean;standard14Afm?:boolean};
 export type Type1Reason = 'type1-container-invalid'|'type1-eexec-invalid'|'type1-ps-unsupported'|'type1-charstring-invalid'|'type1-charstring-unsupported'|'type1-subr-invalid'|'type1-other-subr-unsupported'|'parser-budget-exceeded'|'glyph-unavailable'|'glyph-identity-conflict'|'font-metrics-missing'|'font-metrics-conflict'|'missing-tounicode'|'tounicode-malformed'|'unsupported-matrix'|'font-program-missing';
 export type Type1Diagnostic={code:Type1Reason;detail:string;data?:Readonly<Record<string,string|number|boolean>>};

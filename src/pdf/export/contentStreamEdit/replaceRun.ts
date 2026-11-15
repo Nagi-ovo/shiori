@@ -56,6 +56,52 @@ export function sourceFingerprint(bytes: Uint8Array): string {
 }
 const ascii = new TextEncoder();
 
+/** Inspect target dependencies before Unicode decoding can obscure their refusal. */
+export function runContextSafety(ops: ReturnType<typeof tokenizeContentStream>, plan: RunEnvironment):
+  {ok:true;unsafe:Set<number>} | Refusal {
+  const refuse = runRefusal;
+  const unsafe = new Set<number>();
+  // Marked content is independent of the graphics-state q/Q stack.
+  const markedContent: boolean[] = [];
+  const stack: boolean[] = [];
+  let dependent = false;
+  for (const [i, op] of ops.entries()) {
+    if (['BI', 'BX', 'EX'].includes(op.operator)) return refuse('unsupported opaque/compatibility context');
+    if (['q', 'Q', 'BT', 'ET'].includes(op.operator) && op.operands.length) return refuse('malformed state operator');
+    if (op.operator === 'q') stack.push(dependent);
+    if (op.operator === 'Q') dependent = stack.pop() ?? true;
+    if (['W','W*'].includes(op.operator))dependent=true;
+    if(op.operator==='gs'){const name=op.operands[0];const state=name?.kind==='name'?plan.extGStates?.get(name.value):undefined;if(!state?.safe || state.setsFont)dependent=true;}
+    if (op.operator === 'BMC' || op.operator === 'BDC') {
+      if (op.operands[0]?.kind !== 'name' || op.operands.length !== (op.operator === 'BMC' ? 1 : 2)) return refuse('malformed marked content');
+      let semantic = false;
+      if (op.operator === 'BDC') {
+        const properties = op.operands[1]!;
+        const keys = properties.kind === 'dict' ? properties.entries.map(e => e.key)
+          : properties.kind === 'name' ? plan.markedContentProperties?.get(properties.value) : null;
+        semantic = keys == null || keys.some(k => ['ActualText', 'Alt', 'E'].includes(k));
+      }
+      markedContent.push(semantic);
+    }
+    if (op.operator === 'EMC') {
+      if (op.operands.length || !markedContent.length) return refuse('unbalanced EMC');
+      markedContent.pop();
+    }
+    if (op.operator === 'Tz' && op.operands[0]?.kind === 'number' && op.operands[0].value === 0) return refuse('singular text scale','unsupported-matrix');
+    if (op.operator === 'Tr' && op.operands[0]?.kind === 'number' && (!Number.isInteger(op.operands[0].value) || op.operands[0].value < 0 || op.operands[0].value > 7)) return refuse('invalid rendering mode');
+    if (op.operator === 'cm' || op.operator === 'Tm') {
+      const values = op.operands.map(v => v.kind === 'number' ? v.value : NaN);
+      if (values.length !== 6 || !values.every(Number.isFinite) || Math.abs(values[0]! * values[3]! - values[1]! * values[2]!) < 1e-12) {
+        return refuse('singular or malformed matrix','unsupported-matrix');
+      }
+    }
+    if (dependent || markedContent.some(Boolean)) unsafe.add(i);
+  }
+  if (stack.length) return refuse('unbalanced graphics state');
+  if (markedContent.length) return refuse('unterminated marked content');
+  return {ok:true,unsafe};
+}
+
 export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont[], plan: RunPlan): RunResult {
   const refuse = (reason: string,code:RunRefusalCode='unsupported-state'): RunResult => ({...runRefusal(reason,code),bytes:content});
   try {
@@ -78,51 +124,15 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
         return f ? { ...f, ok: true, appliesWordSpacing: f.bytesPerCode === 1 } : {ok:false,reason:'unsupported source font'};
       },
       extGStateSetsFont:name=>plan.extGStates?.get(name)?.setsFont??null,
-      onUnplaced:state=>{unplaced.push(state.opIndex);if(state.reason)unplacedReasons.set(state.opIndex,state.reason);},
+      onUnplaced:state=>{if(!state.advanceKnown)unplaced.push(state.opIndex);if(state.reason)unplacedReasons.set(state.opIndex,state.reason);},
       onShow: state => states.set(`${state.opIndex}:${state.arrayItemIndex}`, state),
     });
     if (!walk.ok) return refuse(walk.reason);
 
     if (walk.glyphs.some(g => [...g.quad, ...g.coreQuad].some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y)))) return refuse('nonfinite transformed geometry','unsupported-matrix');
-    const unsafe = new Set<number>();
-    // Marked content is independent of the graphics-state q/Q stack.
-    const markedContent: boolean[] = [];
-    const stack: boolean[] = [];
-    let dependent = false;
-    for (const [i, op] of ops.entries()) {
-      if (['BI', 'BX', 'EX'].includes(op.operator)) return refuse('unsupported opaque/compatibility context');
-      if (['q', 'Q', 'BT', 'ET'].includes(op.operator) && op.operands.length) return refuse('malformed state operator');
-      if (op.operator === 'q') stack.push(dependent);
-      if (op.operator === 'Q') dependent = stack.pop() ?? true;
-      if (['W','W*'].includes(op.operator))dependent=true;
-      if(op.operator==='gs'){const name=op.operands[0];const state=name?.kind==='name'?plan.extGStates?.get(name.value):undefined;if(!state?.safe || state.setsFont)dependent=true;}
-      if (op.operator === 'BMC' || op.operator === 'BDC') {
-        if (op.operands[0]?.kind !== 'name' || op.operands.length !== (op.operator === 'BMC' ? 1 : 2)) return refuse('malformed marked content');
-        let semantic = false;
-        if (op.operator === 'BDC') {
-          const properties = op.operands[1]!;
-          const keys = properties.kind === 'dict' ? properties.entries.map(e => e.key)
-            : properties.kind === 'name' ? plan.markedContentProperties?.get(properties.value) : null;
-          semantic = keys == null || keys.some(k => ['ActualText', 'Alt', 'E'].includes(k));
-        }
-        markedContent.push(semantic);
-      }
-      if (op.operator === 'EMC') {
-        if (op.operands.length || !markedContent.length) return refuse('unbalanced EMC');
-        markedContent.pop();
-      }
-      if (op.operator === 'Tz' && op.operands[0]?.kind === 'number' && op.operands[0].value === 0) return refuse('singular text scale','unsupported-matrix');
-      if (op.operator === 'Tr' && op.operands[0]?.kind === 'number' && (!Number.isInteger(op.operands[0].value) || op.operands[0].value < 0 || op.operands[0].value > 7)) return refuse('invalid rendering mode');
-      if (op.operator === 'cm' || op.operator === 'Tm') {
-        const values = op.operands.map(v => v.kind === 'number' ? v.value : NaN);
-        if (values.length !== 6 || !values.every(Number.isFinite) || Math.abs(values[0]! * values[3]! - values[1]! * values[2]!) < 1e-12) {
-          return refuse('singular or malformed matrix','unsupported-matrix');
-        }
-      }
-      if (dependent || markedContent.some(Boolean)) unsafe.add(i);
-    }
-    if (stack.length) return refuse('unbalanced graphics state');
-    if (markedContent.length) return refuse('unterminated marked content');
+    const safety = runContextSafety(ops, plan);
+    if (!safety.ok) return { ...safety, bytes: content };
+    const { unsafe } = safety;
     const changes = new Map<number, Map<number, string>>();
     const grouped = new Map<string, RunEdit[]>();
     let overflow: Overflow | undefined;
@@ -131,7 +141,7 @@ export function replaceRuns(content: Uint8Array, fonts: readonly ResolvedRunFont
       const siblings = grouped.get(key) ?? [];
       siblings.push(edit); grouped.set(key, siblings);
       const unplacedReason = unplacedReasons.get(edit.opIndex);
-      if(unplacedReason)return refuse(unplacedReason);
+      if(unplacedReason)return refuse(unplacedReason,'graphics-effect-unsupported');
       if(followsUnplaced(scopes,unplaced,edit.opIndex))return refuse('target follows an unknown advance in its text object','font-unavailable');
       const op = ops[edit.opIndex];
       if (!op || !['Tj', 'TJ'].includes(op.operator)) return refuse('address is not a supported show operator');

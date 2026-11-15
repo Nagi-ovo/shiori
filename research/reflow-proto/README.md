@@ -1,10 +1,11 @@
 # PDF-metrics-first bounded reflow spike
 
-Standalone research crate; no app dependency or production code/test changes.
+Standalone research crate; no app dependency. Production integration work is
+tracked separately in `STATUS-reflow.md`.
 Decision/contract: [SPEC §4.9](../../docs/pdf-edit/SPEC-stage5.md#49-layout-engine-selection)
 and [candidate evidence](../../docs/pdf-edit/SPEC-stage5-layout-engine.md).
 Read [RESULTS.md](RESULTS.md) for all outcomes and limitations, including the
-native Type1 metric failure. Geometric fits are not safe-export acceptance.
+native Type1 precision control. Geometric fits are not safe-export acceptance.
 
 From the repository root, the **single rebuild/regeneration command** is:
 
@@ -128,17 +129,24 @@ eight-line cap.
   No guessed OS font, font growth or glyph identity substitution is used.
 - A HarfRust constructor API mismatch and clippy `collapsible_if`/`filter_next` findings
   were corrected during implementation; final tool checks must pass.
-- The final LaTeX `.17053` source/native mismatch is **unresolved** and
-  intentionally retained. Its identity control shows why a zero
-  dictionary-adapter error cannot certify native rendering. Unmatched native
-  glyphs and unproven mappings are reported as missing evidence, not zero
-  errors. No source/native conflict is waived for production.
+- The LaTeX `.17053` control originally drifted **0.261620 pt**. The extractor
+  now uses the production TS Type1 parser for source program widths, compares
+  fractional program and dictionary widths in character space (tolerance 1),
+  then uses whole-unit program advances for the pinned native reader. The
+  independent A/B/C probe (`bun research/reflow-proto/type1NativeProbe.ts`)
+  observes 499 / 600 / 444 units for programs declaring 499.9 / 600.4 / 1333/3.
+  The six-paragraph rerun's `.17053` identity max is **0.000059296 pt**.
+  Exact dictionary/program widths remain separately available as
+  `pdfWidth1000` / `programWidth1000`; no threshold was changed. This research
+  adapter changes neither production width authority nor glyph eligibility.
+  Unsupported programs and per-code metric conflicts stay explicit. Missing
+  native matches are reported as missing evidence, never zero errors.
 - The review pass reproduced 218 inferred spaces carrying copied `code`,
   `nativeOrigin` and `unicodeProven` fields; these are now cleared, along with
   GID/source identity. Their positions and advances stay diagnostic heuristics.
   Every edit note now carries the full identity-control native x maximum
-  (`.17053`: 0.261620 pt). Its 0.044914 pt insert/expansion figure remains
-  explicitly **prefix-only**, not the paragraph's native error.
+  (`.17053` now 0.000059296 pt). Insert/expansion figures remain explicitly
+  **prefix-only**, not the paragraph's native error.
 - The diagnostic breaker is intentionally wider than §4.6's shipping break
   whitelist and does not implement all kinsoku/Unicode locale tailoring.
   Controlled punctuation/mixed-script probes and corpus boundary checks are
@@ -172,8 +180,12 @@ cargo clippy --locked --manifest-path research/reflow-proto/Cargo.toml -- -D war
 ink, retaining gaps only between consecutive source identities. It returns
 ranges and `Option<[x,y]>` origins for authorized slots; diagnostic overflow
 rows have no origin. `src/lib.rs` exposes this standalone research seam.
-The full §4.9 request/response codec, whitelist/kern ownership proof, platform
+The full §4.9 Rust request/response codec, whitelist/kern ownership proof, platform
 bindings and native saved-PDF oracle are L2/R7/R8 work. No production caller
 or wrapping flag is enabled. The Type1 integration hook remains the extractor's
-per-code `width1000`/source font records: Rust never parses Type1 or discovers
-fonts. Independent native identity drift is retained for every sample.
+per-code `width1000`/source font records now uses the production TS Type1
+parser and records both raw dictionary/program metrics: Rust never parses
+Type1 or discovers fonts. Independent native identity drift is retained for
+every sample. The additive production TS request planner/compiler is under
+`src/pdf/export/contentText/reflow*.ts`; see `STATUS-reflow.md` for its exact
+integration limits. That work does not make the research selections eligible.

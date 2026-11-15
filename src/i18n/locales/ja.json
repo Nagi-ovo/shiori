@@ -1142,6 +1142,7 @@
       "form-xobject": "Form XObject 内の文字は元の位置で編集できません。",
       "unsupported-matrix": "この文字変換の編集には対応していません。",
       "unsupported-state": "PDF のテキスト状態を安全に編集できません。",
+      "graphics-effect-unsupported": "輪郭線付きの PDF テキストを安全に編集できません。",
       "font-unavailable": "元のフォントまたは Unicode マッピングを解決できません。",
       "font-coverage": "元のフォントまたは代替フォントの字形を検証できません。",
       "font-permission": "フォントのライセンスは編集可能な埋め込みを許可していません。",

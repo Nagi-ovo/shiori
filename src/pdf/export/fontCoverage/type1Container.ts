@@ -21,16 +21,18 @@ function trailerValid(bytes:Uint8Array,required:boolean) {
   if(!bytes.length&&!required)return;
   if(!/^[\s0]*cleartomark\s*(?:%[^\r\n]*(?:[\r\n]|$)\s*)*$/.test(text(bytes)))fail('invalid trailer');
 }
-function decodeEncrypted(bytes:Uint8Array,allowHex=true):Uint8Array {
+function decodeEncrypted(bytes:Uint8Array,allowHex=true):{encrypted:Uint8Array;binaryRetry?:Uint8Array} {
   if(bytes.length<4)fail('encrypted segment truncated');
   const prefix=bytes.slice(0,4);
   if(allowHex&&[...prefix].every(c=>/[\da-f]/i.test(String.fromCharCode(c)))){
-    const s=text(bytes).replace(/\s/g,'');if(!/^[\da-f]+$/i.test(s)||s.length%2)rejectType1('type1-eexec-invalid','invalid ASCII hex eexec');
-    return Uint8Array.from(s.match(/../g)!,h=>parseInt(h,16));
+    const s=text(bytes).replace(/\s/g,'');
+    // A hex-looking binary prefix is possible. Keep raw ciphertext until the
+    // decrypted dictionary has proved which interpretation is valid.
+    if(/^[\da-f]+$/i.test(s)&&s.length%2===0)return {encrypted:Uint8Array.from(s.match(/../g)!,h=>parseInt(h,16)),binaryRetry:bytes.slice()};
   }
-  return bytes.slice();
+  return {encrypted:bytes.slice()};
 }
-export function type1Container(input:FontInput):{clear:Uint8Array;encrypted:Uint8Array;trailer:Uint8Array} {
+export function type1Container(input:FontInput):{clear:Uint8Array;encrypted:Uint8Array;trailer:Uint8Array;binaryRetry?:Uint8Array} {
   const bytes=input.program;if(!bytes?.length)fail('missing Type1 data');
   if(bytes.length>type1Limits.bytes)type1Budget('type1-container','decoded-bytes');
   const lengths=[input.length1,input.length2,input.length3];
@@ -50,14 +52,14 @@ export function type1Container(input:FontInput):{clear:Uint8Array;encrypted:Uint
     if(!terminal||!parts[0]!.length||!parts[1]!.length)fail('incomplete PFB');
     const [clear,encrypted,trailer]=parts.map(join) as [Uint8Array,Uint8Array,Uint8Array];
     if(clearEnd(clear)!==clear.length)fail('clear segment boundary');trailerValid(trailer,false);
-    return {clear,encrypted:decodeEncrypted(encrypted,false),trailer};
+    return {clear,...decodeEncrypted(encrypted,false),trailer};
   }
   if(lengths.some(n=>n!==undefined)){
     if(lengths.some(n=>!Number.isSafeInteger(n)||n!<0)||(input.length1!+input.length2!+input.length3!)!==bytes.length)fail('conflicting PDF Length1/2/3');
     const a=input.length1!,b=a+input.length2!;
     const clear=bytes.slice(0,a),trailer=bytes.slice(b);
     if(clearEnd(clear)!==a)fail('PDF clear segment boundary');trailerValid(trailer,false);
-    return {clear,encrypted:decodeEncrypted(bytes.slice(a,b)),trailer};
+    return {clear,...decodeEncrypted(bytes.slice(a,b)),trailer};
   }
   const a=clearEnd(bytes),suffix=text(bytes.slice(a));
   // An anchored conventional 512-zero trailer is the only standalone boundary
@@ -65,5 +67,5 @@ export function type1Container(input:FontInput):{clear:Uint8Array;encrypted:Uint
   const match=/\r?\n((?:0[\t \r\n]*){512})cleartomark\s*(?:%[^\r\n]*(?:[\r\n]|$)\s*)*$/.exec(suffix);
   if(!match)fail('ambiguous standalone eexec boundary');
   const b=a+match.index,trailer=bytes.slice(b);trailerValid(trailer,true);
-  return {clear:bytes.slice(0,a),encrypted:decodeEncrypted(bytes.slice(a,b)),trailer};
+  return {clear:bytes.slice(0,a),...decodeEncrypted(bytes.slice(a,b)),trailer};
 }

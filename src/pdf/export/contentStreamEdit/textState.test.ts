@@ -201,8 +201,9 @@ test('stroke and fill+stroke stay unplaced, fill remains supported, clipping sta
   expect(walk('BT /F1 12 Tf 0 Tr (A) Tj ET').ok).toBe(true);
   for(const tr of [4,5,6,7])expect(walk(`BT /F1 12 Tf ${tr} Tr (A) Tj ET`)).toMatchObject({ok:false,reason:expect.stringContaining('clipping')});
 });
-for(const tr of [1,2])test(`Tr ${tr} leaves relative shows unplaced and recovers at the next text object`,()=>{
+for(const tr of [1,2])test(`Tr ${tr} measures the stroke advance before relative fill shows`,()=>{
   const result=expectOk(walk(`BT /F1 12 Tf ${tr} Tr (A) Tj 0 Tr (B) Tj ET BT /F1 12 Tf (C) Tj ET`));
   expect(result.unplacedText).toBe(true);
-  expect(result.glyphs.map(g=>g.code)).toEqual([67]);
+  expect(result.glyphs.map(g=>g.code)).toEqual([66,67]);
+  expect(result.glyphs[0]!.coreQuad[0].x).toBeCloseTo(6);
 });

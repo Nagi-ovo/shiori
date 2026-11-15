@@ -5,12 +5,10 @@ import { cffEncodingOffset } from './cffEncodingOffset';
 import type { Font } from '@pdf-lib/fontkit';
 import { glyphUnicode, macOsNames, standardNames } from './encodings';
 import type { FontInput } from './types';
-type Values<T> = { get(index:number):T; length:number };
-type CmapTable = {version:number;codeMap:Values<number>;firstCode:number;glyphIndices:Values<number>;segCount:number;startCode:Values<number>;endCode:Values<number>;idRangeOffset:Values<number>;idDelta:Values<number>;glyphIndexArray:Values<number>;nGroups:number;groups:Values<{startCharCode:number;endCharCode:number;glyphID:number}>};
+import { trueTypeCmaps, symbolicGid } from './trueTypeCmap';
 type Cff = {isCIDFont:boolean;topDict:{charset:string[] | {version:number;glyphs:number[];ranges:{first:number;nLeft:number;offset:number}[]};CharStrings:{offset:number;length:number}[];Encoding:string[] | {version:number;codes:number[];ranges:{first:number;nLeft:number}[]}};getGlyphName(gid:number):string|null;getCharString(gid:number):Uint8Array};
 type ParsedFont = Font & {
   directory:{tables:Record<string,{offset:number;length:number}>};
-  cmap?:{tables:{platformID:number;encodingID:number;table:CmapTable}[]};
   loca:{offsets:number[]};
   'CFF '?:Cff;
 };
@@ -25,27 +23,6 @@ function wrapCff(bytes:Uint8Array):Uint8Array {
   let offset=60;
   tables.forEach(([name,b],i)=>{const r=12+i*16;out.set(Array.from(name,c=>c.charCodeAt(0)),r);v.setUint32(r+8,offset);v.setUint32(r+12,b.length);out.set(b,offset);offset+=Math.ceil(b.length/4)*4;});
   return out;
-}
-function lookup(t:CmapTable,cp:number):number {
-  if(t.version===0)return cp<256?t.codeMap.get(cp) || 0:0;
-  if(t.version===6 || t.version===10) {
-    const i=cp-t.firstCode;return i>=0 && i<t.glyphIndices.length?t.glyphIndices.get(i) || 0:0;
-  }
-  if(t.version===4) {
-    for(let i=0;i<t.segCount;i++)if(cp>=t.startCode.get(i) && cp<=t.endCode.get(i)) {
-      const off=t.idRangeOffset.get(i),delta=t.idDelta.get(i);
-      if(!off)return (cp+delta)&65535;
-      const index=off/2+cp-t.startCode.get(i)-(t.segCount-i);
-      const gid=index>=0 && index<t.glyphIndexArray.length?t.glyphIndexArray.get(index):0;
-      return gid?(gid+delta)&65535:0;
-    }
-    return 0;
-  }
-  if(t.version===12 || t.version===13) {
-    for(let i=0;i<t.nGroups;i++){const g=t.groups.get(i);if(cp>=g.startCharCode && cp<=g.endCharCode)return g.glyphID+(t.version===12?cp-g.startCharCode:0);}
-    return 0;
-  }
-  throw new Error(`unsupported TrueType cmap format ${t.version}`);
 }
 export function readProgram(input:FontInput) {
   if(input.subtype==='MMType1')rejectType1('type1-ps-unsupported','MMType1 interpolation');
@@ -67,9 +44,16 @@ export function readProgram(input:FontInput) {
     const name=cff?cff.getGlyphName(gid):(font.getGlyph(gid) as unknown as {name?:string}).name;
     if(name)names.set(name,gid);
   }
-  const tables=font.cmap?.tables ?? [];
-  const table=(p:number,e:number)=>tables.find(t=>t.platformID===p && t.encodingID===e)?.table;
-  const unicode=table(3,1),mac=table(1,0),symbol=table(3,0);
+  const table=trueTypeCmaps(data,font.directory.tables.cmap);
+  // Keep selection lazy: an unselected unsupported cmap grants no eligibility.
+  const flags=input.flags ?? 0;
+  const encodingName=typeof input.encoding==='string'?input.encoding:input.encoding?.base;
+  const standardEncoding=['WinAnsiEncoding','MacRomanEncoding','StandardEncoding','MacExpertEncoding'].includes(encodingName ?? '');
+  const bothFlagsWithEncoding=(flags & 36)===36 && standardEncoding;
+  const symbolic=!bothFlagsWithEncoding && (!!(flags & 4) || (!input.encoding && !(flags & 32)));
+  const symbol=!cff && symbolic?table(3,0):undefined;
+  const unicode=!cff && !symbolic?table(3,1):undefined;
+  const mac=!cff && !symbol && !unicode?table(1,0):undefined;
   const cidToGid=new Map<number,number>();
   if(cff?.isCIDFont) {
     const charset=cff.topDict.charset;
@@ -95,24 +79,18 @@ export function readProgram(input:FontInput) {
       else throw new Error('unsupported CFF built-in encoding');
     }
   }
-  const flags=input.flags ?? 0;
-  const encodingName=typeof input.encoding==='string'?input.encoding:input.encoding?.base;
-  const standardEncoding=['WinAnsiEncoding','MacRomanEncoding','StandardEncoding','MacExpertEncoding'].includes(encodingName ?? '');
-  const bothFlagsWithEncoding=(flags & 36)===36 && standardEncoding;
-  const symbolic=!bothFlagsWithEncoding && (!!(flags & 4) || (!input.encoding && !(flags & 32)));
-  const symbolGids=(code:number)=>[...new Set([0,0xf000,0xf100,0xf200].map(h=>lookup(symbol!,h+code)).filter(Boolean))];
   // A symbolic font's PDF Encoding is ignored. Without ToUnicode, only
   // names established by its actual cmap/post mapping identify text safely.
   if(symbolic && !cff) {
     builtIn=new Map();
     for(let code=0;code<256;code++) {
       if(symbol) {
-        const gids=symbolGids(code);
-        if(gids.length===1 && gids[0]!<numGlyphs) {
-          const name=(font.getGlyph(gids[0]!) as unknown as {name?:string}).name;
+        const gid=symbolicGid(symbol,code);
+        if(typeof gid==='number' && gid>0 && gid<numGlyphs) {
+          const name=(font.getGlyph(gid) as unknown as {name?:string}).name;
           if(name)builtIn.set(code,name);
         }
-      } else if(mac && lookup(mac,code)) {
+      } else if(mac && (mac(code) ?? 0)) {
         const name=macOsNames.get(code);if(name)builtIn.set(code,name);
       }
     }
@@ -121,19 +99,17 @@ export function readProgram(input:FontInput) {
     if(cff)return name?names.get(name) ?? 0:0;
     if(symbolic) {
       if(symbol) {
-        const candidates=symbolGids(code);
-        if(candidates.length>1)return {reason:'ambiguous symbolic TrueType cmap'};
-        return candidates[0] ?? 0;
+        return symbolicGid(symbol,code);
       }
-      if(mac)return lookup(mac,code);
-      return {reason:'unsupported symbolic TrueType cmap'};
+      if(mac)return (mac(code) ?? 0);
+      return {reason:'symbolic-cmap-unsupported: No supported symbolic cmap'};
     }
     if(!name)return 0;
     const value=glyphUnicode(name);
-    if(unicode && value && Array.from(value).length===1) {const gid=lookup(unicode,value.codePointAt(0)!);if(gid)return gid;}
+    if(unicode && value && Array.from(value).length===1) {const gid=unicode(value.codePointAt(0)!);if(gid)return gid;}
     else if(!unicode && mac) {
       const entry=[...macOsNames].find(([,n])=>n===name);
-      if(entry){const gid=lookup(mac,entry[0]);if(gid)return gid;}
+      if(entry){const gid=mac(entry[0]);if(gid)return gid;}
     }
     return names.get(name) ?? 0;
   };
@@ -155,5 +131,10 @@ export function readProgram(input:FontInput) {
     if(b-a<10)return 'truncated glyf entry';
     void font.getGlyph(gid).path;
   };
-  return {kind:'fontkit' as const,numGlyphs,symbolic,cff:!!cff,cid:!!cff?.isCIDFont,builtIn,simpleGid,cidGid:(cid:number)=>cidToGid.get(cid) ?? 0,presence};
+  const inkBox=(gid:number)=>{
+    if(cff || !Number.isFinite(font.unitsPerEm) || font.unitsPerEm<=0)return;
+    const b=font.getGlyph(gid).cbox,u=font.unitsPerEm;
+    return {x:b.minX/u,y:b.minY/u,w:(b.maxX-b.minX)/u,h:(b.maxY-b.minY)/u};
+  };
+  return {kind:'fontkit' as const,inkBox,numGlyphs,symbolic,cff:!!cff,cid:!!cff?.isCIDFont,builtIn,simpleGid,cidGid:(cid:number)=>cidToGid.get(cid) ?? 0,presence};
 }

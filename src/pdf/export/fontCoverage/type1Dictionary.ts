@@ -113,7 +113,8 @@ export function type1Dictionary(clear:Uint8Array,privateBytes:Uint8Array):Type1D
       else fail(`unsupported alias /${key}`);
       define(key,[{kind:'string',value:body,start:0,end:0}],'Private');if(r.peek()?.value==='executeonly')r.take();r.finish();
     }else if(key==='OtherSubrs'){
-      // Procedure bodies are inert data here. Every callothersubr refuses.
+      // Procedure bodies stay inert. Canonical OtherSubrs 0–3 are implemented
+      // by the charstring proof, independently of these PostScript bodies.
       // At array level only literal procedures and access modifiers are legal;
       // executable array generation is never evaluated.
       const v=r.list('[',']');define(key,v,'Private');let nesting=0,hadProc=false;

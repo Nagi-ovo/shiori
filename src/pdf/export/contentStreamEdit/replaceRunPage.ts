@@ -40,7 +40,7 @@ export function resolveRunFonts(page: PDFPage, options: Type1Options = {}): Reso
     const checked = contentFontInfo(font, options);
     // Type1 proof failures only govern edits. Keep explicit PDF widths for
     // placement, including untargeted fonts before the addressed show.
-    const info = checked.ok ? checked : contentFontInfo(font);
+    const info = checked.ok ? checked : contentFontInfo(font,{sourceReuse:false,standard14Afm:options.standard14Afm});
     if (!info.ok) return [];
     const raw = font.lookup(PDFName.of('ToUnicode'));
     // Untargeted fonts still supply dictionary widths to the placement walk.

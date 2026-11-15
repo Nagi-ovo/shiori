@@ -2,10 +2,12 @@ import { PDFDocument, PDFDict, PDFArray, PDFName, PDFNumber, PDFObjectCopier, ty
 import { inspectRunPage, resolveRunFonts, runPageEnvironment, type PageRunResult } from './replaceRunPage';
 import { runResourceStamp } from './resourceStamp';
 import {RunCompileError} from './runRefusal';
-import { replaceRuns } from './replaceRun';
-import { pageRunPlan, type PageRunPlan } from './pageRunPlan';
+import { type Refusal } from './replaceRun';
+import { type PageRunPlan } from './pageRunPlan';
 import { fallbackFontName, prepareFallback, type FallbackOptions } from './fallbackFont';
 import type { Type1Options } from '../fontCoverage/type1Support';
+import { compilePageReflows } from '../contentText/reflowBatch';
+import { type1FallbackSourceGuard } from '../fontCoverage/type1Surgical';
 
 export type RunPageOptions = FallbackOptions & { stage5Type1?: Type1Options };
 export const replaceRunPageWithFallback=(page:PDFPage,plan:PageRunPlan,options:RunPageOptions={})=>runPage(page,plan,options,true);
@@ -17,10 +19,13 @@ async function runPage(page:PDFPage,plan:PageRunPlan,options:RunPageOptions,inst
   const originalContents = page.node.get(PDFName.of('Contents'));
   try {
     const resourceStamp = runResourceStamp(page);
+    const recipes=[...(plan.reflow?[plan.reflow]:[]),...(plan.reflows??[])];
+    if(recipes.some(r=>r.proof.dependencyHash!==resourceStamp))return {ok:false,bytes:source.bytes,code:'stale-source',reason:'reflow dependencies changed'};
     const fonts = resolveRunFonts(page, options.stage5Type1);
-    const resolvedPlan = { ...pageRunPlan(plan), ...runPageEnvironment(page) };
-    const initial = replaceRuns(source.bytes,fonts,resolvedPlan);
-    if(initial.ok || initial.terminal || initial.code!=='font-coverage') {
+    const resolvedPlan = { ...plan, ...runPageEnvironment(page) };
+    const initial = compilePageReflows(source.bytes,fonts,resolvedPlan);
+    const missingType1Source=!initial.ok&&!initial.terminal&&initial.diagnostic?.code==='glyph-unavailable';
+    if(initial.ok || initial.terminal || (initial.code!=='font-coverage'&&!missingType1Source)) {
       if (install && initial.ok && initial.bytes !== source.bytes) page.node.set(PDFName.of('Contents'),page.doc.context.register(page.doc.context.flateStream(initial.bytes)));
       return initial;
     }
@@ -51,7 +56,9 @@ async function runPage(page:PDFPage,plan:PageRunPlan,options:RunPageOptions,inst
       do { resource = `ShioriFb${++index}`; } while (fontDict?.has(PDFName.of(resource)));
       prepared.push(await prepareFallback(scratch,resource,name,[...clusters],options));
     }
-    const result = replaceRuns(source.bytes,fonts,{ ...resolvedPlan, fallbackFonts: prepared.map(f => f.resolved) });
+    const retryFonts=missingType1Source?fonts.map(font=>({...font,assertSource:type1FallbackSourceGuard(font.assertSource)})):fonts;
+    const result = compilePageReflows(source.bytes,retryFonts,{ ...resolvedPlan,
+      ...(missingType1Source?{allowExistingCodePermutation:false}:{}),fallbackFonts: prepared.map(f => f.resolved) });
     if (!result.ok) return result;
     if(!install)return {...result,usedFallback:true};
     // Awaiting font preparation must never apply an old plan to a newer page.
@@ -68,5 +75,10 @@ async function runPage(page:PDFPage,plan:PageRunPlan,options:RunPageOptions,inst
     page.node.set(PDFName.of('Resources'),resources);
     page.node.set(PDFName.of('Contents'),stream);
     return {...result,usedFallback:true};
-  } catch(error){if(!(error instanceof RunCompileError))throw error;return{ok:false,code:error.code,reason:error.message,bytes:source.bytes};}
+  } catch(error){
+    if(!(error instanceof RunCompileError))throw error;
+    const detail=error as RunCompileError&Partial<Refusal>;
+    return {ok:false,code:error.code,reason:error.message,bytes:source.bytes,
+      ...(detail.terminal!==undefined?{terminal:detail.terminal}:{}),...(detail.diagnostic?{diagnostic:detail.diagnostic}:{})};
+  }
 }

@@ -8,6 +8,9 @@ import type {Type1Options} from '../../src/pdf/export/fontCoverage/type1Support'
 import {notdefProbePdf} from '../pdf-inplace/notdefProbe';
 import {assertReplacementGlyphs,assertNativeReplacementGlyphs} from '../pdf-inplace/glyphEvidence';
 import type {openPdfium} from '../pdf-inplace/nativePdfium';
+import {compareReflowNativePages} from './reflowOracle';
+import {inspectRunPage} from '../../src/pdf/export/contentStreamEdit/replaceRunPage';
+import type {AppliedReflowManifest} from '../../src/pdf/export/contentText/reflowManifest';
 import type {PdfRect} from '../../src/pdf/model/types';
 const compact=(s:string)=>s.replace(/\s/gu,'');
 type Glyph={text:string;origin:readonly number[];box:readonly number[];fontHash?:string;nativePath?:unknown;inkPixels?:number};
@@ -86,10 +89,12 @@ export function compareNativePages(before:Snapshot,after:Snapshot,edit:Edit){
  return{maxOriginDriftPt,changedPixels,changedPixelsOutsideBox,replacementGlyphs,replacementIndices};
 }
 const command=(name:string,args:string[])=>{const r=spawnSync(name,args,{encoding:'utf8'});assert.equal(r.status,0,`${name}: ${r.stdout}${r.stderr}`);return r.stdout;};
-export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,name:string,directory:string,edit:Edit,stage5Type1:Type1Options={}){
+export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,name:string,directory:string,edit:Edit,stage5Type1:Type1Options={},stage5Reflow=process.env.SHIORI_STAGE5_REFLOW==='1',manifest?:AppliedReflowManifest){
  const beforePath=`${directory}/${name}.before.pdf`,afterPath=`${directory}/${name}.after.pdf`;
  const before=native.inspectPage(beforePath,0,true),after=native.inspectPage(afterPath,0,true);
- const checked=compareNativePages(before,after,edit);
+ const useManifest=stage5Reflow&&manifest;
+ if(useManifest){const original=await PDFDocument.load(new Uint8Array(await readFile(beforePath))),source=inspectRunPage(original.getPage(0));assert(source.ok&&source.sourceHash===useManifest.sourceHash,'manifest source revision differs');}
+ const checked=useManifest?compareReflowNativePages(before,after,edit,useManifest):compareNativePages(before,after,edit);
  const bytes=new Uint8Array(await readFile(afterPath)),doc=await PDFDocument.load(bytes),objects=new Map<string,string>();
  for(const[ref,value]of doc.context.enumerateIndirectObjects())if(value instanceof PDFDict && value.get(PDFName.of('Type'))===PDFName.of('FontDescriptor')){
   const raw=value.lookup(PDFName.of('FontFile2'))??value.lookup(PDFName.of('FontFile3'))??value.lookup(PDFName.of('FontFile'));
@@ -124,8 +129,8 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
  }
  command('qpdf',['--check',afterPath]);
  const oldText=compact(command('pdftotext',['-layout',beforePath,'-'])),newText=compact(command('pdftotext',['-layout',afterPath,'-']));
- assert.equal(newText,expectedPopplerText(oldText,edit),'Poppler extracted text mismatch');
+ assert.equal(newText,useManifest?compact(after.text):expectedPopplerText(oldText,edit),'Poppler extracted text mismatch');
  const {replacementIndices:_,...evidence}=checked;void _;
- const result={name,...evidence,nativeSourceProofs,nonNotdefGlyphs:glyphEvidence.length,qpdf:'clean',nativeText:after.text,popplerText:newText,passed:true};
+ const result={name,...evidence,stage5Reflow,nativeSourceProofs,nonNotdefGlyphs:glyphEvidence.length,qpdf:'clean',nativeText:after.text,popplerText:newText,passed:true};
  await writeFile(`${directory}/${name}.oracle.json`,JSON.stringify(result,null,2));return result;
 }

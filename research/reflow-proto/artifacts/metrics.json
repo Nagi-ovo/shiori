@@ -1270,16 +1270,15 @@
         207
       ],
       "native_comparison_scope": "remaining-source",
-      "native_identity_control_x_max": 0.2616198477748526,
-      "native_stationary_x_max": 0.2616198477748526,
+      "native_identity_control_x_max": 0.00005929612501631709,
+      "native_stationary_x_max": 0.00005929612501631709,
       "notes": [
         "first-line indent retained: first slot 81.963 vs body 72.000 pt; geometry alone is not RegionProof",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
-        "remaining-source native source x drift 0.261620 pt exceeds 0.005 pt target",
-        "identity-control native source x max 0.261620 pt exceeds 0.005 pt target"
+        "identity-control native source x max 0.000059 pt"
       ],
       "pdf_advance_max": 4.440892098500626e-16,
-      "pdf_advance_mean": 1.962825236906354e-17,
+      "pdf_advance_mean": 1.2267657730664713e-17,
       "prohibition_breaks": 0,
       "raw_font_advance_max": null,
       "raw_font_advance_mean": null,
@@ -1309,19 +1308,17 @@
         217
       ],
       "native_comparison_scope": "prefix-only",
-      "native_identity_control_x_max": 0.2616198477748526,
-      "native_stationary_x_max": 0.044914458096855014,
+      "native_identity_control_x_max": 0.00005929612501631709,
+      "native_stationary_x_max": 9.339374997807681e-6,
       "notes": [
         "wrap overflow: no additional baseline is authorised",
-        "3 ink envelopes outside fixed box",
         "first-line indent retained: first slot 81.963 vs body 72.000 pt; geometry alone is not RegionProof",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
         "wrap uses inferred gap spaces: §4.6 would refuse",
-        "prefix-only native source x drift 0.044914 pt exceeds 0.005 pt target",
-        "identity-control native source x max 0.261620 pt exceeds 0.005 pt target"
+        "identity-control native source x max 0.000059 pt"
       ],
       "pdf_advance_max": 4.440892098500626e-16,
-      "pdf_advance_mean": 1.962825236906354e-17,
+      "pdf_advance_mean": 1.2267657730664713e-17,
       "prohibition_breaks": 0,
       "raw_font_advance_max": null,
       "raw_font_advance_mean": null,
@@ -1351,16 +1348,15 @@
         198
       ],
       "native_comparison_scope": "remaining-source",
-      "native_identity_control_x_max": 0.2616198477748526,
-      "native_stationary_x_max": 0.2616198477748526,
+      "native_identity_control_x_max": 0.00005929612501631709,
+      "native_stationary_x_max": 0.00005929612501631709,
       "notes": [
         "first-line indent retained: first slot 81.963 vs body 72.000 pt; geometry alone is not RegionProof",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
-        "remaining-source native source x drift 0.261620 pt exceeds 0.005 pt target",
-        "identity-control native source x max 0.261620 pt exceeds 0.005 pt target"
+        "identity-control native source x max 0.000059 pt"
       ],
       "pdf_advance_max": 4.440892098500626e-16,
-      "pdf_advance_mean": 2.0535917218500004e-17,
+      "pdf_advance_mean": 1.2834948261562503e-17,
       "prohibition_breaks": 0,
       "raw_font_advance_max": null,
       "raw_font_advance_mean": null,
@@ -1390,19 +1386,17 @@
         229
       ],
       "native_comparison_scope": "prefix-only",
-      "native_identity_control_x_max": 0.2616198477748526,
-      "native_stationary_x_max": 0.044914458096855014,
+      "native_identity_control_x_max": 0.00005929612501631709,
+      "native_stationary_x_max": 9.339374997807681e-6,
       "notes": [
         "wrap overflow: no additional baseline is authorised",
-        "3 ink envelopes outside fixed box",
         "first-line indent retained: first slot 81.963 vs body 72.000 pt; geometry alone is not RegionProof",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
         "wrap uses inferred gap spaces: §4.6 would refuse",
-        "prefix-only native source x drift 0.044914 pt exceeds 0.005 pt target",
-        "identity-control native source x max 0.261620 pt exceeds 0.005 pt target"
+        "identity-control native source x max 0.000059 pt"
       ],
       "pdf_advance_max": 4.440892098500626e-16,
-      "pdf_advance_mean": 1.962825236906354e-17,
+      "pdf_advance_mean": 1.2267657730664713e-17,
       "prohibition_breaks": 0,
       "raw_font_advance_max": null,
       "raw_font_advance_mean": null,
@@ -1434,19 +1428,17 @@
         269
       ],
       "native_comparison_scope": "prefix-only",
-      "native_identity_control_x_max": 0.2616198477748526,
-      "native_stationary_x_max": 0.044914458096855014,
+      "native_identity_control_x_max": 0.00005929612501631709,
+      "native_stationary_x_max": 9.339374997807681e-6,
       "notes": [
         "wrap overflow: no additional baseline is authorised",
-        "2 ink envelopes outside fixed box",
         "first-line indent retained: first slot 81.963 vs body 72.000 pt; geometry alone is not RegionProof",
         "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
         "wrap uses inferred gap spaces: §4.6 would refuse",
-        "prefix-only native source x drift 0.044914 pt exceeds 0.005 pt target",
-        "identity-control native source x max 0.261620 pt exceeds 0.005 pt target"
+        "identity-control native source x max 0.000059 pt"
       ],
       "pdf_advance_max": 4.440892098500626e-16,
-      "pdf_advance_mean": 1.962825236906354e-17,
+      "pdf_advance_mean": 1.2267657730664713e-17,
       "prohibition_breaks": 0,
       "raw_font_advance_max": null,
       "raw_font_advance_mean": null,

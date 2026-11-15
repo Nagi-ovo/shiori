@@ -3,6 +3,7 @@ import type { Type1Options } from './type1Support';
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream, PDFRef, PDFStream, decodePDFRawStream } from 'pdf-lib';
 import { createFontCoverage } from './coverage';
 import type { FontCoverage, FontInput } from './types';
+import type { Type3FontInput } from './type3Proof';
 export type FontResource = {page:number;name:string;path:string[]};
 export type PdfFontCoverage = FontCoverage & {objectRef:string|null;resources:FontResource[]};
 export function lookup(dict:PDFDict,key:string):unknown {
@@ -35,8 +36,8 @@ function encoding(font:PDFDict):FontInput['encoding'] {
   }
   return {base:name(lookup(enc,'BaseEncoding')),differences};
 }
-export function fontInputFromDict(font:PDFDict):FontInput {
-  const input:FontInput={subtype:name(lookup(font,'Subtype')) ?? '(missing)',baseFont:name(lookup(font,'BaseFont'))};
+export function fontInputFromDict(font:PDFDict):Type3FontInput {
+  const input:Type3FontInput={subtype:name(lookup(font,'Subtype')) ?? '(missing)',baseFont:name(lookup(font,'BaseFont'))};
   try {
     input.encoding=encoding(font);
     const unicode=lookup(font,'ToUnicode');
@@ -85,6 +86,12 @@ export function fontInputFromDict(font:PDFDict):FontInput {
     if(procs instanceof PDFDict)input.charProcs=procs.entries().filter(([,v])=>{
       const resolved=v instanceof PDFRef?font.context.lookup(v):v;return resolved instanceof PDFStream;
     }).map(([k])=>k.decodeText());
+    if(input.subtype==='Type3' && procs instanceof PDFDict) {
+      input.type3CharProcs=Object.fromEntries(procs.entries().flatMap(([key,raw])=>{
+        const proc=raw instanceof PDFRef?font.context.lookup(raw):raw;
+        return proc instanceof PDFStream?[[key.decodeText(),streamBytes(proc)]]:[];
+      }));
+    }
   } catch(error) {input.error=error instanceof Error?error.message:String(error);if(error instanceof Type1Error)input.diagnostic=error.diagnostic;}
   return input;
 }

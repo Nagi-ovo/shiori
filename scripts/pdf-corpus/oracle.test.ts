@@ -35,3 +35,19 @@ test('an untouched native space must retain its origin even when text and ink ar
  expect(compareNativePages(source,edited,{...edit,originalText:'A BC',text:'A XC'})).toMatchObject({maxOriginDriftPt:0});
  expect(()=>compareNativePages(source,{...edited,glyphs:edited.glyphs.map(g=>g.text===' '?{...g,origin:[1.52,5]}:g)},{...edit,originalText:'A BC',text:'A XC'})).toThrow('drift');
 });
+
+test('manifest-aware audit checks owned movement while keeping unowned glyphs strict',async()=>{
+ const {compareReflowNativePages}=await import('./reflowOracle');
+ const reflowEdit={originalText:'B',text:'X',coverRects:[{x:1.9,y:4,w:.2,h:2}]};
+ const manifest={strategy:'suffix-shift' as const,sourceHash:'source',dependencyHash:'deps',region:{box:{x:1,y:4,w:4,h:2}},
+  source:[{unicode:'B',origin:[2,5],fontHash:'font'},{unicode:'C',origin:[3,5],fontHash:'font'}],
+  output:[{unicode:'X',origin:[2,5]},{unicode:'C',origin:[3.2,5],oldOrigin:[3,5],fontHash:'font'}]};
+ const moved={...after,glyphs:[glyph('A',1),glyph('X',2),glyph('C',3.2)]};
+ expect(()=>compareNativePages(before,moved,reflowEdit)).toThrow('drift');
+ expect(compareReflowNativePages(before,moved,reflowEdit,manifest)).toMatchObject({maxOriginDriftPt:0,replacementGlyphs:1});
+ expect(()=>compareReflowNativePages(before,{...moved,glyphs:[glyph('A',1.02),...moved.glyphs.slice(1)]},reflowEdit,manifest)).toThrow('drift');
+ expect(()=>compareReflowNativePages(before,{...moved,glyphs:[...moved.glyphs.slice(0,2),glyph('C',3.22)]},reflowEdit,manifest)).toThrow('destination');
+ expect(()=>compareReflowNativePages(before,{...moved,glyphs:[...moved.glyphs.slice(0,2),{...glyph('C',3.2),fontHash:'other'}]},reflowEdit,manifest)).toThrow('font');
+ const pixels=Buffer.from(before.pixels);pixels[0]=0;
+ expect(()=>compareReflowNativePages(before,{...moved,pixels},reflowEdit,manifest)).toThrow('outside');
+});

@@ -34,14 +34,18 @@
         "object": "271 0 R",
         "programKind": "FontFile2",
         "byteCount": 498296,
-        "verified": "verified"
+        "verified": "verified",
+        "metricSource": "pdf-dictionary",
+        "type1CodeFailures": []
       },
       {
         "name": "OWOVAM+TimesNewRomanPSMT",
         "object": "287 0 R",
         "programKind": "FontFile2",
         "byteCount": 83571,
-        "verified": "unverified"
+        "verified": "unverified",
+        "metricSource": "pdf-dictionary",
+        "type1CodeFailures": []
       }
     ],
     "source_glyphs": 135,
@@ -111,21 +115,27 @@
         "object": "193 0 R",
         "programKind": "FontFile2",
         "byteCount": 449428,
-        "verified": "verified"
+        "verified": "verified",
+        "metricSource": "pdf-dictionary",
+        "type1CodeFailures": []
       },
       {
         "name": "TimesNewRomanPSMT",
         "object": "215 0 R",
         "programKind": "missing",
         "byteCount": 0,
-        "verified": "unverified"
+        "verified": "unverified",
+        "metricSource": "pdf-dictionary",
+        "type1CodeFailures": []
       },
       {
         "name": "STCVHN+SimSun",
         "object": "80 0 R",
         "programKind": "FontFile2",
         "byteCount": 224926,
-        "verified": "unverified"
+        "verified": "unverified",
+        "metricSource": "pdf-dictionary",
+        "type1CodeFailures": []
       }
     ],
     "source_glyphs": 215,
@@ -187,14 +197,18 @@
         "object": "179 0 R",
         "programKind": "FontFile2",
         "byteCount": 416506,
-        "verified": "verified"
+        "verified": "verified",
+        "metricSource": "pdf-dictionary",
+        "type1CodeFailures": []
       },
       {
         "name": "ELHSQV+TimesNewRomanPSMT",
         "object": "195 0 R",
         "programKind": "FontFile2",
         "byteCount": 70443,
-        "verified": "unverified"
+        "verified": "unverified",
+        "metricSource": "pdf-dictionary",
+        "type1CodeFailures": []
       }
     ],
     "source_glyphs": 119,
@@ -314,14 +328,20 @@
         "object": "460 0 R",
         "programKind": "FontFile",
         "byteCount": 21819,
-        "verified": "unverified"
+        "verified": "unverified",
+        "metricSource": "pdf-dictionary",
+        "type1CodeFailures": [],
+        "type1MetricFailure": "Error: type1-ps-unsupported: unsupported definition /WMode"
       },
       {
         "name": "HQAFQS+NimbusRomNo9L-ReguItal",
         "object": "462 0 R",
         "programKind": "FontFile",
         "byteCount": 18513,
-        "verified": "unverified"
+        "verified": "unverified",
+        "metricSource": "pdf-dictionary",
+        "type1CodeFailures": [],
+        "type1MetricFailure": "Error: type1-ps-unsupported: unsupported definition /WMode"
       }
     ],
     "source_glyphs": 588,
@@ -418,7 +438,10 @@
         "object": "41 0 R",
         "programKind": "FontFile",
         "byteCount": 45426,
-        "verified": "unverified"
+        "verified": "unverified",
+        "metricSource": "pdf-dictionary",
+        "type1CodeFailures": [],
+        "type1MetricFailure": "Error: type1-ps-unsupported: unsupported definition /WMode"
       }
     ],
     "source_glyphs": 644,
@@ -454,28 +477,28 @@
     "box": [
       72,
       397.94061279296875,
-      302.94739421879996,
+      302.71468780799995,
       443.80808
     ],
     "slots": [
       {
         "left": 81.963,
-        "right": 302.94739421879996,
+        "right": 302.71468780799995,
         "baseline": 435.838
       },
       {
         "left": 72,
-        "right": 302.94739421879996,
+        "right": 302.71468780799995,
         "baseline": 423.883
       },
       {
         "left": 72,
-        "right": 302.94739421879996,
+        "right": 302.71468780799995,
         "baseline": 411.928
       },
       {
         "left": 72,
-        "right": 302.94739421879996,
+        "right": 302.71468780799995,
         "baseline": 399.973
       }
     ],
@@ -488,7 +511,425 @@
         "object": "166 0 R",
         "programKind": "FontFile",
         "byteCount": 27015,
-        "verified": "unverified"
+        "verified": "unverified",
+        "metricSource": "production-type1-program / native whole-unit advance (raw dictionary agreement <= 1 character-space unit)",
+        "type1CodeFailures": [
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph space",
+            "sourceCode": 32
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph exclam",
+            "sourceCode": 33
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph numbersign",
+            "sourceCode": 35
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph dollar",
+            "sourceCode": 36
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph ampersand",
+            "sourceCode": 38
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph asterisk",
+            "sourceCode": 42
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph plus",
+            "sourceCode": 43
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph less",
+            "sourceCode": 60
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph equal",
+            "sourceCode": 61
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph greater",
+            "sourceCode": 62
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph question",
+            "sourceCode": 63
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph at",
+            "sourceCode": 64
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph backslash",
+            "sourceCode": 92
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph asciicircum",
+            "sourceCode": 94
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph quoteleft",
+            "sourceCode": 96
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph bar",
+            "sourceCode": 124
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph asciitilde",
+            "sourceCode": 126
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph exclamdown",
+            "sourceCode": 161
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph cent",
+            "sourceCode": 162
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph sterling",
+            "sourceCode": 163
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph fraction",
+            "sourceCode": 164
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph yen",
+            "sourceCode": 165
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph florin",
+            "sourceCode": 166
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph section",
+            "sourceCode": 167
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph currency",
+            "sourceCode": 168
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph quotesingle",
+            "sourceCode": 169
+          },
+          {
+            "code": "font-metrics-conflict",
+            "detail": "PDF 336, program 333.25",
+            "sourceCode": 170
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph guillemotleft",
+            "sourceCode": 171
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph guilsinglleft",
+            "sourceCode": 172
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph guilsinglright",
+            "sourceCode": 173
+          },
+          {
+            "code": "font-metrics-conflict",
+            "detail": "PDF 499.9, program 555.42",
+            "sourceCode": 174
+          },
+          {
+            "code": "font-metrics-conflict",
+            "detail": "PDF 391.6, program 555.42",
+            "sourceCode": 175
+          },
+          {
+            "code": "font-metrics-conflict",
+            "detail": "PDF 394.3, program 499.8780487804878",
+            "sourceCode": 177
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph dagger",
+            "sourceCode": 178
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph daggerdbl",
+            "sourceCode": 179
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph periodcentered",
+            "sourceCode": 180
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph paragraph",
+            "sourceCode": 182
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph bullet",
+            "sourceCode": 183
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph quotesinglbase",
+            "sourceCode": 184
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph quotedblbase",
+            "sourceCode": 185
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph quotedblright",
+            "sourceCode": 186
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph guillemotright",
+            "sourceCode": 187
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph ellipsis",
+            "sourceCode": 188
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph perthousand",
+            "sourceCode": 189
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph questiondown",
+            "sourceCode": 191
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph grave",
+            "sourceCode": 193
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph acute",
+            "sourceCode": 194
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph circumflex",
+            "sourceCode": 195
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph tilde",
+            "sourceCode": 196
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph macron",
+            "sourceCode": 197
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph breve",
+            "sourceCode": 198
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph dotaccent",
+            "sourceCode": 199
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph dieresis",
+            "sourceCode": 200
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph ring",
+            "sourceCode": 202
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph cedilla",
+            "sourceCode": 203
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph hungarumlaut",
+            "sourceCode": 205
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph ogonek",
+            "sourceCode": 206
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph caron",
+            "sourceCode": 207
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph emdash",
+            "sourceCode": 208
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph AE",
+            "sourceCode": 225
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph ordfeminine",
+            "sourceCode": 227
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph Lslash",
+            "sourceCode": 232
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph Oslash",
+            "sourceCode": 233
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph OE",
+            "sourceCode": 234
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph ordmasculine",
+            "sourceCode": 235
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph ae",
+            "sourceCode": 241
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph dotlessi",
+            "sourceCode": 245
+          },
+          {
+            "code": "font-metrics-conflict",
+            "detail": "PDF 555.4, program 499.8780487804878",
+            "sourceCode": 249
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph oe",
+            "sourceCode": 250
+          },
+          {
+            "ok": false,
+            "code": "glyph-unavailable",
+            "detail": "missing or .notdef glyph germandbls",
+            "sourceCode": 251
+          }
+        ]
       }
     ],
     "source_glyphs": 181,
@@ -499,13 +940,13 @@
     },
     "column_clip": {
       "maxOriginX": 310,
-      "excludedGlyphs": 1804
+      "excludedGlyphs": 1803
     },
     "stroke_geometry_only_ops": 0,
     "unmatched_native": 2,
     "unproven_unicode": 0,
-    "native_origin_max": 0.2616198477748526,
-    "native_origin_mean": 0.11917983916579124,
+    "native_origin_max": 5.929612501631709e-05,
+    "native_origin_mean": 1.2623958955217777e-05,
     "original": "Replacing symbolic clinical codes with their natural-language descriptions provides a direct way to exploit the semantic knowledge encoded in pretrained lan-guage models and avoid these preprocessing issues.",
     "source_lines": [
       "Replacingsymbolicclinicalcodeswiththeirnatural-",

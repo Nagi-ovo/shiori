@@ -1156,6 +1156,7 @@
       "form-xobject": "Text inside a Form XObject cannot be edited in place.",
       "unsupported-matrix": "This text transform is not supported for in-place editing.",
       "unsupported-state": "The PDF text state cannot be edited safely.",
+      "graphics-effect-unsupported": "Stroked PDF text cannot be edited safely.",
       "font-unavailable": "The source font or Unicode mapping could not be resolved.",
       "font-coverage": "Source or fallback glyph coverage could not be verified.",
       "font-permission": "The font licence does not allow editable embedding.",

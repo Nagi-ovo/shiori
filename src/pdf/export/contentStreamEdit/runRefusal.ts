@@ -1,4 +1,4 @@
-export type RunRefusalCode = 'unsupported-state'|'unsupported-matrix'|'font-unavailable'|'font-coverage'|'font-permission'|'overflow'|'stale-source'|'form-xobject';
+export type RunRefusalCode = 'unsupported-state'|'graphics-effect-unsupported'|'unsupported-matrix'|'font-unavailable'|'font-coverage'|'font-permission'|'overflow'|'stale-source'|'form-xobject';
 /** Expected input refusals only. TypeError and other programming errors escape. */
 export class RunCompileError extends Error {
   readonly code:RunRefusalCode;

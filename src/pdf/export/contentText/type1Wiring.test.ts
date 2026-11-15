@@ -18,21 +18,23 @@ const loadFont=async(name:string)=>new Uint8Array(await readFile(`node_modules/@
 function contents(page:Parameters<typeof inspectRunPage>[0]) {
   const source=inspectRunPage(page);if(!source.ok)throw Error(source.reason);return source.bytes;
 }
-test('default Type1 remains unavailable even for empty replacement',async()=>{
+test('omitted Type1 options reuse verified source codes; explicit off retains legacy refusal',async()=>{
   const {page}=await type1Fixture();
   const font=resolveRunFonts(page)[0]!;
-  expect(font.canEncode!('B')).toMatchObject({ok:false});
-  expect(font.canEncode!('')).toMatchObject({ok:false});
+  expect(font.canEncode!('B')).toMatchObject({ok:true});
+  expect(font.canEncode!('')).toMatchObject({ok:true});
+  expect(resolveRunFonts(page,{sourceReuse:false})[0]!.canEncode!('B')).toMatchObject({ok:false});
   const f=await type1Fixture();
-  expect(replaceRunPage(f.page,f.plan(''))).toMatchObject({ok:false});
-  expect(stage5Type1).toEqual({sourceReuse:false,standard14Afm:false});
+  expect(replaceRunPage(f.page,f.plan(''),{sourceReuse:false})).toMatchObject({ok:false});
+  expect(replaceRunPage(f.page,f.plan(''))).toMatchObject({ok:true});
+  expect(stage5Type1).toEqual({sourceReuse:true,standard14Afm:false});
 });
-for(const mode of ['flatten','annotations'] as const)test(`export opt-in reuses a good Type1 code despite an unrelated bad glyph (${mode})`,async()=>{
+for(const type1Options of [{},optIn])for(const mode of ['flatten','annotations'] as const)test(`export default/opt-in reuses a good Type1 code despite an unrelated bad glyph (${mode})`,async()=>{
   const f=await type1Fixture({stream:'BT /F1 10 Tf 50 100 Td (AA) Tj ET',widths:[600,600,602]});
   expect(fontCoverageFromDict(f.font,enabled).verification).toBe('unverified');
   let loads=0;
   const result=await exportPdf(await f.doc.save(),model([overlay({originalText:'AA',text:'BA'})]),
-    {mode,...optIn,inPlaceFallback:{loadFont:async name=>{loads++;return loadFont(name);}}});
+    {mode,...type1Options,inPlaceFallback:{loadFont:async name=>{loads++;return loadFont(name);}}});
   expect(result.contentTextOutcomes).toEqual([{overlayId:'edit',mode:'in-place'}]);
   expect(loads).toBe(0);
   const out=await PDFDocument.load(result.bytes),source=contents(out.getPage(0));

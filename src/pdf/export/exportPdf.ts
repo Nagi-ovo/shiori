@@ -41,8 +41,11 @@ export type ExportQuality = "original" | "standard" | "compact";
 export type DocumentFilesPolicy = "auto" | "preserve" | "omit";
 
 export type ExportOptions = {
-  /** Measurement opt-in only; production Type1/AFM defaults stay disabled. */
+  /** Verified Type1 source reuse defaults on; Standard-14 AFM stays off. */
   stage5Type1?: import("./fontCoverage/type1Support").Type1Options;
+  /** Bounded reflow opt-in; absent paragraph/ink/break evidence still refuses. */
+  stage5Reflow?: boolean;
+  reflowRequests?: ReadonlyMap<string,import("./contentText/reflowTypes").ReflowRequest>;
   /** Font byte loader for non-Vite callers (CLI/corpus); same verified writer. */
   inPlaceFallback?: import("./contentStreamEdit/fallbackFont").FallbackOptions;
   mode?: ExportMode;

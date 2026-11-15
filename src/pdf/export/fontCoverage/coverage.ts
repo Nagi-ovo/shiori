@@ -86,6 +86,8 @@ export function createFontCoverage(input:FontInput,options:Type1Options={}):Font
       const value=glyphUnicode(name);if(value)unicodeMap.set(code.toString(16).padStart(2,'0'),value);
     }
     report.codeToUnicode=unicodeMap;
+    if(!type0 && program?.kind==='fontkit' && program.symbolic && !program.cff && input.toUnicode===undefined)
+      report.replacementDisabled='missing-tounicode: symbolic replacement requires a ToUnicode label and verified glyph name';
     if(type0 && !unicodeMap.size)throw new Error('missing ToUnicode for CID font');
     let codeCid:(hex:string)=>number|undefined=()=>undefined;
     if(type0) {
@@ -127,6 +129,11 @@ export function createFontCoverage(input:FontInput,options:Type1Options={}):Font
         }
         if(!reason)report.glyphIds.set(hex,gid);
         reason ??= program!.presence(gid,cluster);
+        if(!reason && !type0 && program!.symbolic && !program!.cff) {
+          const name=names.get(codeNumber(hex));
+          if(input.toUnicode===undefined || !name)reason='missing-tounicode: symbolic replacement requires a ToUnicode label and verified glyph name';
+          else if(glyphUnicode(name)!==cluster)reason='glyph-identity-conflict: symbolic glyph name disagrees with ToUnicode';
+        }
       }
       if(reason)report.missing.push({code:hex,cluster,reason});
       else {
