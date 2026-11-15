@@ -1,4 +1,5 @@
 import {expect,test} from 'bun:test';
+import {readFile} from 'node:fs/promises';
 import {PDFName} from 'pdf-lib';
 import {applyContentTextEdits} from './apply';
 import {inspectRunPage,resolveRunFonts} from '../contentStreamEdit/replaceRunPage';
@@ -6,6 +7,7 @@ import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {walkTextPlacements} from '../contentStreamEdit/textState';
 import {overlay} from './fixtures.test-support';
 import {requestPage,spacingPage} from './reflowApply.test-support';
+const loadFont=(name:string)=>readFile(`node_modules/@docx-editor.dev/fonts/assets/${name}`);
 const stream=(last='S i',left=50,first=left)=>`BT /F1 10 Tf 14 TL 1 0 0 1 ${first} 150 Tm (${first===left?'S i i i i ':'S i i i '}) Tj 1 0 0 1 ${left} 136 Tm (S i i i i ) Tj 1 0 0 1 ${left} 122 Tm (${last}) Tj ET`;
 const edit=(y=150,text='n n')=>overlay({originalText:'S',text,coverRects:[{x:49.9,y:y-2,w:10.2,h:12}]});
 function read(page:Awaited<ReturnType<typeof spacingPage>>['page']){
@@ -33,7 +35,7 @@ test('occupied downward band and crop bottom refuse atomically',async()=>{
  for(const occupied of [true,false]){
   const f=await spacingPage(stream('S i i i i')+(occupied?' BT /F1 10 Tf 1 0 0 1 60 108 Tm (i) Tj ET':''));
   if(!occupied)f.page.setCropBox(0,115,300,85);
-  const before=inspectRunPage(f.page),r=await applyContentTextEdits(f.page,[edit()]);
+  const before=inspectRunPage(f.page),r=await applyContentTextEdits(f.page,[edit()],{loadFont});
   expect(r.outcomes[0]).toMatchObject({mode:'overlay',reason:'overflow'});expect(inspectRunPage(f.page)).toEqual(before);
  }
 });
@@ -52,7 +54,7 @@ test('automatic Type1 wrap uses PDF widths and conservative ink',async()=>{
 });
 test('intersecting paint and stroked text cannot authorize automatic growth',async()=>{
  for(const prefix of ['50 100 20 20 re f ','1 Tr ']){
-  const f=await spacingPage(prefix+stream('S i i i i')),before=inspectRunPage(f.page),r=await applyContentTextEdits(f.page,[edit()]);
+  const f=await spacingPage(prefix+stream('S i i i i')),before=inspectRunPage(f.page),r=await applyContentTextEdits(f.page,[edit()],{loadFont});
   expect(r.outcomes[0]!.mode).toBe('overlay');expect(inspectRunPage(f.page)).toEqual(before);
  }
 });
@@ -64,7 +66,7 @@ test('leading TJ first-line indent is taken from the first show',async()=>{
 });
 test('annotations leave downward clearance unproved',async()=>{
  const f=await spacingPage(stream('S i i i i'));f.page.node.set(PDFName.of('Annots'),f.doc.context.obj([{Type:'Annot',Subtype:'Text',Rect:[50,100,100,120]}]));
- const before=inspectRunPage(f.page),r=await applyContentTextEdits(f.page,[edit()]);expect(r.outcomes[0]!.mode).toBe('overlay');expect(inspectRunPage(f.page)).toEqual(before);
+ const before=inspectRunPage(f.page),r=await applyContentTextEdits(f.page,[edit()],{loadFont});expect(r.outcomes[0]!.mode).toBe('overlay');expect(inspectRunPage(f.page)).toEqual(before);
 });
 
 test('CID and preinstalled Type0 fallback resources wrap using embedded W',async()=>{

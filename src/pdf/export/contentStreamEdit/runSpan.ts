@@ -4,13 +4,20 @@ import {RunCompileError} from './runRefusal';
 import type { ResolvedRunFont, RunEdit, RunPlan, Overflow } from './replaceRun';
 import type { ShowTextState, GlyphPlacement } from './textState';
 import { codes, encodeRun, hex, pdfNumber, same, pdfName } from './runEncoding';
+import { fallbackClusters } from './fallbackClusters';
 type Segment = { font: ResolvedRunFont; bytes: Uint8Array };
 function segments(text: string, font: ResolvedRunFont, original: Uint8Array, fallbacks: readonly ResolvedRunFont[],allowPermutation=false): Segment[] {
-  const encoded = encodeRun(text, font, original,allowPermutation);
+  let encoded = encodeRun(text, font, original,allowPermutation);
+  // Preserve an existing exact source encoding first. If unavailable, use the
+  // same NFC spelling as fallback preparation, even if the source covers it.
+  if (!encoded.ok && text !== text.normalize('NFC')) {
+    text = text.normalize('NFC');
+    encoded = encodeRun(text, font, original,allowPermutation);
+  }
   if (encoded.ok) return [{ font, bytes: encoded.bytes }];
   if (!fallbacks.length || !font.canEncode) throw Object.assign(new RunCompileError(encoded.reason,'font-coverage'), { firstMissing: encoded.firstMissing, offset: encoded.offset });
   const result: Segment[] = [];
-  for (const { segment } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)) {
+  for (const segment of fallbackClusters(text)) {
     const source = encodeRun(segment, font, original);
     let resolved = source.ok ? { font, bytes: source.bytes } : undefined;
     if (!resolved) for (const fallback of fallbacks) {

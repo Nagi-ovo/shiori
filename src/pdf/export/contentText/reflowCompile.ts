@@ -5,6 +5,7 @@ import {ContentStreamParseError,tokenizeContentStream} from '../contentStreamEdi
 import {walkTextPlacements,type UnplacedShow} from '../contentStreamEdit/textState';
 import {RunCompileError} from '../contentStreamEdit/runRefusal';
 import {linear} from './regionProof/geometry';
+import type {TextTrace} from './regionProof';
 import {traceReflowSource,ReflowTraceError} from './reflowTrace';
 
 /** Additive R8 compiler. Existing fixed edits keep replaceRuns. A reflow
@@ -72,20 +73,31 @@ export function compileReflowPlan(content:Uint8Array,fonts:readonly ResolvedRunF
     `${pdfNumber(saved.tc)} Tc ${pdfNumber(saved.tw)} Tw [${items.join(' ')}] TJ ${pdfNumber(saved.tc)} Tc ${pdfNumber(saved.tw)} Tw`);
    cursor=end;
   }
-  // A proved leading TJ indent is replayed before the first emitted show.
-  const leading=proof.tjBoundaries.filter(b=>b.opIndex===firstOp&&b.left===null).map(b=>pdfNumber(b.value));
-  if(leading.length)body.unshift(`[${leading.join(' ')}] TJ`);
-  const dx=(rejoin.tm[4]!-rejoin.tlm[4]!)/rejoin.tlm[0]!;
-  if(rejoin.tm.slice(0,4).some((n,i)=>n!==rejoin.tlm[i])||
-   Math.abs(rejoin.tm[5]!-rejoin.tlm[5]!-dx*rejoin.tlm[1]!)>1e-7||!Number.isFinite(dx))
-   return refuse('reflow-context-unsupported: unrepresentable Tm/Tlm rejoin');
-  const restoredFont=fonts.find(font=>font.objectId===rejoin.fontObject);
-  if(!restoredFont)return refuse('reflow-context-unsupported: missing rejoin font');
-  body.push(`${pdfName(restoredFont.resourceName)} ${pdfNumber(rejoin.size)} Tf ${pdfNumber(rejoin.leading)} TL ${rejoin.tlm.map(pdfNumber).join(' ')} Tm `+
-   `[${pdfNumber(-dx*1000/(rejoin.size*rejoin.tz/100))}] TJ`);
+  // Replay the original scope/state skeleton, replacing its shows with
+  // cursor restoration only. The paragraph is emitted once, at firstOp;
+  // BT/ET, q/Q and marked-content wrappers keep their original nesting.
+  // Restoring both text matrices is necessary even inside q/Q: PDF graphics
+  // saves do not include Tm/Tlm. Text parameters may differ at the rejoin.
+  const restore=(t:TextTrace):string=>{
+   const dx=(t.tm[4]!-t.tlm[4]!)/t.tlm[0]!;
+   if(t.tm.slice(0,4).some((n,i)=>n!==t.tlm[i])||
+    Math.abs(t.tm[5]!-t.tlm[5]!-dx*t.tlm[1]!)>1e-7||!Number.isFinite(dx))
+    throw new ReflowTraceError('unrepresentable Tm/Tlm rejoin');
+   const font=fonts.find(f=>f.objectId===t.fontObject);
+   if(!font)throw new ReflowTraceError('missing rejoin font');
+   return `${pdfName(font.resourceName)} ${pdfNumber(t.size)} Tf ${pdfNumber(t.tc)} Tc ${pdfNumber(t.tw)} Tw `+
+    `${pdfNumber(t.tz)} Tz ${pdfNumber(t.rise)} Ts ${pdfNumber(t.renderMode)} Tr ${pdfNumber(t.leading)} TL `+
+    `${t.tlm.map(pdfNumber).join(' ')} Tm [${pdfNumber(-dx*1000/(t.size*t.tz/100))}] TJ`;
+  };
+  body.push(restore(trace.ends.get(firstOp)!));
+  const literal=(start:number,end:number)=>Array.from(content.subarray(start,end),b=>String.fromCharCode(b)).join('');
+  for(let i=firstOp+1;i<=lastOp;i++){
+   const op=ops[i]!;
+   body.push(['Tj','TJ'].includes(op.operator)?restore(trace.ends.get(i)!):literal(op.start,op.end));
+  }
   // Original operators may touch delimiters (Td(...)Tj). Keep separators
   // inside the patch so both direct and batched splices preserve token bounds.
-  const patch=new TextEncoder().encode(` ${body.join(' ')} `);
+  const patch=Uint8Array.from(` ${body.join(' ')} `,c=>c.charCodeAt(0));
   const prefix=content.subarray(0,ops[firstOp]!.start),suffix=content.subarray(ops[lastOp]!.end);
   const bytes=new Uint8Array(prefix.length+patch.length+suffix.length);
   bytes.set(prefix);bytes.set(patch,prefix.length);bytes.set(suffix,prefix.length+patch.length);

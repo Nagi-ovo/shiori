@@ -9,10 +9,13 @@ import type {Type1Options} from '../fontCoverage/type1Support';
 import fontkit from '@pdf-lib/fontkit';
 import {createFontCoverage} from '../fontCoverage/coverage';
 import {runToUnicode} from '../contentStreamEdit/runToUnicode';
-import {substituteInk} from '../contentStreamEdit/substituteInk';
+import {numericArray} from './reflowScene';
+import {simpleNames} from '../fontCoverage/encodings';
+import {proveType3Glyph} from '../fontCoverage/type3Proof';
 /** Container metadata only: the unchanged raw CFF remains the program that
  * fontkit executes for its Bezier control hull (the same R1 program reader).
- * Nonstandard top/FD FontMatrix values need a separate transform proof. */
+ * Transform the control hull with the top FontMatrix; FD-local transforms
+ * remain unsupported rather than silently assuming an identity. */
 function cffHulls(raw:Uint8Array){
  let data=raw;
  if(raw[0]===1&&raw[2]!>=4){
@@ -24,54 +27,66 @@ function cffHulls(raw:Uint8Array){
  }
  const font=fontkit.create(data) as ReturnType<typeof fontkit.create>&{'CFF '?:{topDict:{FontMatrix?:number[];FDArray?:{FontMatrix?:number[]}[]}}};
  const top=font['CFF ']?.topDict;
- if(!top||[top,...(top.FDArray??[])].some(d=>d.FontMatrix&&(d.FontMatrix.length!==6||d.FontMatrix.some((n,i)=>n!==[.001,0,0,.001,0,0][i]))))return;
- const u=font.unitsPerEm;if(!(u>0&&Number.isFinite(u)))return;
- return (gid:number):Rect=>{const glyph=font.getGlyph(gid);if(!glyph.path.toSVG())return {x:0,y:0,w:0,h:0};const b=glyph.cbox;return {x:b.minX/u,y:b.minY/u,w:(b.maxX-b.minX)/u,h:(b.maxY-b.minY)/u};};
+ if(!top||(top.FDArray??[]).some(d=>d.FontMatrix))return;
+ const m=top.FontMatrix??[.001,0,0,.001,0,0];
+ if(m.length!==6||!m.every(Number.isFinite))return;
+ return (gid:number):Rect=>{
+  const glyph=font.getGlyph(gid);if(!glyph.path.toSVG())return {x:0,y:0,w:0,h:0};const b=glyph.cbox;
+  const points=[[b.minX,b.minY],[b.maxX,b.minY],[b.maxX,b.maxY],[b.minX,b.maxY]].map(([x,y])=>
+   [m[0]!*x!+m[2]!*y!+m[4]!,m[1]!*x!+m[3]!*y!+m[5]!]);
+  const xs=points.map(p=>p[0]!),ys=points.map(p=>p[1]!);
+  return {x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};
+ };
 }
 export type ReflowInk={box:Rect;glyph?:GlyphIdentity;conservative:boolean};
-/** Only embedded, measured fonts supply ink. TrueType/CFF use control hulls;
- * Type1 uses the verified CharString closure's controls, including Subrs and
- * flex moves. Unresolved composite hulls retain the union of FontBBox and
- * an em/advance envelope. Selection boxes never supply ink bounds.
- * A prepared Type0 substitute is treated identically to an embedded CID font.
- */
-export function streamInkResolver(page:PDFPage,fonts:readonly ResolvedRunFont[],options:Type1Options={},addressOnly=false){
+/** Outlines are preferred; a declared PDF FontBBox is conservative ink,
+ * independent of source encoding eligibility. No selection, advance or em
+ * metric can fill a missing envelope. Unproved composites stay unknown. */
+export function streamInkResolver(page:PDFPage,fonts:readonly ResolvedRunFont[],options:Type1Options={},_addressOnly=false){
+ void _addressOnly;
  const dict=page.node.Resources()?.lookupMaybe(PDFName.of('Font'),PDFDict);
  const byName=new Map<string,(code:number)=>ReflowInk|undefined>();
- const sourceInk=addressOnly?substituteInk(page,fonts):undefined;
+
  for(const font of fonts){
   const raw=dict?.lookupMaybe(PDFName.of(font.resourceName),PDFDict);if(!raw)continue;
   const child=raw.lookupMaybe(PDFName.of('DescendantFonts'),PDFArray)?.lookup(0,PDFDict),descriptor=(child??raw).lookupMaybe(PDFName.of('FontDescriptor'),PDFDict);
-  // Only the substitution transaction may use a source's declared envelope:
-  // it blanks proven source codes and embeds a different measured face. This
-  // never enables encoding or assumes a missing program has a glyph outline.
-  if(sourceInk&&(raw.has(PDFName.of('FontBBox'))||descriptor?.has(PDFName.of('FontBBox'))))byName.set(font.resourceName,code=>{
-   const box=sourceInk(font.resourceName,code);return box&&validRect(box)?{box,conservative:true}:undefined;
-  });
-  const input=fontInputFromDict(raw);if(input.error||!input.program)continue;
+  const matrix=numericArray(raw,'FontMatrix');
+  if(matrix&&(matrix.length!==6||matrix.some((n,i)=>n!==[.001,0,0,.001,0,0][i])))continue;
+  const declared=numericArray(raw,'FontBBox')??(descriptor?numericArray(descriptor,'FontBBox'):undefined);
+  const envelope=declared?.length===4&&declared.every(Number.isFinite)&&declared[2]!>=declared[0]!&&declared[3]!>=declared[1]!
+   ?{x:declared[0]!/1000,y:declared[1]!/1000,w:(declared[2]!-declared[0]!)/1000,h:(declared[3]!-declared[1]!)/1000}:undefined;
+  const fallback=():ReflowInk|undefined=>envelope?{box:envelope,conservative:true}:undefined;
+  // A declaration bounds source paint even when an unsupported dictionary
+  // idiom prevents program reuse. The encoder retains its independent gate.
+  byName.set(font.resourceName,fallback);
+  const input=fontInputFromDict(raw);
+  if(input.subtype==='Type3'){
+   byName.set(font.resourceName,code=>{const p=proveType3Glyph(input,code);return p.ok?{box:p.proof.inkBounds??{x:0,y:0,w:0,h:0},conservative:false}:undefined;});
+   continue;
+  }
+  if(input.error||!input.program)continue;
   let program:ReturnType<typeof readProgram>;
   try{program=readProgram(input);}catch{continue;}
   const coverage=input.toUnicode&&!runToUnicode(input.toUnicode,font.bytesPerCode)&&font.bytesPerCode===1&&input.encoding?
    createFontCoverage({...input,toUnicode:undefined},options):fontCoverageFromDict(raw,options),hash=sourceFingerprint(input.program);
   if(program.kind==='fontkit'){
-   const hull=program.cff?cffHulls(input.program):program.inkBox;if(!hull)continue;
+   let hull:((gid:number)=>Rect|undefined)|undefined;
+   try{hull=program.cff?cffHulls(input.program):program.inkBox;}catch{continue;}if(!hull)continue;
    byName.set(font.resourceName,code=>{
-    const gid=coverage.glyphIds.get(code.toString(16).padStart(font.bytesPerCode*2,'0'));if(!gid)return;
-    const box=hull(gid);if(box&&validRect(box))return {box,glyph:{kind:'gid',programHash:hash,gid},conservative:false};
-    if(/^\p{White_Space}+$/u.test(font.unicodeByCode.get(code)??''))return {box:{x:0,y:0,w:0,h:0},glyph:{kind:'gid',programHash:hash,gid},conservative:false};
+    const gid=coverage.glyphIds.get(code.toString(16).padStart(font.bytesPerCode*2,'0'));if(!gid)return fallback();
+    let box:Rect|undefined;try{box=hull(gid);}catch{return fallback();}if(box&&validRect(box))return {box,glyph:{kind:'gid',programHash:hash,gid},conservative:false};
+    return fallback();
    });
   }else if(program.kind==='type1'){
-   const b=program.fontBBox,m=program.fontMatrix;
-   if(b.length!==4||m[0]!==.001||m[1]!==0||m[2]!==0||m[3]!==.001||m[4]!==0||m[5]!==0||b.some(n=>!Number.isFinite(n))||b[2]!<b[0]!||b[3]!<b[1]!)continue;
+   const m=program.fontMatrix;
+   if(m.length!==6||m.some((n,i)=>n!==[.001,0,0,.001,0,0][i])){byName.delete(font.resourceName);continue;}
+   let names:ReadonlyMap<number,string>;try{names=simpleNames(input,program.builtIn);}catch{continue;}
    byName.set(font.resourceName,code=>{
-    const mapping=coverage.mappings?.get(code.toString(16).padStart(font.bytesPerCode*2,'0'));
-    if(!mapping||mapping.glyph.kind!=='type1-name')return;
-    const proof=program.verify(mapping.glyph.name);if(!proof.ok)return;
-    const width=font.widthOf(code);if(!Number.isFinite(width)||Math.abs(width-proof.width)>1)return;
-    const x=Math.min(0,b[0]!/1000),y=Math.min(-.2,b[1]!/1000),right=Math.max(width/1000,b[2]!/1000),top=Math.max(.8,b[3]!/1000);
+    const name=names.get(code);if(!name)return;
+    const proof=program.verify(name);if(!proof.ok||proof.inkBounds===undefined)return;
     const hull=proof.inkBounds;
-    const box=hull===null?{x:0,y:0,w:0,h:0}:hull?{x:hull.x/1000,y:hull.y/1000,w:hull.w/1000,h:hull.h/1000}:{x,y,w:right-x,h:top-y};
-    return {box,glyph:mapping.glyph,conservative:true};
+    const box=hull===null?{x:0,y:0,w:0,h:0}:{x:hull.x/1000,y:hull.y/1000,w:hull.w/1000,h:hull.h/1000};
+    return {box,glyph:{kind:'type1-name',programHash:hash,name},conservative:false};
    });
   }
  }

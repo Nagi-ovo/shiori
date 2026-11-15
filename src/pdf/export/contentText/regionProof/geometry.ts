@@ -31,7 +31,7 @@ export function validTrace(t: TextTrace): boolean {
     !!t.fontObject && !!t.safetyHash;
 }
 export function compatible(t: TextTrace, base: TextTrace): boolean {
-  return validTrace(t) && t.bt === base.bt && t.fontObject === base.fontObject &&
+  return validTrace(t) && t.fontObject === base.fontObject &&
     t.safetyHash === base.safetyHash && near(physicalSize(t), physicalSize(base), 0.05) &&
     linear(t).every((n, i) => coefficientEqual(n, linear(base)[i]!)) &&
     (['tc', 'tw', 'tz', 'rise', 'renderMode'] as const).every(key => t[key] === base[key]);

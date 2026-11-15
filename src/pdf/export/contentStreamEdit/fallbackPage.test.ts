@@ -5,6 +5,8 @@ import { inspectRunPage } from './replaceRunPage';
 import { replaceRunPageWithFallback } from './fallbackPage';
 import { tinyTtf, sfnt } from '../fontCoverage/fixtures/programs';
 import { sourceGlyphs, readSavedGlyphs } from '../../../../scripts/pdf-inplace/oracleGlyphs';
+import { editMatrix } from '../../../../scripts/pdf-corpus/editMatrix';
+import { prepareFallback } from './fallbackFont';
 const b = (s: string) => new TextEncoder().encode(s);
 const loadFont = (name: string) => readFile(name.endsWith('.ttf') ? `node_modules/@docx-editor.dev/fonts/assets/${name}` : `src/assets/fonts/${name}`);
 async function fixture() {
@@ -18,6 +20,35 @@ async function fixture() {
   const edit={fontResource:'F1',fontObject:f.toString(),opIndex:3,itemIndex:-1,byteStart:0,byteEnd:2,expected:b('AB'),replacement:'Aé'};
   return {doc,page,info,edit};
 }
+for(const replacement of [
+  editMatrix('like remind').find(e=>e.kind==='missing-glyph')!.text,
+  editMatrix('like remind').find(e=>e.kind==='missing-glyph')!.text.normalize('NFD'),
+  '漢éèüāŢ e', 'かなéèüāŢ e',
+])test(`fallback page saves canonical accented text ${JSON.stringify(replacement)} and preserves source glyphs`,async()=>{
+  const {doc,page,info,edit}=await fixture();
+  const out=await replaceRunPageWithFallback(page,{sourceHash:info.sourceHash,edits:[{...edit,replacement:'A'+replacement}],allowOverflow:true},{loadFont});
+  expect(out).toMatchObject({ok:true,usedFallback:true});
+  const saved=await readSavedGlyphs(await doc.save({useObjectStreams:false}));
+  expect(saved.glyphs.map(g=>g.unicode).join('')).toBe('A'+replacement.normalize('NFC')+'A');
+  for(const glyph of [saved.glyphs[0]!,saved.glyphs.at(-1)!]){
+    expect(glyph.fontObject).toBe(edit.fontObject);expect(glyph.code).toBe(65);
+  }
+});
+test('NFD replacement reuses an already verified NFC source glyph',async()=>{
+  const doc=await PDFDocument.create(),page=doc.addPage();
+  const source=await prepareFallback(doc,'F1','LiberationSans-Regular.ttf',['é','e'],{loadFont});
+  const encoded=source.resolved.canEncode!('e');if(!encoded.ok)throw Error(encoded.reason);
+  page.node.set(PDFName.of('Resources'),doc.context.obj({Font:{F1:source.ref}}));
+  page.node.set(PDFName.of('Contents'),doc.context.register(doc.context.stream(`BT /F1 12 Tf 50 100 Td <${Buffer.from(encoded.bytes).toString('hex')}> Tj ET`)));
+  const info=inspectRunPage(page);if(!info.ok)throw Error(info.reason);let loads=0;
+  const out=await replaceRunPageWithFallback(page,{sourceHash:info.sourceHash,allowOverflow:true,edits:[{
+    fontResource:'F1',fontObject:source.ref.toString(),opIndex:3,itemIndex:-1,byteStart:0,byteEnd:2,expected:encoded.bytes,replacement:'e\u0301',
+  }]},{loadFont:async name=>{loads++;return loadFont(name);}});
+  expect(out.ok).toBe(true);expect(loads).toBe(0);
+  const saved=await readSavedGlyphs(await doc.save({useObjectStreams:false}));
+  expect(saved.glyphs.map(g=>g.unicode).join('')).toBe('é');
+  expect(saved.glyphs[0]!.fontObject).toBe(source.ref.toString());
+});
 for (const [replacement,kind] of [['Aé','CIDFontType2'],['A漢','CIDFontType0']] as const) {
   test(`missing glyph ${replacement} uses searchable embedded subset and preserves source A`,async()=>{
     const {doc,page,info,edit}=await fixture();

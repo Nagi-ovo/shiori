@@ -41,19 +41,47 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
     }
   }
   if (first < 0 || last >= ops.length || first > last) return fail('ownership', 'Invalid operator span');
-  // bt is the BT operator's source index, not a DOM/grouping identifier.
-  let bt = -1;
-  for (let i = 0; i <= last; i++) {
-    if (ops[i]!.operator === 'BT') {
-      if (bt !== -1) return fail('operators', 'Nested BT is unsupported');
-      bt = i;
-    } else if (ops[i]!.operator === 'ET') bt = -1;
-    if (i >= first && bt !== lines[0]!.anchor.bt) return fail('state', 'Candidate crosses BT ownership');
+  // Validate real source scopes, including wrappers that open before the
+  // candidate. q/Q never saves Tm/Tlm. Fill state must agree at every owned
+  // show: a Q must not silently restore a different painting colour.
+  let bt = -1, graphics = 0, marked = 0, fill = {space:'DeviceGray',value:'default'};
+  const fills:typeof fill[] = [], owners = new Map<number,number>();
+  const fillAt = new Map<number,string>();
+  for (let i = 0; i < ops.length; i++) {
+    const op=ops[i]!;
+    if (op.operator === 'BT') {
+      if (bt !== -1 || op.operands.length) return fail('operators', 'Nested or malformed BT');
+      bt=i;
+    } else if (op.operator === 'ET') {
+      if (bt === -1 || op.operands.length) return fail('operators', 'Unbalanced ET');
+      bt=-1;
+    } else if(op.operator==='q') {
+      if(op.operands.length)return fail('operators','Malformed q');
+      graphics++; fills.push(fill);
+    }
+    else if(op.operator==='Q') {
+      if(op.operands.length||--graphics<0)return fail('operators','Unbalanced graphics state');
+      fill=fills.pop()!;
+    } else if(['g','rg','k','cs'].includes(op.operator)) fill={space:op.operator==='cs'?JSON.stringify(op.operands):op.operator,value:JSON.stringify(op.operands)};
+    else if(['sc','scn'].includes(op.operator))fill={...fill,value:JSON.stringify(op.operands)};
+    else if(op.operator==='BMC'||op.operator==='BDC') marked++;
+    else if(op.operator==='EMC'&&--marked<0)return fail('operators','Unbalanced marked content');
+    owners.set(i,bt);fillAt.set(i,JSON.stringify(fill));
+  }
+  if(bt!==-1||graphics||marked)return fail('operators','Unterminated source scope');
+  const baseFill=fillAt.get(lines[0]!.shows[0]?.source.opIndex??first);
+  for(const line of lines){
+    if(owners.get(line.anchor.opIndex)!==line.anchor.bt)return fail('state','Anchor BT snapshot differs from source');
+    for(const show of line.shows)if(owners.get(show.source.opIndex)!==show.before.bt||show.after.bt!==show.before.bt||
+      show.before.bt!==line.anchor.bt)
+      return fail('state','Show BT differs from source paragraph');
+    if(line.shows.some(show=>fillAt.get(show.source.opIndex)!==baseFill))return fail('operators','Paragraph fill state differs across graphics scopes');
   }
   const boundaries: TjBoundary[] = [];
   let visited = 0;
   let cursor: TextTrace = lines[0]!.anchor;
-  let anchored = false;
+  let anchored = false, endpoint = origin(cursor)[0];
+  const parameters:TextTrace[]=[];
   const endpoints: number[] = [];
   for (let i = first; i <= last; i++) {
     const op = ops[i]!;
@@ -74,7 +102,7 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
         const n = numbers(op.operands, op.operator === 'T*' ? 0 : 2);
         if (!n) return fail('operators', 'Malformed relative anchor');
         const dx = n[0] ?? 0, dy = op.operator === 'T*' ? -t.leading : n[1]!;
-        const m = prev?.anchor.tlm ?? beforeFirst!.tlm;
+        const m = prev ? cursor.tlm : beforeFirst!.tlm;
         const expected = [m[0]!, m[1]!, m[2]!, m[3]!,
           m[4]! + dx * m[0]! + dy * m[2]!, m[5]! + dx * m[1]! + dy * m[3]!];
         if (!matrixEqual(t.tm, expected) || !matrixEqual(t.tlm, expected) ||
@@ -82,8 +110,31 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
           return fail('operators', 'Relative anchor disagrees with saved Tlm');
         }
       }
-      if (anchored) endpoints.push(origin(cursor)[0]);
-      cursor = t; anchored = true;
+      if (anchored) endpoints.push(endpoint);
+      cursor = t; anchored = true; endpoint=origin(t)[0];
+      continue;
+    }
+    if(['BT','ET','q','Q','BMC','BDC','EMC','Tf','Tc','Tw','Tz','TL','Ts','Tr'].includes(op.operator)){
+      if(op.operator==='BT')cursor={...cursor,bt:i,tm:[1,0,0,1,0,0],tlm:[1,0,0,1,0,0]};
+      else if(op.operator==='ET')cursor={...cursor,bt:-1};
+      else if(op.operator==='q')parameters.push(cursor);
+      else if(op.operator==='Q'){
+        const saved=parameters.pop();if(saved)cursor={...saved,bt:cursor.bt,tm:cursor.tm,tlm:cursor.tlm};
+      }else if(op.operator==='Tf'){
+        if(op.operands.length!==2||op.operands[0]?.kind!=='name'||op.operands[1]?.kind!=='number'||
+          !Number.isFinite(op.operands[1].value)||op.operands[1].value<=0)return fail('operators','Malformed Tf');
+        cursor={...cursor,size:op.operands[1].value};
+      }else if(['Tc','Tw','Tz','TL','Ts','Tr'].includes(op.operator)){
+        const n=numbers(op.operands,1);if(!n||op.operator==='Tr'&&n[0]!==0)return fail('operators','Unsupported text state');
+        const field={Tc:'tc',Tw:'tw',Tz:'tz',TL:'leading',Ts:'rise',Tr:'renderMode'}[op.operator]!;
+        cursor={...cursor,[field]:n[0]};
+      }else if(op.operator==='BDC'||op.operator==='BMC'){
+        if(op.operands[0]?.kind!=='name'||op.operands[0].value==='OC'||op.operands.length!==(op.operator==='BDC'?2:1))
+          return fail('operators','Unsupported marked content');
+        const properties=op.operands[1];
+        if(properties?.kind==='dict'&&properties.entries.some(e=>['ActualText','Alt','E','OC'].includes(e.key)))
+          return fail('semantics','Unresolved marked content semantics');
+      }else if(op.operands.length)return fail('operators','Malformed scope operator');
       continue;
     }
     let items: ContentOperand[];
@@ -118,8 +169,9 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
         cursor = show.after;
         visited++;
       } else return fail('operators', 'Unknown or nonfinite TJ item');
+      endpoint=origin(cursor)[0];
     }
   }
-  endpoints.push(origin(cursor)[0]);
+  endpoints.push(endpoint);
   return visited === shows.size ? { boundaries, endpoints } : fail('ownership', 'Owned show is outside the candidate');
 }

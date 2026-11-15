@@ -39,7 +39,7 @@ for(const kind of ['annotation','image','form','paint','gs','unknown-text'])test
  const r=await applyContentTextEdits(f.page,[edit()]);expect(r.outcomes[0]?.mode).toBe('reflowed');
 });
 for(const extra of [' 50 129 50 10 re f',' BT /Missing 10 Tf 50 136 Td (unknown) Tj ET'])test(`intersecting obstacle refuses growth: ${extra}`,async()=>{
- const f=await spacingPage(single+extra),before=inspectRunPage(f.page),r=await applyContentTextEdits(f.page,[edit()]);
+ const f=await spacingPage(single+extra),before=inspectRunPage(f.page),r=await applyContentTextEdits(f.page,[edit()],{loadFont});
  expect(r.outcomes[0]?.mode).toBe('overlay');expect(inspectRunPage(f.page)).toEqual(before);
 });
 test('overflowing newly prepared substitute reflows atomically and reports a manifest',async()=>{

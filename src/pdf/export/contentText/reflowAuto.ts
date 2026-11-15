@@ -78,7 +78,7 @@ function build(page:PDFPage,content:Uint8Array,fonts:readonly ResolvedRunFont[],
   if(!layout.ok||layout.strategy==='fixed')return null;
   // A preceding fixed tactic may not use speculative growth; only wrap may.
   if(layout.strategy!=='wrap'&&proof!==e.proof)return null;
-  const firstOp=first.source!.opIndex,lastOp=proof.owned.at(-1)!.opIndex;
+  const firstOp=proof.owned[0]!.opIndex,lastOp=proof.owned.at(-1)!.opIndex;
   const edits:PageRunPlan['edits'][number][]=[];
   for(const address of proof.owned.filter(s=>s.opIndex>=firstOp)){
    const op=e.ops[address.opIndex]!,item=op.operator==='TJ'&&op.operands[0]?.kind==='array'?op.operands[0].items[address.itemIndex]:op.operands[0];
@@ -88,7 +88,7 @@ function build(page:PDFPage,content:Uint8Array,fonts:readonly ResolvedRunFont[],
   }
   const rejoin=e.trace.ends.get(lastOp)!;
   return {sourceHash:proof.sourceHash,allowExistingCodePermutation:true,...environment,edits,
-   reflow:{...(substituted?{substituted:true}:{}),proof,saved:state,layout,clusters:[...e.source.slice(0,start),...replacement,...e.source.slice(end)],firstOp,lastOp,rejoin}};
+   reflow:{...(substituted?{substituted:true}:{}),proof,saved:e.trace.shows.get(`${firstOp}:${proof.owned[0]!.itemIndex}`)!.before,layout,clusters:[...e.source.slice(0,start),...replacement,...e.source.slice(end)],firstOp,lastOp,rejoin}};
  }catch(error){
   if(error instanceof ReflowTraceError||error instanceof RunCompileError||error instanceof Error&&!(error instanceof TypeError||error instanceof ReferenceError))return null;
   throw error;

@@ -13,9 +13,10 @@ import type {Rect} from '../contentText/regionProof';
 export type SubstituteLine={text:string;fontName:string;state:ShowTextState;origin:{x:number;y:number};availablePt:number;glyphs:GlyphPlacement[]};
 const compact=(s:string)=>s.replace(/\s/gu,'');
 function fail(message:string,code:ConstructorParameters<typeof RunCompileError>[1]='font-unavailable'):never{throw new RunCompileError(message,code);}
-/** Own the entire selected line; later show items are blanked with their
- * original advances retained. No wrapping, spacing tactic or reflow recipe. */
-export function planSubstitution(content:Uint8Array,fonts:SubstituteSourceFont[],overlay:ContentTextOverlay,environment:RunEnvironment,ink?:(name:string,code:number)=>Rect|undefined){
+/** Own the entire selected line; later show items retain their advances.
+ * Missing source ink always refuses. With reflow enabled, uncovered proved
+ * ink is returned for containment in the eventual recipe's RegionProof. */
+export function planSubstitution(content:Uint8Array,fonts:SubstituteSourceFont[],overlay:ContentTextOverlay,environment:RunEnvironment,ink?:(name:string,code:number)=>Rect|undefined,allowReflow=false){
  if(!overlay.sourceStyle||overlay.angle||overlay.align!=='left'||Object.entries(overlay.sourceStyle).some(([k,v])=>overlay[k as keyof ContentTextOverlay]!==v))fail('substitution requires unchanged source style','unsupported-state');
  const ops=tokenizeContentStream(content),states=new Map<string,ShowTextState>(),unplaced:UnplacedShow[]=[];
  const walk=walkTextPlacements(ops,{resolveFont:name=>{const font=fonts.find(f=>f.resourceName===name);return font?{...font,ok:true,appliesWordSpacing:font.bytesPerCode===1}:{ok:false,reason:'unmeasurable source font'};},
@@ -47,7 +48,7 @@ export function planSubstitution(content:Uint8Array,fonts:SubstituteSourceFont[]
  }
  const originals=overlay.originalText.replace(/\r\n/g,'\n').split('\n'),replacements=overlay.text.replace(/\r\n/g,'\n').split('\n');
  if(lines.length!==originals.length||lines.length!==replacements.length)fail('substitution requires unchanged line breaks','overflow');
- const edits:RunEdit[]=[],planned:SubstituteLine[]=[];
+ const edits:RunEdit[]=[],planned:SubstituteLine[]=[],uncoveredInk:Rect[]=[];
  lines.forEach((glyphs,index)=>{
   const first=glyphs[0]!,last=glyphs.at(-1)!,font=fonts.find(f=>f.resourceName===first.fontName)!,state=states.get(`${first.opIndex}:${first.arrayItemIndex}`)!;
   if(glyphs.some(g=>states.get(`${g.opIndex}:${g.arrayItemIndex}`)?.renderMode===3))fail('invisible OCR text cannot replace visible page ink','graphics-effect-unsupported');
@@ -56,7 +57,11 @@ export function planSubstitution(content:Uint8Array,fonts:SubstituteSourceFont[]
    const measured=ink?.(g.fontName,g.code);
    if(!measured)fail('source ink bounds unproved','overflow');
    const sx=state.fontSize*state.advanceVector.x,sy=state.fontSizePt??state.fontSize;
-   if(!inkCovered({x:g.coreQuad[0].x+measured.x*sx,y:g.coreQuad[0].y+measured.y*sy,w:measured.w*sx,h:measured.h*sy},overlay.coverRects))fail('source ink exceeds safe cover','overflow');
+   const bounds={x:g.coreQuad[0].x+measured.x*sx,y:g.coreQuad[0].y+measured.y*sy,w:measured.w*sx,h:measured.h*sy};
+   if(!inkCovered(bounds,overlay.coverRects)){
+    if(!allowReflow)fail('source ink exceeds safe cover','overflow');
+    uncoveredInk.push(bounds);
+   }
   }
   if(glyphs.some(g=>g.fontName!==first.fontName||Math.abs((states.get(`${g.opIndex}:${g.arrayItemIndex}`)?.fontSizePt??0)-overlay.fontSize)>.05))fail('mixed source styles','unsupported-state');
   const decoded=glyphs.map(g=>font.unicodeByCode.get(g.code));
@@ -80,5 +85,5 @@ export function planSubstitution(content:Uint8Array,fonts:SubstituteSourceFont[]
   });
   planned.push({text:replacements[index]!,fontName:substituteFontName(font.base,font.flags,replacements[index]!),state,origin,availablePt,glyphs});
  });
- return {edits,lines:planned};
+ return {edits,lines:planned,uncoveredInk};
 }

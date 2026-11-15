@@ -23,6 +23,7 @@ export function fallbackFontName(baseFont: string, flags: number, text: string):
 }
 export async function prepareFallback(doc: PDFDocument, resourceName: string, name: string,
   clusters: readonly string[], options: FallbackOptions): Promise<{ ref: PDFRef; resolved: ResolvedRunFont }> {
+  clusters = [...new Set(clusters.map(cluster => cluster.normalize('NFC')))];
   const data = await (options.loadFont ?? loadBundledFallbackFont)(name);
   const parsed = fontkit.create(data);
   const permissions = (parsed as unknown as { 'OS/2'?: { fsType: { noEmbedding: boolean; viewOnly: boolean; editable: boolean; noSubsetting: boolean; bitmapOnly: boolean } } })['OS/2']?.fsType;
@@ -30,11 +31,16 @@ export async function prepareFallback(doc: PDFDocument, resourceName: string, na
     throw new RunCompileError('fallback font embedding permission refused (OS/2 fsType)','font-permission');
   }
   for (const cluster of clusters) {
+    if (/\p{M}/u.test(cluster)) throw new RunCompileError(`unsupported fallback combining mark: ${cluster}`,'font-coverage');
+    const scalars = Array.from(cluster);
     const layout = parsed.layout(cluster);
     // This stage has no shaping-position compiler. Reject glyph substitution,
     // combining offsets and GPOS instead of discarding fontkit's positions.
-    if (layout.glyphs.length !== 1 || !layout.glyphs[0]!.id ||
-      String.fromCodePoint(...layout.glyphs[0]!.codePoints) !== cluster ||
+    // codePoints is cache metadata, not coverage: reading a TrueType composite
+    // outline can cache a later base glyph (e.g. e after é) with codePoints: [].
+    // Compare with the actual cmap GID instead, including one-to-one GSUB.
+    if (scalars.length !== 1 || layout.glyphs.length !== 1 || !layout.glyphs[0]!.id ||
+      layout.glyphs[0]!.id !== parsed.glyphForCodePoint(cluster.codePointAt(0)!).id ||
       layout.positions.some((p,i) => p.xOffset || p.yOffset || p.yAdvance || p.xAdvance !== layout.glyphs[i]!.advanceWidth)) {
       throw new RunCompileError(`unsupported fallback shaping or missing glyph: ${cluster}`,'font-coverage');
     }

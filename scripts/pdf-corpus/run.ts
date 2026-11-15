@@ -10,6 +10,7 @@ import {missingHanEdit} from './missingHan';
 import {inspectRunPage,resolveRunFonts} from '../../src/pdf/export/contentStreamEdit/replaceRunPage';
 import {editMatrix} from './editMatrix';
 import {auditCorpusSample} from './oracle';
+import {selectOracleSamples} from './selectOracleSamples';
 import {markdownReport,summarize,type CorpusRow} from './report';
 import {exportPdf} from '../../src/pdf/export/exportPdf';
 import type {PageModel} from '../../src/pdf/model/types';
@@ -63,8 +64,7 @@ try{
  }
  const candidates=[];
  for(const file of (await readdir(join(out,'samples'))).filter(f=>f.endsWith('.edit.json'))){const metadata=JSON.parse(await readFile(join(out,'samples',file),'utf8'));candidates.push({file,metadata});}
- candidates.sort((a,b)=>a.metadata.row.category.localeCompare(b.metadata.row.category)||Number(b.metadata.row.kind==='missing-han')-Number(a.metadata.row.kind==='missing-han')||a.metadata.row.outcome.mode.localeCompare(b.metadata.row.outcome.mode)||a.file.localeCompare(b.file));
- for(const {file,metadata} of candidates.slice(0,16)){
+ for(const {file,metadata} of selectOracleSamples(candidates)){
   const name=file.replace('.edit.json','');
   try{const checked=await auditCorpusSample(native,name,join(out,'samples'),metadata.overlay,metadata.stage5Type1,metadata.stage5Reflow,metadata.row.outcome.reflow,metadata.row.outcome.mode);oracle.push(checked);console.log('oracle passed',name);}
   catch(error){oracle.push({name,passed:false,error:String(error)});process.exitCode=1;console.error('P0 accepted edit failed native oracle',name,String(error));}

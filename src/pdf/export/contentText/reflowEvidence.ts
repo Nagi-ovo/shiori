@@ -1,5 +1,5 @@
 import {PDFArray,PDFDict,PDFName,type PDFPage} from 'pdf-lib';
-import {sourceFingerprint,type ResolvedRunFont} from '../contentStreamEdit/replaceRun';
+import {runContextSafety,sourceFingerprint,type ResolvedRunFont} from '../contentStreamEdit/replaceRun';
 import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {walkTextPlacements,type UnplacedShow} from '../contentStreamEdit/textState';
 import {textObjectScopes,followsUnplaced} from '../contentStreamEdit/textSafety';
@@ -27,6 +27,7 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
  const resolveFont=(name:string)=>{const f=byName.get(name);return f?{...f,ok:true as const,appliesWordSpacing:f.bytesPerCode===1}:{ok:false as const,reason:'unmeasurable source font'};};
  const walk=walkTextPlacements(ops,{resolveFont,extGStateSetsFont:name=>environment.extGStates?.get(name)?.setsFont??null,onUnplaced:s=>unplaced.push(s)});
  if(!walk.ok||walk.glyphs.length>16384||followsUnplaced(textObjectScopes(ops),unplaced.filter(s=>!s.advanceKnown).map(s=>s.opIndex),targetOp))return null;
+ const safety=runContextSafety(ops,environment);if(!safety.ok)return null;
  const ink=streamInkResolver(page,fonts,options,addressOnly),target=[...trace.shows.values()].find(s=>s.before.opIndex===targetOp)?.before;
  if(!target||!validTrace(target))return null;
  let lines:ParagraphLine[]=[],source:ReflowCodeCluster[]=[];
@@ -65,14 +66,14 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
    continue;
   }
   const o=g.coreQuad[0],box={...measured.box,x:o.x+measured.box.x,y:o.y+measured.box.y};
-  if(!unicode||/[\r\n\t\uFFFD]/u.test(unicode)||show.before.bt!==target.bt||!compatible(show.before,target)||!compatible(show.after,target)){
+  if(!unicode||/[\r\n\t\uFFFD]/u.test(unicode)||safety.unsafe.has(g.opIndex)||!compatible(show.before,target)||!compatible(show.after,target)){
    // Real whitespace still occupies a text placement for downward clearance.
    obstacles.push(unionReflowBoxes([box,{x:o.x,y:o.y-.2*physicalSize(show.before),w:g.coreQuad[1].x-o.x,h:physicalSize(show.before)}]));continue;
   }
   const address:SourceAddress={streamHash:sourceHash,opIndex:g.opIndex,itemIndex:g.arrayItemIndex,byteStart:g.byteOffset,byteEnd:g.byteOffset+g.byteLength,fontObject:font.objectId};
   let line=lines.at(-1);
-  if(!line||Math.abs(origin(line.shows[0]!.before)[1]-o.y)>.01){
-   const anchor=[...trace.anchors.values()].findLast(t=>t.opIndex<g.opIndex&&t.bt===target.bt);
+  if(!line||line.anchor.bt!==show.before.bt||Math.abs(origin(line.shows[0]!.before)[1]-o.y)>.01){
+   const anchor=[...trace.anchors.values()].findLast(t=>t.opIndex<g.opIndex&&t.bt===show.before.bt);
    if(!anchor||!validTrace(anchor))return null;
    line={anchor,shows:[],ink:null};lines.push(line);
   }
@@ -87,7 +88,7 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
    fullEmHan:font.widthOf(g.code)===1000,gap:0,original:{line:lines.length-1,x:o.x,y:o.y},source:address,glyph:measured.glyph,
    code:font.bytesPerCode===1?Uint8Array.of(g.code):Uint8Array.of(g.code>>8,g.code&255),fontResource:font.resourceName,fontObject:font.objectId});
  }
- if(!lines.length||source.length>4096||lines.length>128)return null;
+ if(!lines.length)return null;
  for(let i=0;i<source.length-1;i++)if(source[i]!.original!.line===source[i+1]!.original!.line)
   source[i]!.gap=source[i+1]!.original!.x-source[i]!.original!.x-source[i]!.advance;
  let proof:RegionProof;
@@ -105,7 +106,7 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
    obstacleProofHash:dependencyHash,boundaryProofHash:sourceHash,scopeProofHash:sourceHash,completeScene:true,
    readingOrder:'proven',whitespace:'source-codes',structure:'body-text',columnBoundary:'proven',semantics:'plain',inlineFeatures:'plain-prose',
    crop,clip:media,obstacles:[...obstacles,...outside].map(box=>({kind:'text' as const,box}))}} satisfies import('./regionProof').ParagraphInput;
-   const result=count>=3?detectParagraphRegion(input):(()=>{const proof=shortStreamRegion(input,trace.ends.get(input.lines[0]!.anchor.opIndex-1));return proof?{ok:true as const,proof}:{ok:false as const};})();
+   const result=count>=3?detectParagraphRegion(input,trace.ends.get(input.lines[0]!.anchor.opIndex-1)):(()=>{const proof=shortStreamRegion(input,trace.ends.get(input.lines[0]!.anchor.opIndex-1));return proof?{ok:true as const,proof}:{ok:false as const};})();
    if(result.ok){chosen={proof:result.proof,start,end,outside};break;}
   }
   if(!chosen)return null;

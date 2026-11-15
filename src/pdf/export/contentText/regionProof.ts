@@ -2,7 +2,7 @@ import { compatible, contains, EPS, intersects, matrixEqual, near, origin,
   physicalLeading, physicalSize, validRect, validTrace } from './regionProof/geometry';
 import { proveOperators } from './regionProof/operators';
 import type { LineSlot, ParagraphBlocker, ParagraphIndent, ParagraphInput,
-  ParagraphRefusal, ParagraphResult } from './regionProof/types';
+  ParagraphRefusal, ParagraphResult, TextTrace } from './regionProof/types';
 export type * from './regionProof/types';
 
 /** Integration gate only. No production planner imports or enables these. */
@@ -20,7 +20,7 @@ const unsupportedDirection = /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff\u200e\u20
  * never PDFium visual-line strings or DOM boxes. No wrapping or mutation.
  * A caller must revalidate all hashes before consuming an exported proof.
  */
-export function detectParagraphRegion(input: ParagraphInput): ParagraphResult {
+export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextTrace): ParagraphResult {
   const { lines, evidence: e } = input;
   const nonempty = lines.filter(l => l.shows.some(s => s.unicode.trim().length > 0));
   if (nonempty.length < 3 || !lines[0]?.shows.length || !lines.at(-1)?.shows.length ||
@@ -62,7 +62,7 @@ export function detectParagraphRegion(input: ParagraphInput): ParagraphResult {
       end = b; previousStart = a[0];
     }
   }
-  const operators = proveOperators(input);
+  const operators = proveOperators(input, beforeFirst);
   if ('blocker' in operators) return refuse(operators.blocker, operators.detail);
   // Leading TJ displacement may encode an indent after a flush Tm. Capacity
   // begins at the actual first show, never the pre-kern anchor.

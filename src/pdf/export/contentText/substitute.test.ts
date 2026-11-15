@@ -23,6 +23,15 @@ function savedText(page:import('pdf-lib').PDFPage){
  if(!walk.ok)throw Error(walk.reason);
  return walk.glyphs.map(g=>({text:fonts.find(f=>f.resourceName===g.fontName)?.unicodeByCode.get(g.code)??(g.fontName==='F1'?String.fromCharCode(g.code):undefined),origin:g.coreQuad[0],font:g.fontName}));
 }
+for(const text of ['éike','e\u0301ike','漢é','かなé'])test(`whole-run substitution saves NFC ${JSON.stringify(text)} and preserves the suffix position`,async()=>{
+ const f=await fixture('BT /F1 10 Tf 50 100 Td (ABCDE) Tj [-1000] TJ (Z) Tj ET');
+ const font=f.page.node.Resources()!.lookup(PDFName.of('Font'),PDFDict).lookup(PDFName.of('F1'),PDFDict);font.delete(PDFName.of('ToUnicode'));
+ const result=await applyContentTextEdits(f.page,[overlay({text})],{loadFont});
+ expect(result.outcomes).toEqual([{overlayId:'edit',mode:'substituted'}]);
+ const saved=await PDFDocument.load(await f.doc.save()),glyphs=savedText(saved.getPage(0));
+ expect(glyphs.map(g=>g.text).join('')).toBe(text.normalize('NFC')+'Z');
+ expect(glyphs.at(-1)).toEqual({text:'Z',origin:{x:90,y:100},font:'F1'});
+});
 test('default-on substitution rewrites a whole unusable Type1 run and preserves its suffix',async()=>{
  const f=await type1Fixture({differences:[65,'A','A'],stream:'BT /F1 10 Tf 50 100 Td (AB) Tj [-1000] TJ (C) Tj ET'});
  const fonts:string[]=[];

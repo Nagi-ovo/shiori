@@ -10,7 +10,7 @@ import {substitutionStamp} from './substituteSnapshot';
 import {RunCompileError} from './runRefusal';
 import {substituteSourceFonts} from './substituteSource';
 import {planSubstitution,type SubstituteLine} from './substitutePlan';
-import {substituteInk} from './substituteInk';
+import {inkCovered,substituteInk} from './substituteInk';
 import {planStreamReflow} from '../contentText/reflowAuto';
 import {compileReflowPlan} from '../contentText/reflowCompile';
 import {reflowManifest} from '../contentText/reflowManifest';
@@ -20,9 +20,9 @@ import type {Type1Options} from '../fontCoverage/type1Support';
 import {tokenizeContentStream} from './tokenizer';
 import {walkTextPlacements} from './textState';
 import {intersects} from '../contentText/regionProof/geometry';
+import {fallbackClusters as clusters} from './fallbackClusters';
 
 export type SubstituteOptions=FallbackOptions&{stage5Substitute?:boolean;stage5Reflow?:boolean;stage5Type1?:Type1Options};
-const clusters=(text:string)=>[...new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text)].map(s=>s.segment);
 function checkSlot(line:SubstituteLine,font:Awaited<ReturnType<typeof prepareFallback>>['resolved'],data:Uint8Array,overlay:ContentTextOverlay){
  const parsed=fontkit.create(data),scale=line.state.advanceVector.x,size=line.state.fontSize;
  let advance=0;
@@ -46,7 +46,7 @@ async function substitute(page:PDFPage,overlay:ContentTextOverlay,options:Substi
  if(!source.ok)return refusal(source.code,source.reason);
  const originalResources=page.node.Resources(),originalContents=page.node.get(PDFName.of('Contents')),stamp=substitutionStamp(page);
  try{
-  const fonts=substituteSourceFonts(page),environment=runPageEnvironment(page),plan=planSubstitution(source.bytes,fonts,overlay,environment,substituteInk(page,fonts));
+  const fonts=substituteSourceFonts(page),environment=runPageEnvironment(page),plan=planSubstitution(source.bytes,fonts,overlay,environment,substituteInk(page,fonts),reflowEnabled(options.stage5Reflow));
   const name=plan.lines[0]!.fontName;
   if(plan.lines.some(l=>l.fontName!==name))throw new RunCompileError('mixed substitute faces require paragraph style planning','unsupported-state');
   const fontDict=originalResources?.lookupMaybe(PDFName.of('Font'),PDFDict);
@@ -54,10 +54,10 @@ async function substitute(page:PDFPage,overlay:ContentTextOverlay,options:Substi
   const resource=`ShioriSub${index}`,scratch=await PDFDocument.create();
   const data=await (options.loadFont??loadBundledFallbackFont)(name);
   const prepared=await prepareFallback(scratch,resource,name,[...new Set(plan.lines.flatMap(l=>clusters(l.text)))],{loadFont:async()=>data});
-  let overflow:RunCompileError|undefined;
+  let overflow=plan.uncoveredInk.length?new RunCompileError('source ink exceeds safe cover','overflow'):undefined;
   try{for(const line of plan.lines)checkSlot(line,prepared.resolved,data,overlay);}catch(error){
    if(!(error instanceof RunCompileError)||error.code!=='overflow')throw error;
-   overflow=error;
+   overflow??=error;
   }
   // Capacity is checked over each owned line above. Later owned items are
   // blanked; the span compiler restores every item's original endpoint.
@@ -77,6 +77,10 @@ async function substitute(page:PDFPage,overlay:ContentTextOverlay,options:Substi
    const measured=[...substituteSourceFonts(candidate).filter(f=>f.resourceName!==resource),prepared.resolved],env=runPageEnvironment(candidate);
    const recipe=planStreamReflow(candidate,source.bytes,measured,overlay,{...env,stage5Reflow:true},options.stage5Type1,prepared.resolved);
    if(!recipe?.reflow)throw overflow;
+   // A larger blanking region is authorized only by this actual recipe.
+   // The source bounds still come from proved outlines/declared envelopes;
+   // neither the UI rect nor replacement metrics can supply missing ink.
+   if(plan.uncoveredInk.some(ink=>!inkCovered(ink,[recipe.reflow!.proof.box])))throw overflow;
    if(siblings.some(o=>o.id!==overlay.id&&o.coverRects.some(r=>intersects(r,recipe.reflow!.proof.box))))return refusal('shared-text-object','substitute reflow intersects another overlay');
    compiled=compileReflowPlan(source.bytes,measured,recipe);
    if(compiled.ok){
@@ -104,8 +108,10 @@ export async function applyFontSubstitutions(page:PDFPage,edits:readonly Content
  if(options.stage5Substitute===false)return;
  for(const overlay of edits){
   const outcome=outcomes.get(overlay.id);
-  if(outcome?.mode!=='overlay'||!['font-unavailable','font-coverage'].includes(outcome.reason??''))continue;
-  const result=await substitute(page,overlay,options,edits);outcomes.set(overlay.id,result);
+  if(outcome?.mode!=='overlay'||!['font-unavailable','font-coverage','overflow'].includes(outcome.reason??''))continue;
+  const result=await substitute(page,overlay,options,edits);
+  // Width retries are speculative; retain the original refusal if they fail.
+  if(outcome.reason!=='overflow'||result.mode==='substituted')outcomes.set(overlay.id,result);
   if(result.mode==='substituted')accepted.add(overlay.id);
  }
 }

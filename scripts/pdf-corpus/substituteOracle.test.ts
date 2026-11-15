@@ -46,3 +46,26 @@ test('native substitution exports preserve all outside pixels, search text and v
   }
  }finally{native.close();await writeFile(`${directory}/report.json`,JSON.stringify({command,reports},null,2));}
 });
+
+test('native substitute overflow wraps inside its proved region and retains unowned text',async()=>{
+ const directory='test-artifacts/substitute-reflow-native';await mkdir(directory,{recursive:true});
+ const command='bun test scripts/pdf-corpus/substituteOracle.test.ts';
+ await writeFile(`${directory}/README.md`,`Regenerate with: ${command}\n`);
+ const native=openPdfium(process.env.SHIORI_PDFIUM_DIR?`${process.env.SHIORI_PDFIUM_DIR}/libpdfium.so`:'vendor/pdfium/linux-x64/lib/libpdfium.so'),reports=[];
+ try{
+  for(const name of ['cover-overflow','slot-overflow','source-cover']){
+   const f=await fixture('BT /F1 10 Tf 14 TL 50 100 Td(ABCDE)Tj ET BT /F1 10 Tf 220 10 Td (Z) Tj ET');
+   const font=f.page.node.Resources()!.lookup(PDFName.of('Font'),PDFDict).lookup(PDFName.of('F1'),PDFDict);
+   font.delete(PDFName.of('ToUnicode'));
+   font.set(PDFName.of('FontDescriptor'),f.doc.context.obj({FontBBox:[0,name==='source-cover'?-400:-200,600,800],Ascent:800,Descent:-400}));
+   const edit=overlay({text:'W W W W W W W W',coverRects:[{x:49,y:97,w:name==='slot-overflow'?101:32,h:14}]});
+   const before=await f.doc.save({useObjectStreams:false});await writeFile(`${directory}/${name}.before.pdf`,before);
+   const result=await exportPdf(before,model([edit]),{mode:'flatten',inPlaceFallback:{loadFont:name=>readFile(`node_modules/@docx-editor.dev/fonts/assets/${name}`)}});
+   const outcome=result.contentTextOutcomes?.[0];
+   expect(outcome).toMatchObject({mode:'substituted',reflow:{strategy:'wrap'}});
+   await writeFile(`${directory}/${name}.after.pdf`,result.bytes);await writeFile(`${directory}/${name}.edit.json`,JSON.stringify({edit,outcome},null,2));
+   const report=await auditCorpusSample(native,name,directory,edit,{},true,outcome!.reflow,'substituted');
+   expect(report.changedPixelsOutsideBox).toBe(0);expect(report.qpdf).toBe('clean');expect(report.passed).toBe(true);reports.push(report);
+  }
+ }finally{native.close();await writeFile(`${directory}/report.json`,JSON.stringify({command,reports},null,2));}
+});

@@ -8,6 +8,7 @@ import { fallbackFontName, prepareFallback, type FallbackOptions } from './fallb
 import type { Type1Options } from '../fontCoverage/type1Support';
 import { compilePageReflows } from '../contentText/reflowBatch';
 import { type1FallbackSourceGuard } from '../fontCoverage/type1Surgical';
+import { fallbackClusters } from './fallbackClusters';
 
 export type RunPageOptions = FallbackOptions & { stage5Type1?: Type1Options };
 export const replaceRunPageWithFallback=(page:PDFPage,plan:PageRunPlan,options:RunPageOptions={})=>runPage(page,plan,options,true);
@@ -41,7 +42,7 @@ async function runPage(page:PDFPage,plan:PageRunPlan,options:RunPageOptions,inst
       const descendant = dict.lookupMaybe(PDFName.of('DescendantFonts'),PDFArray)?.lookup(0,PDFDict);
       const descriptor = (descendant ?? dict).lookupMaybe(PDFName.of('FontDescriptor'),PDFDict);
       const flags = descriptor?.lookupMaybe(PDFName.of('Flags'),PDFNumber)?.asNumber() ?? 0;
-      for (const { segment } of new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(edit.replacement)) {
+      for (const segment of fallbackClusters(edit.replacement)) {
         if (font.canEncode(segment).ok) continue;
         const name = fallbackFontName(base,flags,segment);
         const set = groups.get(name) ?? new Set<string>(); set.add(segment); groups.set(name,set);
