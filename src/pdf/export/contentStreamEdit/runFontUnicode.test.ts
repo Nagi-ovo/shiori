@@ -1,7 +1,9 @@
 import {expect, test} from 'bun:test';
+import {spawn} from 'node:child_process';
+import {readFile} from 'node:fs/promises';
 import {PDFDict, PDFDocument, PDFName} from 'pdf-lib';
-import {tinyTtf} from '../fontCoverage/fixtures/programs';
-import {namedTtf} from '../fontCoverage/symbolicCmap.test-support';
+import {format4Table, format12Table, tinyTtf} from '../fontCoverage/fixtures/programs';
+import {namedTtf, ttfTables} from '../fontCoverage/symbolicCmap.test-support';
 import {inspectRunPage, replaceRunPage, resolveRunFonts} from './replaceRunPage';
 import {streamReflowEvidence} from '../contentText/reflowEvidence';
 import {planStreamReflow} from '../contentText/reflowAuto';
@@ -136,3 +138,161 @@ test('overflow planning sees recovered source labels with a searchable substitut
   expect(plan?.reflow?.clusters.filter(glyph => glyph.source).map(glyph => [...glyph.code]))
     .toEqual([[101], [32], [65], [101]]);
 });
+
+// Copy tables without spreading large byte arrays onto the JS call stack.
+function assemble(tables:Record<string, Uint8Array>):Uint8Array {
+  const entries = Object.entries(tables), header = 12 + entries.length * 16;
+  const bytes = new Uint8Array(header + entries.reduce((n, [, b]) => n + Math.ceil(b.length / 4) * 4, 0));
+  const v = new DataView(bytes.buffer); v.setUint32(0, 0x10000); v.setUint16(4, entries.length);
+  let offset = header;
+  entries.forEach(([tag, data], i) => {
+    const p = 12 + i * 16;
+    bytes.set(Array.from(tag, c => c.charCodeAt(0)), p);
+    v.setUint32(p + 8, offset); v.setUint32(p + 12, data.length);
+    bytes.set(data, offset); offset += Math.ceil(data.length / 4) * 4;
+  });
+  return bytes;
+}
+const words = (...values:number[]) => Uint8Array.from(values.flatMap(n => [n >>> 8 & 255, n & 255]));
+const longs = (...values:number[]) => Uint8Array.from(values.flatMap(n => [n >>> 24 & 255, n >>> 16 & 255, n >>> 8 & 255, n & 255]));
+function groups(format:12|13, ranges:number[][]):Uint8Array {
+  return Uint8Array.from([...words(format, 0), ...longs(16 + ranges.length * 12, 0, ranges.length), ...longs(...ranges.flat())]);
+}
+function cmapTable(subtable:Uint8Array, encoding = 1):Uint8Array {
+  return Uint8Array.from([...words(0, 1, 3, encoding), ...longs(12), ...subtable]);
+}
+async function cidFixture(program:Uint8Array, toUnicode?:string, map?:Uint8Array) {
+  const f = await fixture(toUnicode), ctx = f.doc.context;
+  f.font.lookup(PDFName.of('FontDescriptor'), PDFDict).set(PDFName.of('FontFile2'), ctx.register(ctx.stream(program)));
+  f.font.set(PDFName.of('Subtype'), PDFName.of('Type0'));
+  f.font.set(PDFName.of('Encoding'), PDFName.of('Identity-H'));
+  f.font.set(PDFName.of('DescendantFonts'), ctx.obj([ctx.register(ctx.obj({Type:'Font', Subtype:'CIDFontType2', DW:500,
+    FontDescriptor:f.font.get(PDFName.of('FontDescriptor')), CIDToGIDMap:map ? ctx.register(ctx.stream(map)) : 'Identity'}))]));
+  return {...f, resolved:() => resolveRunFonts(f.page)[0]!};
+}
+function cidProgram(subtable:Uint8Array, encoding = 1) {
+  return assemble({...ttfTables(tinyTtf()), cmap:cmapTable(subtable, encoding)});
+}
+
+for (const [format, subtable, expected] of [
+  [0, Uint8Array.from([...words(0, 262, 0), ...Array.from({length:256}, (_, cp) => cp === 65 ? 7 : 0)]), [[7, 'A']]],
+  [4, format4Table(), [[1, 'A'], [2, 'B'], [7, 'S'], [3, 'U']]],
+  [6, Uint8Array.from([...words(6, 12, 0, 65, 1, 7)]), [[7, 'A']]],
+  [10, Uint8Array.from([...words(10, 0), ...longs(22, 0, 0x1f600, 1), ...words(7)]), [[7, '😀']]],
+  [12, format12Table(), [[1, 'A'], [2, 'B'], [3, 'C'], [5, '𐀀'], [6, '𐀁']]],
+  [13, groups(13, [[65, 65, 7], [101, 102, 2]]), [[7, 'A'], [2, undefined]]],
+] as const) test(`Identity-H walks cmap format ${format} without inventing labels`, async () => {
+  const f = await cidFixture(cidProgram(subtable));
+  const font = f.resolved();
+  for (const [gid, label] of expected) expect(font.unicodeByCode.get(gid)).toBe(label);
+});
+
+test('Identity-H supports the full Unicode (3,10) selection', async () => {
+  const f = await cidFixture(cidProgram(groups(12, [[0x1f600, 0x1f600, 7]]), 10));
+  expect(f.resolved().unicodeByCode.get(7)).toBe('😀');
+});
+
+test('Identity-H ambiguity stays unknown even with an AGL post name', async () => {
+  const program = namedTtf({maps:[{platform:3, encoding:1, entries:[[65, 7], [66, 7]]}]});
+  expect((await cidFixture(program)).resolved().unicodeByCode.has(7)).toBe(false);
+});
+
+test('Identity-H recovers post names only where a usable cmap inverse is absent', async () => {
+  const program = namedTtf({maps:[{platform:3, encoding:1, entries:[[101, 7]]}]});
+  const font = (await cidFixture(program)).resolved();
+  expect(font.unicodeByCode.get(7)).toBe('e'); // Unique cmap beats the unrelated post name A.
+  expect(font.unicodeByCode.get(1)).toBe('S');
+  expect(font.unicodeByCode.get(4)).toBe(' ');
+});
+
+test('Identity-H rejects invalid scalars, .notdef, out-of-range and absent glyphs', async () => {
+  const program = cidProgram(groups(12, [[0, 0, 1], [65, 65, 0], [66, 66, 10], [67, 67, 4],
+    [0xd800, 0xd800, 2], [0xfffd, 0xfffd, 3]]));
+  expect((await cidFixture(program)).resolved().unicodeByCode.size).toBe(0);
+});
+
+for (const broken of ['truncated cmap', 'unsupported cmap', 'duplicate cmap', 'truncated CID map',
+  'truncated glyf', 'composite cycle'] as const) test(`Identity-H leaves ${broken} unknown`, async () => {
+  const tables = ttfTables(tinyTtf({maps:[{platform:3, encoding:1, entries:[[65, 7]]}]}));
+  let map:Uint8Array|undefined;
+  if (broken === 'truncated cmap') tables.cmap = tables.cmap!.slice(0, -1);
+  if (broken === 'unsupported cmap') new DataView(tables.cmap!.buffer).setUint16(12, 2);
+  if (broken === 'duplicate cmap') tables.cmap = Uint8Array.from([...words(0, 2, 3, 1), ...longs(20),
+    ...words(3, 1), ...longs(32), ...words(6, 12, 0, 65, 1, 7), ...words(6, 12, 0, 66, 1, 7)]);
+  if (broken === 'truncated CID map') map = Uint8Array.of(0, 0, 0);
+  if (broken === 'truncated glyf' || broken === 'composite cycle') {
+    const start = new DataView(tables.loca!.buffer).getUint32(7 * 4), v = new DataView(tables.glyf!.buffer);
+    if (broken === 'truncated glyf') v.setUint16(start + 10, 0xffff);
+    else { v.setInt16(start, -1); v.setUint16(start + 10, 3); v.setUint16(start + 12, 7); }
+  }
+  expect((await cidFixture(assemble(tables), undefined, map)).resolved().unicodeByCode.size).toBe(0);
+});
+
+test('Identity-H keeps source and replacement ToUnicode authority separate', async () => {
+  const f = await cidFixture(tinyTtf());
+  const font = f.resolved();
+  expect(font.unicodeByCode.get(7)).toBe('A');
+  expect(() => font.assertSource!([Uint8Array.of(0, 7)])).toThrow('requires a ToUnicode');
+  expect(font.canEncode!('A').ok).toBe(false);
+  const conflict = (await cidFixture(tinyTtf(), '1 beginbfchar <0007> <0065> endbfchar')).resolved();
+  expect(() => conflict.assertSource!([Uint8Array.of(0, 7)])).toThrow('glyph-identity-conflict');
+});
+
+function largeCidProgram():Uint8Array {
+  const count = 8192, points = 512, tables = ttfTables(tinyTtf());
+  new DataView(tables.maxp!.buffer).setUint16(4, count);
+  new DataView(tables.hhea!.buffer).setUint16(34, count);
+  tables.hmtx = new Uint8Array(count * 4);
+  const metrics = new DataView(tables.hmtx.buffer);
+  for (let i = 0; i < count; i++) metrics.setUint16(i * 4, 500);
+  // Hundreds of real points per glyph make outline materialization expensive.
+  const glyph = new Uint8Array(14 + 4 + points * 2), gv = new DataView(glyph.buffer);
+  gv.setInt16(0, 1); gv.setInt16(6, points); gv.setInt16(8, points); gv.setUint16(10, points - 1);
+  glyph.set([63, 255, 63, 255], 14); glyph.fill(1, 18);
+  tables.glyf = new Uint8Array(count * glyph.length); tables.loca = new Uint8Array((count + 1) * 4);
+  const loca = new DataView(tables.loca.buffer);
+  for (let i = 0; i < count; i++) { tables.glyf.set(glyph, i * glyph.length); loca.setUint32(i * 4, i * glyph.length); }
+  loca.setUint32(count * 4, count * glyph.length);
+  tables.cmap = cmapTable(groups(12, [[0x4e00, 0x4e00 + count - 2, 1]]));
+  return assemble(tables);
+}
+
+if (process.env.SHIORI_CID_MEMORY_WORKER === '1') test('Identity-H memory worker', async () => {
+  const f = await cidFixture(largeCidProgram());
+  const before = process.memoryUsage().rss, font = f.resolved();
+  expect(font.unicodeByCode.size).toBe(8191);
+  expect(font.unicodeByCode.get(1)).toBe('一');
+  expect(font.unicodeByCode.get(8191)).toBe(String.fromCodePoint(0x6dfe));
+  // getrusage's high-water mark can include the test runner's pre-exec fork
+  // RSS. Linux VmHWM measures this worker since exec, so suite size cannot
+  // inflate the result even though the worker itself stayed small.
+  const peak = process.platform === 'linux'
+    ? Number(/VmHWM:\s+(\d+)/.exec(await readFile('/proc/self/status', 'utf8'))![1]) * 1024
+    : process.resourceUsage().maxRSS * 1024;
+  console.log('CID_MEMORY ' + JSON.stringify({before, peak}));
+});
+else test('large Identity-H resolve stays below 256 MiB peak RSS and 128 MiB growth', async () => {
+  const result = await new Promise<{code:number|null; output:string; killed:boolean}>((resolve, reject) => {
+    const child = spawn(process.execPath, ['test', import.meta.path, '--test-name-pattern', '^Identity-H memory worker$'],
+      {env:{...process.env, SHIORI_CID_MEMORY_WORKER:'1'}, stdio:['ignore', 'pipe', 'pipe']});
+    let output = '', killed = false;
+    child.stdout.on('data', data => { output += String(data); });
+    child.stderr.on('data', data => { output += String(data); });
+    // A parent watchdog can interrupt the old synchronous outline-building path.
+    const timer = setInterval(() => {
+      if (process.platform === 'linux') void readFile(`/proc/${child.pid}/status`, 'utf8').then(status => {
+        const kb = Number(/VmRSS:\s+(\d+)/.exec(status)?.[1] ?? 0);
+        if (kb > 384 * 1024) { killed = true; child.kill('SIGKILL'); }
+      }).catch(() => {});
+    }, 20);
+    const timeout = setTimeout(() => { killed = true; child.kill('SIGKILL'); }, 20000);
+    child.on('error', reject);
+    child.on('close', code => { clearInterval(timer); clearTimeout(timeout); resolve({code, output, killed}); });
+  });
+  expect(result.killed, result.output).toBe(false);
+  expect(result.code, result.output).toBe(0);
+  const report = JSON.parse(/CID_MEMORY (\{[^\n]+\})/.exec(result.output)![1]!) as {before:number; peak:number};
+  console.log('Identity-H RSS:', report);
+  expect(report.peak).toBeLessThan(256 * 1024 ** 2);
+  expect(report.peak - report.before).toBeLessThan(128 * 1024 ** 2);
+}, 25000);
