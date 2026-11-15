@@ -64,6 +64,8 @@ import {
   drawOverlaysForPage,
   type EmbeddedImageCache,
 } from "./overlayDraw";
+import { applyContentTextEdits } from './contentText/apply';
+import type { ContentTextOutcome } from './contentText/outcomes';
 import { annotationTextLostChars } from "./textDraw";
 
 export type RebuildResult = ExportResult & {
@@ -197,6 +199,7 @@ export async function rebuildPdf(
 
   const fonts = await loadExportFonts(out, exportedOverlays, mode, options);
 
+  const contentTextOutcomes: ContentTextOutcome[] = [];
   let totalLostChars = 0;
   let clippedChars = 0;
   let unexcisedEdits = 0;
@@ -251,7 +254,12 @@ export async function rebuildPdf(
       });
     }
     inserted.setRotation(degrees(page.rotation));
-    const pageOverlays = overlaysForPdfPage(page, exportedOverlays);
+    let pageOverlays = overlaysForPdfPage(page, exportedOverlays);
+    if (mode !== "none") {
+      const edits = await applyContentTextEdits(inserted, pageOverlays, options.inPlaceFallback);
+      contentTextOutcomes.push(...edits.outcomes);
+      pageOverlays = [...edits.remaining];
+    }
     let contentTextRedaction: ContentTextRedaction | undefined;
     if (mode !== "none") {
       // Original-text edits: excise the covered source glyphs from the page
@@ -325,6 +333,7 @@ export async function rebuildPdf(
   return {
     bytes,
     lostChars: totalLostChars,
+    contentTextOutcomes,
     unexcisedEdits,
     clippedChars,
     unchanged: false,

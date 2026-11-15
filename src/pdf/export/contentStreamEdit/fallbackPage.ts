@@ -1,11 +1,14 @@
 import { PDFDocument, PDFDict, PDFArray, PDFName, PDFNumber, PDFObjectCopier, type PDFPage } from 'pdf-lib';
-import { inspectRunPage, resolveRunFonts, markedContentProperties, type PageRunResult } from './replaceRunPage';
+import { inspectRunPage, resolveRunFonts, runPageEnvironment, type PageRunResult } from './replaceRunPage';
 import { runResourceStamp } from './resourceStamp';
+import {RunCompileError} from './runRefusal';
 import { replaceRuns } from './replaceRun';
 import { pageRunPlan, type PageRunPlan } from './pageRunPlan';
 import { fallbackFontName, prepareFallback, type FallbackOptions } from './fallbackFont';
 
-export async function replaceRunPageWithFallback(page: PDFPage, plan: PageRunPlan, options: FallbackOptions = {}): Promise<PageRunResult> {
+export const replaceRunPageWithFallback=(page:PDFPage,plan:PageRunPlan,options:FallbackOptions={})=>runPage(page,plan,options,true);
+export const compileRunPageWithFallback=(page:PDFPage,plan:PageRunPlan,options:FallbackOptions={})=>runPage(page,plan,options,false);
+async function runPage(page:PDFPage,plan:PageRunPlan,options:FallbackOptions,install:boolean):Promise<PageRunResult&{usedFallback?:boolean}> {
   const source = inspectRunPage(page);
   if (!source.ok) return source;
   const originalResources = page.node.Resources();
@@ -13,10 +16,10 @@ export async function replaceRunPageWithFallback(page: PDFPage, plan: PageRunPla
   try {
     const resourceStamp = runResourceStamp(page);
     const fonts = resolveRunFonts(page);
-    const resolvedPlan = { ...pageRunPlan(plan), markedContentProperties: markedContentProperties(page) };
+    const resolvedPlan = { ...pageRunPlan(plan), ...runPageEnvironment(page) };
     const initial = replaceRuns(source.bytes,fonts,resolvedPlan);
-    if (initial.ok || initial.reason === 'replacement overflows available space') {
-      if (initial.ok && initial.bytes !== source.bytes) page.node.set(PDFName.of('Contents'),page.doc.context.register(page.doc.context.flateStream(initial.bytes)));
+    if(initial.ok || initial.code!=='font-coverage') {
+      if (install && initial.ok && initial.bytes !== source.bytes) page.node.set(PDFName.of('Contents'),page.doc.context.register(page.doc.context.flateStream(initial.bytes)));
       return initial;
     }
     const groups = new Map<string,Set<string>>();
@@ -48,10 +51,11 @@ export async function replaceRunPageWithFallback(page: PDFPage, plan: PageRunPla
     }
     const result = replaceRuns(source.bytes,fonts,{ ...resolvedPlan, fallbackFonts: prepared.map(f => f.resolved) });
     if (!result.ok) return result;
+    if(!install)return {...result,usedFallback:true};
     // Awaiting font preparation must never apply an old plan to a newer page.
     const current = inspectRunPage(page);
     if (!current.ok || current.sourceHash !== source.sourceHash || page.node.Resources() !== originalResources || page.node.get(PDFName.of('Contents')) !== originalContents || runResourceStamp(page) !== resourceStamp) {
-      return { ok:false, bytes:source.bytes, reason:'page changed during fallback preparation' };
+      return { ok:false, bytes:source.bytes, code:'stale-source', reason:'page changed during fallback preparation' };
     }
     const resources = originalResources?.clone() ?? page.doc.context.obj({});
     const patchedFonts = fontDict?.clone() ?? page.doc.context.obj({});
@@ -61,6 +65,6 @@ export async function replaceRunPageWithFallback(page: PDFPage, plan: PageRunPla
     const stream = page.doc.context.register(page.doc.context.flateStream(result.bytes));
     page.node.set(PDFName.of('Resources'),resources);
     page.node.set(PDFName.of('Contents'),stream);
-    return result;
-  } catch (error) { return { ok:false, bytes:source.bytes, reason:error instanceof Error ? error.message : String(error) }; }
+    return {...result,usedFallback:true};
+  } catch(error){if(!(error instanceof RunCompileError))throw error;return{ok:false,code:error.code,reason:error.message,bytes:source.bytes};}
 }

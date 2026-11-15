@@ -133,14 +133,13 @@ describe("text state walk", () => {
   test("gs taints the font unless the ExtGState is known font-free", () => {
     const source = "BT /F1 12 Tf /G0 gs (A) Tj ET";
     const tainted = walk(source);
-    expect(tainted.ok).toBe(false);
-    if (!tainted.ok) expect(tainted.reason).toContain("ExtGState");
+    expect(expectOk(tainted)).toMatchObject({glyphs:[],unplacedText:true});
 
     const cleared = walk(source, { extGStateSetsFont: () => false });
     expect(cleared.ok).toBe(true);
 
     const setsFont = walk(source, { extGStateSetsFont: () => true });
-    expect(setsFont.ok).toBe(false);
+    expect(expectOk(setsFont)).toMatchObject({glyphs:[],unplacedText:true});
   });
 
   test("fails closed on unmodelable constructs", () => {

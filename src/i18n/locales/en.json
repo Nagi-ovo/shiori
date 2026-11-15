@@ -676,7 +676,7 @@
     },
     "annot": {
       "editable": "Editable annotations",
-      "editableHint": "Highlights, notes, shapes, ink, and text stay as real PDF annotations. Reopen and edit in external PDF editors such as Acrobat, Foxit, or PDF Expert.",
+      "editableHint": "Highlights, notes, shapes, ink, and text stay as real PDF annotations. Reopen and edit in external PDF editors.",
       "flatten": "Flatten into page",
       "flattenHint": "Burn overlays into the page content. They can't be removed or re-edited — useful for signing or stamping.",
       "none": "Original only",
@@ -1140,5 +1140,31 @@
     "viewerLabel": "Word document",
     "loadFailed": "This Word document could not be displayed.",
     "retry": "Reload and try again"
+  },
+  "contentText": {
+    "modes": {
+      "in-place": "In place",
+      "fallback-font": "Embedded fallback font",
+      "overlay": "Overlay"
+    },
+    "reasons": {
+      "source-mismatch": "The selected text does not match the PDF source.",
+      "ambiguous-match": "The source text selection is ambiguous.",
+      "glyph-boundary": "This change splits a source glyph or inferred space.",
+      "cross-item": "This change crosses separate PDF text runs.",
+      "reflow-required": "This edit requires line reflow.",
+      "form-xobject": "Text inside a Form XObject cannot be edited in place.",
+      "unsupported-matrix": "This text transform is not supported for in-place editing.",
+      "unsupported-state": "The PDF text state cannot be edited safely.",
+      "font-unavailable": "The source font or Unicode mapping could not be resolved.",
+      "font-coverage": "Source or fallback glyph coverage could not be verified.",
+      "font-permission": "The font licence does not allow editable embedding.",
+      "overflow": "The replacement exceeds the original text space.",
+      "style-change": "This formatting change requires an overlay.",
+      "stale-source": "The source page changed; the edit needs to be retried.",
+      "preview-unavailable": "PDFium could not preview the edited bytes; showing an overlay.",
+      "missing-source-style": "The original formatting snapshot is missing; using an overlay.",
+      "shared-text-object": "A refused edit shares this text object; using the hybrid path."
+    }
   }
 }

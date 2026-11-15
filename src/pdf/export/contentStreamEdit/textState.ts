@@ -125,6 +125,7 @@ type GraphicsState = {
 
 export type ShowTextState = {
   opIndex: number; arrayItemIndex: number; fontName: string;
+  fontSizePt?: number;
   fontSize: number; charSpacing: number; wordSpacing: number;
   origin: Point; advanceVector: Point;
 };
@@ -132,6 +133,7 @@ export type ShowTextState = {
 export type TextWalkCallbacks = {
   // Exact state at a source string, including empty shows.
   onShow?: (state: ShowTextState) => void;
+  onUnplaced?: (state: {opIndex:number;origin:Point|null;fontSizePt:number})=>void;
   // Resolve a /Font resource name. Null (unresolvable) aborts the walk; an
   // unsupported font leaves its text unplaced.
   resolveFont: (name: string) => ContentFontInfo | UnsupportedFont | null;
@@ -206,7 +208,6 @@ export function walkTextPlacements(
   ): string | null => {
     if (!inTextObject) return "show-text outside BT/ET";
     if (gs.fontName === null) return "show-text with no font set";
-    if (gs.fontTainted) return "show-text after ExtGState may have set /Font";
     if (gs.renderMode >= 4) {
       // Clipping modes: deleting a glyph would change the clip path and
       // repaint everything it masked.
@@ -214,8 +215,9 @@ export function walkTextPlacements(
     }
     const font = resolveFont(gs.fontName);
     if (font === null) return `unresolvable font /${gs.fontName}`;
-    if (!font.ok || tmUnknown) {
+    if (gs.fontTainted || !font.ok || tmUnknown) {
       unplacedText = true;
+      callbacks.onUnplaced?.({opIndex,origin:tmUnknown?null:apply(multiply(tm,gs.ctm),{x:0,y:gs.rise}),fontSizePt:Math.abs(gs.fontSize*Math.hypot(tm[2],tm[3]))});
       tmUnknown = true;
       return null;
     }
@@ -224,6 +226,7 @@ export function walkTextPlacements(
       return "odd byte count in 2-byte-code show string";
     }
     callbacks.onShow?.({ opIndex, arrayItemIndex, fontName: gs.fontName,
+      fontSizePt: gs.fontSize * Math.hypot(tm[2] * gs.ctm[0] + tm[3] * gs.ctm[2], tm[2] * gs.ctm[1] + tm[3] * gs.ctm[3]),
       fontSize: gs.fontSize, charSpacing: gs.charSpacing, wordSpacing: gs.wordSpacing,
       origin: apply(multiply(tm, gs.ctm), { x: 0, y: gs.rise }),
       advanceVector: { x: gs.horizontalScale * (tm[0] * gs.ctm[0] + tm[1] * gs.ctm[2]),

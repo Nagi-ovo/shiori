@@ -1,3 +1,4 @@
+import { ContentTextCovers } from "./overlays/ContentTextCovers";
 import {
   memo,
   useCallback,
@@ -1574,18 +1575,8 @@ function OverlayLayerImpl({ page, scale, overlays }: Props) {
           overflow: "visible",
         }}
       >
-        {overlays
-          .filter((o) => o.type === "contentText")
-          .map((o) => (
-            <OverlaySvg
-              key={o.id}
-              overlay={o}
-              page={page}
-              scale={scale}
-              selected={selectedIds.includes(o.id)}
-              liveReveals={liveOverlayReveals}
-            />
-          ))}
+        <ContentTextCovers overlays={overlays} page={page} scale={scale}
+          selectedIds={selectedIds} editingId={editingId} liveReveals={liveOverlayReveals} />
         {overlays
           .filter((o) => o.type !== "contentText")
           .map((o) => (

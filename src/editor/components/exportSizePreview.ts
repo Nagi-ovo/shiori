@@ -13,6 +13,7 @@ import { EXPORT_QUALITIES, type QualityV } from "./exportPrefs";
 export type SizePreview = {
   status: "deferred" | "calculating" | "ready" | "unavailable";
   size?: number;
+  outcomes?: ExportResult["contentTextOutcomes"];
 };
 
 export type SizePreviewMap = Record<QualityV, SizePreview>;
@@ -42,7 +43,7 @@ export async function generateSizePreview(
   try {
     const result = await pending;
     cachePreviewResult(cache.results, quality, result);
-    publish({ status: "ready", size: result.bytes.byteLength });
+    publish({ status: "ready", size: result.bytes.byteLength, outcomes: result.contentTextOutcomes });
   } catch (err) {
     console.warn(`Unable to calculate ${quality} export size.`, err);
     publish({ status: "unavailable" });
@@ -77,7 +78,7 @@ export function selectSizePreview(
     }
   }
   next[selectedQuality] = cached
-    ? { status: "ready", size: cached.bytes.byteLength }
+    ? { status: "ready", size: cached.bytes.byteLength, outcomes: cached.contentTextOutcomes }
     : { status: "calculating" };
   return next;
 }

@@ -4,7 +4,7 @@
 export function runToUnicode(program: string, size: 1 | 2): Map<number, string> | null {
   try {
     const source = program.replace(/%[^\r\n]*/g, '');
-    if (/\busecmap\b/.test(source)) return null;
+    // Inherited mappings remain unknown; explicit local entries are authoritative.
     const map = new Map<number, string>();
     const codespaces: [number, number][] = [];
     const tokens = source.match(/<[\da-fA-F\s]*>|\[|\]|[^\s<>[\]]+/g) ?? [];

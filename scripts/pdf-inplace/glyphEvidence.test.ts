@@ -47,3 +47,10 @@ test('a native .notdef failure has a specific discriminator code', () => {
   catch (error) { caught = error; }
   expect(caught).toMatchObject({ code: 'native-notdef-match' });
 });
+test('native proof can be checked independently while coverage validation still rejects a missing GID',async()=>{
+ const {assertNativeReplacementGlyphs}=await import('./glyphEvidence');
+ const path=[{type:2,point:[1,1],closed:false}];const probe=[{type:2,point:[0,0],closed:false}];
+ const glyph={unicode:'A',replacement:true,nativePath:path,pathSegments:1,inkPixels:1,notdefProbes:[{scalar:65534,path:probe},{scalar:65535,path:probe}]};
+ expect(assertNativeReplacementGlyphs([glyph])).toBe(1);
+ expect(()=>assertReplacementGlyphs([glyph])).toThrow('unverified coverage GID');
+});

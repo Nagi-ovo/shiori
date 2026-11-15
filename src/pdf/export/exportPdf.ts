@@ -32,7 +32,7 @@ export {
 export { preserveDocumentInfoInPdf } from "./documentInfo";
 
 // "annotations" writes real /Annot objects so highlights, notes, shapes,
-// ink, and text remain editable in Acrobat / Foxit / PDF Expert. "flatten"
+// ink, and text remain editable in external PDF editors. "flatten"
 // burns them into the page content stream — useful for signing, stamping,
 // or protecting annotations from removal. "none" skips overlays entirely
 // and just exports the original pages in the selected range.
@@ -41,6 +41,8 @@ export type ExportQuality = "original" | "standard" | "compact";
 export type DocumentFilesPolicy = "auto" | "preserve" | "omit";
 
 export type ExportOptions = {
+  /** Font byte loader for non-Vite callers (CLI/corpus); same verified writer. */
+  inPlaceFallback?: import("./contentStreamEdit/fallbackFont").FallbackOptions;
   mode?: ExportMode;
   quality?: ExportQuality;
   // Document-level EmbeddedFiles are not page annotations. The default
@@ -76,6 +78,7 @@ export type ExportOptions = {
 };
 
 export type ExportResult = {
+  contentTextOutcomes?: import('./contentText/outcomes').ContentTextOutcome[];
   bytes: Uint8Array;
   lostChars: number;
   // Original-text edits whose source glyphs could not all be removed from
@@ -143,12 +146,12 @@ export async function exportPdf(
 ): Promise<ExportResult> {
   const encryption = options.sourceEncryption;
   if (!encryption) {
-    const { bytes, lostChars, unexcisedEdits, clippedChars } = await rebuildPdf(
+    const { bytes, lostChars, unexcisedEdits, clippedChars, contentTextOutcomes } = await rebuildPdf(
       originalBytes,
       model,
       options,
     );
-    return { bytes, lostChars, unexcisedEdits, clippedChars };
+    return { bytes, lostChars, unexcisedEdits, clippedChars, contentTextOutcomes };
   }
   // Every rebuild of an encrypted source starts from its plaintext, so the
   // permissions are checked before any work and the plaintext export goes
@@ -174,6 +177,7 @@ export async function exportPdf(
     bytes: await encryption.encrypt(rebuilt.bytes, rebuilt.pageCount),
     lostChars: rebuilt.lostChars,
     unexcisedEdits: rebuilt.unexcisedEdits,
+    contentTextOutcomes: rebuilt.contentTextOutcomes,
     clippedChars: rebuilt.clippedChars,
   };
 }

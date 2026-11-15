@@ -53,7 +53,7 @@ type OverlayCommon = {
   //
   // Export replaces every source annotation it owns with a freshly built one,
   // so anything not captured here is lost on the first round trip: a PDF
-  // reviewed in Acrobat came back with every comment anonymous, dated today,
+  // reviewed in another reader came back with every comment anonymous, dated today,
   // and with its reply threads flattened into unrelated notes.
   //
   // All of these stay undefined for overlays the user creates in Shiori. That
@@ -96,7 +96,7 @@ export function isBlankPage(page: PageModel): boolean {
 }
 
 // The comment a reviewer attached to a markup, shape or ink annotation in
-// another reader (its /Contents: Zotero, Preview and Acrobat keep a
+// another reader (its /Contents: some readers keep a
 // highlight's note there). Carried so export writes it back instead of
 // blanking it; notes, text and callouts hold their body in `text`.
 type SourceComment = {
@@ -236,7 +236,7 @@ export type TextOverlay = OverlayCommon & {
 /**
  * One turn of the conversation attached to a callout. The root callout's own
  * `text` is the opening message; `thread` holds every turn after it, in
- * order. Exports as a chain of /IRT Text replies (Acrobat renders that as a
+ * order. Exports as a chain of /IRT Text replies (common readers render that as a
  * native comment thread) with role carried in the Shio developer dictionary,
  * because standard PDF only has a free-form /T author field.
  */
@@ -312,6 +312,12 @@ export type ContentTextOverlay = OverlayCommon & {
   // Relative, so page-space translation leaves it untouched. Missing = 0.
   firstLineIndentPt?: number;
   originalText: string;
+  // Captured once at creation so formatting changes keep the hybrid writer.
+  sourceStyle?: {
+    fontSize: number; color: string; bold: boolean; italic?: boolean;
+    align: "left" | "center" | "right"; fontFamily: FontFamily;
+    backgroundColor: string;
+  };
   text: string;
   fontSize: number;
   color: string;

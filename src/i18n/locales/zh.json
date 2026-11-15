@@ -670,7 +670,7 @@
     },
     "annot": {
       "editable": "可编辑注释",
-      "editableHint": "高亮、便签、形状、画笔、文字都作为真正的 PDF 注释保留。可在 Acrobat、Foxit、PDF Expert 等外部 PDF 编辑器中重新打开编辑。",
+      "editableHint": "高亮、便签、形状、画笔、文字都作为真正的 PDF 注释保留。可在外部 PDF 编辑器中重新打开编辑。",
       "flatten": "展平到页面",
       "flattenHint": "将注释烧入页面内容，不可再删除或编辑 — 适合签署、盖章等场景。",
       "none": "仅原文档",
@@ -1126,5 +1126,31 @@
     "viewerLabel": "Word 文档",
     "loadFailed": "无法显示这个 Word 文档。",
     "retry": "重新加载并重试"
+  },
+  "contentText": {
+    "modes": {
+      "in-place": "原位编辑",
+      "fallback-font": "已嵌入后备字体",
+      "overlay": "覆盖层"
+    },
+    "reasons": {
+      "source-mismatch": "所选文字与 PDF 原文不一致。",
+      "ambiguous-match": "无法唯一确定原文字形。",
+      "glyph-boundary": "此修改切分了原文字形或推断空格。",
+      "cross-item": "此修改跨越了独立的 PDF 文字片段。",
+      "reflow-required": "此修改需要重新排版。",
+      "form-xobject": "暂不支持原位编辑 Form XObject 中的文字。",
+      "unsupported-matrix": "暂不支持原位编辑此文字变换。",
+      "unsupported-state": "无法安全修改此 PDF 文字状态。",
+      "font-unavailable": "无法解析原文字体或 Unicode 映射。",
+      "font-coverage": "无法验证原文或后备字体的字形覆盖。",
+      "font-permission": "字体许可不允许可编辑嵌入。",
+      "overflow": "替换文字超出了原文可用空间。",
+      "style-change": "此格式修改需要覆盖层。",
+      "stale-source": "原始页面已变化，请重试修改。",
+      "preview-unavailable": "PDFium 无法预览修改后的数据，当前显示覆盖层。",
+      "missing-source-style": "缺少原始格式快照，使用覆盖层。",
+      "shared-text-object": "同一文字对象中有无法原位编辑的修改，使用混合路径。"
+    }
   }
 }

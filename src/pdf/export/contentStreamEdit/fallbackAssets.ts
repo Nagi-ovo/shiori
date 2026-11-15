@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 // These exact files already ship through DOCX defaultFonts. Explicit lazy
 // imports reuse Vite's existing asset URLs without adding another font copy.
 const metricUrls: Record<string, () => Promise<{ default: string }>> = {

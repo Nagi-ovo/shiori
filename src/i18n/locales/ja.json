@@ -670,7 +670,7 @@
     },
     "annot": {
       "editable": "編集可能な注釈",
-      "editableHint": "ハイライト、付箋、図形、ペン、テキストを PDF 注釈として保持します。Acrobat、Foxit、PDF Expert などで再編集できます。",
+      "editableHint": "ハイライト、付箋、図形、ペン、テキストを PDF 注釈として保持します。外部の PDF エディターで再編集できます。",
       "flatten": "ページに焼き込み",
       "flattenHint": "注釈をページ内容に焼き込みます。以後は削除も再編集もできません — 署名や押印向き。",
       "none": "元の PDF のみ",
@@ -1126,5 +1126,31 @@
     "viewerLabel": "Word 文書",
     "loadFailed": "この Word 文書を表示できませんでした。",
     "retry": "再読み込みして再試行"
+  },
+  "contentText": {
+    "modes": {
+      "in-place": "元の位置で編集",
+      "fallback-font": "代替フォントを埋め込み",
+      "overlay": "オーバーレイ"
+    },
+    "reasons": {
+      "source-mismatch": "選択したテキストが PDF の原文と一致しません。",
+      "ambiguous-match": "原文の文字を一意に特定できません。",
+      "glyph-boundary": "この変更は元の字形または推定された空白を分割します。",
+      "cross-item": "この変更は独立した PDF テキスト要素をまたぎます。",
+      "reflow-required": "この編集には行の再配置が必要です。",
+      "form-xobject": "Form XObject 内の文字は元の位置で編集できません。",
+      "unsupported-matrix": "この文字変換の編集には対応していません。",
+      "unsupported-state": "PDF のテキスト状態を安全に編集できません。",
+      "font-unavailable": "元のフォントまたは Unicode マッピングを解決できません。",
+      "font-coverage": "元のフォントまたは代替フォントの字形を検証できません。",
+      "font-permission": "フォントのライセンスは編集可能な埋め込みを許可していません。",
+      "overflow": "置換テキストが元の領域を超えています。",
+      "style-change": "この書式変更にはオーバーレイが必要です。",
+      "stale-source": "元のページが変更されました。もう一度お試しください。",
+      "preview-unavailable": "PDFium で編集結果を表示できないため、オーバーレイを表示しています。",
+      "missing-source-style": "元の書式情報がないため、オーバーレイを使用します。",
+      "shared-text-object": "同じテキストオブジェクトに編集できない変更があるため、従来の描画を使用します。"
+    }
   }
 }

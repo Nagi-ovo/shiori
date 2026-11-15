@@ -1,3 +1,5 @@
+import { useContentTextPreview } from "../contentTextPreviewContext";
+import { ContentTextWarning } from "./ContentTextWarning";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent, ReactNode, RefObject } from "react";
 import { useTranslation } from "react-i18next";
@@ -505,6 +507,7 @@ function TextOverlayDom({
       : undefined,
   );
   const { t } = useTranslation();
+  const textPreview = useContentTextPreview();
   // On the drag path: a pointermove re-renders the whole overlay layer, so
   // recompute this only when the overlay itself changes.
   const a11yLabel = useMemo(() => describeOverlay(overlay, t), [overlay, t]);
@@ -787,6 +790,7 @@ function TextOverlayDom({
       <div
         dir="auto"
         style={{
+          visibility: isContentEdit && !editing && (textPreview.rasterized??textPreview.accepted).has(overlay.id) ? "hidden" : undefined,
           position: "absolute",
           // Pinned to the EXPANDED size: letting the text reflow while the card
           // shrinks would rewrap it line by line through the whole transition.
@@ -913,38 +917,8 @@ function TextOverlayDom({
           rotateLabel={rotateLabel}
         />
       ) : null}
-      {contentEditing && (editWarnings.overflow || editWarnings.missing > 0) ? (
-        <div
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            marginTop: 5,
-            padding: "2px 8px",
-            fontSize: 11,
-            lineHeight: "16px",
-            background: "rgba(146, 96, 12, 0.95)",
-            color: "#fff",
-            borderRadius: 4,
-            whiteSpace: "nowrap",
-            pointerEvents: "none",
-            zIndex: 11,
-          }}
-        >
-          {[
-            editWarnings.overflow
-              ? t("overlays.contentTextOverflow")
-              : null,
-            editWarnings.missing > 0
-              ? t("overlays.contentTextMissingGlyphs", {
-                  count: editWarnings.missing,
-                })
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </div>
-      ) : null}
+      {isContentEdit ? <ContentTextWarning id={overlay.id} editing={contentEditing}
+        overflow={editWarnings.overflow} missing={editWarnings.missing} /> : null}
     </div>
       {/* The card clips at its own bounds (overflow hidden drives the seal
           morph), so the conversation hangs below it as a sibling that copies

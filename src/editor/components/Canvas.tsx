@@ -16,7 +16,7 @@ import {
 } from "../store/store";
 import { PageCanvas } from "./PageCanvas";
 import { useCanvasKeyboard } from "./useCanvasKeyboard";
-import { OverlayLayer } from "./OverlayLayer";
+import { ContentTextOverlayLayer as OverlayLayer } from "./ContentTextOverlayLayer";
 import { ScrollerContext } from "./ScrollerContext";
 import { PdfLinkLayer, type PdfLinkTarget } from "./PdfLinkLayer";
 import { TextHighlightLayer } from "./TextHighlightLayer";
@@ -980,10 +980,7 @@ export function Canvas({ doc }: Props) {
                           boxShadow:
                             "0 1px 2px rgba(60,50,30,0.06), 0 20px 60px rgba(60,50,30,0.10)",
                           borderRadius: 2,
-                          // Same reason as the viewport above: this only exists to
-                          // clip the canvas to the rounded corner, and `hidden`
-                          // would make every mounted page another scroll container
-                          // for focus to shove around.
+                          // Clip rounded corners without creating a scroll container.
                           overflow: "clip",
                         }}
                       >

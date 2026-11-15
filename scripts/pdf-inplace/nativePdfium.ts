@@ -21,9 +21,13 @@ export function openPdfium(library: string) {
     FPDFText_LoadPage: { args: ['ptr'], returns: 'ptr' },
     FPDFText_ClosePage: { args: ['ptr'], returns: 'void' },
     FPDFText_CountChars: { args: ['ptr'], returns: 'i32' },
+    FPDFText_GetMatrix: { args: ['ptr', 'i32', 'ptr'], returns: 'i32' },
+    FPDFText_GetFontSize: { args: ['ptr', 'i32'], returns: 'f64' },
+    FPDFText_GetCharAngle: { args: ['ptr', 'i32'], returns: 'f32' },
     FPDFText_GetUnicode: { args: ['ptr', 'i32'], returns: 'u32' },
     FPDFText_IsGenerated: { args: ['ptr', 'i32'], returns: 'i32' },
     FPDFText_GetCharOrigin: { args: ['ptr', 'i32', 'ptr', 'ptr'], returns: 'i32' },
+    FPDFText_GetLooseCharBox: { args: ['ptr', 'i32', 'ptr'], returns: 'i32' },
     FPDFText_GetCharBox: { args: ['ptr', 'i32', 'ptr', 'ptr', 'ptr', 'ptr'], returns: 'i32' },
     FPDFText_GetTextObject: { args: ['ptr', 'i32'], returns: 'ptr' },
     FPDFTextObj_GetFont: { args: ['ptr'], returns: 'ptr' },
@@ -62,9 +66,53 @@ export function openPdfium(library: string) {
       } finally { f.FPDFText_ClosePage(text); }
     });
   }
+  function inspectPage(path:string|Uint8Array,index=0,evidence=false) {
+    return withPage(path,index,(page,pages)=>{
+      const text=f.FPDFText_LoadPage(page);assert(text);
+      try {
+        const glyphs=[];
+        const nativeFontHashes=new Map<NativeHandle,string|undefined>();
+        let allText='';
+        for(let i=0;i<f.FPDFText_CountChars(text);i++) {
+          const value=String.fromCodePoint(f.FPDFText_GetUnicode(text,i));allText+=value;
+          if(f.FPDFText_IsGenerated(text,i)===1 || /[\r\n\0]/.test(value))continue;
+          const x=new Float64Array(1),y=new Float64Array(1),l=new Float64Array(1),r=new Float64Array(1),b=new Float64Array(1),t=new Float64Array(1);
+          if(!f.FPDFText_GetCharOrigin(text,i,ptr(x),ptr(y)) || !f.FPDFText_GetCharBox(text,i,ptr(l),ptr(r),ptr(b),ptr(t)))continue;
+          const loose=new Float32Array(4);
+          if(f.FPDFText_GetLooseCharBox(text,i,ptr(loose))){l[0]=Math.min(l[0]!,loose[0]!,x[0]!);r[0]=Math.max(r[0]!,loose[2]!);b[0]=Math.min(b[0]!,loose[3]!);t[0]=Math.max(t[0]!,loose[1]!);}
+          const matrix=new Float32Array([1,0,0,1,0,0]);f.FPDFText_GetMatrix(text,i,ptr(matrix));
+          const object=f.FPDFText_GetTextObject(text,i);
+          glyphs.push({text:value,origin:[x[0]!,y[0]!] as [number,number],box:[l[0]!,b[0]!,r[0]!,t[0]!] as [number,number,number,number],
+            fontSize:f.FPDFText_GetFontSize(text,i)*Math.hypot(matrix[2]!,matrix[3]!),angle:f.FPDFText_GetCharAngle(text,i),object:String(object),nativeIndex:i,
+            fontHash:undefined as string|undefined,nativePath:undefined as NativePath|null|undefined,inkPixels:undefined as number|undefined});
+          if(evidence && object){
+            const font=f.FPDFTextObj_GetFont(object);assert(font);
+            if(!nativeFontHashes.has(font))nativeFontHashes.set(font,fontHash(font));
+            const glyph=glyphs.at(-1)!;glyph.fontHash=nativeFontHashes.get(font)!;glyph.nativePath=glyphPath(font,value.codePointAt(0)!);
+          }
+        }
+        const width=f.FPDF_GetPageWidthF(page),height=f.FPDF_GetPageHeightF(page);
+        let pixels:Buffer|undefined;
+        if(evidence){
+          const w=Math.round(width*2),h=Math.round(height*2);pixels=Buffer.alloc(w*h*4);
+          const bitmap=f.FPDFBitmap_CreateEx(w,h,4,ptr(pixels),w*4);assert(bitmap);
+          try{assert(f.FPDFBitmap_FillRect(bitmap,0,0,w,h,0xffffffff));f.FPDF_RenderPageBitmap(bitmap,page,0,0,w,h,0,0);}finally{f.FPDFBitmap_Destroy(bitmap);}
+          for(const g of glyphs){let ink=0;const[l,b,r,t]=g.box;
+            for(let y=Math.max(0,Math.floor((height-t)*2));y<Math.min(h,Math.ceil((height-b)*2));y++)
+              for(let x=Math.max(0,Math.floor(l*2));x<Math.min(w,Math.ceil(r*2));x++){const offset=(y*w+x)*4;if(Math.min(pixels[offset]!,pixels[offset+1]!,pixels[offset+2]!)<250)ink++;}
+            g.inkPixels=ink;
+          }
+        }
+        return {pages,text:allText,width,height,glyphs,pixels};
+      }finally{f.FPDFText_ClosePage(text);}
+    });
+  }
   function fontHash(font: NativeHandle) {
     const size = new BigUint64Array(1);
     assert(f.FPDFFont_GetFontData(font, null, 0, ptr(size)));
+    // Type3 fonts have drawing procedures, not an embedded font program.
+    // Keep that absence explicit; Bun cannot take a pointer to an empty buffer.
+    if (size[0] === 0n) return undefined;
     const buffer = Buffer.alloc(Number(size[0]));
     assert(f.FPDFFont_GetFontData(font, ptr(buffer), buffer.length, ptr(size)));
     return createHash('sha256').update(buffer).digest('hex');
@@ -103,7 +151,7 @@ export function openPdfium(library: string) {
       try {
         const glyphs: (OracleGlyph & GlyphEvidence & { origin: number[]; charBox: number[]; nativeIndex: number; nativeGenerated: boolean })[] = [];
         const generated: { index: number; unicode: string; matchedSource: boolean }[] = [], allText: string[] = [];
-        const fontIds = new Map<string, NativeHandle>(), reverseIds = new Map<NativeHandle, string>(), hashes = new Map<NativeHandle, string>();
+        const fontIds = new Map<string, NativeHandle>(), reverseIds = new Map<NativeHandle, string>(), hashes = new Map<NativeHandle, string|undefined>();
         for (let i = 0; i < f.FPDFText_CountChars(text); i++) {
           const unicode = String.fromCodePoint(f.FPDFText_GetUnicode(text, i)); allText.push(unicode);
           const obj: NativeHandle | null = f.FPDFText_GetTextObject(text, i);
@@ -163,5 +211,5 @@ export function openPdfium(library: string) {
       } finally { f.FPDFText_ClosePage(text); }
     });
   }
-  return { textAt, measure, close: () => f.FPDF_DestroyLibrary() };
+  return { textAt, inspectPage, measure, close: () => f.FPDF_DestroyLibrary() };
 }

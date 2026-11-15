@@ -19,7 +19,6 @@ for (const bad of [
   '1 beginbfchar <41> <d800> endbfchar',
   '2 beginbfchar <41> <0041> <41> <0042> endbfchar',
   '1 beginbfrange <41> <42> <ffff> endbfrange',
-  '/Other usecmap ' + mapping,
 ]) test(`rejects invalid Unicode, conflicting codes or inherited maps: ${bad}`, () => {
   expect(runToUnicode(bad, 1)).toBeNull();
 });

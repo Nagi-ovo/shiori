@@ -1,3 +1,4 @@
+import { ContentTextOutcomes } from "./ContentTextOutcomes";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { T } from "../../design/tokens";
@@ -573,6 +574,7 @@ export function ExportDialog({
         ) : null}
       </Section>
 
+      <ContentTextOutcomes outcomes={sizePreviews[quality].outcomes} />
       {pendingLossyExport ? (
         <LossyExportNotice
           lostChars={pendingLossyExport.lostChars}

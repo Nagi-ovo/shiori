@@ -31,7 +31,7 @@ export async function notdefProbePdf(source: Uint8Array, objects: readonly strin
         '1 begincodespacerange <0000> <ffff> endcodespacerange 2 begincidchar <0000> 0 <0001> 0 endcidchar'));
       font = ctx.obj({ Type: 'Font', Subtype: 'Type0', BaseFont: 'NativeNotdefProbe', Encoding: encoding, DescendantFonts: [childRef], ToUnicode: toUnicode });
     } else {
-      if (!descriptor.has(PDFName.of('FontFile3'))) throw Error('native .notdef probe unsupported font program');
+      if (!descriptor.has(PDFName.of('FontFile3')) && !descriptor.has(PDFName.of('FontFile'))) throw Error('native .notdef probe unsupported font program');
       font = ctx.obj({ Type: 'Font', Subtype: 'Type1', BaseFont: 'NativeNotdefProbe', FontDescriptor: descriptorRef,
         FirstChar: 0, LastChar: 1, Widths: [500, 500], Encoding: { Differences: [0, '.notdef', '.notdef'] }, ToUnicode: toUnicode });
     }

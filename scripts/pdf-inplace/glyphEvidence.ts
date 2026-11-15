@@ -13,7 +13,7 @@ export class GlyphEvidenceError extends Error {
 const validPath = (path: NativePath) => Array.isArray(path) && path.every(s => [0, 1, 2].includes(s.type) &&
   s.point.length === 2 && s.point.every(Number.isFinite) && typeof s.closed === 'boolean');
 const pathKey = (path: NativePath | null) => JSON.stringify(path?.map(s => [s.type, ...s.point, s.closed]) ?? null);
-export function assertReplacementGlyphs(glyphs: readonly GlyphEvidence[]): number {
+export function assertNativeReplacementGlyphs(glyphs: readonly GlyphEvidence[]): number {
   let checked = 0;
   for (const glyph of glyphs) {
     if (!glyph.replacement || /^\s+$/u.test(glyph.unicode)) continue;
@@ -31,8 +31,13 @@ export function assertReplacementGlyphs(glyphs: readonly GlyphEvidence[]): numbe
     const keys = new Set(probes!.map(p => pathKey(p.path)));
     if (keys.size !== 1) fail('native-notdef-probe-ambiguous', 'native .notdef probe ambiguous');
     if (keys.has(pathKey(glyph.nativePath!))) fail('native-notdef-match', 'native .notdef path match');
-    if (!Number.isInteger(glyph.glyphId) || glyph.glyphId! <= 0) fail('coverage-glyph-unverified', 'unverified coverage GID');
     checked++;
   }
   return checked;
+}
+
+export function assertReplacementGlyphs(glyphs:readonly GlyphEvidence[]):number {
+ const checked=assertNativeReplacementGlyphs(glyphs);
+ for(const glyph of glyphs)if(glyph.replacement && !/^\s+$/u.test(glyph.unicode) && (!Number.isInteger(glyph.glyphId)||glyph.glyphId!<=0))throw new GlyphEvidenceError('coverage-glyph-unverified','unverified coverage GID',glyph.unicode);
+ return checked;
 }

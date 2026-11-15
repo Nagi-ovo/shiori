@@ -251,7 +251,7 @@ function byBaseline(hugged: GlyphPlacement[]): GlyphPlacement[][] {
 // rect, so a cover over a much larger glyph (a heading, a watermark) keeps
 // it, as it keeps a taller glyph overlapping the run, glyphs on other lines
 // and, when two lines span it, both.
-function removalsByRect(
+export function removalsByRect(
   glyphs: GlyphPlacement[],
   coverRects: PdfRect[],
 ): Set<GlyphPlacement>[] {
