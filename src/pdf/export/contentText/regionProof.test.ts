@@ -107,15 +107,23 @@ describe('source, state and paragraph evidence', () => {
       const input = paragraph(); input.evidence[key] = ''; refuses(input);
     }
   });
-  test.each(['fontObject', 'size', 'tc', 'tw', 'tz', 'rise', 'renderMode', 'safetyHash', 'bt'] as const)(
+  test.each(['size', 'tz', 'rise', 'renderMode', 'safetyHash', 'bt'] as const)(
     'mixed %s refuses', key => {
       const input = paragraph();
       for (const t of [input.lines[1]!.anchor, input.lines[1]!.shows[0]!.before, input.lines[1]!.shows[0]!.after]) {
-        if (key === 'fontObject' || key === 'safetyHash') t[key] = 'different';
+        if (key === 'safetyHash') t[key] = 'different';
         else t[key] += key === 'size' ? 0.051 : 1;
       }
       refuses(input, 'state');
     });
+  test('paragraph members may change font and justification spacing', () => {
+    const input = paragraph(), line = input.lines[1]!;
+    for (const t of [line.anchor, line.shows[0]!.before, line.shows[0]!.after]) {
+      t.fontObject = '8 0 R'; t.tc = 0.1; t.tw = -0.3;
+    }
+    line.shows[0]!.source.fontObject = '8 0 R';
+    expect(proof(input).owned[1]!.fontObject).toBe('8 0 R');
+  });
   test('physical size tolerance is 0.05 pt and handles matrix-scaled Tf', () => {
     const input = paragraph();
     for (const t of [input.lines[1]!.anchor, input.lines[1]!.shows[0]!.before, input.lines[1]!.shows[0]!.after]) t.size = 10.05;

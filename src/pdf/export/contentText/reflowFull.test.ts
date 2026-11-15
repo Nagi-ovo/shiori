@@ -29,7 +29,8 @@ test('boolean reflow wraps into existing slots with an unchanged unowned neighbo
 test('a full paragraph grows by one independently proved empty downward band',async()=>{
  const f=await spacingPage(stream('S i i i i')),r=await applyContentTextEdits(f.page,[edit()]);
  expect(r.outcomes[0]).toMatchObject({mode:'reflowed',reflow:{strategy:'wrap'}});
- expect(Math.min(...read(f.page).map(g=>g.y))).toBe(108);expect(r.outcomes[0]!.reflow!.region.box.y).toBeLessThan(108);
+ const outcome=r.outcomes[0]!;if(!('reflow'in outcome)||!outcome.reflow)throw Error('missing reflow manifest');
+ expect(Math.min(...read(f.page).map(g=>g.y))).toBe(108);expect(outcome.reflow.region.box.y).toBeLessThan(108);
 });
 test('occupied downward band and crop bottom refuse atomically',async()=>{
  for(const occupied of [true,false]){
@@ -106,7 +107,8 @@ test('a short paragraph boundary leaves later same-BT text unowned and fixed',as
  const f=await spacingPage(stream().replace(' ET',' 1 0 0 1 50 108 Tm (i) Tj ET')),before=read(f.page);
  const r=await applyContentTextEdits(f.page,[edit()]);expect(r.outcomes[0]).toMatchObject({mode:'reflowed',reflow:{strategy:'wrap'}});
  expect(read(f.page).at(-1)).toEqual(before.at(-1));
- expect(r.outcomes[0]!.reflow!.source.every(g=>g.origin[1]!>=122)).toBe(true);
+ const outcome=r.outcomes[0]!;if(!('reflow'in outcome)||!outcome.reflow)throw Error('missing reflow manifest');
+ expect(outcome.reflow.source.every(g=>g.origin[1]!>=122)).toBe(true);
 });
 test('trailing TJ displacement survives reflow for subsequent text at the cursor',async()=>{
  const {traceReflowSource}=await import('./reflowTrace');
@@ -145,4 +147,67 @@ test('the automatic producer accepts an already measured substitute font',async(
 test('CID CFF fallback outlines authorize a measured automatic wrap',async()=>{
  const {cffReflowPage}=await import('./reflowFull.test-support');const f=await cffReflowPage(new Uint8Array(await Bun.file('src/assets/fonts/NotoSansSC-Regular.otf').arrayBuffer()));
  const r=await applyContentTextEdits(f.page,[overlay(f.edit)]);expect(r.outcomes[0]).toMatchObject({mode:'reflowed',reflow:{strategy:'wrap'}});
+});
+
+/** Test-supplied slots model the upstream proof contract; actual glyphs,
+ * ink, text state and source addresses still come from the PDF stream. */
+async function provedStream(stream:string,right=105){
+ const {streamReflowEvidence}=await import('./reflowEvidence');
+ const f=await spacingPage(stream),content=inspectRunPage(f.page);if(!content.ok)throw Error(content.reason);
+ const fonts=resolveRunFonts(f.page),ops=tokenizeContentStream(content.bytes),firstOp=ops.findIndex(op=>op.operator==='Tj');
+ const e=streamReflowEvidence(f.page,content.bytes,fonts,firstOp);if(!e)throw Error('missing base stream measurements');
+ const glyphs=e.walk.glyphs.filter(g=>e.trace.shows.get(`${g.opIndex}:${g.arrayItemIndex}`)!.before.bt===0);
+ const baselines=[...new Set(glyphs.map(g=>g.coreQuad[0].y))];
+ const source=glyphs.map(g=>{
+  const show=e.trace.shows.get(`${g.opIndex}:${g.arrayItemIndex}`)!,font=fonts.find(f=>f.resourceName===g.fontName)!;
+  const measured=e.ink(g.fontName,g.code,show.before);if(!measured)throw Error('missing ink');
+  return {unicode:font.unicodeByCode.get(g.code)!,advance:g.coreQuad[1].x-g.coreQuad[0].x,em:10,
+   metrics:{size:show.before.size,tc:show.before.tc,tw:show.before.tw},
+   ink:measured.box,wordSpace:font.bytesPerCode===1&&g.code===32,fullEmHan:font.widthOf(g.code)===1000,gap:0,
+   original:{line:baselines.indexOf(g.coreQuad[0].y),x:g.coreQuad[0].x,y:g.coreQuad[0].y},
+   code:Uint8Array.of(g.code),fontResource:g.fontName,fontObject:font.objectId,glyph:measured.glyph,
+   source:{...e.proof.owned[0]!,opIndex:g.opIndex,itemIndex:g.arrayItemIndex,byteStart:g.byteOffset,byteEnd:g.byteOffset+g.byteLength}};
+ });
+ for(let i=0;i<source.length-1;i++)if(source[i]!.original.line===source[i+1]!.original.line)
+  source[i]!.gap=source[i+1]!.original.x-source[i]!.original.x-source[i]!.advance;
+ const owned=[...new Map(source.map(t=>[t.source.opIndex,{...t.source,byteStart:0,
+  byteEnd:source.filter(s=>s.source.opIndex===t.source.opIndex).reduce((n,s)=>n+s.code.length,0)}])).values()];
+ const proof={...e.proof,kind:baselines.length===1?'explicit-line-region' as const:'paragraph' as const,owned,
+  box:{x:49.5,y:baselines.at(-1)!-2.5,w:right-49,h:baselines[0]!-baselines.at(-1)!+11},
+  lineSlots:baselines.map(baseline=>({baseline,left:50,right,kind:'observed' as const}))};
+ const obstacles=e.walk.glyphs.filter(g=>!glyphs.includes(g)).map(g=>({
+  x:g.coreQuad[0].x,y:g.coreQuad[0].y-2.5,w:g.coreQuad[1].x-g.coreQuad[0].x,h:11,
+ }));
+ return {...f,content,fonts,e:{...e,source,proof,obstacles}};
+}
+test('a single proved line shifts its suffix and compiles without moving a lower neighbour',async()=>{
+ const {planProvedStreamReflow}=await import('./reflowAuto');
+ const {replaceRunPageWithFallback}=await import('../contentStreamEdit/fallbackPage');
+ const f=await provedStream('BT /F1 10 Tf 1 0 0 1 50 150 Tm (S i) Tj ET BT /F1 10 Tf 1 0 0 1 50 136 Tm (i) Tj ET',80);
+ const before=read(f.page),plan=planProvedStreamReflow(f.e,f.fonts,edit());
+ expect(plan?.reflow?.layout.strategy).toBe('suffix-shift');if(!plan)throw Error('missing plan');
+ expect(plan.reflow!.proof).toBe(f.e.proof);expect(plan.reflow!.layout.origins.every(p=>p[1]===150)).toBe(true);
+ expect((await replaceRunPageWithFallback(f.page,plan)).ok).toBe(true);
+ const after=read(f.page);expect(after.at(-1)).toEqual(before.at(-1));expect(after.at(-2)!.x).toBeGreaterThan(before.at(-2)!.x);
+});
+test('proved per-line Tc/Tw wrap compiles and retains the untouched justified prefix',async()=>{
+ const {planProvedStreamReflow}=await import('./reflowAuto');
+ const {replaceRunPageWithFallback}=await import('../contentStreamEdit/fallbackPage');
+ const stream='BT /F1 10 Tf 14 TL 1 Tc 2 Tw 1 0 0 1 50 150 Tm (S i i i ) Tj '+
+  '.5 Tc .5 Tw 1 0 0 1 50 136 Tm (S i i i i ) Tj 0 Tc 0 Tw 1 0 0 1 50 122 Tm (S i) Tj ET';
+ const f=await provedStream(stream,115),before=read(f.page),a={...edit(136),coverRects:[{x:49.9,y:134,w:10.7,h:12}]};
+ const plan=planProvedStreamReflow(f.e,f.fonts,a);
+ expect(plan?.reflow?.layout.strategy).toBe('wrap');if(!plan)throw Error('missing plan');
+ const compiled=await replaceRunPageWithFallback(f.page,plan);
+ if(!compiled.ok)throw Error(compiled.reason);expect(compiled.ok).toBe(true);
+ expect(read(f.page).filter(g=>g.y===150)).toEqual(before.filter(g=>g.y===150));
+ expect(read(f.page).filter(g=>g.text==='n')).toHaveLength(2);
+});
+test('vertical Identity-V text still refuses automatic reflow atomically',async()=>{
+ const {PDFDict}=await import('pdf-lib');const {cidReflowPage}=await import('./reflowFull.test-support');
+ const {planStreamReflow}=await import('./reflowAuto');
+ const f=await cidReflowPage();f.page.node.Resources()!.lookup(PDFName.of('Font'),PDFDict).lookup(PDFName.of('F1'),PDFDict).set(PDFName.of('Encoding'),PDFName.of('Identity-V'));
+ const before=inspectRunPage(f.page);if(!before.ok)throw Error(before.reason);
+ expect(planStreamReflow(f.page,before.bytes,resolveRunFonts(f.page),edit())).toBeNull();
+ expect(inspectRunPage(f.page)).toEqual(before);
 });

@@ -27,6 +27,8 @@ export type ContentTextEnvironment=RunEnvironment&ReflowOptions;
 export type ReflowCodeCluster=MeasuredCluster&{
  code:Uint8Array;fontResource:string;fontObject:string;
  source?:SourceAddress;glyph?:GlyphIdentity;
+ /** Original per-show metrics; replacements inherit their addressed show. */
+ metrics?:Pick<TextTrace,'size'|'tc'|'tw'>;
 };
 export type ReflowRecipe={
  substituted?:boolean;

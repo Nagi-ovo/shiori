@@ -4,7 +4,8 @@ import { sourceFingerprint, runContextSafety, type ResolvedRunFont } from '../co
 import { removalsByRect } from '../contentStreamEdit/removeGlyphs';
 import {ContentStreamParseError, tokenizeContentStream } from '../contentStreamEdit/tokenizer';
 import { walkTextPlacements, type GlyphPlacement, type ShowTextState, type UnplacedShow } from '../contentStreamEdit/textState';
-import { type ContentTextReason } from './outcomes';
+import { compilerReason, type ContentTextReason } from './outcomes';
+import {RunCompileError} from '../contentStreamEdit/runRefusal';
 import {textObjectScopes,followsUnplaced} from '../contentStreamEdit/textSafety';
 import { lineChanges } from './diff';
 import {planReflow} from './reflowPlan';
@@ -59,13 +60,16 @@ export function planContentText(content:Uint8Array,fonts:readonly ResolvedRunFon
     const edits:PageRunPlan['edits'][number][]=[];
     for(let lineIndex=0;lineIndex<lines.length;lineIndex++) {
       const glyphs=lines[lineIndex]!,original=originals[lineIndex]!,replacement=replacements[lineIndex]!;
-      const decoded=glyphs.map(g=>byName.get(g.fontName)?.unicodeByCode.get(g.code));
-      if(decoded.some(s=>s===undefined)) {
-        const safety=runContextSafety(ops,environment);
-        if(!safety.ok)return refuse(safety.code??'unsupported-state',safety.reason);
-        if(glyphs.some(g=>safety.unsafe.has(g.opIndex)))return refuse('unsupported-state','clip/graphics/semantic dependent target');
-        return refuse('font-unavailable');
+      const safety=runContextSafety(ops,environment);
+      if(!safety.ok)return refuse(safety.code??'unsupported-state',safety.reason);
+      if(glyphs.some(g=>safety.unsafe.has(g.opIndex)))return refuse('unsupported-state','clip/graphics/semantic dependent target');
+      for(const name of new Set(glyphs.map(g=>g.fontName))){
+        const font=byName.get(name)!;
+        font.assertSource?.(glyphs.filter(g=>g.fontName===name).map(g=>
+          font.bytesPerCode===1?Uint8Array.of(g.code):Uint8Array.of(g.code>>8,g.code&255)));
       }
+      const decoded=glyphs.map(g=>byName.get(g.fontName)?.unicodeByCode.get(g.code));
+      if(decoded.some(s=>s===undefined))return refuse('font-unavailable');
       for(let i=1;i<glyphs.length;i++) {
         if(Math.abs(glyphs[i]!.coreQuad[0].x-glyphs[i-1]!.coreQuad[0].x)<.01)return refuse('ambiguous-match');
       }
@@ -127,5 +131,5 @@ export function planContentText(content:Uint8Array,fonts:readonly ResolvedRunFon
       }
     }
     return {ok:true,plan:{sourceHash:sourceFingerprint(content),edits,allowExistingCodePermutation:true,...environment}};
-  }catch(error){if(error instanceof ContentStreamParseError)return refuse('unsupported-state',error.message);throw error;}
+  }catch(error){if(error instanceof RunCompileError)return refuse(compilerReason({ok:false,code:error.code,reason:error.message}),error.message);if(error instanceof ContentStreamParseError)return refuse('unsupported-state',error.message);throw error;}
 }

@@ -18,6 +18,9 @@ export type ParagraphShow = {
 export type ParagraphLine = {
   /** State immediately AFTER the explicit Tm/Td/TD/T* anchor. */
   anchor: TextTrace;
+  /** Further explicit anchors on the same baseline (including sibling BTs).
+   * Every anchor remains owned and checked against the source grammar. */
+  continuations?: TextTrace[];
   /** Complete source string items in source order, with per-item snapshots. */
   shows: ParagraphShow[];
   /** Conservative ink, never coreQuad; null only for an explicitly blank slot. */

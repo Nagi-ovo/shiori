@@ -14,12 +14,14 @@ export type MeasuredReflowResult={ok:true;strategy:'fixed'|'spacing-only'|'suffi
  visualLines:string[]}|{ok:false;code:'overflow'|'reflow-required';reason:string};
 const fail=(reason:string,code:'overflow'|'reflow-required'='reflow-required'):MeasuredReflowResult=>({ok:false,code,reason});
 const han=(s:string)=>/^\p{Script=Han}$/u.test(s);
+const cjk=(s:string)=>/^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]\p{Mark}*$/u.test(s)||
+ /^[、。，．？！：；・「」『』（）［］｛｝〈〉《》【】〔〕〝〟…‥ー々〻ゝゞヽヾ]$/u.test(s);
 const latin=(s:string)=>/^[A-Za-z0-9]$/u.test(s);
-const close=/^[，。、；：？！）］｝〉》」』】〕’”％‰,.!?;:%)\]}]/u;
-const open=/[（［｛〈《「『【〔‘“([{]$/u;
+const close=/^[，。、．；：？！）］｝〉》」』】〕〟’”％‰々〻ゝゞヽヾーぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰ-ㇿ,.!?;:%)\]}]/u;
+const open=/[（［｛〈《「『【〔〝‘“([{]$/u;
 export const legalMeasuredBreak=(a:MeasuredCluster,b:MeasuredCluster)=>
  !a.lockedAfter&&!open.test(a.unicode)&&!close.test(b.unicode)&&
- (a.unicode===' '||han(a.unicode)&&han(b.unicode));
+ (a.unicode===' '||a.unicode==='\u3000'||cjk(a.unicode)&&cjk(b.unicode));
 const inside=(ink:Rect,x:number,y:number,box:Rect)=>x+ink.x>=box.x-1e-7&&
  x+ink.x+ink.w<=box.x+box.w+1e-7&&y+ink.y>=box.y-1e-7&&y+ink.y+ink.h<=box.y+box.h+1e-7;
 

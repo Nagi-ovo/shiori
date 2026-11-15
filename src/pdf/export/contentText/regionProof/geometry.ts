@@ -1,4 +1,4 @@
-import type { Rect, TextTrace } from './types';
+import type { ParagraphLine, Rect, TextTrace } from './types';
 
 export const EPS = 1e-7;
 export const near = (a: number, b: number, tolerance: number) => Math.abs(a - b) <= tolerance + EPS;
@@ -36,6 +36,16 @@ export function compatible(t: TextTrace, base: TextTrace): boolean {
     linear(t).every((n, i) => coefficientEqual(n, linear(base)[i]!)) &&
     (['tc', 'tw', 'tz', 'rise', 'renderMode'] as const).every(key => t[key] === base[key]);
 }
+/** Paragraph membership permits measured face/justification changes. Keep
+ * compatible() tight for callers that need an identical same-show state. */
+export function paragraphMember(t: TextTrace, base: TextTrace): boolean {
+  return validTrace(t) && validTrace(base) && t.safetyHash === base.safetyHash &&
+    near(physicalSize(t), physicalSize(base), 0.05) &&
+    linear(t).every((n, i) => coefficientEqual(n, linear(base)[i]!)) &&
+    (['tz', 'rise', 'renderMode'] as const).every(key => t[key] === base[key]);
+}
+export const lineAnchors = (line: ParagraphLine): readonly TextTrace[] => [line.anchor, ...(line.continuations ?? [])];
+export const anchorForShow = (line: ParagraphLine, op: number) => lineAnchors(line).findLast(t => t.opIndex < op);
 export const validRect = (r: Rect) => [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w >= 0 && r.h >= 0;
 export const contains = (outer: Rect, inner: Rect) => inner.x >= outer.x - EPS && inner.y >= outer.y - EPS &&
   inner.x + inner.w <= outer.x + outer.w + EPS && inner.y + inner.h <= outer.y + outer.h + EPS;

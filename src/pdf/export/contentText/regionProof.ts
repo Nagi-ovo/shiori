@@ -1,4 +1,4 @@
-import { compatible, contains, EPS, intersects, matrixEqual, near, origin,
+import { compatible, paragraphMember, anchorForShow, lineAnchors, contains, EPS, intersects, matrixEqual, near, origin,
   physicalLeading, physicalSize, validRect, validTrace } from './regionProof/geometry';
 import { proveOperators } from './regionProof/operators';
 import type { LineSlot, ParagraphBlocker, ParagraphIndent, ParagraphInput,
@@ -40,7 +40,7 @@ export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextT
   const base = lines[0]!.anchor;
   if (!validTrace(base)) return refuse('state', 'Nonfinite or unsupported horizontal text state');
   for (const line of lines) {
-    if (!compatible(line.anchor, base) || line.anchor.safetyHash !== e.scopeProofHash) {
+    if (lineAnchors(line).some(t => !paragraphMember(t, base) || t.safetyHash !== e.scopeProofHash)) {
       return refuse('state', 'Line font, physical size, transform, scope or text state differs');
     }
     let end = origin(line.anchor);
@@ -50,8 +50,9 @@ export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextT
         return refuse('boundary', 'Unknown or control-text source decoding');
       }
       if (unsupportedDirection.test(show.unicode)) return refuse('direction', 'RTL/bidi is outside the paragraph subset');
-      if (!compatible(show.before, base) || !compatible(show.after, base) ||
-        !matrixEqual(show.before.tlm, line.anchor.tlm) || !matrixEqual(show.after.tlm, line.anchor.tlm)) {
+      const anchor = anchorForShow(line, show.source.opIndex);
+      if (!anchor || !paragraphMember(show.before, base) || !compatible(show.after, show.before) ||
+        !matrixEqual(show.before.tlm, anchor.tlm) || !matrixEqual(show.after.tlm, anchor.tlm)) {
         return refuse('state', 'Show snapshots differ in font/style/state or saved Tlm');
       }
       const a = origin(show.before), b = origin(show.after);
@@ -74,7 +75,7 @@ export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextT
   const leadingTolerance = Math.min(0.25, Math.max(0.10, leading * 0.01));
   if (!(leading > 0) || advances.some(a => !near(a, leading, leadingTolerance)) ||
     lines.some(l => {
-      const values = [l.anchor, ...l.shows.flatMap(s => [s.before, s.after])].map(physicalLeading);
+      const values = [...lineAnchors(l), ...l.shows.flatMap(s => [s.before, s.after])].map(physicalLeading);
       return values.some(v => explicit > 0 ? !near(v, leading, leadingTolerance) : v !== 0);
     })) return refuse('leading', 'Observed/explicit baseline advances are inconsistent; no blank row may be inferred');
   const em = physicalSize(base);

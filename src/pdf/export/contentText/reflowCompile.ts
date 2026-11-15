@@ -44,8 +44,12 @@ export function compileReflowPlan(content:Uint8Array,fonts:readonly ResolvedRunF
    if(!t.source){const encoded=encodeRun(t.unicode,font,t.code);if(!encoded.ok||!same(encoded.bytes,t.code))return refuse('replacement code proof changed','font-coverage');}
    const code=codes(t.code,font.bytesPerCode);
    if(code.length!==1||font.unicodeByCode.get(code[0]!)!==t.unicode)return refuse('output code/Unicode differs','font-coverage');
-   const advance=(font.widthOf(code[0]!)*saved.size/1000+saved.tc+(font.bytesPerCode===1&&code[0]===32?saved.tw:0))*scale;
-   if(Math.abs(advance-t.advance)>1e-7)return refuse('layout-metrics-disagreement: current PDF advance changed');
+   const metrics=t.metrics??saved;
+   const advance=(font.widthOf(code[0]!)*metrics.size/1000+metrics.tc+(font.bytesPerCode===1&&code[0]===32?metrics.tw:0))*scale;
+   // Some producers also supply nominal advances under saved parameters;
+   // per-show recipes retain their measured advances in the solved layout.
+   const measured=t.metrics?layout.clusters[i]?.advance:t.advance;
+   if(measured===undefined||Math.abs(advance-measured)>1e-7)return refuse('layout-metrics-disagreement: current PDF advance changed');
    emitted.push({index:i,advance});
   }
   // Keep real space codes inside the same show as their neighbours. PDFium
@@ -54,23 +58,33 @@ export function compileReflowPlan(content:Uint8Array,fonts:readonly ResolvedRunF
   // the original Tc/Tw are scoped and restored, with no accumulated drift.
   for(let cursor=0;cursor<emitted.length;){
    const first=emitted[cursor]!,t=clusters[first.index]!,[x,y]=layout.origins[first.index]!;
+   const metrics=t.metrics??saved;
+   const sameMetrics=(index:number)=>{
+    const m=clusters[index]!.metrics??saved;
+    return m.size===metrics.size&&m.tc===metrics.tc&&m.tw===metrics.tw;
+   };
    const items:string[]=[];
    let end=cursor;
    while(end<emitted.length){
     const entry=emitted[end]!,cluster=clusters[entry.index]!,p=layout.origins[entry.index]!;
-    if(cluster.fontResource!==t.fontResource||Math.abs(p[1]-y)>1e-9)break;
+    if(cluster.fontResource!==t.fontResource||!sameMetrics(entry.index)||Math.abs(p[1]-y)>1e-9)break;
     items.push(hex(cluster.code));
     const next=emitted[end+1],q=next?layout.origins[next.index]:undefined;
     end++;
-    if(!next||clusters[next.index]!.fontResource!==t.fontResource||Math.abs(q![1]-y)>1e-9)break;
-    const adjustment=(p[0]+entry.advance-q![0])*1000/(saved.size*scale);
+    if(!next||clusters[next.index]!.fontResource!==t.fontResource||!sameMetrics(next.index)||Math.abs(q![1]-y)>1e-9)break;
+    const adjustment=(p[0]+entry.advance-q![0])*1000/(metrics.size*scale);
     if(Math.abs(adjustment)>1e-10)items.push(pdfNumber(adjustment));
    }
+   // PDFium drops an all-space text object from logical extraction. A face
+   // boundary can isolate a real source space even when its bytes survive;
+   // refuse that layout rather than report a successful but lossy rewrite.
+   if(emitted.slice(cursor,end).every(e=>!clusters[e.index]!.unicode.trim()))
+    return refuse('reflow-context-unsupported: isolated whitespace fragment');
    const tx=(d!*(x-e!)-c!*(y-f!))/det-saved.rise*saved.tm[2]!;
    const ty=(-b!*(x-e!)+a!*(y-f!))/det-saved.rise*saved.tm[3]!;
    const matrix=[...saved.tm.slice(0,4),tx,ty];
-   body.push(`${matrix.map(pdfNumber).join(' ')} Tm ${pdfName(t.fontResource)} ${pdfNumber(saved.size)} Tf `+
-    `${pdfNumber(saved.tc)} Tc ${pdfNumber(saved.tw)} Tw [${items.join(' ')}] TJ ${pdfNumber(saved.tc)} Tc ${pdfNumber(saved.tw)} Tw`);
+   body.push(`${matrix.map(pdfNumber).join(' ')} Tm ${pdfName(t.fontResource)} ${pdfNumber(metrics.size)} Tf `+
+    `${pdfNumber(metrics.tc)} Tc ${pdfNumber(metrics.tw)} Tw [${items.join(' ')}] TJ ${pdfNumber(saved.tc)} Tc ${pdfNumber(saved.tw)} Tw`);
    cursor=end;
   }
   // Replay the original scope/state skeleton, replacing its shows with

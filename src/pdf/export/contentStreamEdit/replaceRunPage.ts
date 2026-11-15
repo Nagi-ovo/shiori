@@ -5,11 +5,12 @@ import { decodePDFRawStream, PDFArray, PDFDict, PDFName, PDFRawStream, PDFRef, t
 import type {RunEnvironment} from './textSafety';
 import { coalesceContentStreams } from './tokenizer';
 import { contentFontInfo } from './glyphWidths';
-import { fontCoverageFromDict } from '../fontCoverage/pdfLibAdapter';
+import { fontCoverageFromDict, fontInputFromDict } from '../fontCoverage/pdfLibAdapter';
 import { stage5Type1, type Type1Options } from '../fontCoverage/type1Support';
 import { assertType1Source, surgicalType1Encoder } from '../fontCoverage/type1Surgical';
 import { pageRunPlan, type PageRunPlan } from './pageRunPlan';
 import { runToUnicode } from './runToUnicode';
+import { recoverRunUnicode } from './runFontUnicode';
 import { replaceRuns, sourceFingerprint, type Refusal, type ResolvedRunFont, type Overflow } from './replaceRun';
 
 export type PageRunResult = ({ ok: true; bytes: Uint8Array } | (Refusal & { bytes?: Uint8Array })) & { overflow?: Overflow };
@@ -32,7 +33,7 @@ export function inspectRunPage(page: PDFPage):
 export function resolveRunFonts(page: PDFPage, options: Type1Options = {}): ResolvedRunFont[] {
   const dict = page.node.Resources()?.lookupMaybe(PDFName.of('Font'), PDFDict);
   if (!dict) return [];
-  const encodingByObject = new Map<PDFDict, Pick<ResolvedRunFont, 'canEncode' | 'assertSource'>>();
+  const encodingByObject = new Map<PDFDict, Pick<ResolvedRunFont, 'canEncode' | 'assertSource' | 'unicodeByCode'>>();
   return dict.entries().flatMap(([name, ref]) => {
     if (!(ref instanceof PDFRef)) return [];
     const font = dict.context.lookup(ref);
@@ -43,9 +44,8 @@ export function resolveRunFonts(page: PDFPage, options: Type1Options = {}): Reso
     const info = checked.ok ? checked : contentFontInfo(font,{sourceReuse:false,standard14Afm:options.standard14Afm});
     if (!info.ok) return [];
     const raw = font.lookup(PDFName.of('ToUnicode'));
-    // Untargeted fonts still supply dictionary widths to the placement walk.
-    // An empty map cannot authorize an edit in this font: the planner and
-    // compiler both require every addressed code's Unicode provenance.
+    // Source labels may be recovered independently of replacement coverage.
+    // Rewritten text still requires the original font's ToUnicode proof.
     const mapping = raw instanceof PDFRawStream
       ? runToUnicode(new TextDecoder('latin1').decode(decoded(raw)), info.bytesPerCode)
       : new Map<number, string>();
@@ -58,17 +58,18 @@ export function resolveRunFonts(page: PDFPage, options: Type1Options = {}): Reso
       // Parsed per-code failures still guard identity/metrics before reuse.
       const type1Reuse = (options.sourceReuse ?? stage5Type1.sourceReuse) && coverage.subtype === 'Type1'
         && coverage.mappings !== undefined && !coverage.failures?.some(d => !d.hex);
-      encoding = type1Reuse ? {
+      const sourceEncoding: Pick<ResolvedRunFont, 'canEncode' | 'assertSource'> = type1Reuse ? {
         canEncode: surgicalType1Encoder(coverage),
         assertSource: codes => assertType1Source(coverage, codes),
       } : { canEncode: coverage.canEncode };
       if (!type1Reuse && coverage.verification === 'unverified') {
         const reason = coverage.missing.find(m => !m.code)?.reason ?? 'source font coverage unverified';
-        encoding.canEncode = text => ({ ok: false, reason, firstMissing: new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)[Symbol.iterator]().next().value?.segment ?? '', offset: 0 });
+        sourceEncoding.canEncode = text => ({ ok: false, reason, firstMissing: new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)[Symbol.iterator]().next().value?.segment ?? '', offset: 0 });
       }
+      encoding = recoverRunUnicode(fontInputFromDict(font), info.bytesPerCode, mapping, sourceEncoding, options);
       encodingByObject.set(font, encoding);
     }
-    return [{ ...info, resourceName: name.decodeText(), objectId: ref.toString(), unicodeByCode: mapping??new Map<number,string>(), ...encoding }];
+    return [{ ...info, resourceName: name.decodeText(), objectId: ref.toString(), ...encoding }];
   });
 }
 export function markedContentProperties(page: PDFPage): Map<string, readonly string[] | null> {

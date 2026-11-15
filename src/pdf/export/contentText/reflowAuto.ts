@@ -31,9 +31,32 @@ function build(page:PDFPage,content:Uint8Array,fonts:readonly ResolvedRunFont[],
   const selected=[...new Set(removalsByRect(walk.glyphs,overlay.coverRects).flatMap(h=>[...h]))];
   if(!selected.length||selected.some(g=>safety.unsafe.has(g.opIndex)))return null;
   const e=streamReflowEvidence(page,content,fonts,selected[0]!.opIndex,options,replacementFont!==undefined);if(!e)return null;
-  const indices=e.source.flatMap((t,i)=>selected.some(g=>g.opIndex===t.source!.opIndex&&g.arrayItemIndex===t.source!.itemIndex&&g.byteOffset===t.source!.byteStart)?[i]:[]);
+  return planProvedStreamReflow(e,fonts,overlay,environment,replacementFont);
+ }catch(error){
+  if(error instanceof ReflowTraceError||error instanceof RunCompileError||error instanceof Error&&!(error instanceof TypeError||error instanceof ReferenceError))return null;
+  throw error;
+ }
+}
+/** Layout/compile boundary for an already proved immutable stream region.
+ * Evidence production remains separate; this function never widens slots. */
+export function planProvedStreamReflow(e:NonNullable<ReturnType<typeof streamReflowEvidence>>,fonts:readonly ResolvedRunFont[],overlay:ContentTextOverlay,
+ environment:ContentTextEnvironment={},replacementFont?:ResolvedRunFont):PageRunPlan|null{
+ const selected=[...new Set(removalsByRect(e.walk.glyphs,overlay.coverRects).flatMap(h=>[...h]))];
+ if(!selected.length)return null;
+ try{
+  // coreQuad bounds the glyph width; its following gap also contains Tc/Tw.
+  // Carry those measured parameters in the advance for layout/compilation,
+  // retaining only the remaining source displacement as an inter-glyph gap.
+  const source=e.source.map(t=>{
+   const state=e.trace.shows.get(`${t.source!.opIndex}:${t.source!.itemIndex}`)!.before;
+   const f=fonts.find(f=>f.resourceName===t.fontResource&&f.objectId===t.fontObject)!;
+   const code=f.bytesPerCode===1?t.code[0]!:t.code[0]!*256+t.code[1]!;
+   const advance=(f.widthOf(code)*state.size/1000+state.tc+(f.bytesPerCode===1&&code===32?state.tw:0))*linear(state)[0]!*state.tz/100;
+   return {...t,advance,gap:t.gap+t.advance-advance,metrics:{size:state.size,tc:state.tc,tw:state.tw}};
+  });
+  const indices=source.flatMap((t,i)=>selected.some(g=>g.opIndex===t.source!.opIndex&&g.arrayItemIndex===t.source!.itemIndex&&g.byteOffset===t.source!.byteStart)?[i]:[]);
   if(indices.length!==selected.length||indices.some((v,i)=>i>0&&v!==indices[i-1]!+1))return null;
-  const start=indices[0]!,end=indices.at(-1)!+1,old=e.source.slice(start,end),first=old[0]!;
+  const start=indices[0]!,end=indices.at(-1)!+1,old=source.slice(start,end),first=old[0]!;
   const original=normalize(overlay.originalText),replacementText=normalize(overlay.text);
   const sourceLines:string[]=[];
   for(const t of old){const row=t.original!.line-old[0]!.original!.line;sourceLines[row]=(sourceLines[row]??'')+t.unicode;}
@@ -64,16 +87,16 @@ function build(page:PDFPage,content:Uint8Array,fonts:readonly ResolvedRunFont[],
   }
   if(!replacement.length||replacement.at(-1)!.hardAfter)return null;
   const softBreaks:number[]=[];
-  for(let i=0;i<e.source.length-1;i++){
-   const a=e.source[i]!,b=e.source[i+1]!;
+  for(let i=0;i<source.length-1;i++){
+   const a=source[i]!,b=source[i+1]!;
    // The stream itself must show a complete regular visual line AND a legal
    // code boundary. Latin with missing source whitespace stays hard.
    if(a.original!.line!==b.original!.line&&legalMeasuredBreak(a,b))softBreaks.push(a.original!.line);
   }
-  let proof=e.proof,layout=solveMeasuredReflow({source:e.source,replacement,start,end,proof,softBreaks});
+  let proof=e.proof,layout=solveMeasuredReflow({source,replacement,start,end,proof,softBreaks});
   while(!layout.ok&&layout.code==='overflow'){
    const grown=proveDownwardSlot(e,proof);if(!grown)break;
-   proof=grown;layout=solveMeasuredReflow({source:e.source,replacement,start,end,proof,softBreaks});
+   proof=grown;layout=solveMeasuredReflow({source,replacement,start,end,proof,softBreaks});
   }
   if(!layout.ok||layout.strategy==='fixed')return null;
   // A preceding fixed tactic may not use speculative growth; only wrap may.
@@ -87,8 +110,10 @@ function build(page:PDFPage,content:Uint8Array,fonts:readonly ResolvedRunFont[],
     byteStart:0,byteEnd:item.bytes.length,expected:item.bytes.slice(),replacement:''});
   }
   const rejoin=e.trace.ends.get(lastOp)!;
+  const saved=e.trace.shows.get(`${firstOp}:${proof.owned[0]!.itemIndex}`)!.before;
+  const clusters=[...source.slice(0,start),...replacement,...source.slice(end)];
   return {sourceHash:proof.sourceHash,allowExistingCodePermutation:true,...environment,edits,
-   reflow:{...(substituted?{substituted:true}:{}),proof,saved:e.trace.shows.get(`${firstOp}:${proof.owned[0]!.itemIndex}`)!.before,layout,clusters:[...e.source.slice(0,start),...replacement,...e.source.slice(end)],firstOp,lastOp,rejoin}};
+   reflow:{...(substituted?{substituted:true}:{}),proof,saved,layout,clusters,firstOp,lastOp,rejoin}};
  }catch(error){
   if(error instanceof ReflowTraceError||error instanceof RunCompileError||error instanceof Error&&!(error instanceof TypeError||error instanceof ReferenceError))return null;
   throw error;

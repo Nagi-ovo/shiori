@@ -7,7 +7,7 @@ import {runPageEnvironment} from '../contentStreamEdit/replaceRunPage';
 import {runResourceStamp} from '../contentStreamEdit/resourceStamp';
 import type {Type1Options} from '../fontCoverage/type1Support';
 import {detectParagraphRegion,type ParagraphLine,type RegionProof,type Rect,type SourceAddress} from './regionProof';
-import {compatible,contains,intersects,origin,physicalSize,validTrace,linear} from './regionProof/geometry';
+import {paragraphMember,contains,intersects,origin,physicalSize,validTrace,linear} from './regionProof/geometry';
 import {traceReflowSource} from './reflowTrace';
 import {streamInkResolver} from './reflowInk';
 import type {ReflowCodeCluster} from './reflowTypes';
@@ -26,6 +26,7 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
  const ops=tokenizeContentStream(content),sourceHash=sourceFingerprint(content),dependencyHash=runResourceStamp(page);
  const environment=runPageEnvironment(page),unplaced:UnplacedShow[]=[],crop=pageRect(page.getCropBox()),media=pageRect(page.getMediaBox());
  const trace=traceReflowSource(ops,fonts,sourceHash,environment),byName=new Map(fonts.map(f=>[f.resourceName,f]));
+ const anchors=[...trace.anchors.values()];
  const resolveFont=(name:string)=>{const f=byName.get(name);return f?{...f,ok:true as const,appliesWordSpacing:f.bytesPerCode===1}:{ok:false as const,reason:'unmeasurable source font'};};
  const walk=walkTextPlacements(ops,{resolveFont,extGStateSetsFont:name=>environment.extGStates?.get(name)?.setsFont??null,onUnplaced:s=>unplaced.push(s)});
  if(!walk.ok||walk.glyphs.length>16384||followsUnplaced(textObjectScopes(ops),unplaced.filter(s=>!s.advanceKnown).map(s=>s.opIndex),targetOp))return null;
@@ -78,16 +79,24 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
    continue;
   }
   const o=g.coreQuad[0],box={...measured.box,x:o.x+measured.box.x,y:o.y+measured.box.y};
-  if(!unicode||/[\r\n\t\uFFFD]/u.test(unicode)||safety.unsafe.has(g.opIndex)||!compatible(show.before,target)||!compatible(show.after,target)){
+  if(!unicode||/[\r\n\t\uFFFD]/u.test(unicode)||safety.unsafe.has(g.opIndex)||!paragraphMember(show.before,target)||!paragraphMember(show.after,target)){
    // Real whitespace still occupies a text placement for downward clearance.
    obstacles.push(unionReflowBoxes([box,{x:o.x,y:o.y-.2*physicalSize(show.before),w:g.coreQuad[1].x-o.x,h:physicalSize(show.before)}]));continue;
   }
   const address:SourceAddress={streamHash:sourceHash,opIndex:g.opIndex,itemIndex:g.arrayItemIndex,byteStart:g.byteOffset,byteEnd:g.byteOffset+g.byteLength,fontObject:font.objectId};
   let line=lines.at(-1);
-  if(!line||line.anchor.bt!==show.before.bt||Math.abs(origin(line.shows[0]!.before)[1]-o.y)>.01){
-   const anchor=[...trace.anchors.values()].findLast(t=>t.opIndex<g.opIndex&&t.bt===show.before.bt);
-   if(!anchor||!validTrace(anchor))return null;
+  const anchor=anchors.findLast(t=>t.opIndex<g.opIndex&&t.bt===show.before.bt);
+  if(!anchor||!validTrace(anchor))return null;
+  const previous=line?.shows.at(-1),previousAnchor=line?.continuations?.at(-1)??line?.anchor;
+  const continuation=previous&&anchor.opIndex!==previousAnchor?.opIndex;
+  const gap=previous?o.x-origin(previous.after)[0]:0;
+  // A new BT/Td may continue a word/space on the same baseline, but a distant
+  // column is another row candidate, never whitespace capacity for this one.
+  const separated=continuation&&(gap>Math.max(.5,.5*physicalSize(show.before))||gap<-.5);
+  if(!line||Math.abs(origin(line.shows[0]!.before)[1]-o.y)>.01||separated){
    line={anchor,shows:[],ink:null};lines.push(line);
+  }else if(anchor.opIndex!==line.anchor.opIndex&&!line.continuations?.some(t=>t.opIndex===anchor.opIndex)){
+   (line.continuations??=[]).push(anchor);
   }
   if(!line.shows.some(s=>s.source.opIndex===g.opIndex&&s.source.itemIndex===g.arrayItemIndex)){
    const op=ops[g.opIndex]!,item=op.operator==='TJ'&&op.operands[0]?.kind==='array'?op.operands[0].items[g.arrayItemIndex]:op.operands[0];
@@ -95,8 +104,13 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
    line.shows.push({source:{...address,byteStart:0,byteEnd:item.bytes.length},unicode:'',...show});
   }
   line.shows.at(-1)!.unicode+=unicode;line.ink=line.ink?unionReflowBoxes([line.ink,box]):box;
-  const advance=g.coreQuad[1].x-o.x;if(!(advance>0))return null;
-  source.push({unicode,advance,ink:measured.box,em:physicalSize(show.before),wordSpace:font.bytesPerCode===1&&g.code===32,
+  // coreQuad bounds the glyph's nominal width, excluding Tc/Tw. Paragraph
+  // capacity needs its complete measured displacement, including the final
+  // character/space of each show; gaps then contain only real positioning.
+  const t=show.before,scale=linear(t)[0]!*t.tz/100;
+  const advance=(font.widthOf(g.code)*t.size/1000+t.tc+(font.bytesPerCode===1&&g.code===32?t.tw:0))*scale;
+  if(!(advance>0))return null;
+  source.push({unicode,advance,metrics:{size:show.before.size,tc:show.before.tc,tw:show.before.tw},ink:measured.box,em:physicalSize(show.before),wordSpace:font.bytesPerCode===1&&g.code===32,
    fullEmHan:font.widthOf(g.code)===1000,gap:0,original:{line:lines.length-1,x:o.x,y:o.y},source:address,glyph:measured.glyph,
    code:font.bytesPerCode===1?Uint8Array.of(g.code):Uint8Array.of(g.code>>8,g.code&255),fontResource:font.resourceName,fontObject:font.objectId});
  }

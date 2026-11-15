@@ -1,5 +1,5 @@
 import type { ContentOperand } from '../../contentStreamEdit/tokenizer';
-import { matrixEqual, near, origin } from './geometry';
+import { anchorForShow, lineAnchors, matrixEqual, near, origin } from './geometry';
 import type { ParagraphBlocker, ParagraphInput, ParagraphShow, TextTrace, TjBoundary } from './types';
 
 type Failure = { blocker: ParagraphBlocker; detail: string };
@@ -18,7 +18,7 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
   const first = lines[0]!.anchor.opIndex;
   const lastLine = lines.at(-1)!;
   const last = lastLine.shows.at(-1)?.source.opIndex ?? lastLine.anchor.opIndex;
-  const anchors = new Map(lines.map(l => [l.anchor.opIndex, l]));
+  const anchors = new Map(lines.flatMap(l => lineAnchors(l).map(t => [t.opIndex, {line:l, trace:t}] as const)));
   const shows = new Map<string, ParagraphShow>();
   let previous = -1;
   for (const line of lines) {
@@ -26,6 +26,9 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
       return fail('ownership', 'Line anchors are not consecutive in source order');
     }
     previous = line.anchor.opIndex;
+    const positions=lineAnchors(line);
+    if(positions.some((t,i)=>!Number.isInteger(t.opIndex)||i>0&&t.opIndex<=positions[i-1]!.opIndex||
+      t.opIndex>=(line.shows.at(-1)?.source.opIndex??Infinity)))return fail('ownership','Invalid same-line anchor order');
     let previousItem = -2;
     for (const show of line.shows) {
       const s = show.source;
@@ -71,9 +74,9 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
   if(bt!==-1||graphics||marked)return fail('operators','Unterminated source scope');
   const baseFill=fillAt.get(lines[0]!.shows[0]?.source.opIndex??first);
   for(const line of lines){
-    if(owners.get(line.anchor.opIndex)!==line.anchor.bt)return fail('state','Anchor BT snapshot differs from source');
+    if(lineAnchors(line).some(t=>owners.get(t.opIndex)!==t.bt))return fail('state','Anchor BT snapshot differs from source');
     for(const show of line.shows)if(owners.get(show.source.opIndex)!==show.before.bt||show.after.bt!==show.before.bt||
-      show.before.bt!==line.anchor.bt)
+      show.before.bt!==anchorForShow(line,show.source.opIndex)?.bt)
       return fail('state','Show BT differs from source paragraph');
     if(line.shows.some(show=>fillAt.get(show.source.opIndex)!==baseFill))return fail('operators','Paragraph fill state differs across graphics scopes');
   }
@@ -83,26 +86,26 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
   let anchored = false, endpoint = origin(cursor)[0];
   const parameters:TextTrace[]=[];
   const endpoints: number[] = [];
+  let currentLine=lines[0];
   for (let i = first; i <= last; i++) {
     const op = ops[i]!;
     if (['Tm', 'Td', 'TD', 'T*'].includes(op.operator)) {
-      const line = anchors.get(i);
-      if (!line) return fail('operators', 'Unowned position anchor interleaves the paragraph');
-      const t = line.anchor;
+      const entry = anchors.get(i);
+      if (!entry) return fail('operators', 'Unowned position anchor interleaves the paragraph');
+      const {line,trace:t} = entry;
       if (op.operator === 'Tm') {
         const n = numbers(op.operands, 6);
         if (!n || !matrixEqual(n, t.tm) || !matrixEqual(t.tm, t.tlm)) {
           return fail('operators', 'Tm operands and full anchor snapshot disagree');
         }
       } else {
-        const prev = lines[lines.indexOf(line) - 1];
         // A relative first anchor needs a pre-candidate Tlm proof, not supplied
         // by this bounded seam. Later relative anchors are checked exactly.
-        if (!prev && (!beforeFirst || beforeFirst.bt!==t.bt || beforeFirst.opIndex!==i-1)) return fail('operators', 'First anchor requires an absolute Tm snapshot');
+        if (i===first && (!beforeFirst || beforeFirst.bt!==t.bt || beforeFirst.opIndex!==i-1)) return fail('operators', 'First anchor requires an absolute Tm snapshot');
         const n = numbers(op.operands, op.operator === 'T*' ? 0 : 2);
         if (!n) return fail('operators', 'Malformed relative anchor');
         const dx = n[0] ?? 0, dy = op.operator === 'T*' ? -t.leading : n[1]!;
-        const m = prev ? cursor.tlm : beforeFirst!.tlm;
+        const m = i===first ? beforeFirst!.tlm : cursor.tlm;
         const expected = [m[0]!, m[1]!, m[2]!, m[3]!,
           m[4]! + dx * m[0]! + dy * m[2]!, m[5]! + dx * m[1]! + dy * m[3]!];
         if (!matrixEqual(t.tm, expected) || !matrixEqual(t.tlm, expected) ||
@@ -110,7 +113,8 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
           return fail('operators', 'Relative anchor disagrees with saved Tlm');
         }
       }
-      if (anchored) endpoints.push(endpoint);
+      if (anchored&&line!==currentLine) endpoints.push(endpoint);
+      currentLine=line;
       cursor = t; anchored = true; endpoint=origin(t)[0];
       continue;
     }
