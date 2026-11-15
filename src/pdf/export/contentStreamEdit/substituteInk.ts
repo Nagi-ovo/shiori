@@ -7,9 +7,13 @@ import type {ResolvedRunFont} from './replaceRun';
 import type {Rect} from '../contentText/regionProof';
 import {simpleNames} from '../fontCoverage/encodings';
 import {proveType3Glyph} from '../fontCoverage/type3Proof';
+import {validRect} from '../contentText/regionProof/geometry';
 const box=(dict:PDFDict|undefined):Rect|undefined=>{
  const a=dict?.lookupMaybe(PDFName.of('FontBBox'),PDFArray)?.asArray().map(v=>dict.context.lookup(v)).map(v=>v instanceof PDFNumber?v.asNumber():NaN);
- if(a?.length===4&&a.every(Number.isFinite)&&a[2]!>=a[0]!&&a[3]!>=a[1]!)return {x:a[0]!/1000,y:a[1]!/1000,w:(a[2]!-a[0]!)/1000,h:(a[3]!-a[1]!)/1000};
+ if(a?.length===4&&a.every(Number.isFinite)&&a[2]!>a[0]!&&a[3]!>a[1]!){
+  const b={x:a[0]!/1000,y:a[1]!/1000,w:(a[2]!-a[0]!)/1000,h:(a[3]!-a[1]!)/1000};
+  if(validRect(b)&&b.w>0&&b.h>0)return b;
+ }
 };
 /** Source addressing never enables source encoding. Prefer embedded outlines;
  * otherwise require the declared font envelope (not the selection's quad).
@@ -23,9 +27,12 @@ export function substituteInk(page:PDFPage,fonts:readonly ResolvedRunFont[]){
   const input=fontInputFromDict(raw),child=raw.lookupMaybe(PDFName.of('DescendantFonts'),PDFArray)?.lookup(0,PDFDict);
   const descriptor=(child??raw).lookupMaybe(PDFName.of('FontDescriptor'),PDFDict);
   const declared=box(raw)??box(descriptor),matrix=input.subtype==='Type3'?input.fontMatrix:undefined;
-  const envelope=declared&&matrix?{x:declared.x*1000*matrix[0]!,y:declared.y*1000*matrix[3]!,w:declared.w*1000*matrix[0]!,h:declared.h*1000*matrix[3]!}:declared;
+  let envelope=declared&&matrix?{x:declared.x*1000*matrix[0]!,y:declared.y*1000*matrix[3]!,w:declared.w*1000*matrix[0]!,h:declared.h*1000*matrix[3]!}:declared;
   let program:ReturnType<typeof readProgram>|undefined;
   try{program=readProgram(input);}catch{/* Width-only addressing does not require a reusable program. */}
+  // As with reflow ink, CFF top/FD transforms invalidate a /1000 fallback,
+  // including when FontFile3 decoding fails before the program is available.
+  if(descriptor?.has(PDFName.of('FontFile3'))||program?.kind==='fontkit'&&program.cff)envelope=undefined;
   let type1Names:ReadonlyMap<number,string>|undefined;
   if(program?.kind==='type1')try{type1Names=simpleNames(input,program.builtIn);}catch{/* An unknown glyph map leaves only the declared envelope. */}
   const coverage=createFontCoverage(input.toUnicode&&!runToUnicode(input.toUnicode,font.bytesPerCode)&&font.bytesPerCode===1&&input.encoding?{...input,toUnicode:undefined}:input);
@@ -48,6 +55,7 @@ export function substituteInk(page:PDFPage,fonts:readonly ResolvedRunFont[]){
  }
  return (name:string,code:number)=>resolvers.get(name)?.(code);
 }
-/** Keep a raster guard around proved outlines and declared envelopes. */
+/** Keep a raster guard around proved outlines and declared envelopes.
+ * Zero-area declarations are rejected above; empty outlines alone skip it. */
 export const inkCovered=(ink:Rect,covers:readonly Rect[],guard=.5)=>ink.w===0&&ink.h===0||covers.some(r=>
  ink.x-guard>=r.x-1e-7&&ink.x+ink.w+guard<=r.x+r.w+1e-7&&ink.y-guard>=r.y-1e-7&&ink.y+ink.h+guard<=r.y+r.h+1e-7);

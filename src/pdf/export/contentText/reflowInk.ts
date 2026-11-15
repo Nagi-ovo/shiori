@@ -39,7 +39,7 @@ function cffHulls(raw:Uint8Array){
  };
 }
 export type ReflowInk={box:Rect;glyph?:GlyphIdentity;conservative:boolean};
-/** Outlines are preferred; a declared PDF FontBBox is conservative ink,
+/** Outlines are preferred; a positive-area PDF FontBBox is conservative ink,
  * independent of source encoding eligibility. No selection, advance or em
  * metric can fill a missing envelope. Unproved composites stay unknown. */
 export function streamInkResolver(page:PDFPage,fonts:readonly ResolvedRunFont[],options:Type1Options={},_addressOnly=false){
@@ -53,9 +53,12 @@ export function streamInkResolver(page:PDFPage,fonts:readonly ResolvedRunFont[],
   const matrix=numericArray(raw,'FontMatrix');
   if(matrix&&(matrix.length!==6||matrix.some((n,i)=>n!==[.001,0,0,.001,0,0][i])))continue;
   const declared=numericArray(raw,'FontBBox')??(descriptor?numericArray(descriptor,'FontBBox'):undefined);
-  const envelope=declared?.length===4&&declared.every(Number.isFinite)&&declared[2]!>=declared[0]!&&declared[3]!>=declared[1]!
+  let envelope=declared?.length===4&&declared.every(Number.isFinite)&&declared[2]!>declared[0]!&&declared[3]!>declared[1]!
    ?{x:declared[0]!/1000,y:declared[1]!/1000,w:(declared[2]!-declared[0]!)/1000,h:(declared[3]!-declared[1]!)/1000}:undefined;
-  const fallback=():ReflowInk|undefined=>envelope?{box:envelope,conservative:true}:undefined;
+  const fallback=():ReflowInk|undefined=>envelope&&validRect(envelope)&&envelope.w>0&&envelope.h>0?{box:envelope,conservative:true}:undefined;
+  // FontFile3 may carry CFF top/FD transforms even when its parser throws.
+  // Only a proved transformed hull can replace this unknown envelope.
+  if(descriptor?.has(PDFName.of('FontFile3')))envelope=undefined;
   // A declaration bounds source paint even when an unsupported dictionary
   // idiom prevents program reuse. The encoder retains its independent gate.
   byName.set(font.resourceName,fallback);
@@ -70,6 +73,9 @@ export function streamInkResolver(page:PDFPage,fonts:readonly ResolvedRunFont[],
   const coverage=input.toUnicode&&!runToUnicode(input.toUnicode,font.bytesPerCode)&&font.bytesPerCode===1&&input.encoding?
    createFontCoverage({...input,toUnicode:undefined},options):fontCoverageFromDict(raw,options),hash=sourceFingerprint(input.program);
   if(program.kind==='fontkit'){
+   // Also cover CFF programs embedded outside the usual FontFile3 slot.
+   // Missing GIDs and per-glyph failures must not restore a /1000 box.
+   if(program.cff)envelope=undefined;
    let hull:((gid:number)=>Rect|undefined)|undefined;
    try{hull=program.cff?cffHulls(input.program):program.inkBox;}catch{continue;}if(!hull)continue;
    byName.set(font.resourceName,code=>{

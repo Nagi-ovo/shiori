@@ -38,8 +38,11 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   const matrix=numericArray(raw,'FontMatrix');
   if(matrix&&(matrix.length!==6||matrix.some((n,i)=>n!==[.001,0,0,.001,0,0][i])))return;
   const child=raw.lookupMaybe(PDFName.of('DescendantFonts'),PDFArray)?.lookup(0,PDFDict),descriptor=(child??raw).lookupMaybe(PDFName.of('FontDescriptor'),PDFDict);
+  // An unmeasured CFF may require an unknown top/FD transform. Its /1000
+  // declaration cannot grant scene clearance either.
+  if(descriptor?.has(PDFName.of('FontFile3')))return;
   const b=numericArray(raw,'FontBBox')??(descriptor?numericArray(descriptor,'FontBBox'):undefined);
-  return b?.length===4&&b.every(Number.isFinite)&&b[2]!>=b[0]!&&b[3]!>=b[1]!?b:undefined;
+  return b?.length===4&&b.every(Number.isFinite)&&b[2]!>b[0]!&&b[3]!>b[1]!?b:undefined;
  };
  // A known origin plus a declared vertical envelope bounds an unknown
  // horizontal advance to a strip. Missing envelopes/rotation occupy the page.
