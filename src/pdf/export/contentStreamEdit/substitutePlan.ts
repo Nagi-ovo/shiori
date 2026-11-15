@@ -54,7 +54,7 @@ export function planSubstitution(content:Uint8Array,fonts:SubstituteSourceFont[]
   if(!state||Math.abs((state.fontSizePt??state.fontSize)-overlay.fontSize)>.05||state.fontSize<=0||state.advanceVector.x<=0||Math.abs(state.advanceVector.y)>.01)fail('unsupported source size or matrix','unsupported-matrix');
   for(const g of glyphs){
    const measured=ink?.(g.fontName,g.code);
-   if(!measured)fail('unknown source ink bounds');
+   if(!measured)fail('source ink bounds unproved','overflow');
    const sx=state.fontSize*state.advanceVector.x,sy=state.fontSizePt??state.fontSize;
    if(!inkCovered({x:g.coreQuad[0].x+measured.x*sx,y:g.coreQuad[0].y+measured.y*sy,w:measured.w*sx,h:measured.h*sy},overlay.coverRects))fail('source ink exceeds safe cover','overflow');
   }

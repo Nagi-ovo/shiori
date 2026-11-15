@@ -2,13 +2,18 @@ import {expect,test} from 'bun:test';
 import {readFile} from 'node:fs/promises';
 import {PDFArray,PDFDict,PDFDocument,PDFName,PDFRawStream} from 'pdf-lib';
 import {applyContentTextEdits} from './apply';
-import {fixture,overlay as originalOverlay} from './fixtures.test-support';
+import {fixture as originalFixture,overlay as originalOverlay} from './fixtures.test-support';
 import {inspectRunPage,resolveRunFonts} from '../contentStreamEdit/replaceRunPage';
 import {walkTextPlacements} from '../contentStreamEdit/textState';
 import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {type1Fixture} from './type1Wiring.test-support';
 
 const overlay=(patch:Parameters<typeof originalOverlay>[0]={})=>originalOverlay({coverRects:[{x:49,y:97,w:32,h:14}],...patch});
+async function fixture(stream?:string){
+ const f=await originalFixture(stream),font=f.page.node.Resources()!.lookup(PDFName.of('Font'),PDFDict).lookup(PDFName.of('F1'),PDFDict);
+ font.set(PDFName.of('FontDescriptor'),f.doc.context.obj({FontBBox:[0,-200,600,800],Ascent:800,Descent:-200}));
+ return f;
+}
 const loadFont=(name:string)=>readFile(name.startsWith('Noto')?`src/assets/fonts/${name}`:`node_modules/@docx-editor.dev/fonts/assets/${name}`);
 function savedText(page:import('pdf-lib').PDFPage){
  const source=inspectRunPage(page);if(!source.ok)throw Error(source.reason);

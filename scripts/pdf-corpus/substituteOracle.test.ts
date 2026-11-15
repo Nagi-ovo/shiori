@@ -28,7 +28,7 @@ test('native substitution exports preserve all outside pixels, search text and v
   for(const [name,base,text]of [['times','Times-Roman','AX'],['calibri','Calibri','AX'],['cambria','Cambria','AX'],['han','Times-Roman','漢'],['kana','Times-Roman','かな'],['type3','Courier','AX']]as const){
    const f=await fixture('q 0.8 0.9 1 rg 0 0 300 200 re f Q BT /F1 10 Tf 50 100 Td (ABCDE) Tj [-1000] TJ (Z) Tj ET');
    const font=f.page.node.Resources()!.lookup(PDFName.of('Font'),PDFDict).lookup(PDFName.of('F1'),PDFDict);
-   font.set(PDFName.of('BaseFont'),PDFName.of(base));font.delete(PDFName.of('ToUnicode'));
+   font.set(PDFName.of('BaseFont'),PDFName.of(base));font.delete(PDFName.of('ToUnicode'));font.set(PDFName.of('FontDescriptor'),f.doc.context.obj({FontBBox:[0,-200,600,800],Ascent:800,Descent:-200}));
    if(name==='type3'){
     font.set(PDFName.of('Subtype'),PDFName.of('Type3'));font.set(PDFName.of('FontMatrix'),f.doc.context.obj([.001,0,0,.001,0,0]));font.set(PDFName.of('FontBBox'),f.doc.context.obj([0,0,600,700]));
     const procs:Record<string,unknown>={};for(const ch of 'ABCDEZ')procs[ch]=f.doc.context.register(f.doc.context.stream(new TextEncoder().encode('600 0 0 0 500 700 d1 0 0 500 700 re f')));

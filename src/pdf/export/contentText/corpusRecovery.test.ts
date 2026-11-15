@@ -13,6 +13,7 @@ const two='BT /F1 10 Tf 14 TL 50 150 Td (S i i i i ) Tj 0 -14 Td (S i) Tj ET';
 
 test('GSA-style malformed ToUnicode codespace retains explicit Encoding and Widths for substitution',async()=>{
  const f=await fixture(),font=f.page.node.Resources()!.lookup(PDFName.of('Font'),PDFDict).lookup(PDFName.of('F1'),PDFDict);
+ font.set(PDFName.of('FontDescriptor'),f.doc.context.obj({FontBBox:[0,-200,600,800],Ascent:800,Descent:-200}));
  font.set(PDFName.of('BaseFont'),PDFName.of('Calibri'));
  font.set(PDFName.of('ToUnicode'),f.doc.context.register(f.doc.context.flateStream('1 begincodespacerange <0000> <ffff> endcodespacerange 1 beginbfrange <20> <7e> <0020> endbfrange')));
  const r=await applyContentTextEdits(f.page,[overlay({text:'ABCDF',coverRects:[{x:49,y:97,w:32,h:14}]})],{loadFont});
@@ -56,7 +57,8 @@ test('an empty trailing space can intersect a tight cover without blocking subst
 });
 test('ordinary negative source kerning does not forbid whole-run substitution',async()=>{
  const f=await fixture('BT /F1 10 Tf 50 100 Td [(AB) 3 (CDE)] TJ ET');
- f.page.node.Resources()!.lookup(PDFName.of('Font'),PDFDict).lookup(PDFName.of('F1'),PDFDict).delete(PDFName.of('ToUnicode'));
+ const font=f.page.node.Resources()!.lookup(PDFName.of('Font'),PDFDict).lookup(PDFName.of('F1'),PDFDict);
+ font.delete(PDFName.of('ToUnicode'));font.set(PDFName.of('FontDescriptor'),f.doc.context.obj({FontBBox:[0,-200,600,800],Ascent:800,Descent:-200}));
  const r=await applyContentTextEdits(f.page,[overlay({text:'AX',coverRects:[{x:49,y:97,w:32,h:14}]})],{loadFont});
  expect(r.outcomes[0]?.mode).toBe('substituted');
 });

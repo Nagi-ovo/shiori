@@ -41,12 +41,13 @@ export function substituteInk(page:PDFPage,fonts:readonly ResolvedRunFont[]){
     const name=type1Names?.get(code),proof=name?program.verify(name):undefined;
     if(proof?.ok&&proof.inkBounds!==undefined){const b=proof.inkBounds;return b?{x:b.x/1000,y:b.y/1000,w:b.w/1000,h:b.h/1000}:{x:0,y:0,w:0,h:0};}
    }
-   if(/^\p{White_Space}+$/u.test(font.unicodeByCode.get(code)??''))return {x:0,y:0,w:0,h:0};
-   return envelope??{x:0,y:font.descentEm,w:font.widthOf(code)/1000,h:font.ascentEm-font.descentEm};
+   // Advances, em metrics and Unicode labels do not bound painted ink.
+   // Unresolved composites retain the full declared envelope or stay unknown.
+   return envelope;
   });
  }
  return (name:string,code:number)=>resolvers.get(name)?.(code);
 }
-/** Keep a raster guard around actual ink; advance/descent boxes need no inset. */
+/** Keep a raster guard around proved outlines and declared envelopes. */
 export const inkCovered=(ink:Rect,covers:readonly Rect[],guard=.5)=>ink.w===0&&ink.h===0||covers.some(r=>
  ink.x-guard>=r.x-1e-7&&ink.x+ink.w+guard<=r.x+r.w+1e-7&&ink.y-guard>=r.y-1e-7&&ink.y+ink.h+guard<=r.y+r.h+1e-7);

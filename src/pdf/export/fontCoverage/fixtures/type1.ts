@@ -12,12 +12,12 @@ export function nums(...values:number[]):number[] {
   return values.flatMap(n=> n>=-107 && n<=107?[n+139]:n>=108 && n<=1131?[247+((n-108)>>8),(n-108)&255]:n<=-108 && n>=-1131?[251+((-n-108)>>8),(-n-108)&255]:[255,(n>>24)&255,(n>>16)&255,(n>>8)&255,n&255]);
 }
 export const widthChar=(width=600)=>Uint8Array.from([...nums(0,width),13,14]);
-export type TinyType1Options={lenIV?:number;glyphs?:Record<string,Uint8Array>;subrs?:Uint8Array[];clear?:string;private?:string;hex?:boolean;encoding?:string;eexecPrefix?:Uint8Array};
+export type TinyType1Options={lenIV?:number;glyphs?:Record<string,Uint8Array>;subrs?:Uint8Array[];clear?:string;private?:string;hex?:boolean;encoding?:string;eexecPrefix?:Uint8Array;fontBBox?:readonly number[]};
 export function tinyType1(o:TinyType1Options={}) {
   const lenIV=o.lenIV??4;
   const char=(bytes:Uint8Array)=>lenIV===-1?bytes:encrypt(join(new Uint8Array(lenIV),bytes),4330);
   const glyphs=o.glyphs??{'.notdef':widthChar(0),A:widthChar(),B:widthChar(),f_i:widthChar()};
-  const clear=ascii(`%!PS-AdobeFont-1.0: Tiny 1.0\n11 dict begin\n/FontName /Tiny def\n/FontType 1 def\n/FontMatrix [0.001 0 0 0.001 0 0] readonly def\n/FontBBox [0 0 600 700] readonly def\n/Encoding ${o.encoding??'StandardEncoding'} def\n${o.clear??''}\ncurrentdict end\ncurrentfile eexec\n`);
+  const clear=ascii(`%!PS-AdobeFont-1.0: Tiny 1.0\n11 dict begin\n/FontName /Tiny def\n/FontType 1 def\n/FontMatrix [0.001 0 0 0.001 0 0] readonly def\n/FontBBox [${(o.fontBBox??[0,0,600,700]).join(' ')}] readonly def\n/Encoding ${o.encoding??'StandardEncoding'} def\n${o.clear??''}\ncurrentdict end\ncurrentfile eexec\n`);
   const privateBytes=join(ascii(`dup /Private 8 dict dup begin\n/RD {string currentfile exch readstring pop} executeonly def\n/ND {noaccess def} executeonly def\n/NP {noaccess put} executeonly def\n/lenIV ${lenIV} def\n${o.private??''}\n/Subrs ${(o.subrs??[]).length} array\n`),
     ...((o.subrs??[]).map((b,i)=>{const data=char(b);return join(ascii(`dup ${i} ${data.length} RD `),data,ascii(' NP\n'));})),
     ascii(`readonly def\n2 index /CharStrings ${Object.keys(glyphs).length} dict dup begin\n`),
