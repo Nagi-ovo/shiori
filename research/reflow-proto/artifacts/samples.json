@@ -1,0 +1,511 @@
+[
+  {
+    "id": "zh-hans-law",
+    "page": 2,
+    "box": [
+      86.64048,
+      445.4762268066406,
+      541.0505399999998,
+      487.9556579589844
+    ],
+    "slots": [
+      {
+        "left": 106.68,
+        "right": 541.0505399999998,
+        "baseline": 479.4
+      },
+      {
+        "left": 86.64048,
+        "right": 541.0505399999998,
+        "baseline": 463.20504
+      },
+      {
+        "left": 86.64048,
+        "right": 541.0505399999998,
+        "baseline": 446.8806
+      }
+    ],
+    "hash": "7f065f09ca089a23356e6cf79f17caed87e4350733fb9e17f9e55e0e506141c9",
+    "url": "https://pdf.hanspub.org/ojls20241212_592923323.pdf",
+    "licence": "CC-BY-4.0",
+    "fonts": [
+      {
+        "name": "FFFIJE+SimSun",
+        "object": "271 0 R",
+        "programKind": "FontFile2",
+        "byteCount": 498296,
+        "verified": "verified"
+      },
+      {
+        "name": "OWOVAM+TimesNewRomanPSMT",
+        "object": "287 0 R",
+        "programKind": "FontFile2",
+        "byteCount": 83571,
+        "verified": "unverified"
+      }
+    ],
+    "source_glyphs": 135,
+    "inferred_spaces": 0,
+    "inferred_space_rules": {
+      "gap>0.12*size": 0,
+      "soft-join-0.25em": 0
+    },
+    "column_clip": {
+      "maxOriginX": null,
+      "excludedGlyphs": 0
+    },
+    "unmatched_native": 1,
+    "unproven_unicode": 0,
+    "native_origin_max": 0.00011749023434504124,
+    "native_origin_mean": 3.096219829437848e-05,
+    "original": "目前人工智能行业发展迅猛，智能系统已经渗漏进人类生活的方方面面，成为人类生活不可或缺的一部分。但是在赞赏人工智能给人类生活带来“质”的飞跃的同时，人类需要思考人工智能的发展是否具有不利的一面，警惕陷入盲目崇拜人工智能的漩涡，尽量降低人工智能发展过程中产生的非理性风险。 ",
+    "source_lines": [
+      "目前人工智能行业发展迅猛，智能系统已经渗漏进人类生活的方方面面，成为人类生活不可或缺的",
+      "一部分。但是在赞赏人工智能给人类生活带来“质”的飞跃的同时，人类需要思考人工智能的发展是否",
+      "具有不利的一面，警惕陷入盲目崇拜人工智能的漩涡，尽量降低人工智能发展过程中产生的非理性风险。 "
+    ]
+  },
+  {
+    "id": "zh-hans-education",
+    "page": 2,
+    "box": [
+      86.65044,
+      252.85787963867188,
+      538.6850400000001,
+      328.1156311035156
+    ],
+    "slots": [
+      {
+        "left": 106.68,
+        "right": 538.6850400000001,
+        "baseline": 319.56
+      },
+      {
+        "left": 86.65044,
+        "right": 538.6850400000001,
+        "baseline": 303.23556
+      },
+      {
+        "left": 86.65044,
+        "right": 538.6850400000001,
+        "baseline": 286.91112000000004
+      },
+      {
+        "left": 86.65044,
+        "right": 538.6850400000001,
+        "baseline": 270.58668000000006
+      },
+      {
+        "left": 86.65044,
+        "right": 538.6850400000001,
+        "baseline": 254.26224000000005
+      }
+    ],
+    "hash": "3abcc0ca71e0660d3e730cb0c4b52d7a02d3e5cd8f1e047c58a4fbf21c56da2a",
+    "url": "https://pdf.hanspub.org/ae2024148_2111167095.pdf",
+    "licence": "CC-BY-4.0",
+    "fonts": [
+      {
+        "name": "GQGGVL+SimSun",
+        "object": "193 0 R",
+        "programKind": "FontFile2",
+        "byteCount": 449428,
+        "verified": "verified"
+      },
+      {
+        "name": "TimesNewRomanPSMT",
+        "object": "215 0 R",
+        "programKind": "missing",
+        "byteCount": 0,
+        "verified": "unverified"
+      },
+      {
+        "name": "STCVHN+SimSun",
+        "object": "80 0 R",
+        "programKind": "FontFile2",
+        "byteCount": 224926,
+        "verified": "unverified"
+      }
+    ],
+    "source_glyphs": 215,
+    "inferred_spaces": 0,
+    "inferred_space_rules": {
+      "gap>0.12*size": 0,
+      "soft-join-0.25em": 0
+    },
+    "column_clip": {
+      "maxOriginX": null,
+      "excludedGlyphs": 0
+    },
+    "unmatched_native": 1,
+    "unproven_unicode": 2,
+    "native_origin_max": 0.00012875976563009317,
+    "native_origin_mean": 3.9269166176215705e-05,
+    "original": "“智能”一词被中国古代的思想家们认为是智慧和能力的总称，最早出现在《荀子·正名篇》：“所以知之在人者谓之知，知有所合谓之智。所以能之在人者谓之能，能有所合谓之能”。在这里，“智”可以理解为认识活动的心理特点，“能”可以理解为实践活动的心理特点。根据霍华德·加德纳的多元智能理论，智能可以分为七个范畴，即语言、逻辑、空间、肢体运作、音乐、人际、内省。所以根据当前人工智能的发展，除了内省人工智能设备无法达到，其他六项内容均可实现。 ",
+    "source_lines": [
+      "“智能”一词被中国古代的思想家们认为是智慧和能力的总称，最早出现在《荀子·正名篇》：“所",
+      "以知之在人者谓之知，知有所合谓之智。所以能之在人者谓之能，能有所合谓之能”。在这里，“智”",
+      "可以理解为认识活动的心理特点，“能”可以理解为实践活动的心理特点。根据霍华德·加德纳的多元",
+      "智能理论，智能可以分为七个范畴，即语言、逻辑、空间、肢体运作、音乐、人际、内省。所以根据当",
+      "前人工智能的发展，除了内省人工智能设备无法达到，其他六项内容均可实现。 "
+    ]
+  },
+  {
+    "id": "zh-hans-ethics",
+    "page": 2,
+    "box": [
+      86.64048,
+      318.7642822265625,
+      538.666116,
+      360.75567626953125
+    ],
+    "slots": [
+      {
+        "left": 106.68,
+        "right": 538.666116,
+        "baseline": 352.2
+      },
+      {
+        "left": 86.64048,
+        "right": 538.666116,
+        "baseline": 336.24408
+      },
+      {
+        "left": 86.64048,
+        "right": 538.666116,
+        "baseline": 320.16864
+      }
+    ],
+    "hash": "66d0ee533b0e86d509915b3b6250341ec37b7115ca2f13217a6a297368afc9cb",
+    "url": "https://pdf.hanspub.org/airr2024134_22610483.pdf",
+    "licence": "CC-BY-4.0",
+    "fonts": [
+      {
+        "name": "OPPKAB+SimSun",
+        "object": "179 0 R",
+        "programKind": "FontFile2",
+        "byteCount": 416506,
+        "verified": "verified"
+      },
+      {
+        "name": "ELHSQV+TimesNewRomanPSMT",
+        "object": "195 0 R",
+        "programKind": "FontFile2",
+        "byteCount": 70443,
+        "verified": "unverified"
+      }
+    ],
+    "source_glyphs": 119,
+    "inferred_spaces": 0,
+    "inferred_space_rules": {
+      "gap>0.12*size": 0,
+      "soft-join-0.25em": 0
+    },
+    "column_clip": {
+      "maxOriginX": null,
+      "excludedGlyphs": 0
+    },
+    "unmatched_native": 1,
+    "unproven_unicode": 3,
+    "native_origin_max": 0.00010614648437012875,
+    "native_origin_mean": 1.869199384682881e-05,
+    "original": "人工智能指的是借助现代科学技术。模拟人类的思维和行为的一门科学技术。人工智能可以帮助使用者以非常快的速度完成要求和目标[1]。在实际发展过程中，人工智能技术得到了完善和发展。希望能够借助人工智能技术来实现一些仅靠人力无法独立完成的任务。 ",
+    "source_lines": [
+      "人工智能指的是借助现代科学技术。模拟人类的思维和行为的一门科学技术。人工智能可以帮助使",
+      "用者以非常快的速度完成要求和目标[1]。在实际发展过程中，人工智能技术得到了完善和发展。希望能",
+      "够借助人工智能技术来实现一些仅靠人力无法独立完成的任务。 "
+    ]
+  },
+  {
+    "id": "arxiv-2611.17030",
+    "page": 2,
+    "box": [
+      70.866,
+      554.4706420898438,
+      291.041528934,
+      755.2432799999999
+    ],
+    "slots": [
+      {
+        "left": 81.775,
+        "right": 291.041528934,
+        "baseline": 746.516
+      },
+      {
+        "left": 70.866,
+        "right": 291.041528934,
+        "baseline": 732.966
+      },
+      {
+        "left": 70.866,
+        "right": 291.041528934,
+        "baseline": 719.417
+      },
+      {
+        "left": 70.866,
+        "right": 291.041528934,
+        "baseline": 705.868
+      },
+      {
+        "left": 70.866,
+        "right": 291.041528934,
+        "baseline": 692.319
+      },
+      {
+        "left": 70.866,
+        "right": 291.041528934,
+        "baseline": 678.77
+      },
+      {
+        "left": 70.866,
+        "right": 291.041528934,
+        "baseline": 665.22
+      },
+      {
+        "left": 70.866,
+        "right": 291.041528934,
+        "baseline": 651.671
+      },
+      {
+        "left": 70.866,
+        "right": 291.041528934,
+        "baseline": 638.122
+      },
+      {
+        "left": 70.866,
+        "right": 291.041528934,
+        "baseline": 624.573
+      },
+      {
+        "left": 70.866,
+        "right": 291.041528934,
+        "baseline": 611.024
+      },
+      {
+        "left": 70.866,
+        "right": 291.041528934,
+        "baseline": 597.474
+      },
+      {
+        "left": 70.866,
+        "right": 291.041528934,
+        "baseline": 583.925
+      },
+      {
+        "left": 70.866,
+        "right": 291.041528934,
+        "baseline": 570.376
+      },
+      {
+        "left": 70.866,
+        "right": 291.041528934,
+        "baseline": 556.827
+      }
+    ],
+    "hash": "40ed8535b15538b6222464c7c910a715e65d4e6d9cb0d24d614663dfffc33fcc",
+    "url": "https://arxiv.org/pdf/2611.17030",
+    "licence": "CC-BY-4.0",
+    "fonts": [
+      {
+        "name": "DLGLUA+NimbusRomNo9L-Regu",
+        "object": "460 0 R",
+        "programKind": "FontFile",
+        "byteCount": 21819,
+        "verified": "unverified"
+      },
+      {
+        "name": "HQAFQS+NimbusRomNo9L-ReguItal",
+        "object": "462 0 R",
+        "programKind": "FontFile",
+        "byteCount": 18513,
+        "verified": "unverified"
+      }
+    ],
+    "source_glyphs": 588,
+    "inferred_spaces": 95,
+    "inferred_space_rules": {
+      "gap>0.12*size": 85,
+      "soft-join-0.25em": 10
+    },
+    "column_clip": {
+      "maxOriginX": 300,
+      "excludedGlyphs": 2057
+    },
+    "unmatched_native": 6,
+    "unproven_unicode": 0,
+    "native_origin_max": 6.41298560708492e-05,
+    "native_origin_mean": 1.764714511670958e-05,
+    "original": "To evaluate post-hoc refinement in high-granularity regimes, we introduce two diagnostics: topic dispersion, which measures distributional bal-ance and penalises mega-topics more heavily than niche ones, and topic discriminability, which mea-sures how well a topic’s representation aligns with its assigned documents relative to non-assigned documents. Across two patent corpora and a legal corpus, we find that 83% of high-similarity topic pairs are rejected as non-redundant by the LLM. EGIM improves topic discriminability by 25–55% over an iterative LLM baseline while preserving over 94% of original topic dispersion across all three corpora, compared to 34–88% for the base-line.",
+    "source_lines": [
+      "Toevaluatepost-hocrefinementinhigh-",
+      "granularityregimes,weintroducetwodiagnostics:",
+      "topicdispersion,whichmeasuresdistributionalbal-",
+      "anceandpenalisesmega-topicsmoreheavilythan",
+      "nicheones,andtopicdiscriminability,whichmea-",
+      "sureshowwellatopic’srepresentationalignswith",
+      "itsassigneddocumentsrelativetonon-assigned",
+      "documents.Acrosstwopatentcorporaandalegal",
+      "corpus,wefindthat83%ofhigh-similaritytopic",
+      "pairsarerejectedasnon-redundantbytheLLM.",
+      "EGIMimprovestopicdiscriminabilityby25–55%",
+      "overaniterativeLLMbaselinewhilepreserving",
+      "over94%oforiginaltopicdispersionacrossall",
+      "threecorpora,comparedto34–88%forthebase-",
+      "line."
+    ]
+  },
+  {
+    "id": "arxiv-2611.17052",
+    "page": 2,
+    "box": [
+      107.532,
+      401.7334899902344,
+      505.74325643199995,
+      490.1024475097656
+    ],
+    "slots": [
+      {
+        "left": 107.532,
+        "right": 505.74325643199995,
+        "baseline": 480.897
+      },
+      {
+        "left": 108,
+        "right": 505.74325643199995,
+        "baseline": 469.988
+      },
+      {
+        "left": 108,
+        "right": 505.74325643199995,
+        "baseline": 459.079
+      },
+      {
+        "left": 108,
+        "right": 505.74325643199995,
+        "baseline": 448.169
+      },
+      {
+        "left": 107.691,
+        "right": 505.74325643199995,
+        "baseline": 437.26
+      },
+      {
+        "left": 108,
+        "right": 505.74325643199995,
+        "baseline": 426.351
+      },
+      {
+        "left": 108,
+        "right": 505.74325643199995,
+        "baseline": 415.442
+      },
+      {
+        "left": 108,
+        "right": 505.74325643199995,
+        "baseline": 404.533
+      }
+    ],
+    "hash": "eb2bee890a619aaa8240c515d8b19e316ba3e69a57b325e3900a126d83a29800",
+    "url": "https://arxiv.org/pdf/2611.17052",
+    "licence": "CC-BY-4.0",
+    "fonts": [
+      {
+        "name": "TRKYGO+NimbusRomNo9L-Regu",
+        "object": "41 0 R",
+        "programKind": "FontFile",
+        "byteCount": 45426,
+        "verified": "unverified"
+      }
+    ],
+    "source_glyphs": 644,
+    "inferred_spaces": 97,
+    "inferred_space_rules": {
+      "gap>0.12*size": 90,
+      "soft-join-0.25em": 7
+    },
+    "column_clip": {
+      "maxOriginX": null,
+      "excludedGlyphs": 0
+    },
+    "unmatched_native": 3,
+    "unproven_unicode": 0,
+    "native_origin_max": 0.00015088499071680417,
+    "native_origin_mean": 2.2273135920988045e-05,
+    "original": "We apply our evaluation pipeline to two corpora of 15 recent astrophysics arXiv preprints and 15 ML preprints, benchmarking SKEPTHICAL alongside eleven additional reviewer systems: six single-LLM reviewers, two Claude Code configurations, and three publicly available external AI reviewers (the Stanford Agentic Reviewer [16], OpenReviewer-8B [8], and the PaperAudit-Bench detector [20]). To our knowledge, our application to the astrophysics corpus is the first controlled comparison of AI peer-reviewer systems on a real, non-ML scientific paper corpus. We release the evaluation pipeline, together with the paper lists, injection catalogues, and full adjudication logs, as a public benchmark at github.com/inigozubeldia/skepthical-benchmark.",
+    "source_lines": [
+      "Weapplyourevaluationpipelinetotwocorporaof15recentastrophysicsarXivpreprintsand15ML",
+      "preprints,benchmarkingSKEPTHICALalongsideelevenadditionalreviewersystems:sixsingle-LLM",
+      "reviewers,twoClaudeCodeconfigurations,andthreepubliclyavailableexternalAIreviewers(the",
+      "StanfordAgenticReviewer[16],OpenReviewer-8B[8],andthePaperAudit-Benchdetector[20]).",
+      "Toourknowledge,ourapplicationtotheastrophysicscorpusisthefirstcontrolledcomparisonofAI",
+      "peer-reviewersystemsonareal,non-MLscientificpapercorpus.Wereleasetheevaluationpipeline,",
+      "togetherwiththepaperlists,injectioncatalogues,andfulladjudicationlogs,asapublicbenchmark",
+      "atgithub.com/inigozubeldia/skepthical-benchmark."
+    ]
+  },
+  {
+    "id": "arxiv-2611.17053",
+    "page": 2,
+    "box": [
+      72,
+      397.94061279296875,
+      302.94739421879996,
+      443.80808
+    ],
+    "slots": [
+      {
+        "left": 81.963,
+        "right": 302.94739421879996,
+        "baseline": 435.838
+      },
+      {
+        "left": 72,
+        "right": 302.94739421879996,
+        "baseline": 423.883
+      },
+      {
+        "left": 72,
+        "right": 302.94739421879996,
+        "baseline": 411.928
+      },
+      {
+        "left": 72,
+        "right": 302.94739421879996,
+        "baseline": 399.973
+      }
+    ],
+    "hash": "5057f4a4be45559fb916b5a89013a976e041afa92743d42dae0c22a1e10abd35",
+    "url": "https://arxiv.org/pdf/2611.17053",
+    "licence": "CC-BY-4.0",
+    "fonts": [
+      {
+        "name": "KCSKHV+SFRM1000",
+        "object": "166 0 R",
+        "programKind": "FontFile",
+        "byteCount": 27015,
+        "verified": "unverified"
+      }
+    ],
+    "source_glyphs": 181,
+    "inferred_spaces": 26,
+    "inferred_space_rules": {
+      "gap>0.12*size": 25,
+      "soft-join-0.25em": 1
+    },
+    "column_clip": {
+      "maxOriginX": 310,
+      "excludedGlyphs": 1804
+    },
+    "unmatched_native": 2,
+    "unproven_unicode": 0,
+    "native_origin_max": 0.2616198477748526,
+    "native_origin_mean": 0.11917983916579124,
+    "original": "Replacing symbolic clinical codes with their natural-language descriptions provides a direct way to exploit the semantic knowledge encoded in pretrained lan-guage models and avoid these preprocessing issues.",
+    "source_lines": [
+      "Replacingsymbolicclinicalcodeswiththeirnatural-",
+      "languagedescriptionsprovidesadirectwaytoexploit",
+      "thesemanticknowledgeencodedinpretrainedlan-",
+      "guagemodelsandavoidthesepreprocessingissues."
+    ]
+  }
+]

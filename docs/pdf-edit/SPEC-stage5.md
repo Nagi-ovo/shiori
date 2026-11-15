@@ -113,7 +113,11 @@ entry points, but the code takes precedence over old broad comments.
 
 1. Keep PDFium as reader/renderer, pdf-lib **1.17.1** as assembler, pure TS
    as compiler, MIT-compatible implementation/data. No MuPDF, new renderer,
-   Rust font stack, page regeneration or fontkit dependence for raw Type1.
+   general Rust font-stack migration, page regeneration or fontkit dependence
+   for raw Type1. The sole Rust addition selected in §4.9 is a bounded layout
+   service; TS retains font/code proof, compilation and PDF writing. The
+   service must not discover OS fonts, subset, embed, or parse Type1/Type3.
+   HarfRust/read-fonts parsing is not width or glyph-identity authority.
 2. Keep fixed-neighbour replacement as the default. Stage-5 reflow is an
    explicit policy with a proven region and moved-glyph manifest, never
    `allowOverflow: true`. Default overflow still refuses.
@@ -140,6 +144,7 @@ entry points, but the code takes precedence over old broad comments.
    result. This follows the prior
    `/workspace/shiori-wt/pdf-edit-mature/SYNTHESIS.md`; its older cap-height,
    quote, typography and Rust proposals are not silently adopted here.
+   §4.9 is the explicit, layout-only Rust exception selected by this task.
 
 ## 2. Shared contracts, diagnostics and measurement
 
@@ -256,6 +261,7 @@ const stage5Reasons = [
   'reflow-context-unsupported', 'reflow-spacing-limit',
   'reflow-obstacle', 'reflow-paragraph-unproven',
   'reflow-paragraph-full', 'reflow-break-unsupported',
+  'layout-metrics-disagreement',
   'clip-unproven', 'clip-target-intersection', 'text-clip-dependent',
   'graphics-state-unresolved', 'graphics-state-font',
   'graphics-effect-unsupported', 'semantic-text-dependent',
@@ -288,12 +294,21 @@ machine value, and `family` permits comparisons with the old report.
 | `cmap-malformed`, `cmap-inheritance-unsupported`, `cmap-predefined-unsupported`, `cmap-code-width-unsupported`, `cff-encoding-unsupported` | `Malformed or conflicting CMap entries`; `Required inherited CMap entries are unresolved`; `Unsupported predefined CMap {name}`; `Source code width is unsupported by the placement compiler`; `Unsupported CFF encoding or supplement` | font-unavailable, except CFF → font-coverage |
 | `reflow-context-unsupported`, `reflow-spacing-limit`, `reflow-obstacle` | `Line ownership or text state cannot be proven`; `Required spacing reduction exceeds the conservative budget`; `Reflow would intersect unowned content` | reflow-required, overflow, overflow respectively |
 | `reflow-paragraph-unproven`, `reflow-paragraph-full`, `reflow-break-unsupported` | `No proven paragraph box for wrapping`; `Replacement does not fit inside the proven paragraph box`; `No supported break at this cluster boundary` | reflow-required |
+| `layout-metrics-disagreement` | `Layout {kind} differs from verified PDF metrics by {errorPt} pt` | reflow-required |
 | `clip-unproven`, `clip-target-intersection`, `text-clip-dependent` | `Active clip geometry cannot be proven`; `Edited ink is not fully contained by the unchanged clip`; `Text contributes to a clipping path` | unsupported-state |
 | `graphics-state-unresolved`, `graphics-state-font`, `graphics-effect-unsupported` | `Graphics state resource cannot be resolved`; `Graphics state changes the source font`; `Unsupported graphics effect at the edit target` | unsupported-state |
 | `semantic-text-dependent`, `marked-content-unresolved`, `invisible-text-layer` | `ActualText, Alt or E depends on the edited text`; `Marked-content properties cannot be resolved`; `Invisible text layer is not a visible content-edit target` | unsupported-state |
 | `content-malformed`, `opaque-content` | `Malformed content or unbalanced state`; `Opaque content prevents a complete edit proof` | unsupported-state |
 | `parser-budget-exceeded` | `Parser resource budget exceeded in {parser}` | Family of the parser that exhausted its budget; see dispatch below |
 | `form-xobject-shared`, `form-xobject-cycle`, `form-xobject-context`, `form-xobject-ambiguous` | `Shared Form invocation cannot be isolated`; `Cyclic Form invocation path`; `Unsupported inherited state or Form semantics`; `Selection matches multiple Form invocations` | form-xobject |
+
+`layout-metrics-disagreement` has family `reflow-required`, including advance,
+boundary, endpoint and origin-space disagreement; its data names the kind,
+measured user-space error and affected cluster/boundary when known.
+`font-metrics-conflict` remains exclusively §3.2's character-space
+program-versus-dictionary width check (family `font-unavailable`, tolerance
+one character-space unit), not a layout-service error. A raw hmtx diagnostic
+in §4.9 does not change either code's meaning.
 
 The existing literals include source-mismatch, ambiguous-match, glyph-boundary,
 cross-item, reflow-required, form-xobject, unsupported-matrix,
@@ -775,6 +790,7 @@ type RegionProof = {
 };
 type MovedGlyph = {
   source: SourceAddress; code: Uint8Array; unicode: string;
+  // PDF user-space pt: copy oldOriginUser / output originUser, never originText.
   oldOrigin: readonly [number, number]; newOrigin: readonly [number, number];
   glyph: GlyphIdentity; ink: Rect;
 };
@@ -1097,12 +1113,281 @@ are prerequisites, not optional follow-up hardening.
 | R7 | R5, R6 | Pure greedy token-to-existing-slot layout with Latin-space/Han breaks. Expected origins specified by hand; bottom/full/unsupported-break tests. |
 | R8 | R7, O1 | Surgical wrapped-tail emitter for one replacement and existing line slots. Native inserted-Tm, untouched next-line/Tlm and exact text/raster fixtures. |
 | R9 | R8 | Atomic multi-overlay ownership checks in existing adapter seam; stale/overlap/refused-hybrid tests. One native two-edit rollback scenario. UI controls remain a later unit. |
+| L1 | R1, B1 | Standalone Rust measured-cluster layout service + mandatory PDF widths/TJ adapter from §4.9. Hand-specified metric/break/kinsoku/overflow failures; unchanged advances and original boundary identity must survive. No writer or app dependency. |
+| L2 | L1, R6, O1b | Versioned JSON/FFI adapter to feed R7 with proven slots and verified source/replacement codes. UTF-8/cluster round trips, stale proof and response validation; no production enablement before R8/O1b/W1. |
 
 Near-term pillar-2 success means spacing-only within the original slot and
 suffix-shift on an **explicit fixture RegionProof**, not a corpus paragraph
 recovery claim. R8 stops at the first precise refusal plus its red fixture;
 extra interleaved operators, boundary idioms or indentation handling are a
 new unit, not more work hidden inside an afternoon emitter task.
+
+### 4.9 Layout engine selection
+
+**Select a PDF-metrics-first bounded Rust layout service**: HarfRust 0.16.0
+for newly needed fallback clusters, unicode-linebreak 0.1.5 for candidate
+breaks, unicode-segmentation 1.12.0 for graphemes and unicode-bidi 0.3.18 as
+an unsupported-direction guard. Keep source-code clusters outside Unicode
+reshaping. A small greedy breaker uses PDF advances, conservative ink and
+the existing slots from `RegionProof`; no OS metrics or font discovery.
+
+The [comparison and evidence record](SPEC-stage5-layout-engine.md) covers
+cosmic-text, Parley/Skrifa/Swash, rustybuzz plus Unicode components,
+SkParagraph and harfbuzzjs, including licenses, platforms, kinsoku,
+justification, fonts, size and maintenance. The archived rustybuzz component
+is replaced by its maintained HarfRust successor; the layered bounded engine
+is the decision, not an unmaintained dependency commitment. Higher-level
+paragraph engines were not shown to accept arbitrary PDF code widths and TJ
+boundaries before breaking. Correcting their output positions afterwards
+would preserve wrong break choices. Exact advances take priority.
+
+This narrows the older “no Rust font stack” boundary in §1.3 only for layout.
+PDFium remains reader/renderer; TS owns verified fonts, source addressing,
+RegionProof, policy/refusal decisions, compensation and Tj/TJ compilation;
+pdf-lib remains assembler. Rust returns layout data, never PDF bytes, a new
+box, an inferred baseline or permission to move an unowned glyph. Web/mobile
+can use the same pure service via WASM later; Android and desktop native
+bindings need their own target gates. No binding or production dependency is
+introduced by the research crate.
+
+L1 is the only later Rust implementation exception to §6's current no-Rust
+scope; web reflow stays off until the same service exists for the worker.
+
+**Wire contract (proposed, version 1).** Reuse §2.1 and §4.2 types below;
+`Bytes` is a JSON integer array of octets (native bindings may use a byte
+buffer), `Matrix` is six finite PDF affine coefficients and offsets are
+**UTF-8 byte offsets** into the specified logical string. TS converts its
+UTF-16 offsets only at checked grapheme/source-code boundaries. Do not split
+a multi-scalar source code/ligature to satisfy the wire encoding.
+
+```ts
+type Bytes = readonly number[];
+type Matrix = readonly [number, number, number, number, number, number];
+type LayoutFont = {
+  fontObject: string; dependencyHash: string; programHash: string;
+  program: { bytes: Bytes; format: 'sfnt-tt' | 'sfnt-cff' | 'raw-cff' }
+    | { handle: string }; // revision-bound registered immutable program
+  // raw-cff means a TS-validated face/handle or TS-prepared SFNT wrapper;
+  // this does not authorize a new Rust raw-CFF parser.
+  // Type1/Type3 parsing stays outside the service, using proven TS records.
+  codes: readonly VerifiedCode[]; // width1000 is PDF /Widths or /W + /DW
+};
+type LayoutCluster = {
+  id: string; logicalUtf8: readonly [number, number]; // sourceLogicalText
+  unicode: string;
+  source: SourceAddress; code: Bytes; glyph: GlyphIdentity;
+  fontObject: string; width1000: number;
+  state: { size: number; ts: number; tc: number; tw: number; tz: number;
+    writingMode: 'horizontal-ltr'; tm: Matrix; ctm: Matrix;
+    singleByteWordSpace: boolean };
+  oldOriginText: readonly [number, number];
+  oldOriginUser: readonly [number, number];
+  advanceText: number; advanceUser: readonly [number, number];
+  inkUser: Rect; // B1/F5 conservative proof, never hmtx used as ink
+};
+type LayoutBoundary = {
+  leftId: string; rightId: string;
+  sourceItems: readonly SourceAddress[];
+  tjNumbers: readonly number[]; // original ordered numeric boundary recipe
+  advanceText: number; advanceUser: readonly [number, number];
+  splittable: boolean; // hint only; recompute from tjNumbers and §4.6
+};
+type LayoutRequestBodyV1 = {
+  version: 1; requestHash: string;
+  sourceHash: string; dependencyHash: string;
+  sourceLogicalText: string; // LayoutCluster.logicalUtf8 refers to this
+  expectedLogicalText: string; // validated source + the item-local replacement
+  sourceLineCount: number; // observed source visual lines, not slot capacity
+  fonts: readonly LayoutFont[]; clusters: readonly LayoutCluster[];
+  boundaries: readonly LayoutBoundary[];
+  replacement: {
+    sourceClusters: readonly string[]; // one item-local selection
+    logicalText: string;
+    codes: readonly { logicalUtf8: readonly [number, number]; // replacement.logicalText
+      verified: VerifiedCode; fontObject: string;
+      stateFromCluster: string; inkUser: Rect }[];
+  };
+  // Both offset fields below refer to expectedLogicalText, not source text.
+  hardBreakUtf8: readonly number[];
+  authorisedVisualSoftBreaks: readonly {
+    logicalUtf8: number; left: SourceAddress; right: SourceAddress;
+    join: 'none' | 'literal-source-space';
+  }[];
+};
+type LayoutRequestV1 = LayoutRequestBodyV1 & (
+  | { policy: Extract<LayoutPolicy, { mode: 'spacing-only' }>;
+      evaluation: 'natural-advances'; // no tightened state/gaps from Rust
+      spacingSlot: { box: Rect; baseline: number; left: number; right: number } }
+  | { policy: Extract<LayoutPolicy, { mode: 'bounded-reflow' }>;
+      spacingSlot?: never; evaluation?: never }
+);
+type LayoutOutputGlyph = {
+  clusterId: string; logicalUtf8: readonly [number, number]; // expectedLogicalText
+  unicode: string; // corresponding expectedLogicalText slice
+  identity: { kind: 'source'; source: SourceAddress; code: Bytes }
+    | { kind: 'replacement'; replacementCodeIndex: number; code: Bytes };
+  glyph: GlyphIdentity; fontObject: string; lineSlot: number;
+  originText: readonly [number, number]; originUser: readonly [number, number];
+  advanceText: number; advanceUser: readonly [number, number]; inkUser: Rect;
+};
+type LayoutOutputBoundary = {
+  leftId: string; rightId: string;
+  advanceText: number; advanceUser: readonly [number, number];
+} & ({ kind: 'retained'; inputBoundaryIndex: number }
+  | { kind: 'new-natural'; inputBoundaryIndex?: never });
+type LayoutResultBodyV1 = {
+  version: 1; requestHash: string; sourceHash: string; dependencyHash: string;
+  // Fit includes advances AND conservative ink, not just character count.
+  fits: boolean;
+  glyphs: readonly LayoutOutputGlyph[];
+  breakUtf8: readonly { utf8: number; kind: 'hard' | 'soft' }[]; // expectedLogicalText
+  boundaries: readonly LayoutOutputBoundary[];
+  spacingRecipes?: never; // only the TS §4.4 solver creates these
+  visualLines: readonly { slot: number; text: string; baseline: number;
+    predictedInk: Rect; glyphRange: readonly [number, number] }[]; // glyph array indexes
+  metrics: { maxAdvanceErrorPt: number; maxEndpointErrorPt: number };
+  // Typed service evidence; TS maps it to §2.2, never message substrings.
+  blocker?: 'metrics' | 'break' | 'capacity' | 'context' | 'bounds';
+};
+type LayoutResultV1 = LayoutResultBodyV1 & (
+  | { mode: 'spacing-only'; evaluation: 'natural-advances'; lineCountChange: 0 }
+  | { mode: 'bounded-reflow'; lineCountChange: number } // after minus before
+);
+```
+
+`fixed-neighbours` never calls this service. In `spacing-only`, Rust only
+answers whether **natural PDF advances** fit the validated original
+`spacingSlot`, without moving unchanged source origins or changing line
+count/ownership. Rust must not tighten gaps, change Tc/Tw or return a
+`SpacingRecipe`; all tightening, cap/clearance checks and scoped recipes stay
+in the TypeScript §4.4 solver. Reject a response that violates this contract.
+For bounded layout require the revision-matching `RegionProof`
+and `maxWrapLines` (at most eight existing slots, 4,096 clusters), not merely
+numbers resembling a paragraph rectangle. There is no unproven-space join:
+softening a source visual break requires §4.2's source-line-to-code round trip.
+Unknown inferred spaces/hyphens refuse. Every input hard break must reappear
+at the same `expectedLogicalText` offset tagged `hard`; a missing tag is
+invalid, never implicitly `soft`. Hard breaks cannot be removed or retagged;
+unsupported break needs map to `reflow-break-unsupported`. Candidate UAX14
+breaks are intersected with the **existing §4.6 Latin-space/plain-Han whitelist**,
+grapheme boundaries and the prohibition filter; this decision does not expand
+the accepted scripts. Justification and hyphenation stay disabled.
+
+Every UTF-8 range is half-open in its named string: source cluster ranges
+use `sourceLogicalText`; replacement-code ranges use
+`replacement.logicalText`; output glyph ranges, both input break fields and
+tagged output breaks use `expectedLogicalText`. Replacement ranges must be
+ordered, adjacent and partition the complete `replacement.logicalText` on
+grapheme boundaries (empty ranges list for an empty replacement). An output
+glyph's Unicode must equal its named slice; visual line text must equal the
+concatenation of `unicode` in its half-open `glyphRange`. `lineCountChange`
+is output visual-line count minus the TS-validated `sourceLineCount`. A hard-break
+offset is immediately after its LF in `expectedLogicalText`; a soft-break
+offset is a cluster boundary and inserts no logical character. For example,
+in `人工智能指的是借助`, `借` starts at JS UTF-16 index 7 but UTF-8 byte 21;
+passing 7 as its UTF-8 offset is invalid.
+
+The codec must bound byte lengths, reject NaN/infinity and unknown
+handles/versions, validate every offset/identity, and compute `requestHash`
+as SHA-256 of the canonical UTF-8 JSON **request body with `requestHash`
+excluded** (sorted object keys, preserved array order, finite JSON numbers).
+A handle resolves only while its registered bytes match `programHash` and
+its dependency set matches `dependencyHash`; invalidate it when the source
+revision changes. Never resolve by BaseFont/system family. `raw-cff` is a
+TypeScript-validated face or SFNT wrapper, not permission for a new Rust CFF
+parser. HarfRust/read-fonts IDs are not glyph identity or width authority.
+Type1/Type3 parsing, subsetting and embedding remain outside the service;
+an unavailable F5 proof remains a precise refusal. HarfRust shapes proposed
+fallback text only during preparation; TS verifies coverage/embedding and
+returns its actual subset codes and
+dictionary metrics for final layout. No hidden fallback occurs in Rust.
+
+**Mandatory PDF metrics adapter.** Compute a horizontal code's text advance
+as `(width1000 / 1000 * size + Tc + eligibleTw) * (Tz / 100)`;
+Tw is eligible only when `singleByteWordSpace` is true **and** the code is
+exactly one byte 0x20. Apply the supplied Tm/CTM linear basis to that vector;
+Ts affects origin/ink, not advance. Retain each
+ordered TJ boundary's signed `-number / 1000 * size * Tz / 100` displacement
+in that same basis. Do not replace it with GPOS kerning or spread it between
+characters. Width authority is `(font object, code, state)`, not GID alone.
+An embedded subset can lack a Unicode cmap; verified code→GID remains usable
+without reshaping unchanged codes. Unknown identity/metrics/bounds refuse.
+
+Apply `tz` once in the advance/cursor calculation; do not also bake it into
+`tm`. `originText` is the text-basis cursor after that single horizontal
+scale and including `ts`; map it through the supplied Tm then CTM to
+`originUser`. The matrices retain their source linear parts, without an
+extra normalization by `tz`. Refuse `layout-metrics-disagreement` if this
+mapped origin differs from `originUser` by more than 0.005 pt. Input
+`oldOriginText` must pass the same mapped-origin check against
+`oldOriginUser`. Copy source
+`oldOriginUser` and output `originUser` to `MovedGlyph.oldOrigin/newOrigin`,
+both in PDF user-space pt; never copy `originText`.
+
+Before returning and again in TS before compilation, compare **every output
+cluster, including replacements**, against its `VerifiedCode` dictionary
+width and validated state, and compare **every retained or new boundary**
+and cumulative endpoint against its authorized PDF displacement, at
+**≤0.005 pt in user space**. Unchanged source clusters and retained TJ
+boundaries remain in this check. A retained boundary must match its indexed
+input recipe; a `new-natural` boundary has zero extra displacement beyond
+the code/state advances, not a guessed hmtx/GPOS adjustment. Recompute
+`splittable` from the actual ordered `tjNumbers`: any nonzero number makes
+that kern boundary unsplittable under §4.6, regardless of the supplied flag.
+Refuse `layout-metrics-disagreement` before inventing any TJ number that
+would force a non-dictionary or non-verified-fallback cluster advance.
+`metrics` reported by Rust does not replace the independent TS calculation.
+This does not remove TS's separately validated rejoin/compensation recipes
+in §4.6; cursor restoration must not disguise a changed glyph advance.
+Raw program hmtx disagreement is a recorded diagnostic when overridden by
+authoritative PDF widths, not an
+automatic excuse to substitute metrics. If adapted output still disagrees,
+never write drifted coordinates. Native PDFium additionally compares original
+source positions and predicted destinations (§6.2); a source/native conflict
+cannot pass merely because the adapter agrees with itself. The existing
+0.01 pt hard oracle limit remains unchanged; 0.005–0.01 pt is investigatory
+and does not satisfy this service's stricter metric handoff.
+
+**TS validation and surgical mapping.** Match all response hashes, consume
+every intended source/replacement identity exactly once and reject any new
+unowned identity/slot/box. TS builds the existing `MovedGlyph[]` and
+`ReflowManifest` (including replacement text/visual lines/spacing recipes and
+saved `TextTrace` rejoin); `LayoutResultV1` is evidence for that manifest,
+not an alternative ownership model. Map metrics/break/capacity/context/bounds
+blockers to `layout-metrics-disagreement` (family `reflow-required`),
+`reflow-break-unsupported`,
+`reflow-paragraph-full`, `reflow-context-unsupported`,
+`glyph-bounds-unavailable` respectively. Stale sources, obstacle failures and
+bad RegionProofs remain TS decisions with their existing precise codes.
+
+1. Preserve all unmoved prefix/suffix codes, dictionary widths, original TJ
+   kern numbers and compensation. Shorter edits preserve suffix origins and
+   intentional gaps (§4.1); they do not request paragraph compaction.
+2. A single selection/replacement cannot cross TJ string items. Relocate
+   following owned items independently, with original byte slices/addresses;
+   never concatenate them into a newly encoded paragraph string. Preserve
+   ordered TJ numbers between their original pair of items. If wrapping would
+   split a nonzero-kern boundary, refuse as in §4.6.
+3. New line starts use only §4.6's contiguous Tj/TJ window, permitted relative
+   moves and explicitly owned/replayed anchor-Tm operators. Never rewrite BT,
+   drop an interleaved operator, reset the whole text object or ask Rust for
+   content-stream bytes. Scoped spacing/font recipes restore exact state.
+4. Reflow changes **only the position invariant for its owned glyphs**.
+   Restore saved Tlm and Tm with the proven anchor plus residual number-only
+   TJ recipe, not q/Q. Unowned origins and rejoin endpoints remain exact;
+   rewalk the compiled bytes independently before one atomic installation.
+5. Keep this service and R7/R8 **default-off** until native PDFium O1b gates
+   are green: original/replacement identity and ink, predicted moved origins,
+   untouched neighbours, Tlm-relative next line, zero outside-region pixels,
+   extraction and clean qpdf. Unit layouts and debug PNGs do not enable it.
+
+The standalone [research prototype](../../research/reflow-proto/README.md)
+uses six real corpus paragraphs and fixed observed boxes, records all edit
+outcomes plus identity controls, and draws debug layouts. Its manually chosen
+regions, inferred spaces and unimplemented stream writer are explicit
+limitations; it is **not** a passing RegionProof/native rewrite gate or a
+corpus-wide recovery measurement. L1/L2 above bound the later implementation;
+R7/R8 retain their refusal-first scope and §7 is unchanged.
 
 ## 5. Pillar 3 — proven state dependencies and Form invocations
 
@@ -1827,6 +2112,9 @@ bar.
 
 ## 9. Remaining questions and first next steps
 
+Layout-engine choice and the L1/L2 adapter units are specified in §4.9/§4.8;
+the research spike adds no O0 acceptance credit and does not enable reflow.
+
 These do not block implementation of the read-only/schema units:
 
 1. O0/F1/S1 inventory: which exact metric/Unicode/font/state blockers explain
@@ -1870,8 +2158,8 @@ not a speculative wholesale editor rewrite.
 This revision applies **all P0/P1 and must-fix/catalog P2 findings** in
 `GROK-REVIEW.md` as directed by `FIX-PROMPT.txt`. The measured baseline and
 actual detail strings are unchanged. The diagnostic catalog keeps the same
-typed-union/message/family structure, extended from 53 to **54** proposed
-codes by `glyph-identity-conflict`.
+typed-union/message/family structure, extended from 53 to **55** proposed
+codes by `glyph-identity-conflict` and `layout-metrics-disagreement`.
 
 | Review finding | Applied decision / location |
 |---|---|
@@ -1899,3 +2187,24 @@ not silently added to this pass. O0/F1/X1 diagnostic runs and native
 implementation fixtures remain future implementation work; this task edits
 the specification/status only and claims no new production acceptance or
 runtime test results.
+
+### 10.1 Layout-engine review revision
+
+This follow-up applies all eight P1s and the concrete P2s in the layout-engine
+`GROK-REVIEW.md` / `FIX-PROMPT.txt`; the earlier disposition table above is
+unchanged. §2.2 separates `layout-metrics-disagreement` (`reflow-required`)
+from the original character-space `font-metrics-conflict`. §4.9 checks source
+and replacement advances, old/new boundaries, endpoints and text→user
+origins before compilation; TypeScript alone owns spacing tightening. The
+wire types tag hard/soft breaks, bind every UTF-8 base, partition replacement
+ranges and constrain hashes, handles, Tz, Tw and boundary splittability.
+§1.3/§4.9 retain the narrow Rust/parser boundary and worker enablement gate.
+
+The regenerated research report quotes the fixed token-index-8 Chinese
+insertions, identifies heuristic inferred gap/soft-join spaces (cleared of
+copied source glyph identity/proof), and carries the identity-control native
+error into every edit row. Row notes identify indentation, the eight-line
+cap, unsupported punctuation breaks and inferred-space wrapping. The
+extractor's fixed two-column x clipping is explicit. The engine choice is
+unchanged; §6 and §7 remain byte-identical to the pre-revision text, and no
+prototype result earns production acceptance credit or enables reflow.

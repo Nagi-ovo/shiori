@@ -1,0 +1,1451 @@
+{
+  "engine": "PDF metrics + HarfRust 0.16.0 + unicode-linebreak 0.1.5 + unicode-bidi 0.3.18",
+  "kinsoku": [
+    {
+      "note": "unit-advance diagnostic wraps; corpus glyphs use their real PDF metrics",
+      "text": "甲乙（丙丁）戊，己。",
+      "uax_prohibited_candidates": [],
+      "wraps": [
+        {
+          "unit_width": 3,
+          "unsupported": false,
+          "visual_lines": [
+            "甲乙",
+            "（丙",
+            "丁）",
+            "戊，",
+            "己。"
+          ]
+        },
+        {
+          "unit_width": 4,
+          "unsupported": false,
+          "visual_lines": [
+            "甲乙（丙",
+            "丁）戊，",
+            "己。"
+          ]
+        },
+        {
+          "unit_width": 5,
+          "unsupported": false,
+          "visual_lines": [
+            "甲乙（丙",
+            "丁）戊，",
+            "己。"
+          ]
+        },
+        {
+          "unit_width": 6,
+          "unsupported": false,
+          "visual_lines": [
+            "甲乙（丙丁）",
+            "戊，己。"
+          ]
+        }
+      ]
+    },
+    {
+      "note": "unit-advance diagnostic wraps; corpus glyphs use their real PDF metrics",
+      "text": "甲乙《丙丁》戊、己。",
+      "uax_prohibited_candidates": [],
+      "wraps": [
+        {
+          "unit_width": 3,
+          "unsupported": false,
+          "visual_lines": [
+            "甲乙",
+            "《丙",
+            "丁》",
+            "戊、",
+            "己。"
+          ]
+        },
+        {
+          "unit_width": 4,
+          "unsupported": false,
+          "visual_lines": [
+            "甲乙《丙",
+            "丁》戊、",
+            "己。"
+          ]
+        },
+        {
+          "unit_width": 5,
+          "unsupported": false,
+          "visual_lines": [
+            "甲乙《丙",
+            "丁》戊、",
+            "己。"
+          ]
+        },
+        {
+          "unit_width": 6,
+          "unsupported": false,
+          "visual_lines": [
+            "甲乙《丙丁》",
+            "戊、己。"
+          ]
+        }
+      ]
+    },
+    {
+      "note": "unit-advance diagnostic wraps; corpus glyphs use their real PDF metrics",
+      "text": "Han中文（PDF）测试。",
+      "uax_prohibited_candidates": [],
+      "wraps": [
+        {
+          "unit_width": 3,
+          "unsupported": true,
+          "visual_lines": [
+            "Han",
+            "中文"
+          ]
+        },
+        {
+          "unit_width": 4,
+          "unsupported": true,
+          "visual_lines": [
+            "Han中",
+            "文"
+          ]
+        },
+        {
+          "unit_width": 5,
+          "unsupported": false,
+          "visual_lines": [
+            "Han中文",
+            "（PDF）",
+            "测试。"
+          ]
+        },
+        {
+          "unit_width": 6,
+          "unsupported": false,
+          "visual_lines": [
+            "Han中文",
+            "（PDF）测",
+            "试。"
+          ]
+        }
+      ]
+    }
+  ],
+  "release_binary_bytes": 1810448,
+  "rows": [
+    {
+      "after_lines": 3,
+      "baseline_drift_max": 0.0,
+      "before_lines": 3,
+      "edit": "identity",
+      "fits": true,
+      "id": "zh-hans-law",
+      "length_change_percent": 0.0,
+      "line_break_utf8": [
+        129,
+        264,
+        403
+      ],
+      "native_comparison_scope": "remaining-source",
+      "native_identity_control_x_max": 0.00011749023440188466,
+      "native_stationary_x_max": 0.00011749023440188466,
+      "notes": [
+        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "identity-control native source x max 0.000117 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 0,
+      "text": "目前人工智能行业发展迅猛，智能系统已经渗漏进人类生活的方方面面，成为人类生活不可或缺的一部分。但是在赞赏人工智能给人类生活带来“质”的飞跃的同时，人类需要思考人工智能的发展是否具有不利的一面，警惕陷入盲目崇拜人工智能的漩涡，尽量降低人工智能发展过程中产生的非理性风险。 ",
+      "unchanged_count": 135,
+      "visual_lines": [
+        "目前人工智能行业发展迅猛，智能系统已经渗漏进人类生活的方方面面，成为人类生活不可或缺的",
+        "一部分。但是在赞赏人工智能给人类生活带来“质”的飞跃的同时，人类需要思考人工智能的发展是否",
+        "具有不利的一面，警惕陷入盲目崇拜人工智能的漩涡，尽量降低人工智能发展过程中产生的非理性风险。 "
+      ]
+    },
+    {
+      "after_lines": 4,
+      "baseline_drift_max": 0.0,
+      "before_lines": 3,
+      "edit": "insert",
+      "fits": false,
+      "id": "zh-hans-law",
+      "length_change_percent": 4.444444444444451,
+      "line_break_utf8": [
+        129,
+        264,
+        402,
+        421
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.00011749023440188466,
+      "native_stationary_x_max": 0.000010820312468240445,
+      "notes": [
+        "wrap overflow: no additional baseline is authorised",
+        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "identity-control native source x max 0.000117 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 0,
+      "text": "目前人工智能行业在实际应用中发展迅猛，智能系统已经渗漏进人类生活的方方面面，成为人类生活不可或缺的一部分。但是在赞赏人工智能给人类生活带来“质”的飞跃的同时，人类需要思考人工智能的发展是否具有不利的一面，警惕陷入盲目崇拜人工智能的漩涡，尽量降低人工智能发展过程中产生的非理性风险。 ",
+      "unchanged_count": 135,
+      "visual_lines": [
+        "目前人工智能行业在实际应用中发展迅猛，智能系统已经渗漏进人类生活的方方面面，成为人类生",
+        "活不可或缺的一部分。但是在赞赏人工智能给人类生活带来“质”的飞跃的同时，人类需要思考人工智",
+        "能的发展是否具有不利的一面，警惕陷入盲目崇拜人工智能的漩涡，尽量降低人工智能发展过程中产生的",
+        "非理性风险。 "
+      ]
+    },
+    {
+      "after_lines": 3,
+      "baseline_drift_max": 0.0,
+      "before_lines": 3,
+      "edit": "delete",
+      "fits": true,
+      "id": "zh-hans-law",
+      "length_change_percent": -2.9629629629629672,
+      "line_break_utf8": [
+        117,
+        252,
+        391
+      ],
+      "native_comparison_scope": "remaining-source",
+      "native_identity_control_x_max": 0.00011749023440188466,
+      "native_stationary_x_max": 0.00011749023440188466,
+      "notes": [
+        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "identity-control native source x max 0.000117 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 0,
+      "text": "目前行业发展迅猛，智能系统已经渗漏进人类生活的方方面面，成为人类生活不可或缺的一部分。但是在赞赏人工智能给人类生活带来“质”的飞跃的同时，人类需要思考人工智能的发展是否具有不利的一面，警惕陷入盲目崇拜人工智能的漩涡，尽量降低人工智能发展过程中产生的非理性风险。 ",
+      "unchanged_count": 131,
+      "visual_lines": [
+        "目前行业发展迅猛，智能系统已经渗漏进人类生活的方方面面，成为人类生活不可或缺的",
+        "一部分。但是在赞赏人工智能给人类生活带来“质”的飞跃的同时，人类需要思考人工智能的发展是否",
+        "具有不利的一面，警惕陷入盲目崇拜人工智能的漩涡，尽量降低人工智能发展过程中产生的非理性风险。 "
+      ]
+    },
+    {
+      "after_lines": 4,
+      "baseline_drift_max": 0.0,
+      "before_lines": 3,
+      "edit": "+10%",
+      "fits": false,
+      "id": "zh-hans-law",
+      "length_change_percent": 10.370370370370363,
+      "line_break_utf8": [
+        129,
+        264,
+        402,
+        445
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.00011749023440188466,
+      "native_stationary_x_max": 0.000010820312468240445,
+      "notes": [
+        "wrap overflow: no additional baseline is authorised",
+        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "identity-control native source x max 0.000117 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 0,
+      "text": "目前人工智能行业这也需要结合具体情况进行分析发展迅猛，智能系统已经渗漏进人类生活的方方面面，成为人类生活不可或缺的一部分。但是在赞赏人工智能给人类生活带来“质”的飞跃的同时，人类需要思考人工智能的发展是否具有不利的一面，警惕陷入盲目崇拜人工智能的漩涡，尽量降低人工智能发展过程中产生的非理性风险。 ",
+      "unchanged_count": 135,
+      "visual_lines": [
+        "目前人工智能行业这也需要结合具体情况进行分析发展迅猛，智能系统已经渗漏进人类生活的方方",
+        "面面，成为人类生活不可或缺的一部分。但是在赞赏人工智能给人类生活带来“质”的飞跃的同时，人",
+        "类需要思考人工智能的发展是否具有不利的一面，警惕陷入盲目崇拜人工智能的漩涡，尽量降低人工智能",
+        "发展过程中产生的非理性风险。 "
+      ]
+    },
+    {
+      "after_lines": 4,
+      "baseline_drift_max": 0.0,
+      "before_lines": 3,
+      "edit": "+30%",
+      "fits": false,
+      "id": "zh-hans-law",
+      "length_change_percent": 30.37037037037038,
+      "line_break_utf8": [
+        129,
+        264,
+        399,
+        526
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.00011749023440188466,
+      "native_stationary_x_max": 0.000010820312468240445,
+      "notes": [
+        "wrap overflow: no additional baseline is authorised",
+        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "identity-control native source x max 0.000117 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 0,
+      "text": "目前人工智能行业这也需要结合具体情况进行分析，并在实践中持续改进。这也需要结合具体情况进行分析，并发展迅猛，智能系统已经渗漏进人类生活的方方面面，成为人类生活不可或缺的一部分。但是在赞赏人工智能给人类生活带来“质”的飞跃的同时，人类需要思考人工智能的发展是否具有不利的一面，警惕陷入盲目崇拜人工智能的漩涡，尽量降低人工智能发展过程中产生的非理性风险。 ",
+      "unchanged_count": 135,
+      "visual_lines": [
+        "目前人工智能行业这也需要结合具体情况进行分析，并在实践中持续改进。这也需要结合具体情况",
+        "进行分析，并发展迅猛，智能系统已经渗漏进人类生活的方方面面，成为人类生活不可或缺的一部分。",
+        "但是在赞赏人工智能给人类生活带来“质”的飞跃的同时，人类需要思考人工智能的发展是否具有不利",
+        "的一面，警惕陷入盲目崇拜人工智能的漩涡，尽量降低人工智能发展过程中产生的非理性风险。 "
+      ]
+    },
+    {
+      "after_lines": 5,
+      "baseline_drift_max": 0.0,
+      "before_lines": 5,
+      "edit": "identity",
+      "fits": true,
+      "id": "zh-hans-education",
+      "length_change_percent": 0.0,
+      "line_break_utf8": [
+        131,
+        266,
+        400,
+        535,
+        641
+      ],
+      "native_comparison_scope": "remaining-source",
+      "native_identity_control_x_max": 0.00012875976563009317,
+      "native_stationary_x_max": 0.00012875976563009317,
+      "notes": [
+        "indented first slot 106.680 vs 86.650 pt: strict §4.5 refuses",
+        "identity-control native source x max 0.000129 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 0,
+      "text": "“智能”一词被中国古代的思想家们认为是智慧和能力的总称，最早出现在《荀子·正名篇》：“所以知之在人者谓之知，知有所合谓之智。所以能之在人者谓之能，能有所合谓之能”。在这里，“智”可以理解为认识活动的心理特点，“能”可以理解为实践活动的心理特点。根据霍华德·加德纳的多元智能理论，智能可以分为七个范畴，即语言、逻辑、空间、肢体运作、音乐、人际、内省。所以根据当前人工智能的发展，除了内省人工智能设备无法达到，其他六项内容均可实现。 ",
+      "unchanged_count": 215,
+      "visual_lines": [
+        "“智能”一词被中国古代的思想家们认为是智慧和能力的总称，最早出现在《荀子·正名篇》：“所",
+        "以知之在人者谓之知，知有所合谓之智。所以能之在人者谓之能，能有所合谓之能”。在这里，“智”",
+        "可以理解为认识活动的心理特点，“能”可以理解为实践活动的心理特点。根据霍华德·加德纳的多元",
+        "智能理论，智能可以分为七个范畴，即语言、逻辑、空间、肢体运作、音乐、人际、内省。所以根据当",
+        "前人工智能的发展，除了内省人工智能设备无法达到，其他六项内容均可实现。 "
+      ]
+    },
+    {
+      "after_lines": 5,
+      "baseline_drift_max": 0.0,
+      "before_lines": 5,
+      "edit": "insert",
+      "fits": true,
+      "id": "zh-hans-education",
+      "length_change_percent": 2.7906976744185963,
+      "line_break_utf8": [
+        128,
+        263,
+        398,
+        532,
+        659
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.00012875976563009317,
+      "native_stationary_x_max": 6.410156288438884e-6,
+      "notes": [
+        "indented first slot 106.680 vs 86.650 pt: strict §4.5 refuses",
+        "diagnostic breaks after · / 。 are outside §4.6 whitelist",
+        "identity-control native source x max 0.000129 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 0,
+      "text": "“智能”一词被中在实际应用中国古代的思想家们认为是智慧和能力的总称，最早出现在《荀子·正名篇》：“所以知之在人者谓之知，知有所合谓之智。所以能之在人者谓之能，能有所合谓之能”。在这里，“智”可以理解为认识活动的心理特点，“能”可以理解为实践活动的心理特点。根据霍华德·加德纳的多元智能理论，智能可以分为七个范畴，即语言、逻辑、空间、肢体运作、音乐、人际、内省。所以根据当前人工智能的发展，除了内省人工智能设备无法达到，其他六项内容均可实现。 ",
+      "unchanged_count": 215,
+      "visual_lines": [
+        "“智能”一词被中在实际应用中国古代的思想家们认为是智慧和能力的总称，最早出现在《荀子·",
+        "正名篇》：“所以知之在人者谓之知，知有所合谓之智。所以能之在人者谓之能，能有所合谓之能”。",
+        "在这里，“智”可以理解为认识活动的心理特点，“能”可以理解为实践活动的心理特点。根据霍华德",
+        "·加德纳的多元智能理论，智能可以分为七个范畴，即语言、逻辑、空间、肢体运作、音乐、人际、内",
+        "省。所以根据当前人工智能的发展，除了内省人工智能设备无法达到，其他六项内容均可实现。 "
+      ]
+    },
+    {
+      "after_lines": 5,
+      "baseline_drift_max": 0.0,
+      "before_lines": 5,
+      "edit": "delete",
+      "fits": true,
+      "id": "zh-hans-education",
+      "length_change_percent": -1.8604651162790753,
+      "line_break_utf8": [
+        131,
+        266,
+        400,
+        535,
+        629
+      ],
+      "native_comparison_scope": "remaining-source",
+      "native_identity_control_x_max": 0.00012875976563009317,
+      "native_stationary_x_max": 0.00012875976563009317,
+      "notes": [
+        "indented first slot 106.680 vs 86.650 pt: strict §4.5 refuses",
+        "identity-control native source x max 0.000129 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 0,
+      "text": "“智能”一词被中国古代的思想家们认为是智慧和能力的总称，最早出现在《荀子·正名篇》：“所以知之在人者谓之知，知有所合谓之智。所以能之在人者谓之能，能有所合谓之能”。在这里，“智”可以理解为认识活动的心理特点，“能”可以理解为实践活动的心理特点。根据霍华德·加德纳的多元智能理论，智能可以分为七个范畴，即语言、逻辑、空间、肢体运作、音乐、人际、内省。所以根据当前的发展，除了内省人工智能设备无法达到，其他六项内容均可实现。 ",
+      "unchanged_count": 211,
+      "visual_lines": [
+        "“智能”一词被中国古代的思想家们认为是智慧和能力的总称，最早出现在《荀子·正名篇》：“所",
+        "以知之在人者谓之知，知有所合谓之智。所以能之在人者谓之能，能有所合谓之能”。在这里，“智”",
+        "可以理解为认识活动的心理特点，“能”可以理解为实践活动的心理特点。根据霍华德·加德纳的多元",
+        "智能理论，智能可以分为七个范畴，即语言、逻辑、空间、肢体运作、音乐、人际、内省。所以根据当",
+        "前的发展，除了内省人工智能设备无法达到，其他六项内容均可实现。 "
+      ]
+    },
+    {
+      "after_lines": 6,
+      "baseline_drift_max": 0.0,
+      "before_lines": 5,
+      "edit": "+10%",
+      "fits": false,
+      "id": "zh-hans-education",
+      "length_change_percent": 10.232558139534875,
+      "line_break_utf8": [
+        129,
+        263,
+        398,
+        529,
+        664,
+        707
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.00012875976563009317,
+      "native_stationary_x_max": 6.410156288438884e-6,
+      "notes": [
+        "wrap overflow: no additional baseline is authorised",
+        "indented first slot 106.680 vs 86.650 pt: strict §4.5 refuses",
+        "identity-control native source x max 0.000129 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 1,
+      "text": "“智能”一词被中这也需要结合具体情况进行分析，并在实践中持续国古代的思想家们认为是智慧和能力的总称，最早出现在《荀子·正名篇》：“所以知之在人者谓之知，知有所合谓之智。所以能之在人者谓之能，能有所合谓之能”。在这里，“智”可以理解为认识活动的心理特点，“能”可以理解为实践活动的心理特点。根据霍华德·加德纳的多元智能理论，智能可以分为七个范畴，即语言、逻辑、空间、肢体运作、音乐、人际、内省。所以根据当前人工智能的发展，除了内省人工智能设备无法达到，其他六项内容均可实现。 ",
+      "unchanged_count": 215,
+      "visual_lines": [
+        "“智能”一词被中这也需要结合具体情况进行分析，并在实践中持续国古代的思想家们认为是智慧",
+        "和能力的总称，最早出现在《荀子·正名篇》：“所以知之在人者谓之知，知有所合谓之智。所以能之",
+        "在人者谓之能，能有所合谓之能”。在这里，“智”可以理解为认识活动的心理特点，“能”可以理解",
+        "为实践活动的心理特点。根据霍华德·加德纳的多元智能理论，智能可以分为七个范畴，即语言、逻",
+        "辑、空间、肢体运作、音乐、人际、内省。所以根据当前人工智能的发展，除了内省人工智能设备无法",
+        "达到，其他六项内容均可实现。 "
+      ]
+    },
+    {
+      "after_lines": 7,
+      "baseline_drift_max": 0.0,
+      "before_lines": 5,
+      "edit": "+30%",
+      "fits": false,
+      "id": "zh-hans-education",
+      "length_change_percent": 30.232558139534895,
+      "line_break_utf8": [
+        129,
+        264,
+        398,
+        533,
+        667,
+        802,
+        836
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.00012875976563009317,
+      "native_stationary_x_max": 6.410156288438884e-6,
+      "notes": [
+        "wrap overflow: no additional baseline is authorised",
+        "indented first slot 106.680 vs 86.650 pt: strict §4.5 refuses",
+        "identity-control native source x max 0.000129 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 2,
+      "text": "“智能”一词被中这也需要结合具体情况进行分析，并在实践中持续改进。这也需要结合具体情况进行分析，并在实践中持续改进。这也需要结合具体情况进行分析，国古代的思想家们认为是智慧和能力的总称，最早出现在《荀子·正名篇》：“所以知之在人者谓之知，知有所合谓之智。所以能之在人者谓之能，能有所合谓之能”。在这里，“智”可以理解为认识活动的心理特点，“能”可以理解为实践活动的心理特点。根据霍华德·加德纳的多元智能理论，智能可以分为七个范畴，即语言、逻辑、空间、肢体运作、音乐、人际、内省。所以根据当前人工智能的发展，除了内省人工智能设备无法达到，其他六项内容均可实现。 ",
+      "unchanged_count": 215,
+      "visual_lines": [
+        "“智能”一词被中这也需要结合具体情况进行分析，并在实践中持续改进。这也需要结合具体情况",
+        "进行分析，并在实践中持续改进。这也需要结合具体情况进行分析，国古代的思想家们认为是智慧和能",
+        "力的总称，最早出现在《荀子·正名篇》：“所以知之在人者谓之知，知有所合谓之智。所以能之在人",
+        "者谓之能，能有所合谓之能”。在这里，“智”可以理解为认识活动的心理特点，“能”可以理解为实",
+        "践活动的心理特点。根据霍华德·加德纳的多元智能理论，智能可以分为七个范畴，即语言、逻辑、空",
+        "间、肢体运作、音乐、人际、内省。所以根据当前人工智能的发展，除了内省人工智能设备无法达到，",
+        "其他六项内容均可实现。 "
+      ]
+    },
+    {
+      "after_lines": 3,
+      "baseline_drift_max": 0.0,
+      "before_lines": 3,
+      "edit": "identity",
+      "fits": true,
+      "id": "zh-hans-ethics",
+      "length_change_percent": 0.0,
+      "line_break_utf8": [
+        129,
+        264,
+        349
+      ],
+      "native_comparison_scope": "remaining-source",
+      "native_identity_control_x_max": 0.00010614648437012875,
+      "native_stationary_x_max": 0.00010614648437012875,
+      "notes": [
+        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "identity-control native source x max 0.000106 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 0,
+      "text": "人工智能指的是借助现代科学技术。模拟人类的思维和行为的一门科学技术。人工智能可以帮助使用者以非常快的速度完成要求和目标[1]。在实际发展过程中，人工智能技术得到了完善和发展。希望能够借助人工智能技术来实现一些仅靠人力无法独立完成的任务。 ",
+      "unchanged_count": 119,
+      "visual_lines": [
+        "人工智能指的是借助现代科学技术。模拟人类的思维和行为的一门科学技术。人工智能可以帮助使",
+        "用者以非常快的速度完成要求和目标[1]。在实际发展过程中，人工智能技术得到了完善和发展。希望能",
+        "够借助人工智能技术来实现一些仅靠人力无法独立完成的任务。 "
+      ]
+    },
+    {
+      "after_lines": 3,
+      "baseline_drift_max": 0.0,
+      "before_lines": 3,
+      "edit": "insert",
+      "fits": true,
+      "id": "zh-hans-ethics",
+      "length_change_percent": 5.042016806722693,
+      "line_break_utf8": [
+        129,
+        261,
+        367
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.00010614648437012875,
+      "native_stationary_x_max": 0.000010820312468240445,
+      "notes": [
+        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "identity-control native source x max 0.000106 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 0,
+      "text": "人工智能指的是借在实际应用中助现代科学技术。模拟人类的思维和行为的一门科学技术。人工智能可以帮助使用者以非常快的速度完成要求和目标[1]。在实际发展过程中，人工智能技术得到了完善和发展。希望能够借助人工智能技术来实现一些仅靠人力无法独立完成的任务。 ",
+      "unchanged_count": 119,
+      "visual_lines": [
+        "人工智能指的是借在实际应用中助现代科学技术。模拟人类的思维和行为的一门科学技术。人工智",
+        "能可以帮助使用者以非常快的速度完成要求和目标[1]。在实际发展过程中，人工智能技术得到了完善",
+        "和发展。希望能够借助人工智能技术来实现一些仅靠人力无法独立完成的任务。 "
+      ]
+    },
+    {
+      "after_lines": 3,
+      "baseline_drift_max": 0.0,
+      "before_lines": 3,
+      "edit": "delete",
+      "fits": true,
+      "id": "zh-hans-ethics",
+      "length_change_percent": -3.361344537815125,
+      "line_break_utf8": [
+        117,
+        252,
+        337
+      ],
+      "native_comparison_scope": "remaining-source",
+      "native_identity_control_x_max": 0.00010614648437012875,
+      "native_stationary_x_max": 0.00010614648437012875,
+      "notes": [
+        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "identity-control native source x max 0.000106 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 0,
+      "text": "指的是借助现代科学技术。模拟人类的思维和行为的一门科学技术。人工智能可以帮助使用者以非常快的速度完成要求和目标[1]。在实际发展过程中，人工智能技术得到了完善和发展。希望能够借助人工智能技术来实现一些仅靠人力无法独立完成的任务。 ",
+      "unchanged_count": 115,
+      "visual_lines": [
+        "指的是借助现代科学技术。模拟人类的思维和行为的一门科学技术。人工智能可以帮助使",
+        "用者以非常快的速度完成要求和目标[1]。在实际发展过程中，人工智能技术得到了完善和发展。希望能",
+        "够借助人工智能技术来实现一些仅靠人力无法独立完成的任务。 "
+      ]
+    },
+    {
+      "after_lines": 3,
+      "baseline_drift_max": 0.0,
+      "before_lines": 3,
+      "edit": "+10%",
+      "fits": true,
+      "id": "zh-hans-ethics",
+      "length_change_percent": 10.084033613445387,
+      "line_break_utf8": [
+        129,
+        261,
+        385
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.00010614648437012875,
+      "native_stationary_x_max": 0.000010820312468240445,
+      "notes": [
+        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "identity-control native source x max 0.000106 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 0,
+      "text": "人工智能指的是借这也需要结合具体情况进行助现代科学技术。模拟人类的思维和行为的一门科学技术。人工智能可以帮助使用者以非常快的速度完成要求和目标[1]。在实际发展过程中，人工智能技术得到了完善和发展。希望能够借助人工智能技术来实现一些仅靠人力无法独立完成的任务。 ",
+      "unchanged_count": 119,
+      "visual_lines": [
+        "人工智能指的是借这也需要结合具体情况进行助现代科学技术。模拟人类的思维和行为的一门科学",
+        "技术。人工智能可以帮助使用者以非常快的速度完成要求和目标[1]。在实际发展过程中，人工智能技",
+        "术得到了完善和发展。希望能够借助人工智能技术来实现一些仅靠人力无法独立完成的任务。 "
+      ]
+    },
+    {
+      "after_lines": 4,
+      "baseline_drift_max": 0.0,
+      "before_lines": 3,
+      "edit": "+30%",
+      "fits": false,
+      "id": "zh-hans-ethics",
+      "length_change_percent": 30.252100840336137,
+      "line_break_utf8": [
+        129,
+        264,
+        399,
+        457
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.00010614648437012875,
+      "native_stationary_x_max": 0.000010820312468240445,
+      "notes": [
+        "wrap overflow: no additional baseline is authorised",
+        "3 ink envelopes outside fixed box",
+        "indented first slot 106.680 vs 86.640 pt: strict §4.5 refuses",
+        "identity-control native source x max 0.000106 pt"
+      ],
+      "pdf_advance_max": 0.0,
+      "pdf_advance_mean": 0.0,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": 0.0,
+      "raw_font_advance_mean": 0.0,
+      "replacement_fallback_glyphs": 1,
+      "text": "人工智能指的是借这也需要结合具体情况进行分析，并在实践中持续改进。这也需要结合具体情况进助现代科学技术。模拟人类的思维和行为的一门科学技术。人工智能可以帮助使用者以非常快的速度完成要求和目标[1]。在实际发展过程中，人工智能技术得到了完善和发展。希望能够借助人工智能技术来实现一些仅靠人力无法独立完成的任务。 ",
+      "unchanged_count": 119,
+      "visual_lines": [
+        "人工智能指的是借这也需要结合具体情况进行分析，并在实践中持续改进。这也需要结合具体情况",
+        "进助现代科学技术。模拟人类的思维和行为的一门科学技术。人工智能可以帮助使用者以非常快的速度",
+        "完成要求和目标[1]。在实际发展过程中，人工智能技术得到了完善和发展。希望能够借助人工智能技术",
+        "来实现一些仅靠人力无法独立完成的任务。 "
+      ]
+    },
+    {
+      "after_lines": 15,
+      "baseline_drift_max": 0.0,
+      "before_lines": 15,
+      "edit": "identity",
+      "fits": true,
+      "id": "arxiv-2611.17030",
+      "length_change_percent": 0.0,
+      "line_break_utf8": [
+        40,
+        91,
+        143,
+        192,
+        242,
+        296,
+        344,
+        393,
+        443,
+        491,
+        540,
+        588,
+        637,
+        686,
+        691
+      ],
+      "native_comparison_scope": "remaining-source",
+      "native_identity_control_x_max": 0.0000641298560708492,
+      "native_stationary_x_max": 0.0000641298560708492,
+      "notes": [
+        "indented first slot 81.775 vs 70.866 pt: strict §4.5 refuses",
+        "15 source lines exceed Stage-5 eight-line cap",
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "identity-control native source x max 0.000064 pt"
+      ],
+      "pdf_advance_max": 1.7763568394002505e-15,
+      "pdf_advance_mean": 5.060200180264319e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 0,
+      "text": "To evaluate post-hoc refinement in high-granularity regimes, we introduce two diagnostics: topic dispersion, which measures distributional bal-ance and penalises mega-topics more heavily than niche ones, and topic discriminability, which mea-sures how well a topic’s representation aligns with its assigned documents relative to non-assigned documents. Across two patent corpora and a legal corpus, we find that 83% of high-similarity topic pairs are rejected as non-redundant by the LLM. EGIM improves topic discriminability by 25–55% over an iterative LLM baseline while preserving over 94% of original topic dispersion across all three corpora, compared to 34–88% for the base-line.",
+      "unchanged_count": 588,
+      "visual_lines": [
+        "To evaluate post-hoc refinement in high-",
+        "granularity regimes, we introduce two diagnostics: ",
+        "topic dispersion, which measures distributional bal-",
+        "ance and penalises mega-topics more heavily than ",
+        "niche ones, and topic discriminability, which mea-",
+        "sures how well a topic’s representation aligns with ",
+        "its assigned documents relative to non-assigned ",
+        "documents. Across two patent corpora and a legal ",
+        "corpus, we find that 83% of high-similarity topic ",
+        "pairs are rejected as non-redundant by the LLM. ",
+        "EGIM improves topic discriminability by 25–55% ",
+        "over an iterative LLM baseline while preserving ",
+        "over 94% of original topic dispersion across all ",
+        "three corpora, compared to 34–88% for the base-",
+        "line."
+      ]
+    },
+    {
+      "after_lines": 16,
+      "baseline_drift_max": 0.0,
+      "before_lines": 15,
+      "edit": "insert",
+      "fits": false,
+      "id": "arxiv-2611.17030",
+      "length_change_percent": 1.4598540145985384,
+      "line_break_utf8": [
+        31,
+        74,
+        125,
+        172,
+        218,
+        267,
+        319,
+        365,
+        414,
+        463,
+        506,
+        555,
+        598,
+        643,
+        691,
+        701
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.0000641298560708492,
+      "native_stationary_x_max": 1.5258789005656581e-6,
+      "notes": [
+        "wrap overflow: no additional baseline is authorised",
+        "indented first slot 81.775 vs 70.866 pt: strict §4.5 refuses",
+        "15 source lines exceed Stage-5 eight-line cap",
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "wrap uses inferred gap spaces: §4.6 would refuse",
+        "identity-control native source x max 0.000064 pt"
+      ],
+      "pdf_advance_max": 1.7763568394002505e-15,
+      "pdf_advance_mean": 5.060200180264319e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 10,
+      "text": "To carefully evaluate post-hoc refinement in high-granularity regimes, we introduce two diagnostics: topic dispersion, which measures distributional bal-ance and penalises mega-topics more heavily than niche ones, and topic discriminability, which mea-sures how well a topic’s representation aligns with its assigned documents relative to non-assigned documents. Across two patent corpora and a legal corpus, we find that 83% of high-similarity topic pairs are rejected as non-redundant by the LLM. EGIM improves topic discriminability by 25–55% over an iterative LLM baseline while preserving over 94% of original topic dispersion across all three corpora, compared to 34–88% for the base-line.",
+      "unchanged_count": 588,
+      "visual_lines": [
+        "To carefully evaluate post-hoc ",
+        "refinement in high-granularity regimes, we ",
+        "introduce two diagnostics: topic dispersion, which ",
+        "measures distributional bal-ance and penalises ",
+        "mega-topics more heavily than niche ones, and ",
+        "topic discriminability, which mea-sures how well ",
+        "a topic’s representation aligns with its assigned ",
+        "documents relative to non-assigned documents. ",
+        "Across two patent corpora and a legal corpus, we ",
+        "find that 83% of high-similarity topic pairs are ",
+        "rejected as non-redundant by the LLM. EGIM ",
+        "improves topic discriminability by 25–55% over ",
+        "an iterative LLM baseline while preserving ",
+        "over 94% of original topic dispersion across ",
+        "all three corpora, compared to 34–88% for the ",
+        "base-line."
+      ]
+    },
+    {
+      "after_lines": 15,
+      "baseline_drift_max": 0.0,
+      "before_lines": 15,
+      "edit": "delete",
+      "fits": true,
+      "id": "arxiv-2611.17030",
+      "length_change_percent": -1.3138686131386912,
+      "line_break_utf8": [
+        31,
+        82,
+        134,
+        183,
+        233,
+        287,
+        335,
+        384,
+        434,
+        482,
+        531,
+        579,
+        628,
+        677,
+        682
+      ],
+      "native_comparison_scope": "remaining-source",
+      "native_identity_control_x_max": 0.0000641298560708492,
+      "native_stationary_x_max": 0.0000641298560708492,
+      "notes": [
+        "indented first slot 81.775 vs 70.866 pt: strict §4.5 refuses",
+        "15 source lines exceed Stage-5 eight-line cap",
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "identity-control native source x max 0.000064 pt"
+      ],
+      "pdf_advance_max": 1.7763568394002505e-15,
+      "pdf_advance_mean": 5.1299960448196886e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 0,
+      "text": "To post-hoc refinement in high-granularity regimes, we introduce two diagnostics: topic dispersion, which measures distributional bal-ance and penalises mega-topics more heavily than niche ones, and topic discriminability, which mea-sures how well a topic’s representation aligns with its assigned documents relative to non-assigned documents. Across two patent corpora and a legal corpus, we find that 83% of high-similarity topic pairs are rejected as non-redundant by the LLM. EGIM improves topic discriminability by 25–55% over an iterative LLM baseline while preserving over 94% of original topic dispersion across all three corpora, compared to 34–88% for the base-line.",
+      "unchanged_count": 580,
+      "visual_lines": [
+        "To post-hoc refinement in high-",
+        "granularity regimes, we introduce two diagnostics: ",
+        "topic dispersion, which measures distributional bal-",
+        "ance and penalises mega-topics more heavily than ",
+        "niche ones, and topic discriminability, which mea-",
+        "sures how well a topic’s representation aligns with ",
+        "its assigned documents relative to non-assigned ",
+        "documents. Across two patent corpora and a legal ",
+        "corpus, we find that 83% of high-similarity topic ",
+        "pairs are rejected as non-redundant by the LLM. ",
+        "EGIM improves topic discriminability by 25–55% ",
+        "over an iterative LLM baseline while preserving ",
+        "over 94% of original topic dispersion across all ",
+        "three corpora, compared to 34–88% for the base-",
+        "line."
+      ]
+    },
+    {
+      "after_lines": 17,
+      "baseline_drift_max": 0.0,
+      "before_lines": 15,
+      "edit": "+10%",
+      "fits": false,
+      "id": "arxiv-2611.17030",
+      "length_change_percent": 10.948905109489049,
+      "line_break_utf8": [
+        42,
+        87,
+        127,
+        172,
+        223,
+        267,
+        317,
+        366,
+        410,
+        456,
+        501,
+        544,
+        586,
+        633,
+        675,
+        718,
+        766
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.0000641298560708492,
+      "native_stationary_x_max": 1.5258789005656581e-6,
+      "notes": [
+        "wrap overflow: no additional baseline is authorised",
+        "1 ink envelopes outside fixed box",
+        "indented first slot 81.775 vs 70.866 pt: strict §4.5 refuses",
+        "15 source lines exceed Stage-5 eight-line cap",
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "wrap uses inferred gap spaces: §4.6 would refuse",
+        "identity-control native source x max 0.000064 pt"
+      ],
+      "pdf_advance_max": 1.7763568394002505e-15,
+      "pdf_advance_mean": 5.060200180264319e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 75,
+      "text": "To with further analysis of the available evidence and practical implications evaluate post-hoc refinement in high-granularity regimes, we introduce two diagnostics: topic dispersion, which measures distributional bal-ance and penalises mega-topics more heavily than niche ones, and topic discriminability, which mea-sures how well a topic’s representation aligns with its assigned documents relative to non-assigned documents. Across two patent corpora and a legal corpus, we find that 83% of high-similarity topic pairs are rejected as non-redundant by the LLM. EGIM improves topic discriminability by 25–55% over an iterative LLM baseline while preserving over 94% of original topic dispersion across all three corpora, compared to 34–88% for the base-line.",
+      "unchanged_count": 588,
+      "visual_lines": [
+        "To with further analysis of the available ",
+        "evidence and practical implications evaluate ",
+        "post-hoc refinement in high-granularity ",
+        "regimes, we introduce two diagnostics: topic ",
+        "dispersion, which measures distributional bal-ance ",
+        "and penalises mega-topics more heavily than ",
+        "niche ones, and topic discriminability, which mea-",
+        "sures how well a topic’s representation aligns ",
+        "with its assigned documents relative to non-",
+        "assigned documents. Across two patent corpora ",
+        "and a legal corpus, we find that 83% of high-",
+        "similarity topic pairs are rejected as non-",
+        "redundant by the LLM. EGIM improves topic ",
+        "discriminability by 25–55% over an iterative ",
+        "LLM baseline while preserving over 94% of ",
+        "original topic dispersion across all three ",
+        "corpora, compared to 34–88% for the base-line."
+      ]
+    },
+    {
+      "after_lines": 20,
+      "baseline_drift_max": 0.0,
+      "before_lines": 15,
+      "edit": "+30%",
+      "fits": false,
+      "id": "arxiv-2611.17030",
+      "length_change_percent": 29.489051094890506,
+      "line_break_utf8": [
+        42,
+        91,
+        140,
+        182,
+        223,
+        266,
+        317,
+        364,
+        410,
+        459,
+        511,
+        557,
+        606,
+        655,
+        698,
+        747,
+        790,
+        835,
+        883,
+        893
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.0000641298560708492,
+      "native_stationary_x_max": 1.5258789005656581e-6,
+      "notes": [
+        "wrap overflow: no additional baseline is authorised",
+        "2 ink envelopes outside fixed box",
+        "indented first slot 81.775 vs 70.866 pt: strict §4.5 refuses",
+        "15 source lines exceed Stage-5 eight-line cap",
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "wrap uses inferred gap spaces: §4.6 would refuse",
+        "identity-control native source x max 0.000064 pt"
+      ],
+      "pdf_advance_max": 1.7763568394002505e-15,
+      "pdf_advance_mean": 5.060200180264319e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 202,
+      "text": "To with further analysis of the available evidence and practical implications with further analysis of the available evidence and practical implications with further analysis of the available evidence and evaluate post-hoc refinement in high-granularity regimes, we introduce two diagnostics: topic dispersion, which measures distributional bal-ance and penalises mega-topics more heavily than niche ones, and topic discriminability, which mea-sures how well a topic’s representation aligns with its assigned documents relative to non-assigned documents. Across two patent corpora and a legal corpus, we find that 83% of high-similarity topic pairs are rejected as non-redundant by the LLM. EGIM improves topic discriminability by 25–55% over an iterative LLM baseline while preserving over 94% of original topic dispersion across all three corpora, compared to 34–88% for the base-line.",
+      "unchanged_count": 588,
+      "visual_lines": [
+        "To with further analysis of the available ",
+        "evidence and practical implications with further ",
+        "analysis of the available evidence and practical ",
+        "implications with further analysis of the ",
+        "available evidence and evaluate post-hoc ",
+        "refinement in high-granularity regimes, we ",
+        "introduce two diagnostics: topic dispersion, which ",
+        "measures distributional bal-ance and penalises ",
+        "mega-topics more heavily than niche ones, and ",
+        "topic discriminability, which mea-sures how well ",
+        "a topic’s representation aligns with its assigned ",
+        "documents relative to non-assigned documents. ",
+        "Across two patent corpora and a legal corpus, we ",
+        "find that 83% of high-similarity topic pairs are ",
+        "rejected as non-redundant by the LLM. EGIM ",
+        "improves topic discriminability by 25–55% over ",
+        "an iterative LLM baseline while preserving ",
+        "over 94% of original topic dispersion across ",
+        "all three corpora, compared to 34–88% for the ",
+        "base-line."
+      ]
+    },
+    {
+      "after_lines": 8,
+      "baseline_drift_max": 0.0,
+      "before_lines": 8,
+      "edit": "identity",
+      "fits": true,
+      "id": "arxiv-2611.17052",
+      "length_change_percent": 0.0,
+      "line_break_utf8": [
+        100,
+        196,
+        295,
+        389,
+        491,
+        592,
+        695,
+        744
+      ],
+      "native_comparison_scope": "remaining-source",
+      "native_identity_control_x_max": 0.00015088499071680417,
+      "native_stationary_x_max": 0.00015088499071680417,
+      "notes": [
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "identity-control native source x max 0.000151 pt"
+      ],
+      "pdf_advance_max": 4.440892098500626e-16,
+      "pdf_advance_mean": 2.3445703625624425e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 0,
+      "text": "We apply our evaluation pipeline to two corpora of 15 recent astrophysics arXiv preprints and 15 ML preprints, benchmarking SKEPTHICAL alongside eleven additional reviewer systems: six single-LLM reviewers, two Claude Code configurations, and three publicly available external AI reviewers (the Stanford Agentic Reviewer [16], OpenReviewer-8B [8], and the PaperAudit-Bench detector [20]). To our knowledge, our application to the astrophysics corpus is the first controlled comparison of AI peer-reviewer systems on a real, non-ML scientific paper corpus. We release the evaluation pipeline, together with the paper lists, injection catalogues, and full adjudication logs, as a public benchmark at github.com/inigozubeldia/skepthical-benchmark.",
+      "unchanged_count": 644,
+      "visual_lines": [
+        "We apply our evaluation pipeline to two corpora of 15 recent astrophysics arXiv preprints and 15 ML ",
+        "preprints, benchmarking SKEPTHICAL alongside eleven additional reviewer systems: six single-LLM ",
+        "reviewers, two Claude Code configurations, and three publicly available external AI reviewers (the ",
+        "Stanford Agentic Reviewer [16], OpenReviewer-8B [8], and the PaperAudit-Bench detector [20]). ",
+        "To our knowledge, our application to the astrophysics corpus is the first controlled comparison of AI ",
+        "peer-reviewer systems on a real, non-ML scientific paper corpus. We release the evaluation pipeline, ",
+        "together with the paper lists, injection catalogues, and full adjudication logs, as a public benchmark ",
+        "at github.com/inigozubeldia/skepthical-benchmark."
+      ]
+    },
+    {
+      "after_lines": 8,
+      "baseline_drift_max": 0.0,
+      "before_lines": 8,
+      "edit": "insert",
+      "fits": true,
+      "id": "arxiv-2611.17052",
+      "length_change_percent": 1.3440860215053752,
+      "line_break_utf8": [
+        100,
+        195,
+        290,
+        377,
+        473,
+        569,
+        664,
+        754
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.00015088499071680417,
+      "native_stationary_x_max": 4.444451576546271e-6,
+      "notes": [
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "wrap uses inferred gap spaces: §4.6 would refuse",
+        "identity-control native source x max 0.000151 pt"
+      ],
+      "pdf_advance_max": 4.440892098500626e-16,
+      "pdf_advance_mean": 2.3445703625624425e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 10,
+      "text": "We carefully apply our evaluation pipeline to two corpora of 15 recent astrophysics arXiv preprints and 15 ML preprints, benchmarking SKEPTHICAL alongside eleven additional reviewer systems: six single-LLM reviewers, two Claude Code configurations, and three publicly available external AI reviewers (the Stanford Agentic Reviewer [16], OpenReviewer-8B [8], and the PaperAudit-Bench detector [20]). To our knowledge, our application to the astrophysics corpus is the first controlled comparison of AI peer-reviewer systems on a real, non-ML scientific paper corpus. We release the evaluation pipeline, together with the paper lists, injection catalogues, and full adjudication logs, as a public benchmark at github.com/inigozubeldia/skepthical-benchmark.",
+      "unchanged_count": 644,
+      "visual_lines": [
+        "We carefully apply our evaluation pipeline to two corpora of 15 recent astrophysics arXiv preprints ",
+        "and 15 ML preprints, benchmarking SKEPTHICAL alongside eleven additional reviewer systems: six ",
+        "single-LLM reviewers, two Claude Code configurations, and three publicly available external AI ",
+        "reviewers (the Stanford Agentic Reviewer [16], OpenReviewer-8B [8], and the PaperAudit-",
+        "Bench detector [20]). To our knowledge, our application to the astrophysics corpus is the first ",
+        "controlled comparison of AI peer-reviewer systems on a real, non-ML scientific paper corpus. We ",
+        "release the evaluation pipeline, together with the paper lists, injection catalogues, and full ",
+        "adjudication logs, as a public benchmark at github.com/inigozubeldia/skepthical-benchmark."
+      ]
+    },
+    {
+      "after_lines": 8,
+      "baseline_drift_max": 0.0,
+      "before_lines": 8,
+      "edit": "delete",
+      "fits": true,
+      "id": "arxiv-2611.17052",
+      "length_change_percent": -0.8064516129032251,
+      "line_break_utf8": [
+        94,
+        190,
+        289,
+        383,
+        485,
+        586,
+        689,
+        738
+      ],
+      "native_comparison_scope": "remaining-source",
+      "native_identity_control_x_max": 0.00015088499071680417,
+      "native_stationary_x_max": 0.00015088499071680417,
+      "notes": [
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "identity-control native source x max 0.000151 pt"
+      ],
+      "pdf_advance_max": 4.440892098500626e-16,
+      "pdf_advance_mean": 2.3629159835527587e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 0,
+      "text": "We our evaluation pipeline to two corpora of 15 recent astrophysics arXiv preprints and 15 ML preprints, benchmarking SKEPTHICAL alongside eleven additional reviewer systems: six single-LLM reviewers, two Claude Code configurations, and three publicly available external AI reviewers (the Stanford Agentic Reviewer [16], OpenReviewer-8B [8], and the PaperAudit-Bench detector [20]). To our knowledge, our application to the astrophysics corpus is the first controlled comparison of AI peer-reviewer systems on a real, non-ML scientific paper corpus. We release the evaluation pipeline, together with the paper lists, injection catalogues, and full adjudication logs, as a public benchmark at github.com/inigozubeldia/skepthical-benchmark.",
+      "unchanged_count": 639,
+      "visual_lines": [
+        "We our evaluation pipeline to two corpora of 15 recent astrophysics arXiv preprints and 15 ML ",
+        "preprints, benchmarking SKEPTHICAL alongside eleven additional reviewer systems: six single-LLM ",
+        "reviewers, two Claude Code configurations, and three publicly available external AI reviewers (the ",
+        "Stanford Agentic Reviewer [16], OpenReviewer-8B [8], and the PaperAudit-Bench detector [20]). ",
+        "To our knowledge, our application to the astrophysics corpus is the first controlled comparison of AI ",
+        "peer-reviewer systems on a real, non-ML scientific paper corpus. We release the evaluation pipeline, ",
+        "together with the paper lists, injection catalogues, and full adjudication logs, as a public benchmark ",
+        "at github.com/inigozubeldia/skepthical-benchmark."
+      ]
+    },
+    {
+      "after_lines": 9,
+      "baseline_drift_max": 0.0,
+      "before_lines": 8,
+      "edit": "+10%",
+      "fits": false,
+      "id": "arxiv-2611.17052",
+      "length_change_percent": 10.080645161290324,
+      "line_break_utf8": [
+        99,
+        186,
+        271,
+        365,
+        457,
+        549,
+        646,
+        751,
+        819
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.00015088499071680417,
+      "native_stationary_x_max": 4.444451576546271e-6,
+      "notes": [
+        "wrap overflow: no additional baseline is authorised",
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "wrap uses inferred gap spaces: §4.6 would refuse",
+        "identity-control native source x max 0.000151 pt"
+      ],
+      "pdf_advance_max": 4.440892098500626e-16,
+      "pdf_advance_mean": 2.3445703625624425e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 75,
+      "text": "We with further analysis of the available evidence and practical implications apply our evaluation pipeline to two corpora of 15 recent astrophysics arXiv preprints and 15 ML preprints, benchmarking SKEPTHICAL alongside eleven additional reviewer systems: six single-LLM reviewers, two Claude Code configurations, and three publicly available external AI reviewers (the Stanford Agentic Reviewer [16], OpenReviewer-8B [8], and the PaperAudit-Bench detector [20]). To our knowledge, our application to the astrophysics corpus is the first controlled comparison of AI peer-reviewer systems on a real, non-ML scientific paper corpus. We release the evaluation pipeline, together with the paper lists, injection catalogues, and full adjudication logs, as a public benchmark at github.com/inigozubeldia/skepthical-benchmark.",
+      "unchanged_count": 644,
+      "visual_lines": [
+        "We with further analysis of the available evidence and practical implications apply our evaluation ",
+        "pipeline to two corpora of 15 recent astrophysics arXiv preprints and 15 ML preprints, ",
+        "benchmarking SKEPTHICAL alongside eleven additional reviewer systems: six single-LLM ",
+        "reviewers, two Claude Code configurations, and three publicly available external AI reviewers ",
+        "(the Stanford Agentic Reviewer [16], OpenReviewer-8B [8], and the PaperAudit-Bench detector ",
+        "[20]). To our knowledge, our application to the astrophysics corpus is the first controlled ",
+        "comparison of AI peer-reviewer systems on a real, non-ML scientific paper corpus. We release the ",
+        "evaluation pipeline, together with the paper lists, injection catalogues, and full adjudication logs, as ",
+        "a public benchmark at github.com/inigozubeldia/skepthical-benchmark."
+      ]
+    },
+    {
+      "after_lines": 10,
+      "baseline_drift_max": 0.0,
+      "before_lines": 8,
+      "edit": "+30%",
+      "fits": false,
+      "id": "arxiv-2611.17052",
+      "length_change_percent": 30.241935483870975,
+      "line_break_utf8": [
+        103,
+        205,
+        305,
+        397,
+        493,
+        581,
+        678,
+        773,
+        874,
+        969
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.00015088499071680417,
+      "native_stationary_x_max": 4.444451576546271e-6,
+      "notes": [
+        "wrap overflow: no additional baseline is authorised",
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "wrap uses inferred gap spaces: §4.6 would refuse",
+        "identity-control native source x max 0.000151 pt"
+      ],
+      "pdf_advance_max": 4.440892098500626e-16,
+      "pdf_advance_mean": 2.3445703625624425e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 225,
+      "text": "We with further analysis of the available evidence and practical implications with further analysis of the available evidence and practical implications with further analysis of the available evidence and practical implications apply our evaluation pipeline to two corpora of 15 recent astrophysics arXiv preprints and 15 ML preprints, benchmarking SKEPTHICAL alongside eleven additional reviewer systems: six single-LLM reviewers, two Claude Code configurations, and three publicly available external AI reviewers (the Stanford Agentic Reviewer [16], OpenReviewer-8B [8], and the PaperAudit-Bench detector [20]). To our knowledge, our application to the astrophysics corpus is the first controlled comparison of AI peer-reviewer systems on a real, non-ML scientific paper corpus. We release the evaluation pipeline, together with the paper lists, injection catalogues, and full adjudication logs, as a public benchmark at github.com/inigozubeldia/skepthical-benchmark.",
+      "unchanged_count": 644,
+      "visual_lines": [
+        "We with further analysis of the available evidence and practical implications with further analysis of ",
+        "the available evidence and practical implications with further analysis of the available evidence and ",
+        "practical implications apply our evaluation pipeline to two corpora of 15 recent astrophysics arXiv ",
+        "preprints and 15 ML preprints, benchmarking SKEPTHICAL alongside eleven additional reviewer ",
+        "systems: six single-LLM reviewers, two Claude Code configurations, and three publicly available ",
+        "external AI reviewers (the Stanford Agentic Reviewer [16], OpenReviewer-8B [8], and the ",
+        "PaperAudit-Bench detector [20]). To our knowledge, our application to the astrophysics corpus is ",
+        "the first controlled comparison of AI peer-reviewer systems on a real, non-ML scientific paper ",
+        "corpus. We release the evaluation pipeline, together with the paper lists, injection catalogues, and ",
+        "full adjudication logs, as a public benchmark at github.com/inigozubeldia/skepthical-benchmark."
+      ]
+    },
+    {
+      "after_lines": 4,
+      "baseline_drift_max": 0.0,
+      "before_lines": 4,
+      "edit": "identity",
+      "fits": true,
+      "id": "arxiv-2611.17053",
+      "length_change_percent": 0.0,
+      "line_break_utf8": [
+        53,
+        108,
+        157,
+        207
+      ],
+      "native_comparison_scope": "remaining-source",
+      "native_identity_control_x_max": 0.2616198477748526,
+      "native_stationary_x_max": 0.2616198477748526,
+      "notes": [
+        "indented first slot 81.963 vs 72.000 pt: strict §4.5 refuses",
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "remaining-source native source x drift 0.261620 pt exceeds 0.005 pt target",
+        "identity-control native source x max 0.261620 pt exceeds 0.005 pt target"
+      ],
+      "pdf_advance_max": 4.440892098500626e-16,
+      "pdf_advance_mean": 1.962825236906354e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 0,
+      "text": "Replacing symbolic clinical codes with their natural-language descriptions provides a direct way to exploit the semantic knowledge encoded in pretrained lan-guage models and avoid these preprocessing issues.",
+      "unchanged_count": 181,
+      "visual_lines": [
+        "Replacing symbolic clinical codes with their natural-",
+        "language descriptions provides a direct way to exploit ",
+        "the semantic knowledge encoded in pretrained lan-",
+        "guage models and avoid these preprocessing issues."
+      ]
+    },
+    {
+      "after_lines": 5,
+      "baseline_drift_max": 0.0,
+      "before_lines": 4,
+      "edit": "insert",
+      "fits": false,
+      "id": "arxiv-2611.17053",
+      "length_change_percent": 4.8309178743961345,
+      "line_break_utf8": [
+        49,
+        103,
+        152,
+        196,
+        217
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.2616198477748526,
+      "native_stationary_x_max": 0.044914458096855014,
+      "notes": [
+        "wrap overflow: no additional baseline is authorised",
+        "3 ink envelopes outside fixed box",
+        "indented first slot 81.963 vs 72.000 pt: strict §4.5 refuses",
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "wrap uses inferred gap spaces: §4.6 would refuse",
+        "prefix-only native source x drift 0.044914 pt exceeds 0.005 pt target",
+        "identity-control native source x max 0.261620 pt exceeds 0.005 pt target"
+      ],
+      "pdf_advance_max": 4.440892098500626e-16,
+      "pdf_advance_mean": 1.962825236906354e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 10,
+      "text": "Replacing carefully symbolic clinical codes with their natural-language descriptions provides a direct way to exploit the semantic knowledge encoded in pretrained lan-guage models and avoid these preprocessing issues.",
+      "unchanged_count": 181,
+      "visual_lines": [
+        "Replacing carefully symbolic clinical codes with ",
+        "their natural-language descriptions provides a direct ",
+        "way to exploit the semantic knowledge encoded in ",
+        "pretrained lan-guage models and avoid these ",
+        "preprocessing issues."
+      ]
+    },
+    {
+      "after_lines": 4,
+      "baseline_drift_max": 0.0,
+      "before_lines": 4,
+      "edit": "delete",
+      "fits": true,
+      "id": "arxiv-2611.17053",
+      "length_change_percent": -4.347826086956519,
+      "line_break_utf8": [
+        44,
+        99,
+        148,
+        198
+      ],
+      "native_comparison_scope": "remaining-source",
+      "native_identity_control_x_max": 0.2616198477748526,
+      "native_stationary_x_max": 0.2616198477748526,
+      "notes": [
+        "indented first slot 81.963 vs 72.000 pt: strict §4.5 refuses",
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "remaining-source native source x drift 0.261620 pt exceeds 0.005 pt target",
+        "identity-control native source x max 0.261620 pt exceeds 0.005 pt target"
+      ],
+      "pdf_advance_max": 4.440892098500626e-16,
+      "pdf_advance_mean": 2.0535917218500004e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 0,
+      "text": "Replacing clinical codes with their natural-language descriptions provides a direct way to exploit the semantic knowledge encoded in pretrained lan-guage models and avoid these preprocessing issues.",
+      "unchanged_count": 173,
+      "visual_lines": [
+        "Replacing clinical codes with their natural-",
+        "language descriptions provides a direct way to exploit ",
+        "the semantic knowledge encoded in pretrained lan-",
+        "guage models and avoid these preprocessing issues."
+      ]
+    },
+    {
+      "after_lines": 5,
+      "baseline_drift_max": 0.0,
+      "before_lines": 4,
+      "edit": "+10%",
+      "fits": false,
+      "id": "arxiv-2611.17053",
+      "length_change_percent": 10.6280193236715,
+      "line_break_utf8": [
+        50,
+        97,
+        143,
+        185,
+        229
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.2616198477748526,
+      "native_stationary_x_max": 0.044914458096855014,
+      "notes": [
+        "wrap overflow: no additional baseline is authorised",
+        "3 ink envelopes outside fixed box",
+        "indented first slot 81.963 vs 72.000 pt: strict §4.5 refuses",
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "wrap uses inferred gap spaces: §4.6 would refuse",
+        "prefix-only native source x drift 0.044914 pt exceeds 0.005 pt target",
+        "identity-control native source x max 0.261620 pt exceeds 0.005 pt target"
+      ],
+      "pdf_advance_max": 4.440892098500626e-16,
+      "pdf_advance_mean": 1.962825236906354e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 22,
+      "text": "Replacing with further analysis symbolic clinical codes with their natural-language descriptions provides a direct way to exploit the semantic knowledge encoded in pretrained lan-guage models and avoid these preprocessing issues.",
+      "unchanged_count": 181,
+      "visual_lines": [
+        "Replacing with further analysis symbolic clinical ",
+        "codes with their natural-language descriptions ",
+        "provides a direct way to exploit the semantic ",
+        "knowledge encoded in pretrained lan-guage ",
+        "models and avoid these preprocessing issues."
+      ]
+    },
+    {
+      "after_lines": 6,
+      "baseline_drift_max": 0.0,
+      "before_lines": 4,
+      "edit": "+30%",
+      "fits": false,
+      "id": "arxiv-2611.17053",
+      "length_change_percent": 29.951690821256037,
+      "line_break_utf8": [
+        49,
+        101,
+        155,
+        204,
+        248,
+        269
+      ],
+      "native_comparison_scope": "prefix-only",
+      "native_identity_control_x_max": 0.2616198477748526,
+      "native_stationary_x_max": 0.044914458096855014,
+      "notes": [
+        "wrap overflow: no additional baseline is authorised",
+        "2 ink envelopes outside fixed box",
+        "indented first slot 81.963 vs 72.000 pt: strict §4.5 refuses",
+        "inferred gap/soft-join spaces lack source-code proof (§4.2/§4.6)",
+        "wrap uses inferred gap spaces: §4.6 would refuse",
+        "prefix-only native source x drift 0.044914 pt exceeds 0.005 pt target",
+        "identity-control native source x max 0.261620 pt exceeds 0.005 pt target"
+      ],
+      "pdf_advance_max": 4.440892098500626e-16,
+      "pdf_advance_mean": 1.962825236906354e-17,
+      "prohibition_breaks": 0,
+      "raw_font_advance_max": null,
+      "raw_font_advance_mean": null,
+      "replacement_fallback_glyphs": 62,
+      "text": "Replacing with further analysis of the available evidence and practical symbolic clinical codes with their natural-language descriptions provides a direct way to exploit the semantic knowledge encoded in pretrained lan-guage models and avoid these preprocessing issues.",
+      "unchanged_count": 181,
+      "visual_lines": [
+        "Replacing with further analysis of the available ",
+        "evidence and practical symbolic clinical codes with ",
+        "their natural-language descriptions provides a direct ",
+        "way to exploit the semantic knowledge encoded in ",
+        "pretrained lan-guage models and avoid these ",
+        "preprocessing issues."
+      ]
+    }
+  ]
+}

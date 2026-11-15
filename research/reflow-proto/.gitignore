@@ -1,0 +1,8 @@
+/target/
+/tmp/
+/node_modules/
+/fonts/
+__pycache__/
+!artifacts/
+!artifacts/*.json
+!artifacts/*.png
