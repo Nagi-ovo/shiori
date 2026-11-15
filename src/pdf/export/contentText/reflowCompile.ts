@@ -24,7 +24,7 @@ export function compileReflowPlan(content:Uint8Array,fonts:readonly ResolvedRunF
    return refuse('reflow-context-unsupported: invalid owned window');
   const saved=recipe.saved;
   const trace=traceReflowSource(ops,fonts,proof.scopeProofHash);
-  const current=trace.shows.get(`${lastOp}:${proof.owned.at(-1)!.itemIndex}`)?.after;
+  const current=trace.ends.get(lastOp);
   if(!current||current.fontObject!==rejoin.fontObject||current.tm.some((n,i)=>Math.abs(n-rejoin.tm[i]!)>1e-7)||
    current.tlm.some((n,i)=>Math.abs(n-rejoin.tlm[i]!)>1e-7))return refuse('reflow-context-unsupported: stale rejoin trace');
   const [a,b,c,d,e,f]=saved.ctm,det=a!*d!-b!*c!;
@@ -34,10 +34,9 @@ export function compileReflowPlan(content:Uint8Array,fonts:readonly ResolvedRunF
   const firstSource=clusters.findIndex(t=>t.source&&t.source.opIndex===firstOp);
   const start=firstSource<0?clusters.findIndex(t=>!t.source):firstSource;
   if(start<0)return refuse('reflow-context-unsupported: empty owned tail');
-  let replacementIndex=0;
+  const emitted:{index:number;advance:number}[]=[];
   for(let i=0;i<clusters.length;i++){
-   const t=clusters[i]!,isReplacement=!t.source;
-   const reduction=isReplacement?layout.reductions[replacementIndex++]??0:0;
+   const t=clusters[i]!;
    if(t.source&&t.source.opIndex<firstOp)continue;
    const font=fonts.find(f=>f.resourceName===t.fontResource&&f.objectId===t.fontObject);
    if(!font)return refuse('reflow-context-unsupported: stale output font');
@@ -46,13 +45,32 @@ export function compileReflowPlan(content:Uint8Array,fonts:readonly ResolvedRunF
    if(code.length!==1||font.unicodeByCode.get(code[0]!)!==t.unicode)return refuse('output code/Unicode differs','font-coverage');
    const advance=(font.widthOf(code[0]!)*saved.size/1000+saved.tc+(font.bytesPerCode===1&&code[0]===32?saved.tw:0))*scale;
    if(Math.abs(advance-t.advance)>1e-7)return refuse('layout-metrics-disagreement: current PDF advance changed');
-   const [x,y]=layout.origins[i]!;
+   emitted.push({index:i,advance});
+  }
+  // Keep real space codes inside the same show as their neighbours. PDFium
+  // treats isolated empty-space Tj operators as generated layout whitespace.
+  // TJ numbers carry the exact measured displacement between destinations;
+  // the original Tc/Tw are scoped and restored, with no accumulated drift.
+  for(let cursor=0;cursor<emitted.length;){
+   const first=emitted[cursor]!,t=clusters[first.index]!,[x,y]=layout.origins[first.index]!;
+   const items:string[]=[];
+   let end=cursor;
+   while(end<emitted.length){
+    const entry=emitted[end]!,cluster=clusters[entry.index]!,p=layout.origins[entry.index]!;
+    if(cluster.fontResource!==t.fontResource||Math.abs(p[1]-y)>1e-9)break;
+    items.push(hex(cluster.code));
+    const next=emitted[end+1],q=next?layout.origins[next.index]:undefined;
+    end++;
+    if(!next||clusters[next.index]!.fontResource!==t.fontResource||Math.abs(q![1]-y)>1e-9)break;
+    const adjustment=(p[0]+entry.advance-q![0])*1000/(saved.size*scale);
+    if(Math.abs(adjustment)>1e-10)items.push(pdfNumber(adjustment));
+   }
    const tx=(d!*(x-e!)-c!*(y-f!))/det-saved.rise*saved.tm[2]!;
    const ty=(-b!*(x-e!)+a!*(y-f!))/det-saved.rise*saved.tm[3]!;
    const matrix=[...saved.tm.slice(0,4),tx,ty];
-   const tc=saved.tc-(t.wordSpace?0:reduction/scale),tw=saved.tw-(t.wordSpace?reduction/scale:0);
    body.push(`${matrix.map(pdfNumber).join(' ')} Tm ${pdfName(t.fontResource)} ${pdfNumber(saved.size)} Tf `+
-    `${pdfNumber(tc)} Tc ${pdfNumber(tw)} Tw ${hex(t.code)} Tj ${pdfNumber(saved.tc)} Tc ${pdfNumber(saved.tw)} Tw`);
+    `${pdfNumber(saved.tc)} Tc ${pdfNumber(saved.tw)} Tw [${items.join(' ')}] TJ ${pdfNumber(saved.tc)} Tc ${pdfNumber(saved.tw)} Tw`);
+   cursor=end;
   }
   // A proved leading TJ indent is replayed before the first emitted show.
   const leading=proof.tjBoundaries.filter(b=>b.opIndex===firstOp&&b.left===null).map(b=>pdfNumber(b.value));
@@ -61,7 +79,9 @@ export function compileReflowPlan(content:Uint8Array,fonts:readonly ResolvedRunF
   if(rejoin.tm.slice(0,4).some((n,i)=>n!==rejoin.tlm[i])||
    Math.abs(rejoin.tm[5]!-rejoin.tlm[5]!-dx*rejoin.tlm[1]!)>1e-7||!Number.isFinite(dx))
    return refuse('reflow-context-unsupported: unrepresentable Tm/Tlm rejoin');
-  body.push(`${pdfNumber(rejoin.leading)} TL ${rejoin.tlm.map(pdfNumber).join(' ')} Tm `+
+  const restoredFont=fonts.find(font=>font.objectId===rejoin.fontObject);
+  if(!restoredFont)return refuse('reflow-context-unsupported: missing rejoin font');
+  body.push(`${pdfName(restoredFont.resourceName)} ${pdfNumber(rejoin.size)} Tf ${pdfNumber(rejoin.leading)} TL ${rejoin.tlm.map(pdfNumber).join(' ')} Tm `+
    `[${pdfNumber(-dx*1000/(rejoin.size*rejoin.tz/100))}] TJ`);
   const patch=new TextEncoder().encode(body.join(' '));
   const prefix=content.subarray(0,ops[firstOp]!.start),suffix=content.subarray(ops[lastOp]!.end);

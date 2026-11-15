@@ -1143,9 +1143,15 @@
   },
   "contentText": {
     "modes": {
+      "substituted": "Substitute font",
+      "reflowed": "Reflowed",
       "in-place": "In place",
       "fallback-font": "Embedded fallback font",
       "overlay": "Overlay"
+    },
+    "notices": {
+      "substituted": "This text was rewritten in a substitute font.",
+      "reflowed": "This text was reflowed to fit the edited paragraph."
     },
     "reasons": {
       "source-mismatch": "The selected text does not match the PDF source.",

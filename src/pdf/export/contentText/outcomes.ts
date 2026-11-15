@@ -7,7 +7,7 @@ export const contentTextReasons = [
  'preview-unavailable','missing-source-style','shared-text-object',
 ] as const;
 export type ContentTextReason=typeof contentTextReasons[number];
-export type ContentTextOutcome={overlayId:string;mode:'in-place'|'fallback-font'|'overlay';reason?:ContentTextReason;detail?:string;reflow?:import('./reflowManifest').AppliedReflowManifest};
+export type ContentTextOutcome={overlayId:string;mode:'in-place'|'fallback-font'|'substituted'|'reflowed'|'overlay';reason?:ContentTextReason;detail?:string;reflow?:import('./reflowManifest').AppliedReflowManifest};
 /** Compiler codes carry classification; text is diagnostic evidence only. */
 export function compilerReason(failure:Refusal|string):ContentTextReason {
  if(typeof failure!=='string' && failure.code)return failure.code;

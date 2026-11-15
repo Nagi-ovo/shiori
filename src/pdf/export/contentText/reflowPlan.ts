@@ -7,7 +7,7 @@ import {walkTextPlacements} from '../contentStreamEdit/textState';
 import {removalsByRect} from '../contentStreamEdit/removeGlyphs';
 import {RunCompileError} from '../contentStreamEdit/runRefusal';
 import {detectParagraphRegion,type SourceAddress,type TextTrace} from './regionProof';
-import {origin,matrixEqual,near,contains,validRect,physicalSize,linear} from './regionProof/geometry';
+import {origin,matrixEqual,near,contains,intersects,validRect,physicalSize,linear} from './regionProof/geometry';
 import {solveMeasuredReflow} from './reflowLayout';
 import {traceReflowSource,ReflowTraceError} from './reflowTrace';
 import type {ContentTextPlan} from './planner';
@@ -27,14 +27,21 @@ const traceEqual=(a:TextTrace,b:TextTrace)=>matrixEqual(a.tm,b.tm)&&matrixEqual(
 export function planReflow(content:Uint8Array,fonts:readonly ResolvedRunFont[],overlay:ContentTextOverlay,environment:ContentTextEnvironment):ContentTextPlan {
  const request=environment.reflowRequest;
  if(!environment.stage5Reflow||!request)return fail('reflow-paragraph-unproven: no explicit reflow request');
- const {paragraph,target}=request,sourceHash=sourceFingerprint(content),replacementText=overlay.text.replace(/\r\n/g,'\n');
+ const {paragraph,target}=request,sourceHash=sourceFingerprint(content),replacementText=overlay.text.replace(/\r\n?/g,'\n');
  if(paragraph.sourceHash!==sourceHash||request.dependencyHash!==paragraph.dependencyHash||target.streamHash!==sourceHash)
   return fail('reflow-paragraph-unproven: stale source/dependency revision');
  const ops=tokenizeContentStream(content);
  if(JSON.stringify(ops)!==JSON.stringify(paragraph.ops))return fail('reflow-paragraph-unproven: operator evidence differs from current source');
  const detected=detectParagraphRegion(paragraph);
  if(!detected.ok)return fail(`${detected.code}: ${detected.blocker}: ${detected.detail}`);
- const proof=detected.proof;
+ // Reserve horizontal raster coverage before any layout, just as the stream
+ // producer does. Slots keep their original left/right capacity. A substitute
+ // landing at a body left must not paint an antialias pixel outside the proof.
+ const region=detected.proof,box={...region.box,x:region.box.x-.5,w:region.box.w+1};
+ const scene=paragraph.evidence;
+ if(!contains(scene.crop,box)||!contains(scene.clip,box)||scene.obstacles.some(o=>
+  !o.box||intersects(box,o.box)&&(o.kind!=='stationary-backdrop'||!contains(o.box,box))))return fail('reflow-obstacle: raster guard is not proved clear');
+ const proof={...region,box};
  if(proof.lineSlots.length>8||request.softBreaks.some(i=>!Number.isInteger(i)||i<0||i>=proof.lineSlots.length-1))return fail('reflow-context-unsupported: line/break budget');
  try{
   const traces=traceReflowSource(ops,fonts,proof.scopeProofHash);
@@ -83,7 +90,10 @@ export function planReflow(content:Uint8Array,fonts:readonly ResolvedRunFont[],o
   for(const line of paragraph.lines)for(const show of line.shows)if(source.filter(t=>t.source&&owns(show.source,t.source.opIndex,t.source.itemIndex)).map(t=>t.unicode).join('')!==show.unicode)
    return fail('reflow-context-unsupported: paragraph source-code round trip differs');
   const start=glyphs.indexOf(targeted[0]!),end=glyphs.indexOf(targeted.at(-1)!)+1;
-  const old=source.slice(start,end),font=byName.get(old[0]!.fontResource)!;
+  const old=source.slice(start,end),sourceFont=byName.get(old[0]!.fontResource)!;
+  const font=request.replacementFontResource?byName.get(request.replacementFontResource):sourceFont;
+  if(!font)return fail('reflow-context-unsupported: measured replacement font is missing');
+  const substituted=font.objectId!==sourceFont.objectId;
   if(old.map(t=>t.unicode).join('')!==overlay.originalText)return fail('reflow-context-unsupported: source text round trip differs');
   const owned=proof.owned.find(s=>owns(s,target.opIndex,target.itemIndex)&&s.fontObject===target.fontObject);
   if(!owned)return fail('reflow-context-unsupported: target is unowned');
@@ -91,9 +101,9 @@ export function planReflow(content:Uint8Array,fonts:readonly ResolvedRunFont[],o
   if(item?.kind!=='string')return fail('reflow-context-unsupported: target item missing');
   const {stage5Reflow:_,reflowRequest:__,...runEnvironment}=environment;void _;void __;
   const fixed:PageRunPlan={sourceHash,...runEnvironment,allowExistingCodePermutation:true,
-   edits:[{fontResource:font.resourceName,fontObject:font.objectId,opIndex:target.opIndex,itemIndex:target.itemIndex,
+   edits:[{fontResource:sourceFont.resourceName,fontObject:sourceFont.objectId,opIndex:target.opIndex,itemIndex:target.itemIndex,
     byteStart:target.byteStart,byteEnd:target.byteEnd,expected:item.bytes.slice(target.byteStart,target.byteEnd),replacement:replacementText}]};
-  if(!replacementText.includes('\n')){
+  if(!substituted&&!replacementText.includes('\n')){
    const compiled=replaceRuns(content,fonts,fixed);
    if(compiled.ok)return {ok:true,plan:fixed};
    if(compiled.code!=='overflow')return {ok:false,code:compiled.code??'unsupported-state',reason:compiled.reason};
@@ -101,7 +111,7 @@ export function planReflow(content:Uint8Array,fonts:readonly ResolvedRunFont[],o
   const base=old[0]!,replacement:ReflowCodeCluster[]=[];
   for(const {segment}of new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(replacementText)){
    if(segment==='\n'){if(!replacement.length||replacement.at(-1)!.hardAfter)return fail('reflow-break-unsupported: empty hard line');replacement.at(-1)!.hardAfter=true;continue;}
-   const encoded=encodeRun(segment,font,item.bytes.slice(target.byteStart,target.byteEnd));
+   const encoded=encodeRun(segment,font,substituted?new Uint8Array():item.bytes.slice(target.byteStart,target.byteEnd));
    if(!encoded.ok)return {ok:false,code:'font-coverage',reason:encoded.reason};
    if(encoded.codes.length!==1)return fail('reflow-break-unsupported: multi-code grapheme');
    const ink=request.replacementInk.find(e=>e.unicode===segment&&same(e.code,encoded.bytes));
@@ -109,7 +119,7 @@ export function planReflow(content:Uint8Array,fonts:readonly ResolvedRunFont[],o
    const state=traces.shows.get(`${target.opIndex}:${target.itemIndex}`)!.before;
    const scale=linear(state)[0]!*state.tz/100;
    const code=codes(encoded.bytes,font.bytesPerCode)[0]!,advance=(font.widthOf(code)*state.size/1000+state.tc+(font.bytesPerCode===1&&code===32?state.tw:0))*scale;
-   replacement.push({...base,unicode:segment,code:encoded.bytes,source:undefined,original:undefined,glyph:undefined,
+   replacement.push({...base,fontResource:font.resourceName,fontObject:font.objectId,unicode:segment,code:encoded.bytes,source:undefined,original:undefined,glyph:undefined,
     advance,ink:{...ink.box},wordSpace:font.bytesPerCode===1&&code===32,fullEmHan:font.widthOf(code)===1000,hardAfter:false});
   }
   const layout=solveMeasuredReflow({source,replacement,start,end,proof,softBreaks:request.softBreaks});
@@ -127,7 +137,7 @@ export function planReflow(content:Uint8Array,fonts:readonly ResolvedRunFont[],o
   const last=paragraph.lines.at(-1)!.shows.at(-1)!,rejoin=last.after;
   const before=origin(last.before),after=origin(rejoin);
   if(!Number.isFinite(after[0]-before[0]))return fail('reflow-context-unsupported: invalid rejoin');
-  return {ok:true,plan:{...fixed,edits,reflow:{proof,request:structuredClone(request),saved:structuredClone(paragraph.lines[0]!.anchor),layout,clusters,firstOp,lastOp,rejoin:structuredClone(rejoin)}}};
+  return {ok:true,plan:{...fixed,edits,reflow:{...(substituted?{substituted:true}:{}),proof,request:structuredClone(request),saved:structuredClone(paragraph.lines[0]!.anchor),layout,clusters,firstOp,lastOp,rejoin:structuredClone(rejoin)}}};
  }catch(error){
   if(error instanceof ReflowTraceError)return fail(`reflow-context-unsupported: ${error.message}`);
   if(error instanceof RunCompileError)return {ok:false,code:error.code,reason:error.message};

@@ -22,6 +22,68 @@ skipped sample and native sample result. `report.md` gives category totals,
 rates, top refusals and timing. Exit status is nonzero if any accepted sample
 fails its native oracle; those failures are P0, never silently counted as passes.
 
+The JSON `summary` always contains numeric `in-place`, `fallback-font`,
+`substituted`, `reflowed` and `overlay` counts, including zeros for modes absent
+from an older run. `acceptedRate` is `(in-place + fallback-font + substituted +
+reflowed) / edits`; `refusalRate` is `overlay / edits`. Both rates are zero for
+an empty run. `edits`, total export `ms` and the descending `reasons` histogram
+retain their existing meanings. Modes partition the rows; a reflow that also
+uses a substitute is counted under its recorded final mode, never twice.
+Category/overall and Chinese-file tables expose all four accepted columns.
+This schema does not recompute or overwrite earlier baseline reports.
+
+## Before/after PNG evidence
+
+Render saved pairs without fetching documents or rerunning the corpus:
+
+```sh
+bun scripts/pdf-corpus/render-edits.ts
+bun scripts/pdf-corpus/render-edits.ts --samples test-artifacts/pdf-corpus/samples --out test-artifacts/pdf-corpus/renders
+```
+
+The default selection is one accepted Chinese sample (preferring `substituted`
+or `reflowed`), one LaTeX sample and one Word sample. A GSA `tagged` sample may
+fill the Word slot only when no accepted Word pair exists. Selection is
+deterministic. Missing categories/new Chinese modes are reported explicitly;
+when any required evidence is absent, a tiny synthetic PDF pair also exercises
+the native pipeline. With no samples yet, the command succeeds on that pair.
+Synthetic output is labeled `smoke: true`, category `synthetic`, and supplies
+no real-corpus, Word, substitution or reflow acceptance evidence.
+
+An explicit pair accepts the existing corpus `*.edit.json` metadata, or a JSON
+object with `rect`, `paragraphRect` and/or `coverRects`:
+
+```sh
+bun scripts/pdf-corpus/render-edits.ts --before before.pdf --after after.pdf --edit edit.json --page 0
+```
+
+Rectangles use `{x, y, w, h}` in unrotated PDF points relative to the visible
+page box, with the bottom-left origin used by app overlays. `--page` is the
+zero-based index **inside the saved pair**, default 0; the original corpus
+`row.page`/`page.sourceIndex` is not an index into a single-page saved sample.
+The crop unions the edit/paragraph rectangles and, when present,
+`row.outcome.reflow.region.box`, so recorded downward growth is included.
+`--margin` defaults to 8 points, clamped to page edges. Page rotation is
+applied using the app's coordinate conversion. Different before/after page
+boxes or rotations and invalid/off-page geometry fail clearly.
+
+The existing native PDFium adapter produces 144-dpi BGRA rasters, converted
+to lossless RGBA PNG. Each selection writes `.before.png`, `.after.png` and
+`.pair.png` under `test-artifacts/pdf-corpus/renders/`. Pairs place before on
+the left and after on the right with a white gutter. `manifest.json` records
+the source PDF SHA-256 values, mode/category, page, pixel crop and filenames;
+the adjacent `README.md` includes the exact regeneration command. These
+images are visual evidence, not a replacement for the independent oracle.
+
+```sh
+bun test scripts/pdf-corpus/report.test.ts scripts/pdf-corpus/render-edits.test.ts
+```
+
+The render smoke test creates an empty sample directory, runs the CLI, checks
+that native before/after PNGs differ, and replays the same inputs through the
+explicit-pair route. It requires the native library (and otherwise skips),
+but does not require the 41-PDF corpus, qpdf, Poppler or a network request.
+
 ## Provenance and attribution
 
 The manifest pins 41 distinct real PDFs and records URL, SHA-256, bytes,

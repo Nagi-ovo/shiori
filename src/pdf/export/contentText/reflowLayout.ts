@@ -55,7 +55,8 @@ export function solveMeasuredReflow(input:MeasuredReflowInput):MeasuredReflowRes
  if(slots.some((s,i)=>![s.left,s.right,s.baseline].every(Number.isFinite)||s.left>=s.right||i>0&&s.baseline>=slots[i-1]!.baseline))return fail('invalid proven slots');
  if([...source,...replacement].some(t=>/[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff\u200e\u200f\u202a-\u202e\u2066-\u2069\u{10800}-\u{10fff}\u{1e800}-\u{1eeff}]/u.test(t.unicode)))return fail('reflow-break-unsupported: bidi');
  const first=source[start]!.original,last=source[end-1]!.original;
- if(!first||!last||first.line!==last.line||source.some(t=>!t.original))return fail('reflow-context-unsupported: replacement crosses source line');
+ if(!first||!last||source.some(t=>!t.original))return fail('reflow-context-unsupported: missing source line');
+ const crossesLines=first.line!==last.line;
  const row=first.line;if(!slots[row])return fail('invalid source slot');
  const available=last.x+source[end-1]!.advance-first.x;
  const natural=replacement.reduce((n,t)=>n+t.advance,0),needed=natural-available;
@@ -100,7 +101,7 @@ export function solveMeasuredReflow(input:MeasuredReflowInput):MeasuredReflowRes
   const rows=new Map<number,string>();tokens.forEach((t,i)=>rows.set(origins[i]![1],(rows.get(origins[i]![1])??'')+t.unicode));
   return {ok:true,strategy,clusters:tokens,origins,reductions:shrunk.reductions,tc:shrunk.tc,tw:shrunk.tw,visualLines:[...rows.values()]};
  };
- const hardReplacement=replacement.some(t=>t.hardAfter);
+ const hardReplacement=crossesLines||replacement.some(t=>t.hardAfter);
  if(!hardReplacement&&needed<=1e-7)return finish('fixed',baseOrigins());
  if(!hardReplacement&&needed-shrunk.total<=1e-7)return finish('spacing-only',baseOrigins());
  const delta=Math.max(0,needed-shrunk.total),shifted=baseOrigins();

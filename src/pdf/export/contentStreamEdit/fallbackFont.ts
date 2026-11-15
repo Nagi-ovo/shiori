@@ -5,6 +5,7 @@ import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, PDFDict, PDFName, PDFArray, PDFRawStream, PDFNumber, decodePDFRawStream, type PDFRef } from 'pdf-lib';
 import { sourceFingerprint } from './replaceRun';
 import { loadBundledFallbackFont } from './fallbackAssets';
+import { padFallbackTrueTypeGlyphs } from './substituteTtf';
 import { contentFontInfo } from './glyphWidths';
 import { fontCoverageFromDict } from '../fontCoverage/pdfLibAdapter';
 import type { ResolvedRunFont } from './replaceRun';
@@ -40,7 +41,7 @@ export async function prepareFallback(doc: PDFDocument, resourceName: string, na
     if (!/^\s$/u.test(cluster) && layout.glyphs[0]!.path.bbox.width === 0 && layout.glyphs[0]!.path.bbox.height === 0) throw new RunCompileError('fallback glyph has no outline','font-coverage');
   }
   doc.registerFontkit(fontkit);
-  const embedded = await doc.embedFont(data, { subset: true, customName: sourceFingerprint(data).slice(0,6).replace(/[0-9a-f]/g,c => String.fromCharCode(65 + parseInt(c,16))) + '+ShioriFallback' });
+  const embedded = await doc.embedFont(padFallbackTrueTypeGlyphs(data), { subset: true, customName: sourceFingerprint(data).slice(0,6).replace(/[0-9a-f]/g,c => String.fromCharCode(65 + parseInt(c,16))) + '+ShioriFallback' });
   const byCode = new Map<number,string>(), byText = new Map<string,Uint8Array>();
   for (const cluster of clusters) {
     const encoded = embedded.encodeText(cluster).asBytes();

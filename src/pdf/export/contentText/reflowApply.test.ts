@@ -12,7 +12,7 @@ function glyphs(page:Awaited<ReturnType<typeof spacingPage>>['page']){
 }
 const spacingEdit=()=>overlay({originalText:'S',text:'an',coverRects:[{x:49.9,y:98,w:10.2,h:12}]});
 test('flag off keeps overflow and original bytes',async()=>{
- const f=await spacingPage(),before=inspectRunPage(f.page),r=await applyContentTextEdits(f.page,[spacingEdit()]);
+ const f=await spacingPage(),before=inspectRunPage(f.page),r=await applyContentTextEdits(f.page,[spacingEdit()],{stage5Reflow:false});
  expect(r.outcomes[0]).toMatchObject({mode:'overlay',reason:'overflow'});expect(inspectRunPage(f.page)).toEqual(before);
 });
 test('boolean on installs spacing-only bytes inside the original slot with fixed suffix',async()=>{
@@ -20,7 +20,7 @@ test('boolean on installs spacing-only bytes inside the original slot with fixed
  expect(r.outcomes[0]).toMatchObject({mode:'in-place'});expect(r.remaining).toEqual([]);
  const gs=glyphs(f.page);expect(gs.map(g=>g.text).join('')).toBe('anni');expect(gs[1]!.origin.x).toBeCloseTo(54.98);expect(gs.slice(2).map(g=>g.origin.x)).toEqual([60,65.02]);
 });
-test('boolean-only never authorizes wraps, with or without overlay newlines',async()=>{
+test('an unbreakable word and a missing leading proof still refuse boolean wrapping',async()=>{
  for(const text of ['annnnnnnnnnn','an\nn']){const f=await spacingPage(),before=inspectRunPage(f.page);
  const r=await applyContentTextEdits(f.page,[{...spacingEdit(),text}],{stage5Reflow:true});expect(r.outcomes[0]!.mode).toBe('overlay');expect(inspectRunPage(f.page)).toEqual(before);
  if(text.includes('\n'))expect(r.outcomes[0]).toMatchObject({reason:'reflow-required'});}
@@ -29,7 +29,7 @@ test('explicit request installs owned suffix shift without changing other rows',
  const f=await requestPage();f.request.target={...f.request.paragraph.lines[2]!.shows[0]!.source,byteStart:1,byteEnd:2};f.request.softBreaks=[];
  const edit={...f.overlay,originalText:'乙',coverRects:[{x:59.9,y:670,w:10.2,h:10}]};
  const r=await applyContentTextEdits(f.page,[edit],{stage5Reflow:true,reflowRequests:new Map([[edit.id,f.request]])});
- expect(r.outcomes[0]).toMatchObject({mode:'in-place'});expect(glyphs(f.page).slice(-4).map(g=>g.text).join('')).toBe('甲卯辰丙');expect(glyphs(f.page).at(-1)!.origin.x).toBeGreaterThan(79);
+ expect(r.outcomes[0]).toMatchObject({mode:'reflowed'});expect(glyphs(f.page).slice(-4).map(g=>g.text).join('')).toBe('甲卯辰丙');expect(glyphs(f.page).at(-1)!.origin.x).toBeGreaterThan(79);
 });
 test('intersecting owned tails refuse atomically despite disjoint UI covers',async()=>{
  const f=await requestPage(),before=inspectRunPage(f.page),other=structuredClone(f.request);other.target={...other.target,byteStart:6,byteEnd:7};
@@ -39,7 +39,7 @@ test('intersecting owned tails refuse atomically despite disjoint UI covers',asy
 });
 test('explicit request wraps and apply installs its compiled output',async()=>{
  const f=await requestPage(),r=await applyContentTextEdits(f.page,[f.overlay],{stage5Reflow:true,reflowRequests:new Map([[f.overlay.id,f.request]])});
- expect(r.outcomes[0]).toMatchObject({mode:'in-place'});expect(glyphs(f.page)[10]).toEqual({text:'癸',origin:{x:50,y:686}});
+ expect(r.outcomes[0]).toMatchObject({mode:'reflowed'});expect(glyphs(f.page)[10]).toEqual({text:'癸',origin:{x:50,y:686}});
 });
 
 test('disjoint recipes compile from one revision and both install',async()=>{

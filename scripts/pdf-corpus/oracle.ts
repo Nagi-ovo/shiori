@@ -13,7 +13,7 @@ import {inspectRunPage} from '../../src/pdf/export/contentStreamEdit/replaceRunP
 import type {AppliedReflowManifest} from '../../src/pdf/export/contentText/reflowManifest';
 import type {PdfRect} from '../../src/pdf/model/types';
 const compact=(s:string)=>s.replace(/\s/gu,'');
-type Glyph={text:string;origin:readonly number[];box:readonly number[];fontHash?:string;nativePath?:unknown;inkPixels?:number};
+type Glyph={text:string;origin:readonly number[];box:readonly number[];fontHash?:string;nativePath?:unknown;inkPixels?:number;fontSize?:number};
 type Snapshot={width:number;height:number;text:string;glyphs:readonly Glyph[];pixels?:Uint8Array};
 type Edit={originalText:string;text:string;coverRects:readonly PdfRect[]};
 function whitespaceGaps(glyphs:readonly Glyph[]){
@@ -34,7 +34,7 @@ export function expectedPopplerText(before:string,edit:Pick<Edit,'originalText'|
 }
 /** Independent native expected sequence; original prefix/suffix glyphs retain
  * native font-program identity and positions. No compiler widths are used. */
-export function compareNativePages(before:Snapshot,after:Snapshot,edit:Edit){
+export function compareNativePages(before:Snapshot,after:Snapshot,edit:Edit,substituted=false){
  const old=before.glyphs.filter(g=>compact(g.text)),actual=after.glyphs.filter(g=>compact(g.text));
  const covered=old.map((g,i)=>({g,i})).filter(({g})=>edit.coverRects.some(r=>g.origin[0]!>=r.x-.01 && g.origin[0]!<=r.x+r.w+.01 && g.origin[1]!>=r.y-.01 && g.origin[1]!<=r.y+r.h+.01));
  assert(covered.length,'native edit box selects no text');
@@ -42,7 +42,7 @@ export function compareNativePages(before:Snapshot,after:Snapshot,edit:Edit){
  for(const g of [...old,...actual])assert.equal(Array.from(g.text).length,1,'native audit requires one glyph per Unicode scalar');
  const sourceLines=edit.originalText.split('\n'),replacementLines=edit.text.split('\n');
  assert.equal(sourceLines.length,replacementLines.length,'native audit requires unchanged line breaks');
- const expected:({text:string;original?:Glyph})[]=old.map(g=>({text:g.text,original:g}));
+ const expected:({text:string;original?:Glyph;originAnchor?:Glyph;sizeAnchor?:number})[]=old.map(g=>({text:g.text,original:g}));
  let cursor=covered.length;
  // Work backwards by source line: other columns/objects can be interleaved
  // between selected lines in native extraction order and must stay untouched.
@@ -52,15 +52,18 @@ export function compareNativePages(before:Snapshot,after:Snapshot,edit:Edit){
   assert.equal(selected.map(({g})=>g.text).join(''),compact(sourceLines[line]!),'native selected line differs');
   assert(selected.every(({i},n)=>i===selected[0]!.i+n),'native source line has interleaved glyphs');
   const replacement=Array.from(compact(replacementLines[line]!));let prefixCount=0,suffixCount=0;
-  while(prefixCount<selected.length && prefixCount<replacement.length && selected[prefixCount]!.g.text===replacement[prefixCount])prefixCount++;
-  while(suffixCount<selected.length-prefixCount && suffixCount<replacement.length-prefixCount && selected[selected.length-1-suffixCount]!.g.text===replacement[replacement.length-1-suffixCount])suffixCount++;
-  expected.splice(selected[0]!.i+prefixCount,selected.length-prefixCount-suffixCount,...replacement.slice(prefixCount,replacement.length-suffixCount).map(text=>({text})));
+  while(!substituted && prefixCount<selected.length && prefixCount<replacement.length && selected[prefixCount]!.g.text===replacement[prefixCount])prefixCount++;
+  while(!substituted && suffixCount<selected.length-prefixCount && suffixCount<replacement.length-prefixCount && selected[selected.length-1-suffixCount]!.g.text===replacement[replacement.length-1-suffixCount])suffixCount++;
+  expected.splice(selected[0]!.i+prefixCount,selected.length-prefixCount-suffixCount,...replacement.slice(prefixCount,replacement.length-suffixCount).map((text,i)=>({text,
+   ...(substituted?{sizeAnchor:selected[0]!.g.fontSize,...(i===0?{originAnchor:selected[0]!.g}:{})}:{})})));
  }
  assert.equal(cursor,0,'native selected glyphs remain unaccounted');
  assert.equal(compact(after.text),expected.map(g=>g.text).join(''),'native extracted text mismatch');
  assert.equal(actual.length,expected.length,'native glyph count mismatch');
  let maxOriginDriftPt=0,replacementGlyphs=0;const replacementIndices:number[]=[];
  actual.forEach((g,i)=>{const e=expected[i]!;assert.equal(g.text,e.text,'native glyph Unicode/order mismatch');
+  if(e.originAnchor)assert(Math.hypot(g.origin[0]!-e.originAnchor.origin[0]!,g.origin[1]!-e.originAnchor.origin[1]!)<=.01,'substitute first glyph origin changed');
+  if(e.sizeAnchor!==undefined)assert(g.fontSize!==undefined&&Math.abs(g.fontSize-e.sizeAnchor)<=.01,'substitute font size changed');
   if(e.original){assert.equal(g.fontHash,e.original.fontHash,'untouched font program changed');const drift=Math.hypot(g.origin[0]!-e.original.origin[0]!,g.origin[1]!-e.original.origin[1]!);maxOriginDriftPt=Math.max(maxOriginDriftPt,drift);assert(drift<=.01,`untouched glyph drift ${drift}`);}
   else{replacementGlyphs++;replacementIndices.push(i);assert(g.nativePath && (g.nativePath as unknown[]).length,'replacement path missing');assert((g.inkPixels??0)>0,'replacement has no ink');}
  });
@@ -88,13 +91,14 @@ export function compareNativePages(before:Snapshot,after:Snapshot,edit:Edit){
  assert.equal(changedPixelsOutsideBox,0,'changed pixels outside edit boxes');
  return{maxOriginDriftPt,changedPixels,changedPixelsOutsideBox,replacementGlyphs,replacementIndices};
 }
+export const compareSubstitutedNativePages=(before:Snapshot,after:Snapshot,edit:Edit)=>compareNativePages(before,after,edit,true);
 const command=(name:string,args:string[])=>{const r=spawnSync(name,args,{encoding:'utf8'});assert.equal(r.status,0,`${name}: ${r.stdout}${r.stderr}`);return r.stdout;};
-export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,name:string,directory:string,edit:Edit,stage5Type1:Type1Options={},stage5Reflow=process.env.SHIORI_STAGE5_REFLOW==='1',manifest?:AppliedReflowManifest){
+export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,name:string,directory:string,edit:Edit,stage5Type1:Type1Options={},stage5Reflow=process.env.SHIORI_STAGE5_REFLOW!=='0',manifest?:AppliedReflowManifest,mode?:import('../../src/pdf/export/contentText/outcomes').ContentTextOutcome['mode']){
  const beforePath=`${directory}/${name}.before.pdf`,afterPath=`${directory}/${name}.after.pdf`;
  const before=native.inspectPage(beforePath,0,true),after=native.inspectPage(afterPath,0,true);
  const useManifest=stage5Reflow&&manifest;
  if(useManifest){const original=await PDFDocument.load(new Uint8Array(await readFile(beforePath))),source=inspectRunPage(original.getPage(0));assert(source.ok&&source.sourceHash===useManifest.sourceHash,'manifest source revision differs');}
- const checked=useManifest?compareReflowNativePages(before,after,edit,useManifest):compareNativePages(before,after,edit);
+ const checked=useManifest?compareReflowNativePages(before,after,edit,useManifest):compareNativePages(before,after,edit,mode==='substituted');
  const bytes=new Uint8Array(await readFile(afterPath)),doc=await PDFDocument.load(bytes),objects=new Map<string,string>();
  for(const[ref,value]of doc.context.enumerateIndirectObjects())if(value instanceof PDFDict && value.get(PDFName.of('Type'))===PDFName.of('FontDescriptor')){
   const raw=value.lookup(PDFName.of('FontFile2'))??value.lookup(PDFName.of('FontFile3'))??value.lookup(PDFName.of('FontFile'));
@@ -114,6 +118,12 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
  }
  const glyphEvidence=checked.replacementIndices.map(index=>{const g=actual[index]!,p=probes.get(g.fontHash!)!;
   const id=objects.get(g.fontHash!)!.split(' ').map(Number),font=doc.context.lookup(PDFRef.of(id[0]!,id[1]!),PDFDict),coverage=fontCoverageFromDict(font,stage5Type1),encoded=coverage.canEncode(g.text);
+  if(mode==='substituted'){
+   assert.equal(font.lookup(PDFName.of('Subtype'),PDFName).decodeText(),'Type0','substitute must be Type0');
+   assert.equal(font.lookup(PDFName.of('Encoding'),PDFName).decodeText(),'Identity-H','substitute must be horizontal');
+   assert(font.lookup(PDFName.of('ToUnicode')) instanceof PDFRawStream,'substitute ToUnicode missing');
+   assert(encoded.ok,'substitute glyph cannot be encoded from saved subset');
+  }
   const code=encoded.ok?Array.from(encoded.bytes,b=>b.toString(16).padStart(2,'0')).join(''):'';
   return{unicode:g.text,replacement:true,glyphId:coverage.glyphIds.get(code),pathSegments:g.nativePath?.length??0,nativePath:g.nativePath??null,inkPixels:g.inkPixels??0,notdefProbes:p.map(x=>({scalar:x.text.codePointAt(0)!,path:x.nativePath??null}))};});
  assertNativeReplacementGlyphs(glyphEvidence);

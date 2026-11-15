@@ -259,7 +259,8 @@ export async function rebuildPdf(
       const edits = await applyContentTextEdits(inserted, pageOverlays, {
         ...options.inPlaceFallback,
         stage5Type1: options.stage5Type1,
-        stage5Reflow: options.stage5Reflow,
+        stage5Substitute: options.stage5Substitute,
+        stage5Reflow: options.stage5Reflow ?? true,
         reflowRequests: options.reflowRequests,
       });
       contentTextOutcomes.push(...edits.outcomes);

@@ -1129,9 +1129,15 @@
   },
   "contentText": {
     "modes": {
+      "substituted": "代替フォント",
+      "reflowed": "再配置済み",
       "in-place": "元の位置で編集",
       "fallback-font": "代替フォントを埋め込み",
       "overlay": "オーバーレイ"
+    },
+    "notices": {
+      "substituted": "このテキストは代替フォントで書き直されました。",
+      "reflowed": "このテキストは編集後の段落に合わせて再配置されました。"
     },
     "reasons": {
       "source-mismatch": "選択したテキストが PDF の原文と一致しません。",

@@ -14,8 +14,8 @@ const compact=(s:string)=>s.replace(/\s/gu,'');
 const refuse=(code:ContentTextReason,reason:string=code):ContentTextPlan=>({ok:false,code,reason});
 /** Pure mapping from the UI's source selection to byte-addressed compiler spans. */
 export function planContentText(content:Uint8Array,fonts:readonly ResolvedRunFont[],overlay:ContentTextOverlay,environment:ContentTextEnvironment={}):ContentTextPlan {
-  const originals=overlay.originalText.replace(/\r\n/g,'\n').split('\n');
-  const replacements=overlay.text.replace(/\r\n/g,'\n').split('\n');
+  const originals=overlay.originalText.replace(/\r\n?/g,'\n').split('\n');
+  const replacements=overlay.text.replace(/\r\n?/g,'\n').split('\n');
   if(originals.length!==replacements.length&&!(environment.stage5Reflow&&environment.reflowRequest))return refuse('reflow-required');
   if(overlay.angle || overlay.align!=='left')return refuse('style-change');
   if(!overlay.sourceStyle)return refuse('missing-source-style');

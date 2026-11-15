@@ -1129,9 +1129,15 @@
   },
   "contentText": {
     "modes": {
+      "substituted": "替代字体",
+      "reflowed": "已重排",
       "in-place": "原位编辑",
       "fallback-font": "已嵌入后备字体",
       "overlay": "覆盖层"
+    },
+    "notices": {
+      "substituted": "这段文字已用替代字体重写。",
+      "reflowed": "这段文字已重新排版以适应编辑后的段落。"
     },
     "reasons": {
       "source-mismatch": "所选文字与 PDF 原文不一致。",
