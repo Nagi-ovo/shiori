@@ -1,7 +1,7 @@
 import {replaceRuns,sourceFingerprint,type ResolvedRunFont,type RunResult} from '../contentStreamEdit/replaceRun';
 import type {PageRunPlan} from '../contentStreamEdit/pageRunPlan';
 import {hex,pdfNumber,pdfName,same,codes,encodeRun} from '../contentStreamEdit/runEncoding';
-import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
+import {ContentStreamParseError,tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {walkTextPlacements,type UnplacedShow} from '../contentStreamEdit/textState';
 import {RunCompileError} from '../contentStreamEdit/runRefusal';
 import {linear} from './regionProof/geometry';
@@ -15,10 +15,10 @@ import {traceReflowSource,ReflowTraceError} from './reflowTrace';
 export function compileReflowPlan(content:Uint8Array,fonts:readonly ResolvedRunFont[],plan:PageRunPlan):RunResult {
  const refuse=(reason:string,code:'unsupported-state'|'stale-source'|'font-coverage'='unsupported-state'):RunResult=>({ok:false,code,reason,bytes:content});
  if(!plan.reflow)return replaceRuns(content,fonts,plan);
- if(sourceFingerprint(content)!==plan.sourceHash)return refuse('stale source fingerprint','stale-source');
- const {reflow:recipe,...fixed}=plan;
- const verified=replaceRuns(content,fonts,fixed);if(!verified.ok)return verified;
  try{
+  if(sourceFingerprint(content)!==plan.sourceHash)return refuse('stale source fingerprint','stale-source');
+  const {reflow:recipe,...fixed}=plan;
+  const verified=replaceRuns(content,fonts,fixed);if(!verified.ok)return verified;
   const ops=tokenizeContentStream(content),{firstOp,lastOp,rejoin,clusters,layout,proof}=recipe;
   if(!ops[firstOp]||!ops[lastOp]||firstOp>lastOp||clusters.length!==layout.origins.length)
    return refuse('reflow-context-unsupported: invalid owned window');
@@ -83,7 +83,9 @@ export function compileReflowPlan(content:Uint8Array,fonts:readonly ResolvedRunF
   if(!restoredFont)return refuse('reflow-context-unsupported: missing rejoin font');
   body.push(`${pdfName(restoredFont.resourceName)} ${pdfNumber(rejoin.size)} Tf ${pdfNumber(rejoin.leading)} TL ${rejoin.tlm.map(pdfNumber).join(' ')} Tm `+
    `[${pdfNumber(-dx*1000/(rejoin.size*rejoin.tz/100))}] TJ`);
-  const patch=new TextEncoder().encode(body.join(' '));
+  // Original operators may touch delimiters (Td(...)Tj). Keep separators
+  // inside the patch so both direct and batched splices preserve token bounds.
+  const patch=new TextEncoder().encode(` ${body.join(' ')} `);
   const prefix=content.subarray(0,ops[firstOp]!.start),suffix=content.subarray(ops[lastOp]!.end);
   const bytes=new Uint8Array(prefix.length+patch.length+suffix.length);
   bytes.set(prefix);bytes.set(patch,prefix.length);bytes.set(suffix,prefix.length+patch.length);
@@ -107,8 +109,10 @@ export function compileReflowPlan(content:Uint8Array,fonts:readonly ResolvedRunF
    return refuse('layout-metrics-disagreement: compiled Tm/Tlm rejoin differs');
   return {ok:true,bytes};
  }catch(error){
-  if(error instanceof ReflowTraceError)return refuse(error.message);
+  if(error instanceof ReflowTraceError||error instanceof ContentStreamParseError)return refuse(error.message);
   if(error instanceof RunCompileError)return {ok:false,code:error.code,reason:error.message,bytes:content};
-  throw error;
+  // Recipe compilation is speculative: failed walks or incomplete recipes
+  // must retain the source and let the caller fall back to an overlay.
+  return refuse(`reflow-context-unsupported: ${error instanceof Error?error.message:'compilation failed'}`);
  }
 }
