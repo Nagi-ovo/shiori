@@ -230,13 +230,14 @@ export function Canvas({ doc }: Props) {
   const layoutRef = useRef(layout);
   const rangeRef = useRef(range);
   const virtualizationRef = useRef(virtualization);
-  // What the viewport controller's ports read of this render.
-  const viewPropsRef = useRef({ docKey, pages, pageMargin, isMobile });
+  // What the viewport controller's ports read of this render, store too.
+  const viewPropsRef = useRef({ docKey, pages, pageMargin, isMobile, editorStore });
+  const tab = () => viewPropsRef.current.editorStore.getState();
   useLayoutEffect(() => {
     layoutRef.current = layout;
     rangeRef.current = range;
     virtualizationRef.current = virtualization;
-    viewPropsRef.current = { docKey, pages, pageMargin, isMobile };
+    viewPropsRef.current = { docKey, pages, pageMargin, isMobile, editorStore };
   });
   // Re-derive the mounted range from the scroller's real position. A no-op
   // while the range is unchanged, so scroll handling stays render-free.
@@ -259,7 +260,7 @@ export function Canvas({ doc }: Props) {
   }, [setRange]);
 
   // Resize, fit, layout landing and the zoom preview and commit. Created
-  // once; its ports read the DOM, the store and this render's props.
+  // once; its ports read the DOM and this render's props.
   const viewportRef = useRef<ViewportController | null>(null);
   const viewport = useCallback(
     () =>
@@ -298,11 +299,11 @@ export function Canvas({ doc }: Props) {
             nextScale,
             viewPropsRef.current.pageMargin,
           ),
-        activePageId: () => editorStore.getState().activePageId,
-        scale: () => editorStore.getState().scale,
-        fitMode: () => editorStore.getState().fitMode,
+        activePageId: () => tab().activePageId,
+        scale: () => tab().scale,
+        fitMode: () => tab().fitMode,
         isMobile: () => viewPropsRef.current.isMobile,
-        fitScale: (nextScale) => editorStore.getState().setScaleKeepFit(nextScale),
+        fitScale: (nextScale) => tab().setScaleKeepFit(nextScale),
         commitScale: (nextScale, scrollTop) => {
           const nextLayout = canvasSizingLayout(
             viewPropsRef.current.docKey,
@@ -312,7 +313,7 @@ export function Canvas({ doc }: Props) {
           );
           const viewportHeight = scrollerRef.current?.clientHeight ?? 0;
           flushSync(() => {
-            editorStore.getState().setScale(nextScale);
+            tab().setScale(nextScale);
             // The mounted range for this very render must be the target's,
             // not the pre-commit position's, or the anchor page could be
             // unmounted.
@@ -332,7 +333,7 @@ export function Canvas({ doc }: Props) {
         showLiveZoom: setLiveZoomIndicator,
         debug: zoomDebugTap,
       })),
-    [editorStore, setGestureZoomingClass, syncRange],
+    [setGestureZoomingClass, syncRange],
   );
 
   // Land every new layout before it paints: a zoom commit's anchor-pinned
