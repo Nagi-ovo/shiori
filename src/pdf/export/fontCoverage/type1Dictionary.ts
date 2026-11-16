@@ -11,8 +11,9 @@ class Reader {
   peek(){return this.pending??=this.lexer.next();}
   take():PSToken {const t=this.peek();this.pending=undefined;if(!t)return fail('unexpected end of dictionary');if((t.kind==='name'||t.kind==='word')&&/^(?:Blend|Design|WeightVector|NormalizeDesignVector|ConvertDesignVector)/.test(t.value))fail(t.value);return t;}
   value(s:string){
-    const t=this.take(),kind=['Private','CharStrings','FontName'].includes(s)?'name':/^[0-9]+$/.test(s)?'number':'[]{}'.includes(s)?'delimiter':'word';
-    if(t.value!==s||t.kind!==kind)fail(`expected ${s}, got ${t.value}`);return t;
+    const t=this.take(),name=s.startsWith('/'),value=name?s.slice(1):s;
+    const kind=name||['Private','CharStrings','FontName'].includes(s)?'name':/^[0-9]+$/.test(s)?'number':'[]{}'.includes(s)?'delimiter':'word';
+    if(t.value!==value||t.kind!==kind)fail(`expected ${s}, got ${t.value}`);return t;
   }
   number(){const t=this.take();if(t.kind!=='number')return fail('expected literal number');return +t.value;}
   name(){const t=this.take();if(t.kind!=='name')return fail('expected literal name');return t.value;}
@@ -34,6 +35,23 @@ class Reader {
 const safeKeys=new Set(['FontName','FontType','PaintType','UniqueID','XUID','version','Notice','Copyright','FullName','FamilyName','Weight','ItalicAngle','isFixedPitch','UnderlinePosition','UnderlineThickness','FSType','BlueValues','OtherBlues','FamilyBlues','FamilyOtherBlues','BlueScale','BlueShift','BlueFuzz','StdHW','StdVW','StemSnapH','StemSnapV','ForceBold','LanguageGroup','ExpansionFactor','RndStemUp','MinFeature','password']);
 function boundedCount(n:number){if(!Number.isInteger(n)||n<0)fail('invalid count');if(n>type1Limits.strings)type1Budget('type1-dictionary','string-count');return n;}
 function literalSafe(tokens:PSToken[]){for(const t of tokens)if(t.kind==='word'&&!['true','false'].includes(t.value))fail(`executable literal ${t.value}`);}
+function stemSnapCompatibility(r:Reader,initial:PSToken[],array:boolean):PSToken[] {
+  const numeric=(v:PSToken[])=>v.length>0&&v.every(t=>t.kind==='number');
+  if(!array||!numeric(initial))fail('nonliteral StemSnap array');
+  // Nimbus interpreter compatibility: this exact expression only chooses
+  // between two literal Private hint arrays. Neither outcome affects our
+  // charstring/name/code/width proof. Match every token (including its kind),
+  // never execute internaldict or accept arbitrary code inside the branches.
+  const prefix=`systemdict /internaldict known { 1183615869 systemdict /internaldict get exec /StemSnapLength 2 copy known { get ${initial.length} lt } { pop pop true } ifelse } { true } ifelse { pop [`;
+  const tokens=prefix.split(' ').map(t=>r.value(t)),fallback:PSToken[]=[];
+  while(r.peek()?.value!==']'){
+    const t=r.take();if(t.kind!=='number')fail('nonliteral StemSnap fallback array');fallback.push(t);
+  }
+  if(!numeric(fallback))fail('nonliteral StemSnap fallback array');
+  const suffix='] } if'.split(' ').map(t=>r.value(t));
+  // Keep both alternatives and the expression in duplicate-definition checks.
+  return [...initial,...tokens,...fallback,...suffix];
+}
 /** Deliberately a statement grammar, not an evaluator. New idioms require fixtures. */
 export function type1Dictionary(clear:Uint8Array,privateBytes:Uint8Array):Type1Dictionary {
   const result:Type1Dictionary={builtIn:new Map(),fontMatrix:[],fontBBox:[],lenIV:4,subrs:new Map(),chars:new Map()};
@@ -44,7 +62,10 @@ export function type1Dictionary(clear:Uint8Array,privateBytes:Uint8Array):Type1D
   const simple=(r:Reader,key:string,scope:string)=>{
     if(!safeKeys.has(key)&&!['FontMatrix','FontBBox','lenIV','WMode'].includes(key))fail(`unsupported definition /${key}`);
     if(['FontMatrix','FontBBox','FontType','PaintType','FontName','WMode'].includes(key)&&scope!=='font')fail(`/${key} in unsupported dictionary`);
-    const v=r.literal();literalSafe(v);define(key,v,scope);
+    const array=r.peek()?.kind==='delimiter'&&r.peek()?.value==='[';
+    let v=r.literal();literalSafe(v);
+    if(scope==='Private'&&['StemSnapH','StemSnapV'].includes(key)&&r.peek()?.value==='systemdict')v=stemSnapCompatibility(r,v,array);
+    define(key,v,scope);
     if(key==='FontMatrix'||key==='FontBBox'){
       const n=v.map(t=>t.kind==='number'?+t.value:NaN);if(n.length!==(key==='FontMatrix'?6:4)||n.some(x=>!Number.isFinite(x)))fail(`invalid /${key}`);
       result[key==='FontMatrix'?'fontMatrix':'fontBBox']=n;
