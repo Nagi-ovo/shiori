@@ -2,7 +2,7 @@ import type {planRetypeset} from './retypesetPlan';
 import type {RetypesetCluster} from './retypesetTypes';
 
 /** Changed blocks alone reflow. Untouched source lines never enter layout. */
-export function layoutRetypeset(plan:ReturnType<typeof planRetypeset>){
+export function layoutRetypeset(plan:ReturnType<typeof planRetypeset>,limits?:{left:number;right:number}){
  const {group}=plan,size=plan.tail[0]!.state.fontSize;
  let lines=plan.unchangedLines.length,bottom=Infinity,top=-Infinity,maxRight=-Infinity,addedHeight=0;
  const advance=(a:RetypesetCluster)=>{
@@ -12,7 +12,7 @@ export function layoutRetypeset(plan:ReturnType<typeof planRetypeset>){
  for(const block of plan.blocks){
   const output=block.output,original=group.lines[block.firstLine]!;
   let x=original.x,y=original.y,rows=1;
-  const left=group.lines[1]?.x??group.left,right=Math.max(group.right,left+size),width=right-left;
+  const left=limits?.left??group.lines[1]?.x??group.left,right=limits?.right??Math.max(group.right,left+size),width=right-left;
   for(const a of output)if(!a.hard){a.advance=advance(a);if(!Number.isFinite(a.advance)||a.advance<0)throw Error('unmeasurable output advance');}
   const newline=()=>{x=left;y-=group.pitch;rows++;};
   for(let i=0;i<output.length;){

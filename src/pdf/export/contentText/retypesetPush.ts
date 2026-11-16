@@ -87,19 +87,32 @@ export function planRetypesetPush(page:PDFPage,ops:ContentOp[],source:Source,pla
   if(items.some(f=>!moving.has(f)&&intersects(swept,f.box)))return blocked('fixed-or-foreign-obstacle');
   if(newInk.some(n=>intersects(n.box,dest)))return blocked('destination-overlap');
  }
- // Recover graphics construction spans and their CTMs. Active clipping or
- // interleaved path/state mutations cannot be translated independently.
+ // Recover graphics construction spans and their CTMs. A clipped text show
+ // can move only when its complete old and translated ink fit the same clip.
+ // Scene paint bounds are already clipped, so they cannot prove that a
+ // clipped graphic has no hidden paint to expose: keep those moves blocked.
  const contexts=retypesetScopes(ops);
  const patches:PushPatch[]=[];
  for(const opIndex of new Set([...moving].map(o=>o.op))){
   const op=ops[opIndex],context=contexts.get(opIndex);
-  if(!op||!context||context.clip!==undefined)return blocked('clip-or-annotation');
+  if(!op||!context)return blocked('missing-source-scope');
+  if(context.clip===null)return blocked('unknown-clip');
   const isText=movingOps.has(opIndex),start=isText?opIndex:context.start;
+  if(context.clip){
+   if(!isText)return blocked('clipped-graphics');
+   const members=[...moving].filter(o=>o.op===opIndex);
+   if(members.some(o=>!contains(context.clip!,o.box)))return blocked('source-ink-outside-clip');
+   if(members.some(o=>!contains(context.clip!,{...o.box,y:o.box.y-delta})))return blocked('destination-outside-clip');
+  }
   if(!isText&&(!context.clean||!['Do','BI',...retypesetPaintOps].includes(op.operator)))return blocked('graphics-scope');
   const c=context.ct,det=c[0]!*c[3]!-c[1]!*c[2]!;
   if(!Number.isFinite(det)||Math.abs(det)<1e-10)return blocked('singular-ctm');
   // cm is local to the current CTM: its translated page vector is (0,-Δ).
   const tx=c[2]!*delta/det,ty=-c[0]!*delta/det;
+  // q clones the graphics state, including the effective clip in page space.
+  // The local cm moves only this show; it does not translate the clip. Q
+  // restores the original scope for outsiders. No path operators are inserted
+  // inside BT/ET and no existing current path is consumed to rebuild a clip.
   let suffix=' Q ';
   // q/Q saves text parameters, not Tm/Tlm. A double quote sets Tw/Tc;
   // retain those persistent effects after restoring the translation CTM.

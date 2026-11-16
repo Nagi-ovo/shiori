@@ -12,7 +12,7 @@ import type {ResolvedRunFont} from '../contentStreamEdit/replaceRun';
 import type {readRetypesetSource} from './retypesetSource';
 import {address} from './retypesetSource';
 import type {planRetypeset} from './retypesetPlan';
-import type {RetypesetCluster} from './retypesetTypes';
+import type {RetypesetCluster,RetypesetManifest} from './retypesetTypes';
 import {restoreReflowSlot} from './reflowEmit';
 import {prepareRetypesetFallback} from './retypesetFallback';
 import {verifyRetypesetGlyphs} from './retypesetVerify';
@@ -21,8 +21,9 @@ import {layoutRetypeset} from './retypesetLayout';
 import {planRetypesetPush,verifyRetypesetPushPaint} from './retypesetPush';
 import {numericArray} from './reflowScene';
 import {retypesetScopes} from './retypesetScopes';
-import {contains,intersects} from './regionProof/geometry';
+import {intersects} from './regionProof/geometry';
 import {retypesetInk} from './retypesetInk';
+import {layoutRetypesetInClip} from './retypesetClip';
 
 type Plan=ReturnType<typeof planRetypeset>;
 type Source=ReturnType<typeof readRetypesetSource>;
@@ -31,7 +32,7 @@ function restore(s:ShowTextState,fonts:ResolvedRunFont[]){
 }
 /** Compile in scratch resources, rewalk, verify every untargeted glyph, then
  * install. Each home show emits under its original graphics/marked scope. */
-export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp[],source:Source,plans:Plan[],options:FallbackOptions,pushBlockReason?:string){
+export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp[],source:Source,plans:Plan[],options:FallbackOptions,pushBlockReason?:string):Promise<Omit<RetypesetManifest,'reason'>[]>{
  const scratch=await PDFDocument.create(),fonts=[...source.fonts],prepared:Awaited<ReturnType<typeof prepareRetypesetFallback>>[]=[],names:(string|null)[]=[];
  const stamp=substitutionStamp(page);
  const originalResources=page.node.Resources(),originalContents=page.node.get(PDFName.of('Contents'));
@@ -61,7 +62,7 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
   }
   names.push(selectedNames.size?[...selectedNames].join(', '):null);
  }
- const fits=plans.map(layoutRetypeset),hits=plans.flatMap(p=>p.tail.map(g=>g.glyph)),target=new Set(hits.map(address));
+ const fits=plans.map(p=>layoutRetypeset(p)),hits=plans.flatMap(p=>p.tail.map(g=>g.glyph)),target=new Set(hits.map(address));
  if(target.size!==hits.length)throw Error('intersecting paragraph ownership');
  // Measurement-only resources may reference private scratch font dictionaries;
  // nothing is installed until compilation and the moved/untouched proofs pass.
@@ -70,17 +71,16 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
  measureResources.set(PDFName.of('Font'),measureFonts);measureNode.set(PDFName.of('Resources'),measureResources);
  const ink=retypesetInk(PDFPage.of(measureNode,page.ref,page.doc),fonts,ops);
  const sourceInk=new Map(source.glyphs.map(g=>[address(g.glyph),ink(fonts.find(f=>f.resourceName===g.glyph.fontName)!,g.glyph.code,g.state,g.x,g.y)]));
- const outputInks=plans.map(p=>new Map(p.output.filter(a=>!a.hard).map(a=>{
-  const pt=p.frame.global(a.x!,a.y!),code=codes(a.bytes!,a.font!.bytesPerCode)[0]!;
-  return [a,ink(a.font!,code,a.home.state,pt.x,pt.y)] as const;
- })));
  const formBox=originalContents instanceof PDFRawStream?numericArray(originalContents.dict,'BBox'):undefined;
  const initialClip=formBox?.length===4?{x:formBox[0]!,y:formBox[1]!,w:formBox[2]!-formBox[0]!,h:formBox[3]!-formBox[1]!}:undefined;
  const scopes=retypesetScopes(ops,initialClip);
- for(const [i]of plans.entries())if(fits[i]!.addedHeight>.01)for(const [a,ink]of outputInks[i]!){
-  const clip=scopes.get(a.home.glyph.opIndex)?.clip;
-  if(clip===null||clip&&(!ink.known||!contains(clip,ink.box)))throw Error('retypeset-output-outside-source-clip: cannot expose new wrap without changing the original clip');
- }
+ const outputInks=plans.map((p,i)=>{
+  const laid=layoutRetypesetInClip(p,fits[i]!,scopes,a=>{
+   const pt=p.frame.global(a.x!,a.y!),code=codes(a.bytes!,a.font!.bytesPerCode)[0]!;
+   return ink(a.font!,code,a.home.state,pt.x,pt.y);
+  });
+  fits[i]=laid.fit;return laid.ink;
+ });
  const pushes=plans.map((p,i)=>{
   const ink=outputInks[i]!,internalOverlap=p.blocks.some((b,j)=>p.blocks.slice(j+1).some(next=>
    b.output.some(a=>ink.has(a)&&next.output.some(c=>ink.has(c)&&intersects(ink.get(a)!.box,ink.get(c)!.box)))));
