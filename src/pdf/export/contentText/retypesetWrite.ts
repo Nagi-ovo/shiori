@@ -19,7 +19,7 @@ import {verifyRetypesetGlyphs} from './retypesetVerify';
 import {originalFallbackFace,retypesetFontSelector} from './retypesetFontSelection';
 import {layoutRetypeset} from './retypesetLayout';
 import {planRetypesetPush,verifyRetypesetPushPaint} from './retypesetPush';
-import {numericArray} from './reflowScene';
+import {retypesetFormPushSpace} from './retypesetForms';
 import {retypesetScopes} from './retypesetScopes';
 import {contains,intersects} from './regionProof/geometry';
 import {retypesetInk} from './retypesetInk';
@@ -32,6 +32,8 @@ function restore(s:ShowTextState,fonts:ResolvedRunFont[]){
 /** Compile in scratch resources, rewalk, verify every untargeted glyph, then
  * install. Each home show emits under its original graphics/marked scope. */
 export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp[],source:Source,plans:Plan[],options:FallbackOptions,pushBlockReason?:string){
+ const formSpace=retypesetFormPushSpace(page),contents=page.doc.context.lookup(page.node.get(PDFName.of('Contents')));
+ if(contents instanceof PDFRawStream&&contents.dict.get(PDFName.of('Subtype'))===PDFName.of('Form')&&!formSpace)throw Error('push-blocked-by-form-context: Form stream is not a detached CoW occurrence');
  const scratch=await PDFDocument.create(),fonts=[...source.fonts],prepared:Awaited<ReturnType<typeof prepareRetypesetFallback>>[]=[],names:(string|null)[]=[];
  const stamp=substitutionStamp(page);
  const originalResources=page.node.Resources(),originalContents=page.node.get(PDFName.of('Contents'));
@@ -74,9 +76,7 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
   const pt=p.frame.global(a.x!,a.y!),code=codes(a.bytes!,a.font!.bytesPerCode)[0]!;
   return [a,ink(a.font!,code,a.home.state,pt.x,pt.y)] as const;
  })));
- const formBox=originalContents instanceof PDFRawStream?numericArray(originalContents.dict,'BBox'):undefined;
- const initialClip=formBox?.length===4?{x:formBox[0]!,y:formBox[1]!,w:formBox[2]!-formBox[0]!,h:formBox[3]!-formBox[1]!}:undefined;
- const scopes=retypesetScopes(ops,initialClip);
+ const scopes=retypesetScopes(ops,formSpace?.box);
  for(const [i]of plans.entries())if(fits[i]!.addedHeight>.01)for(const [a,ink]of outputInks[i]!){
   const clip=scopes.get(a.home.glyph.opIndex)?.clip;
   if(clip===null||clip&&(!ink.known||!contains(clip,ink.box)))throw Error('retypeset-output-outside-source-clip: cannot expose new wrap without changing the original clip');
@@ -86,7 +86,7 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
    b.output.some(a=>ink.has(a)&&next.output.some(c=>ink.has(c)&&intersects(ink.get(a)!.box,ink.get(c)!.box)))));
   const fixed=outputInks.flatMap((m,j)=>j===i?[]:[...m.values()]);
   return planRetypesetPush(page,ops,source,p,fits[i]!,target,[...ink.values()],sourceInk,
-   pushBlockReason??(plans.length>1?'multiple-edited-paragraphs':undefined),fixed,internalOverlap);
+   pushBlockReason??(plans.length>1?'multiple-edited-paragraphs':undefined),fixed,internalOverlap,formSpace);
  });
  const deltas=new Map(pushes.flatMap(p=>[...p.glyphDeltas]));
 
