@@ -78,7 +78,7 @@ export function buildPageOccupancy(input:{page:PDFPage;ops:readonly ContentOp[];
   const t=trace.shows.get(`${s.opIndex}:${s.arrayItemIndex}`)?.before,b=s.fontName?declaredBoxes.get(s.fontName):undefined;
   if(t&&s.reason){
    const boxes=boundStrokedShow(s,t,ink,b,strokes.get(s.opIndex),media,guardPt);
-   if(boxes){for(const box of boxes)add('unplaced',box,s.opIndex);continue;}
+   if(boxes?.length){for(const box of boxes)add('unplaced',box,s.opIndex);continue;}
   }
   const o=s.origin??(t?{x:origin({...t,tm:t.tlm})[0],y:origin({...t,tm:t.tlm})[1]}:undefined);
   if(o&&t&&b&&s.reason===undefined&&Number.isFinite(o.y)&&Math.abs(linear(t)[1]!)<1e-9&&Math.abs(linear(t)[2]!)<1e-9){

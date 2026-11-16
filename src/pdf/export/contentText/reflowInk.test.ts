@@ -82,6 +82,8 @@ test.each([[0,0], [0,.001], [.001,0]])('Type3 scale %j cannot turn a declaration
 // Failure inventory: point/zero-width/zero-height declarations are unknown;
 // proved empty outlines stay empty; unsupported CFF transforms and failed or
 // missing glyph hulls cannot fall back to an identity-scaled declaration.
+// Stroke emptiness needs a path proof: Type1 null and Type3 whitespace carry
+// that proof; fontkit's zero box and a painted Type1 point do not.
 const degenerateBoxes=[[0,0,0,0],[50,0,50,700],[0,40,600,40]].map(b=>[b]);
 test.each(degenerateBoxes)('unparsed Type1 with zero-area FontBBox %j cannot prove a reflow region',async bbox=>{
  const f=await type1Fixture({brokenProgram:true,stream:'BT /F1 10 Tf 14 TL 50 100 Td (AB) Tj ET'});
@@ -118,9 +120,27 @@ test('a degenerate declaration does not erase real outlines or proved empty glyp
  expect(measure(painted)).toMatchObject({box:{x:0,y:0,w:4,h:7},conservative:false});
  const f=await type1Fixture({programOptions:{glyphs:{'.notdef':widthChar(0),A:widthChar(),B:widthChar()}}});
  f.font.lookup(PDFName.of('FontDescriptor'),PDFDict).set(PDFName.of('FontBBox'),f.doc.context.obj([0,0,0,0]));
- expect(measure(f)).toMatchObject({box:{x:0,y:0,w:0,h:0},conservative:false});
+ expect(measure(f)).toMatchObject({box:{x:0,y:0,w:0,h:0},conservative:false,provedEmpty:true});
  const ink=substituteInk(f.page,substituteSourceFonts(f.page))('F1',65);
  expect(ink).toEqual({x:0,y:0,w:0,h:0});expect(inkCovered(ink!,[])).toBe(true);
+});
+test('Type3 whitespace carries a proved-empty path signal',async()=>{
+ const f=await type1Fixture({stream:'BT /F1 10 Tf 50 100 Td (A) Tj ET'}),ctx=f.doc.context;
+ const fonts=resolveRunFonts(f.page),state=[...traceReflowSource(tokenizeContentStream(f.source.bytes),fonts,f.source.sourceHash).shows.values()][0]!.before;
+ f.font.set(PDFName.of('Subtype'),PDFName.of('Type3'));f.font.delete(PDFName.of('FontDescriptor'));
+ f.font.set(PDFName.of('FontMatrix'),ctx.obj([.001,0,0,.001,0,0]));
+ f.font.set(PDFName.of('FontBBox'),ctx.obj([0,0,600,700]));
+ f.font.set(PDFName.of('Encoding'),ctx.obj({Differences:[65,'A']}));
+ f.font.set(PDFName.of('CharProcs'),ctx.obj({A:ctx.register(ctx.flateStream('600 0 0 0 0 0 d1'))}));
+ f.font.set(PDFName.of('ToUnicode'),ctx.register(ctx.flateStream('1 beginbfchar <41> <0020> endbfchar')));
+ expect(streamInkResolver(f.page,fonts)('F1',65,state)).toMatchObject({box:{x:0,y:0,w:0,h:0},conservative:false,provedEmpty:true});
+});
+test('fontkit empty CFF paths remain unproved even with non-conservative zero ink',async()=>{
+ const f=await type1Fixture(),d=f.font.lookup(PDFName.of('FontDescriptor'),PDFDict),bytes=matrixCff();
+ bytes.fill(14,bytes.length-13);d.delete(PDFName.of('FontFile'));
+ d.set(PDFName.of('FontFile3'),f.doc.context.register(f.doc.context.flateStream(bytes,{Subtype:'Type1C'})));
+ const ink=measure(f);expect(ink).toMatchObject({box:{x:0,y:0,w:0,h:0},conservative:false});
+ expect(ink).not.toMatchObject({provedEmpty:true});
 });
 
 /** Original CID CFF with one FD and a triangle; fixed-width offsets keep the

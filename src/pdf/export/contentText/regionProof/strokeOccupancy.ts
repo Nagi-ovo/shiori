@@ -49,7 +49,9 @@ export function boundStrokedShow(s:UnplacedShow,t:TextTrace,ink:ReturnType<typeo
  const radius=envelope*Math.hypot(...t.ctm.slice(0,4))+guard;
  if(!Number.isFinite(radius))return;
  const glyphs=s.glyphs?.map(g=>({g,ink:ink(g.fontName,g.code,{...t,renderMode:0,scopeSafe:true})}));
- if(glyphs&&glyphs.every(g=>g.ink&&!g.ink.conservative))return glyphs.flatMap(({g,ink})=>ink!.box.w>0&&ink!.box.h>0?
+ // A 1D outline still strokes to a ribbon. Only an explicit path proof can
+ // erase a point hull; fontkit's bare zero CFF box must use the fallback.
+ if(glyphs&&glyphs.every(({ink})=>ink&&!ink.conservative&&(ink.box.w>0||ink.box.h>0||ink.provedEmpty===true)))return glyphs.flatMap(({g,ink})=>ink!.box.w>0||ink!.box.h>0?
   [{x:g.coreQuad[0].x+ink!.box.x-radius,y:g.coreQuad[0].y+ink!.box.y-radius,w:ink!.box.w+2*radius,h:ink!.box.h+2*radius}]:[]);
  if(!declared)return;
  const sy=linear(t)[3]!*t.size/1000,y1=s.origin.y+declared[1]!*sy,y2=s.origin.y+declared[3]!*sy;

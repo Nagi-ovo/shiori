@@ -12,7 +12,8 @@ import {runToUnicode} from '../contentStreamEdit/runToUnicode';
 import {numericArray} from './reflowScene';
 import {simpleNames} from '../fontCoverage/encodings';
 import {proveType3Glyph} from '../fontCoverage/type3Proof';
-export type ReflowInk={box:Rect;glyph?:GlyphIdentity;conservative:boolean};
+/** A zero box alone cannot prove an empty path (notably fontkit CFF hulls). */
+export type ReflowInk={box:Rect;glyph?:GlyphIdentity;conservative:boolean;provedEmpty?:boolean};
 /** Outlines are preferred; a positive-area PDF FontBBox is conservative ink,
  * independent of source encoding eligibility. No selection, advance or em
  * metric can fill a missing envelope. Unproved composites stay unknown. */
@@ -39,7 +40,7 @@ export function streamInkResolver(page:PDFPage,fonts:readonly ResolvedRunFont[],
   const input=fontInputFromDict(raw);
   if(input.program&&isCffProgram(input.program))envelope=undefined;
   if(input.subtype==='Type3'){
-   byName.set(font.resourceName,code=>{const p=proveType3Glyph(input,code);return p.ok?{box:p.proof.inkBounds??{x:0,y:0,w:0,h:0},conservative:false}:undefined;});
+   byName.set(font.resourceName,code=>{const p=proveType3Glyph(input,code);return p.ok?{box:p.proof.inkBounds??{x:0,y:0,w:0,h:0},conservative:false,provedEmpty:p.proof.inkBounds===null}:undefined;});
    continue;
   }
   if(input.error||!input.program)continue;
@@ -67,7 +68,7 @@ export function streamInkResolver(page:PDFPage,fonts:readonly ResolvedRunFont[],
     const proof=program.verify(name);if(!proof.ok||proof.inkBounds===undefined)return;
     const hull=proof.inkBounds;
     const box=hull===null?{x:0,y:0,w:0,h:0}:{x:hull.x/1000,y:hull.y/1000,w:hull.w/1000,h:hull.h/1000};
-    return {box,glyph:{kind:'type1-name',programHash:hash,name},conservative:false};
+    return {box,glyph:{kind:'type1-name',programHash:hash,name},conservative:false,provedEmpty:hull===null};
    });
   }
  }
