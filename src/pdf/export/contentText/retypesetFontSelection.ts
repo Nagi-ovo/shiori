@@ -14,7 +14,11 @@ export function originalFallbackFace(page:PDFPage,resource:string,text:string){
  const hints=[font?.get(PDFName.of('BaseFont')),child?.get(PDFName.of('BaseFont')),descriptor?.get(PDFName.of('FontName')),descriptor?.get(PDFName.of('FontFamily'))]
   .map(v=>v?font!.context.lookup(v):undefined).flatMap(v=>v instanceof PDFName||v instanceof PDFString||v instanceof PDFHexString?[v.decodeText()]:[]).join(' ');
  const number=(key:string)=>descriptor?.lookupMaybe(PDFName.of(key),PDFNumber)?.asNumber();
- return fallbackFontName(hints||resource,number('Flags')??0,text,number('FontWeight')??400);
+ const flags=number('Flags')??0,weight=number('FontWeight')??400;
+ const face=fallbackFontName(hints||resource,flags,text,weight);
+ // Reuse Liberation's weight decision without changing other fallback paths.
+ const bold=/-Bold/.test(fallbackFontName(hints||resource,flags,'',weight));
+ return face.startsWith('NotoSans')&&bold?face.replace('-Regular.otf','-Bold.otf'):face;
 }
 
 /** Inspect cmap coverage before embedding. First prefer one face covering all
@@ -30,7 +34,10 @@ export function retypesetFontSelector(options:FallbackOptions){
  };
  return async(primary:string,paragraph:string,clusters:readonly string[])=>{
   const cjk=/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(paragraph);
-  const names=[...new Set([primary,...(cjk?['NotoSansJP-Regular.otf','NotoSansSC-Regular.otf','NotoSansKR-Regular.otf']:[]),
+  const regular=['NotoSansJP-Regular.otf','NotoSansSC-Regular.otf','NotoSansKR-Regular.otf'];
+  const cjkFaces=primary.endsWith('-Bold.otf')
+   ?[...regular.map(n=>n.replace('-Regular','-Bold')),primary.replace('-Bold','-Regular'),...regular]:regular;
+  const names=[...new Set([primary,...(cjk?cjkFaces:[]),
    'NotoSansMath-Regular.ttf','NotoSansSymbols2-Regular.ttf',...(!cjk?['NotoSansSC-Regular.otf','NotoSansJP-Regular.otf','NotoSansKR-Regular.otf']:[])])]
    .filter(n=>!cjk||!n.startsWith('Liberation'));
   const needed=[...new Set(clusters.flatMap(fallbackClusters))];

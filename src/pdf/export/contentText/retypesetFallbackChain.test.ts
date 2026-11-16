@@ -57,12 +57,12 @@ test('CID descendant descriptor supplies weight, italic flag and family hints',a
 });
 
 for(const [label,text,expected]of [
- ['jp-to-sc','かな需要调整','NotoSansSC-Regular.otf'],
+ ['jp-to-sc','かな需要调整','NotoSansSC-Bold.otf'],
  ['math','For ℎ,𝜌 > 0','NotoSansMath-Regular.ttf'],
  ['canonical-angle','281 〈/ctexheading〉','NotoSansSC-Regular.otf'],
  ['angle','281 〈/ctexheading〉','NotoSansSC-Regular.otf'],
- ['hangul','한국어 한글','NotoSansKR-Regular.otf'],
- ['han-style','新的文字','NotoSansSC-Regular.otf'],
+ ['hangul','한국어 한글','NotoSansKR-Bold.otf'],
+ ['han-style','新的文字','NotoSansSC-Bold.otf'],
  ['mixed-math-cjk-symbols','한글 调 ℎ𝜌 🂡',null],
 ]as const)test(`coverage chain emits searchable non-tofu glyphs: ${label}`,async()=>{
  const f=await fixture('BT /F1 10 Tf 1 Tr 50 100 Td (ABCDE) Tj ET');

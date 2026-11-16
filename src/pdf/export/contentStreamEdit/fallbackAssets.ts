@@ -33,6 +33,9 @@ export async function fallbackFontUrl(name: string): Promise<string> {
   if (name === 'NotoSansSC-Regular.otf') return cjkScExportFontUrl;
   if (name === 'NotoSansJP-Regular.otf') return cjkJpExportFontUrl;
   if (name === 'NotoSansKR-Regular.otf') return new URL('../../../assets/fonts/NotoSansKR-Regular.otf',import.meta.url).href;
+  if (name === 'NotoSansSC-Bold.otf') return new URL('../../../assets/fonts/NotoSansSC-Bold.otf',import.meta.url).href;
+  if (name === 'NotoSansJP-Bold.otf') return new URL('../../../assets/fonts/NotoSansJP-Bold.otf',import.meta.url).href;
+  if (name === 'NotoSansKR-Bold.otf') return new URL('../../../assets/fonts/NotoSansKR-Bold.otf',import.meta.url).href;
   if (name === 'NotoSansMath-Regular.ttf') return new URL('../../../assets/fonts/NotoSansMath-Regular.ttf',import.meta.url).href;
   if (name === 'NotoSansSymbols2-Regular.ttf') return new URL('../../../assets/fonts/NotoSansSymbols2-Regular.ttf',import.meta.url).href;
   throw Error('bundled fallback font unavailable');
