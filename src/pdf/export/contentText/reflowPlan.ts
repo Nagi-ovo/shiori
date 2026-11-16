@@ -17,6 +17,7 @@ export {reflowDefaults} from './reflowTypes';
 export const reflowAddressKey=(s:SourceAddress)=>`${s.opIndex}:${s.itemIndex}:${s.byteStart}:${s.byteEnd}:${s.fontObject}`;
 const fail=(reason:string):ContentTextPlan=>({ok:false,code:'reflow-required',reason});
 const traceEqual=(a:TextTrace,b:TextTrace)=>matrixEqual(a.tm,b.tm)&&matrixEqual(a.tlm,b.tlm)&&
+ (a.scopeKey??'')===(b.scopeKey??'')&&JSON.stringify(a.mcids??[])===JSON.stringify(b.mcids??[])&&a.scopeSafe!==false&&b.scopeSafe!==false&&
  matrixEqual(a.ctm,b.ctm)&&a.bt===b.bt&&a.fontObject===b.fontObject&&
  (['size','tc','tw','tz','leading','rise','renderMode'] as const).every(k=>near(a[k],b[k],1e-8));
 
@@ -119,7 +120,7 @@ export function planReflow(content:Uint8Array,fonts:readonly ResolvedRunFont[],o
    const state=traces.shows.get(`${target.opIndex}:${target.itemIndex}`)!.before;
    const scale=linear(state)[0]!*state.tz/100;
    const code=codes(encoded.bytes,font.bytesPerCode)[0]!,advance=(font.widthOf(code)*state.size/1000+state.tc+(font.bytesPerCode===1&&code===32?state.tw:0))*scale;
-   replacement.push({...base,fontResource:font.resourceName,fontObject:font.objectId,unicode:segment,code:encoded.bytes,source:undefined,original:undefined,glyph:undefined,
+   replacement.push({...base,homeOp:base.source!.opIndex,fontResource:font.resourceName,fontObject:font.objectId,unicode:segment,code:encoded.bytes,source:undefined,original:undefined,glyph:undefined,
     advance,ink:{...ink.box},wordSpace:font.bytesPerCode===1&&code===32,fullEmHan:font.widthOf(code)===1000,hardAfter:false});
   }
   const layout=solveMeasuredReflow({source,replacement,start,end,proof,softBreaks:request.softBreaks});

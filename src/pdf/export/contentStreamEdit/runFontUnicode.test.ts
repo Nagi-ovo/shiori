@@ -34,8 +34,9 @@ for (const toUnicode of [undefined, '', '1 beginbfchar <41> <0041> endbfchar',
     const fonts = resolveRunFonts(f.page), font = fonts[0]!;
     expect([65, 101, 32].map(code => font.unicodeByCode.get(code))).toEqual(['A', 'e', ' ']);
     const evidence = streamReflowEvidence(f.page, f.source.bytes, fonts, 5);
-    expect(evidence?.lines.map(line => line.shows.map(show => show.unicode).join(''))).toEqual(['Ae Ae']);
-    expect(evidence?.source.map(glyph => [...glyph.code])).toEqual([[65], [101], [32], [65], [101]]);
+    if(!evidence.ok)throw Error(evidence.detail);
+    expect(evidence.lines.map(line => line.shows.map(show => show.unicode).join(''))).toEqual(['Ae Ae']);
+    expect(evidence.source.map(glyph => [...glyph.code])).toEqual([[65], [101], [32], [65], [101]]);
     expect(f.font.toString()).toBe(before);
     expect(inspectRunPage(f.page)).toEqual(f.source);
   });

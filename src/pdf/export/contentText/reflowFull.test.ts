@@ -155,7 +155,7 @@ async function provedStream(stream:string,right=105){
  const {streamReflowEvidence}=await import('./reflowEvidence');
  const f=await spacingPage(stream),content=inspectRunPage(f.page);if(!content.ok)throw Error(content.reason);
  const fonts=resolveRunFonts(f.page),ops=tokenizeContentStream(content.bytes),firstOp=ops.findIndex(op=>op.operator==='Tj');
- const e=streamReflowEvidence(f.page,content.bytes,fonts,firstOp);if(!e)throw Error('missing base stream measurements');
+ const e=streamReflowEvidence(f.page,content.bytes,fonts,firstOp);if(!e.ok)throw Error('missing base stream measurements');
  const glyphs=e.walk.glyphs.filter(g=>e.trace.shows.get(`${g.opIndex}:${g.arrayItemIndex}`)!.before.bt===0);
  const baselines=[...new Set(glyphs.map(g=>g.coreQuad[0].y))];
  const source=glyphs.map(g=>{

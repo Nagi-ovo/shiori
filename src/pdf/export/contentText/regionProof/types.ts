@@ -5,12 +5,15 @@ export type SourceAddress = {
   streamHash: string; opIndex: number; itemIndex: number;
   byteStart: number; byteEnd: number; fontObject: string;
 };
+export type ScopeKey = string;
 /** Full state, supplied by a revision-bound R1 walker (not ShowTextState). */
 export type TextTrace = {
   bt: number; opIndex: number;
   ctm: readonly number[]; tm: readonly number[]; tlm: readonly number[];
   fontObject: string; size: number; tc: number; tw: number; tz: number;
   leading: number; rise: number; renderMode: number; safetyHash: string;
+  /** Missing keys on external evidence mean the unmarked scope only. */
+  scopeKey?: ScopeKey; mcids?: readonly number[]; scopeSafe?: boolean;
 };
 export type ParagraphShow = {
   source: SourceAddress; unicode: string; before: TextTrace; after: TextTrace;

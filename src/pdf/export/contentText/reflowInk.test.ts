@@ -58,14 +58,14 @@ test.each([['placed','glyph'],['unplaced','glyph'],['placed','FD matrix'],['unpl
  const s=inspectRunPage(f.page);if(!s.ok)throw Error(s.reason);
  const target=tokenizeContentStream(s.bytes).findIndex(op=>op.operator==='Tj');
  const evidence=()=>streamReflowEvidence(f.page,s.bytes,substituteSourceFonts(f.page),target);
- const ordinary=evidence();expect(ordinary===null).toBe(false);
- expect(ordinary?.walk.unplacedText).toBe(placement==='unplaced');
+ const ordinary=evidence();expect(ordinary.ok).toBe(true);if(!ordinary.ok)throw Error(ordinary.detail);
+ expect(ordinary.walk.unplacedText).toBe(placement==='unplaced');
  const bytes=failure==='glyph'?matrixCff():fdMatrixCff([2,0,0,2,0,0]);
  if(failure==='glyph')bytes[bytes.length-1]=15;
  d.set(PDFName.of('FontFile2'),ctx.register(ctx.flateStream(bytes)));
  if(failure==='glyph')expect(readProgram(fontInputFromDict(other))).toMatchObject({kind:'fontkit',cff:true});
  else expect(()=>readProgram(fontInputFromDict(other))).toThrow();
- expect(evidence()===null).toBe(true);
+ expect(evidence().ok).toBe(false);
 });
 
 // A positive declaration can collapse only after the Type3 scale is applied.
@@ -89,7 +89,7 @@ test.each(degenerateBoxes)('unparsed Type1 with zero-area FontBBox %j cannot pro
  expect(measure(f)).toBeUndefined();
  const s=inspectRunPage(f.page);if(!s.ok)throw Error(s.reason);
  const target=tokenizeContentStream(s.bytes).findIndex(op=>op.operator==='Tj');
- expect(streamReflowEvidence(f.page,s.bytes,resolveRunFonts(f.page),target)).toBeNull();
+ expect(streamReflowEvidence(f.page,s.bytes,resolveRunFonts(f.page),target)).toMatchObject({ok:false});
 });
 test.each(degenerateBoxes)('unparsed Type1 with zero-area FontBBox %j cannot authorize substitution cover',async bbox=>{
  const f=await type1Fixture({brokenProgram:true});
@@ -110,7 +110,7 @@ test.each(['zero-area','CFF-hull-failure'])('unowned text with %s ink cannot gra
  }
  other.set(PDFName.of('FontDescriptor'),ctx.register(d));f.fonts.set(PDFName.of('F2'),ctx.register(other));
  const s=inspectRunPage(f.page);if(!s.ok)throw Error(s.reason);
- expect(streamReflowEvidence(f.page,s.bytes,resolveRunFonts(f.page),tokenizeContentStream(s.bytes).findIndex(op=>op.operator==='Tj'))).toBeNull();
+ expect(streamReflowEvidence(f.page,s.bytes,resolveRunFonts(f.page),tokenizeContentStream(s.bytes).findIndex(op=>op.operator==='Tj'))).toMatchObject({ok:false});
 });
 test('a degenerate declaration does not erase real outlines or proved empty glyphs',async()=>{
  const painted=await type1Fixture();
@@ -165,7 +165,7 @@ test.each([[[2,0,0,2,0,0]],[[1,1,0,1,0,0]]])('CID FD FontMatrix %j cannot retain
  expect(substituteInk(f.page,fonts)('F1',42)).toBeUndefined();
  expect(measure(f,42)).toBeUndefined();
  const s=inspectRunPage(f.page);if(!s.ok)throw Error(s.reason);
- expect(streamReflowEvidence(f.page,s.bytes,resolveRunFonts(f.page),tokenizeContentStream(s.bytes).findIndex(op=>op.operator==='Tj'))).toBeNull();
+ expect(streamReflowEvidence(f.page,s.bytes,resolveRunFonts(f.page),tokenizeContentStream(s.bytes).findIndex(op=>op.operator==='Tj'))).toMatchObject({ok:false});
 });
 test.each(['missing-gid','broken-hull'])('CFF %s cannot retain an untransformed declared envelope',async failure=>{
  const f=await type1Fixture(),d=f.font.lookup(PDFName.of('FontDescriptor'),PDFDict),bytes=matrixCff();

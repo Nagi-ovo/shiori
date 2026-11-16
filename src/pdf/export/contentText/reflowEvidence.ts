@@ -6,13 +6,13 @@ import {textObjectScopes,followsUnplaced} from '../contentStreamEdit/textSafety'
 import {runPageEnvironment} from '../contentStreamEdit/replaceRunPage';
 import {runResourceStamp} from '../contentStreamEdit/resourceStamp';
 import type {Type1Options} from '../fontCoverage/type1Support';
-import {detectParagraphRegion,type ParagraphLine,type RegionProof,type Rect,type SourceAddress} from './regionProof';
+import {detectParagraphRegion,type ParagraphBlocker,type ParagraphRefusal,type ParagraphLine,type RegionProof,type Rect,type SourceAddress} from './regionProof';
 import {paragraphMember,contains,intersects,origin,physicalSize,validTrace,linear} from './regionProof/geometry';
 import {traceReflowSource} from './reflowTrace';
 import {streamInkResolver} from './reflowInk';
 import type {ReflowCodeCluster} from './reflowTypes';
 import {reflowScene,numericArray} from './reflowScene';
-import {shortStreamRegion} from './reflowShortRegion';
+import {shortStreamRegionResult} from './reflowShortRegion';
 import {fontInputFromDict} from '../fontCoverage/pdfLibAdapter';
 import {isCffProgram} from '../fontCoverage/cffHulls';
 export const unionReflowBoxes=(boxes:readonly Rect[]):Rect=>{
@@ -20,6 +20,12 @@ export const unionReflowBoxes=(boxes:readonly Rect[]):Rect=>{
  return {x,y,w:Math.max(...boxes.map(b=>b.x+b.w))-x,h:Math.max(...boxes.map(b=>b.y+b.h))-y};
 };
 const pageRect=(r:{x:number;y:number;width:number;height:number}):Rect=>({x:r.x,y:r.y,w:r.width,h:r.height});
+export type StreamEvidenceGate='placement-walk-failed'|'source-too-large'|'follows-unplaced'|'run-context-unsafe'|
+ 'target-state'|'missing-show-or-font'|'missing-line-anchor'|'non-string-show-item'|'non-positive-advance'|
+ 'no-member-lines'|'target-not-in-member-lines'|'region-unproved'|'raster-box-outside-page'|'raster-box-hits-obstacles';
+export type StreamEvidenceRefusal={ok:false;gate:StreamEvidenceGate;blocker?:ParagraphBlocker;detail:string};
+const refuse=(gate:StreamEvidenceGate,detail:string,blocker?:ParagraphBlocker):StreamEvidenceRefusal=>({ok:false,gate,blocker,detail});
+export type StreamReflowEvidence=Extract<ReturnType<typeof streamReflowEvidence>,{ok:true}>;
 /** Complete bounded scene proof. Paint and unrelated text are local obstacles;
  * missing bounds conservatively occupy the page, never grant empty space. */
 export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:readonly ResolvedRunFont[],targetOp:number,options:Type1Options={},addressOnly=false){
@@ -29,11 +35,14 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
  const anchors=[...trace.anchors.values()];
  const resolveFont=(name:string)=>{const f=byName.get(name);return f?{...f,ok:true as const,appliesWordSpacing:f.bytesPerCode===1}:{ok:false as const,reason:'unmeasurable source font'};};
  const walk=walkTextPlacements(ops,{resolveFont,extGStateSetsFont:name=>environment.extGStates?.get(name)?.setsFont??null,onUnplaced:s=>unplaced.push(s)});
- if(!walk.ok||walk.glyphs.length>16384||followsUnplaced(textObjectScopes(ops),unplaced.filter(s=>!s.advanceKnown).map(s=>s.opIndex),targetOp))return null;
- const safety=runContextSafety(ops,environment);if(!safety.ok)return null;
+ if(!walk.ok)return refuse('placement-walk-failed',walk.reason);
+ if(walk.glyphs.length>16384)return refuse('source-too-large',`glyphs=${walk.glyphs.length}`);
+ if(followsUnplaced(textObjectScopes(ops),unplaced.filter(s=>!s.advanceKnown).map(s=>s.opIndex),targetOp))return refuse('follows-unplaced','Target follows an unknown text advance');
+ const safety=runContextSafety(ops,environment);if(!safety.ok)return refuse('run-context-unsafe',safety.reason);
  const ink=streamInkResolver(page,fonts,options,addressOnly),target=[...trace.shows.values()].find(s=>s.before.opIndex===targetOp)?.before;
- if(!target||!validTrace(target))return null;
+ if(!target||!validTrace(target))return refuse('target-state','Missing or unsupported target show state');
  let lines:ParagraphLine[]=[],source:ReflowCodeCluster[]=[];
+ const excluded={unmeasured:0,badUnicode:0,unsafe:0,incompatible:0};
  const obstacles:Rect[]=reflowScene(page,ops,media);
  const declaredBoxes=new Map<string,number[]|undefined>();
  const declaredBox=(name:string|undefined)=>{
@@ -66,9 +75,10 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
  }
  for(const g of walk.glyphs){
   const show=trace.shows.get(`${g.opIndex}:${g.arrayItemIndex}`),font=byName.get(g.fontName);
-  if(!show||!font)return null;
+  if(!show||!font)return refuse('missing-show-or-font',`op=${g.opIndex} font=${g.fontName}`);
   const measured=ink(g.fontName,g.code,show.before),unicode=font.unicodeByCode.get(g.code);
   if(!measured){
+   excluded.unmeasured++;
    const bounds=declaredBox(g.fontName),t=show.before,[a,b,c,d]=linear(t),o=g.coreQuad[0];
    if(bounds){
     const points=[[bounds[0]!,bounds[1]!],[bounds[2]!,bounds[1]!],[bounds[2]!,bounds[3]!],[bounds[0]!,bounds[3]!]].map(([x,y])=>({
@@ -80,13 +90,16 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   }
   const o=g.coreQuad[0],box={...measured.box,x:o.x+measured.box.x,y:o.y+measured.box.y};
   if(!unicode||/[\r\n\t\uFFFD]/u.test(unicode)||safety.unsafe.has(g.opIndex)||!paragraphMember(show.before,target)||!paragraphMember(show.after,target)){
+   if(!unicode||/[\r\n\t\uFFFD]/u.test(unicode))excluded.badUnicode++;
+   else if(safety.unsafe.has(g.opIndex))excluded.unsafe++;
+   else excluded.incompatible++;
    // Real whitespace still occupies a text placement for downward clearance.
    obstacles.push(unionReflowBoxes([box,{x:o.x,y:o.y-.2*physicalSize(show.before),w:g.coreQuad[1].x-o.x,h:physicalSize(show.before)}]));continue;
   }
   const address:SourceAddress={streamHash:sourceHash,opIndex:g.opIndex,itemIndex:g.arrayItemIndex,byteStart:g.byteOffset,byteEnd:g.byteOffset+g.byteLength,fontObject:font.objectId};
   let line=lines.at(-1);
   const anchor=anchors.findLast(t=>t.opIndex<g.opIndex&&t.bt===show.before.bt);
-  if(!anchor||!validTrace(anchor))return null;
+  if(!anchor||!validTrace(anchor))return refuse('missing-line-anchor',`op=${g.opIndex}`);
   const previous=line?.shows.at(-1),previousAnchor=line?.continuations?.at(-1)??line?.anchor;
   const continuation=previous&&anchor.opIndex!==previousAnchor?.opIndex;
   const gap=previous?o.x-origin(previous.after)[0]:0;
@@ -100,7 +113,7 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   }
   if(!line.shows.some(s=>s.source.opIndex===g.opIndex&&s.source.itemIndex===g.arrayItemIndex)){
    const op=ops[g.opIndex]!,item=op.operator==='TJ'&&op.operands[0]?.kind==='array'?op.operands[0].items[g.arrayItemIndex]:op.operands[0];
-   if(item?.kind!=='string')return null;
+   if(item?.kind!=='string')return refuse('non-string-show-item',`op=${g.opIndex} item=${g.arrayItemIndex}`);
    line.shows.push({source:{...address,byteStart:0,byteEnd:item.bytes.length},unicode:'',...show});
   }
   line.shows.at(-1)!.unicode+=unicode;line.ink=line.ink?unionReflowBoxes([line.ink,box]):box;
@@ -109,21 +122,22 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   // character/space of each show; gaps then contain only real positioning.
   const t=show.before,scale=linear(t)[0]!*t.tz/100;
   const advance=(font.widthOf(g.code)*t.size/1000+t.tc+(font.bytesPerCode===1&&g.code===32?t.tw:0))*scale;
-  if(!(advance>0))return null;
+  if(!(advance>0))return refuse('non-positive-advance',`op=${g.opIndex} code=${g.code} advance=${advance}`);
   source.push({unicode,advance,metrics:{size:show.before.size,tc:show.before.tc,tw:show.before.tw},ink:measured.box,em:physicalSize(show.before),wordSpace:font.bytesPerCode===1&&g.code===32,
    fullEmHan:font.widthOf(g.code)===1000,gap:0,original:{line:lines.length-1,x:o.x,y:o.y},source:address,glyph:measured.glyph,
    code:font.bytesPerCode===1?Uint8Array.of(g.code):Uint8Array.of(g.code>>8,g.code&255),fontResource:font.resourceName,fontObject:font.objectId});
  }
- if(!lines.length)return null;
+ if(!lines.length)return refuse('no-member-lines',`glyphs=${walk.glyphs.length} unplaced=${unplaced.length} obstacles=${obstacles.length} excluded=${JSON.stringify(excluded)}`);
  for(let i=0;i<source.length-1;i++)if(source[i]!.original!.line===source[i+1]!.original!.line)
   source[i]!.gap=source[i+1]!.original!.x-source[i]!.original!.x-source[i]!.advance;
  let proof:RegionProof;
  {
-  const targetLine=source.find(t=>t.source!.opIndex===targetOp)?.original?.line;if(targetLine===undefined)return null;
+  const targetLine=source.find(t=>t.source!.opIndex===targetOp)?.original?.line;if(targetLine===undefined)return refuse('target-not-in-member-lines',`lines=${lines.length} obstacles=${obstacles.length}`);
   // A BT can contain several paragraphs. Try bounded consecutive tails from
   // longest to shortest; every excluded placement becomes an obstacle. The
   // detector still proves all anchors/items in the chosen operator window.
   let chosen:{proof:RegionProof;start:number;end:number;outside:Rect[]}|undefined;
+  const failures:{start:number;count:number;failure:ParagraphRefusal}[]=[];
   for(let count=Math.min(lines.length,8);count>=1&&!chosen;count--)for(let start=Math.max(0,targetLine-count+1);start<=targetLine&&start+count<=lines.length;start++){
    const end=start+count,outside=source.filter(t=>t.original!.line<start||t.original!.line>=end).map(t=>({
     x:t.original!.x+Math.min(0,t.ink.x),y:t.original!.y+Math.min(-.2*t.em,t.ink.y),
@@ -132,10 +146,16 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
    obstacleProofHash:dependencyHash,boundaryProofHash:sourceHash,scopeProofHash:sourceHash,completeScene:true,
    readingOrder:'proven',whitespace:'source-codes',structure:'body-text',columnBoundary:'proven',semantics:'plain',inlineFeatures:'plain-prose',
    crop,clip:media,obstacles:[...obstacles,...outside].map(box=>({kind:'text' as const,box}))}} satisfies import('./regionProof').ParagraphInput;
-   const result=count>=3?detectParagraphRegion(input,trace.ends.get(input.lines[0]!.anchor.opIndex-1)):(()=>{const proof=shortStreamRegion(input,trace.ends.get(input.lines[0]!.anchor.opIndex-1));return proof?{ok:true as const,proof}:{ok:false as const};})();
+   const beforeFirst=trace.ends.get(input.lines[0]!.anchor.opIndex-1);
+   const result=count>=3?detectParagraphRegion(input,beforeFirst):shortStreamRegionResult(input,beforeFirst);
    if(result.ok){chosen={proof:result.proof,start,end,outside};break;}
+   failures.push({start,count,failure:result});
   }
-  if(!chosen)return null;
+  if(!chosen){
+   const primary=failures.find(f=>f.failure.blocker==='operators')??failures[0]!;
+   return refuse('region-unproved',`lines=${lines.length} targetLine=${targetLine} obstacles=${obstacles.length} | `+
+    failures.map(f=>`${f.count}@${f.start}:${f.failure.blocker}:${f.failure.detail}`).join('; '),primary.failure.blocker);
+  }
   proof=chosen.proof;obstacles.push(...chosen.outside);
   lines=lines.slice(chosen.start,chosen.end);
   source=source.filter(t=>t.original!.line>=chosen.start&&t.original!.line<chosen.end).map(t=>({...t,original:{...t.original!,line:t.original!.line-chosen.start}}));
@@ -149,15 +169,16 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
  const bottom=Math.min(proof.box.y,...source.map(t=>t.original!.y+byName.get(t.fontResource)!.descentEm*t.em-.5));
  const top=Math.max(proof.box.y+proof.box.h,...source.map(t=>t.original!.y+byName.get(t.fontResource)!.ascentEm*t.em+.5));
  const rasterBox={x:proof.box.x-.5,y:bottom,w:proof.box.w+1,h:top-bottom};
- if(!contains(crop,rasterBox)||!contains(media,rasterBox)||obstacles.some(b=>intersects(b,rasterBox)))return null;
+ if(!contains(crop,rasterBox)||!contains(media,rasterBox))return refuse('raster-box-outside-page','Reserved font envelope exceeds crop or media','bounds');
+ if(obstacles.some(b=>intersects(b,rasterBox)))return refuse('raster-box-hits-obstacles',`Reserved font envelope intersects an obstacle; obstacles=${obstacles.length}`,'obstacles');
  proof={...proof,box:rasterBox};
- return {ops,trace,walk,source,proof,lines,ink,crop,media,obstacles};
+ return {ok:true as const,ops,trace,walk,source,proof,lines,ink,crop,media,obstacles};
 }
 /** Add ONE baseline only after its whole leading-height body band is clear.
  * The new box can only extend downward. No baseline, horizontal edge or
  * previously proved top may be moved to make an edit fit.
  */
-export function proveDownwardSlot(e:NonNullable<ReturnType<typeof streamReflowEvidence>>,proof:RegionProof):RegionProof|null{
+export function proveDownwardSlot(e:StreamReflowEvidence,proof:RegionProof):RegionProof|null{
  if(proof.lineSlots.length>=8||!(proof.leadingPt>0))return null;
  const last=proof.lineSlots.at(-1)!,body=proof.lineSlots[1]??last,baseline=last.baseline-proof.leadingPt;
  const lower=Math.min(...e.source.map(t=>t.ink.y))-.5,upper=Math.max(...e.source.map(t=>t.ink.y+t.ink.h))+.5;

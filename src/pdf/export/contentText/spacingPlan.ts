@@ -73,7 +73,7 @@ export function planOriginalSlotSpacing(page:PDFPage,content:Uint8Array,fonts:re
   const replacement:ReflowCodeCluster[]=[];
   for(const [i,code]of codes(encoded.bytes,font.bytesPerCode).entries()){
    const unicode=font.unicodeByCode.get(code),ink=physicalInk(font.resourceName,code);if(!unicode||!ink||Array.from(unicode).length!==1)return null;
-   replacement.push({...source[start]!,unicode,ink,code:encoded.codes[i]!,source:undefined,glyph:undefined,original:undefined,
+   replacement.push({...source[start]!,homeOp:edit.opIndex,unicode,ink,code:encoded.codes[i]!,source:undefined,glyph:undefined,original:undefined,
     advance:(font.widthOf(code)*size/1000+show.before.tc+(font.bytesPerCode===1&&code===32?show.before.tw:0))*scale,
     wordSpace:font.bytesPerCode===1&&code===32,fullEmHan:font.widthOf(code)===1000});
   }

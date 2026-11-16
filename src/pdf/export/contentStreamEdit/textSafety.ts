@@ -1,6 +1,7 @@
 import type {ContentOp} from './tokenizer';
 export type RunEnvironment={
  markedContentProperties?:ReadonlyMap<string,readonly string[]|null>;
+ markedContentMcids?:ReadonlyMap<string,number>;
  extGStates?:ReadonlyMap<string,{setsFont:boolean;safe:boolean}>;
 };
 export function textObjectScopes(ops:readonly ContentOp[]):Map<number,number>{

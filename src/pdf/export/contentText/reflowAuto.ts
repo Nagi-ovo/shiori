@@ -5,7 +5,7 @@ import {runContextSafety,type ResolvedRunFont} from '../contentStreamEdit/replac
 import {removalsByRect} from '../contentStreamEdit/removeGlyphs';
 import {encodeRun} from '../contentStreamEdit/runEncoding';
 import type {Type1Options} from '../fontCoverage/type1Support';
-import {streamReflowEvidence,proveDownwardSlot} from './reflowEvidence';
+import {streamReflowEvidence,proveDownwardSlot,type StreamReflowEvidence} from './reflowEvidence';
 import {solveMeasuredReflow,legalMeasuredBreak} from './reflowLayout';
 import type {ReflowCodeCluster,ContentTextEnvironment} from './reflowTypes';
 import {linear} from './regionProof/geometry';
@@ -30,7 +30,7 @@ function build(page:PDFPage,content:Uint8Array,fonts:readonly ResolvedRunFont[],
   if(!walk.ok)return null;
   const selected=[...new Set(removalsByRect(walk.glyphs,overlay.coverRects).flatMap(h=>[...h]))];
   if(!selected.length||selected.some(g=>safety.unsafe.has(g.opIndex)))return null;
-  const e=streamReflowEvidence(page,content,fonts,selected[0]!.opIndex,options,replacementFont!==undefined);if(!e)return null;
+  const e=streamReflowEvidence(page,content,fonts,selected[0]!.opIndex,options,replacementFont!==undefined);if(!e.ok)return null;
   return planProvedStreamReflow(e,fonts,overlay,environment,replacementFont);
  }catch(error){
   if(error instanceof ReflowTraceError||error instanceof RunCompileError||error instanceof Error&&!(error instanceof TypeError||error instanceof ReferenceError))return null;
@@ -39,7 +39,7 @@ function build(page:PDFPage,content:Uint8Array,fonts:readonly ResolvedRunFont[],
 }
 /** Layout/compile boundary for an already proved immutable stream region.
  * Evidence production remains separate; this function never widens slots. */
-export function planProvedStreamReflow(e:NonNullable<ReturnType<typeof streamReflowEvidence>>,fonts:readonly ResolvedRunFont[],overlay:ContentTextOverlay,
+export function planProvedStreamReflow(e:StreamReflowEvidence,fonts:readonly ResolvedRunFont[],overlay:ContentTextOverlay,
  environment:ContentTextEnvironment={},replacementFont?:ResolvedRunFont):PageRunPlan|null{
  const selected=[...new Set(removalsByRect(e.walk.glyphs,overlay.coverRects).flatMap(h=>[...h]))];
  if(!selected.length)return null;
@@ -57,6 +57,11 @@ export function planProvedStreamReflow(e:NonNullable<ReturnType<typeof streamRef
   const indices=source.flatMap((t,i)=>selected.some(g=>g.opIndex===t.source!.opIndex&&g.arrayItemIndex===t.source!.itemIndex&&g.byteOffset===t.source!.byteStart)?[i]:[]);
   if(indices.length!==selected.length||indices.some((v,i)=>i>0&&v!==indices[i-1]!+1))return null;
   const start=indices[0]!,end=indices.at(-1)!+1,old=source.slice(start,end),first=old[0]!;
+  const marked=e.trace.shows.get(`${first.source!.opIndex}:${first.source!.itemIndex}`)!.before;
+  if(old.some(t=>{
+   const state=e.trace.shows.get(`${t.source!.opIndex}:${t.source!.itemIndex}`)!.before;
+   return state.scopeKey!==marked.scopeKey||JSON.stringify(state.mcids)!==JSON.stringify(marked.mcids);
+  }))return null;
   const original=normalize(overlay.originalText),replacementText=normalize(overlay.text);
   const sourceLines:string[]=[];
   for(const t of old){const row=t.original!.line-old[0]!.original!.line;sourceLines[row]=(sourceLines[row]??'')+t.unicode;}
@@ -82,7 +87,7 @@ export function planProvedStreamReflow(e:NonNullable<ReturnType<typeof streamRef
    const measured=e.ink(font.resourceName,code,state);if(!measured)return null;
    const scale=linear(state)[0]!*state.tz/100;
    const advance=(font.widthOf(code)*state.size/1000+state.tc+(font.bytesPerCode===1&&code===32?state.tw:0))*scale;
-   replacement.push({...first,fontResource:font.resourceName,fontObject:font.objectId,unicode:segment,advance,ink:measured.box,code:encoded.bytes,source:undefined,original:undefined,glyph:measured.glyph,
+   replacement.push({...first,homeOp:first.source!.opIndex,fontResource:font.resourceName,fontObject:font.objectId,unicode:segment,advance,ink:measured.box,code:encoded.bytes,source:undefined,original:undefined,glyph:measured.glyph,
     wordSpace:font.bytesPerCode===1&&code===32,fullEmHan:font.widthOf(code)===1000,gap:0,hardAfter:false});
   }
   if(!replacement.length||replacement.at(-1)!.hardAfter)return null;

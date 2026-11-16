@@ -9,6 +9,7 @@ const numbers = (items: ContentOperand[], count: number): number[] | null =>
   items.length === count && items.every(i => i.kind === 'number' && Number.isFinite(i.value))
     ? items.map(i => (i as { value: number }).value) : null;
 const key = (op: number, item: number) => `${op}:${item}`;
+const deviceColours:Readonly<Record<string,number>>={g:1,G:1,rg:3,RG:3,k:4,K:4};
 
 /** Check complete string-item ownership and the actual positioning/show grammar.
  * Full trace/scene production stays at the caller's R1/R2 boundary.
@@ -45,11 +46,10 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
   }
   if (first < 0 || last >= ops.length || first > last) return fail('ownership', 'Invalid operator span');
   // Validate real source scopes, including wrappers that open before the
-  // candidate. q/Q never saves Tm/Tlm. Fill state must agree at every owned
-  // show: a Q must not silently restore a different painting colour.
-  let bt = -1, graphics = 0, marked = 0, fill = {space:'DeviceGray',value:'default'};
-  const fills:typeof fill[] = [], owners = new Map<number,number>();
-  const fillAt = new Map<number,string>();
+  // candidate. q/Q never saves Tm/Tlm. Each rewritten show keeps its source
+  // slot, so colours restored by Q stay attached to that slot's glyphs.
+  let bt = -1, graphics = 0, marked = 0;
+  const owners = new Map<number,number>();
   for (let i = 0; i < ops.length; i++) {
     const op=ops[i]!;
     if (op.operator === 'BT') {
@@ -60,25 +60,20 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
       bt=-1;
     } else if(op.operator==='q') {
       if(op.operands.length)return fail('operators','Malformed q');
-      graphics++; fills.push(fill);
+      graphics++;
     }
     else if(op.operator==='Q') {
       if(op.operands.length||--graphics<0)return fail('operators','Unbalanced graphics state');
-      fill=fills.pop()!;
-    } else if(['g','rg','k','cs'].includes(op.operator)) fill={space:op.operator==='cs'?JSON.stringify(op.operands):op.operator,value:JSON.stringify(op.operands)};
-    else if(['sc','scn'].includes(op.operator))fill={...fill,value:JSON.stringify(op.operands)};
-    else if(op.operator==='BMC'||op.operator==='BDC') marked++;
+    } else if(op.operator==='BMC'||op.operator==='BDC') marked++;
     else if(op.operator==='EMC'&&--marked<0)return fail('operators','Unbalanced marked content');
-    owners.set(i,bt);fillAt.set(i,JSON.stringify(fill));
+    owners.set(i,bt);
   }
   if(bt!==-1||graphics||marked)return fail('operators','Unterminated source scope');
-  const baseFill=fillAt.get(lines[0]!.shows[0]?.source.opIndex??first);
   for(const line of lines){
     if(lineAnchors(line).some(t=>owners.get(t.opIndex)!==t.bt))return fail('state','Anchor BT snapshot differs from source');
     for(const show of line.shows)if(owners.get(show.source.opIndex)!==show.before.bt||show.after.bt!==show.before.bt||
       show.before.bt!==anchorForShow(line,show.source.opIndex)?.bt)
       return fail('state','Show BT differs from source paragraph');
-    if(line.shows.some(show=>fillAt.get(show.source.opIndex)!==baseFill))return fail('operators','Paragraph fill state differs across graphics scopes');
   }
   const boundaries: TjBoundary[] = [];
   let visited = 0;
@@ -89,6 +84,14 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
   let currentLine=lines[0];
   for (let i = first; i <= last; i++) {
     const op = ops[i]!;
+    if(['g','G','rg','RG','k','K','cs','CS','sc','scn','SC','SCN'].includes(op.operator)){
+      const count=deviceColours[op.operator];
+      if(count!==undefined?!numbers(op.operands,count):['cs','CS'].includes(op.operator)?
+        op.operands.length!==1||op.operands[0]?.kind!=='name':
+        !op.operands.length||op.operands.some((n,j)=>n.kind!=='number'&&!(j===op.operands.length-1&&n.kind==='name')||n.kind==='number'&&!Number.isFinite(n.value)))
+        return fail('operators','Malformed colour operator');
+      continue;
+    }
     if (['Tm', 'Td', 'TD', 'T*'].includes(op.operator)) {
       const entry = anchors.get(i);
       if (!entry) return fail('operators', 'Unowned position anchor interleaves the paragraph');

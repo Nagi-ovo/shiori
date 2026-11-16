@@ -10,6 +10,7 @@ import {streamReflowEvidence,proveDownwardSlot} from './reflowEvidence';
 import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {traceReflowSource} from './reflowTrace';
 import {overlay} from './fixtures.test-support';
+import {mcidCodes} from './reflowSlots.test-support';
 
 const edit=(y=150)=>overlay({originalText:'S',text:'n n',coverRects:[{x:49.9,y:y-2,w:10.2,h:12}]});
 const mixedEdit=(text='AB AB')=>overlay({originalText:'A',text,coverRects:[{x:49.9,y:134,w:6.2,h:12}]});
@@ -24,6 +25,7 @@ for(const tagged of [false,true])test(`${tagged?'Word tagged':'one-BT-per-line'}
  expect(p?.reflow?.proof.owned).toHaveLength(3);if(!p?.reflow)throw Error('no paragraph plan');
  expect(p.reflow.firstOp).toBe(p.reflow.proof.owned[0]!.opIndex);
  const out=compileReflowPlan(s.bytes,fonts,p);expect(out.ok).toBe(true);if(!out.ok)throw Error(out.reason);
+ if(tagged)expect(mcidCodes(out.bytes)).toEqual({...mcidCodes(s.bytes),1:[...'n n i i i i '].map(c=>c.charCodeAt(0))});
  const old=traceReflowSource(tokenizeContentStream(s.bytes),fonts,'revision'),after=traceReflowSource(tokenizeContentStream(out.bytes),fonts,'revision');
  const state=(t:ReturnType<typeof old.ends.get>)=>t&&{tm:t.tm,tlm:t.tlm,ctm:t.ctm,font:t.fontObject,size:t.size,tc:t.tc,tw:t.tw,tz:t.tz,rise:t.rise,leading:t.leading,renderMode:t.renderMode};
  expect(state([...after.ends.values()].at(-1))).toEqual(state([...old.ends.values()].at(-1)));
@@ -88,7 +90,7 @@ test('mixed paragraph grows below its original last row only when the whole band
  for(const tail of ['', ' BT /F1 10 Tf 60 108 Td (AB) Tj ET']){
   const f=await mixedRegionPage({full:true,tail}),s=inspectRunPage(f.page);if(!s.ok)throw Error(s.reason);
   const fonts=resolveRunFonts(f.page),target=tokenizeContentStream(s.bytes).findIndex(op=>op.operator==='Tj');
-  const e=streamReflowEvidence(f.page,s.bytes,fonts,target);expect(e?.proof.lineSlots).toHaveLength(3);if(!e)throw Error('missing paragraph evidence');
+  const e=streamReflowEvidence(f.page,s.bytes,fonts,target);if(!e.ok)throw Error(e.detail);expect(e.proof.lineSlots).toHaveLength(3);
   expect(proveDownwardSlot(e,e.proof)?.lineSlots.at(-1)?.baseline??null).toBe(tail?null:108);
   const p=plan(f.page,mixedEdit()).p;
   if(tail)expect(p).toBeNull();else expect(p?.reflow?.proof.lineSlots.map(s=>s.baseline)).toEqual([150,136,122,108]);
@@ -129,5 +131,5 @@ test('missing ink and declared envelope both refuse without an invented box',asy
  const f=await spacingPage(multi()),dict=f.page.node.Resources()!.lookup(PDFName.of('Font'),PDFDict),font=dict.lookup(PDFName.of('F1'),PDFDict);
  font.lookup(PDFName.of('FontDescriptor'),PDFDict).delete(PDFName.of('FontFile2'));
  const s=inspectRunPage(f.page);if(!s.ok)throw Error(s.reason);const fonts=resolveRunFonts(f.page),target=tokenizeContentStream(s.bytes).findIndex(op=>op.operator==='Tj');
- expect(streamReflowEvidence(f.page,s.bytes,fonts,target)).toBeNull();
+ expect(streamReflowEvidence(f.page,s.bytes,fonts,target)).toMatchObject({ok:false});
 });

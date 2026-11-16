@@ -9,8 +9,9 @@
 //
 // Scope is deliberately narrow. Operands the removal pass must understand —
 // numbers, names, strings, arrays, booleans/null — are parsed; dictionary
-// operands (BDC/DP property lists) record only each entry's key and byte
-// extent, so a rewrite can drop one entry verbatim. An inline image (BI…ID…EI) becomes a single opaque op. Anything
+// operands (BDC/DP property lists) record each entry's key and byte extent,
+// plus numeric values for MCID identity; rewrites still copy entries verbatim.
+// An inline image (BI…ID…EI) becomes a single opaque op. Anything
 // outside this grammar throws ContentStreamParseError, and callers must treat
 // that as "leave the whole page untouched" — a partial parse is never a
 // usable result.
@@ -26,7 +27,8 @@ export type ContentOperand =
 
 // One key/value pair of a dictionary operand: the key name and the byte
 // extent [start, end) from the key's slash through the end of its value.
-export type DictEntryExtent = { key: string; start: number; end: number };
+// Retain numeric identity without modelling arbitrary property semantics.
+export type DictEntryExtent = { key: string; start: number; end: number; numberValue?: number };
 
 export type ContentOp = {
   operator: string;
@@ -361,7 +363,8 @@ function scanDictBody(s: Scanner): DictEntryExtent[] {
     if (index % 2 === 0) {
       key = operand.kind === "name" ? { name: operand.value, start } : null;
     } else if (key !== null) {
-      entries.push({ key: key.name, start: key.start, end: s.pos });
+      entries.push({ key: key.name, start: key.start, end: s.pos,
+        ...(operand.kind === 'number' ? {numberValue: operand.value} : {}) });
     }
   }
 }

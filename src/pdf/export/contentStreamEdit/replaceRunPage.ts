@@ -1,7 +1,7 @@
 // Thin pdf-lib boundary. Decode inherited page content/resources, compile
 // completely, then install a NEW stream on this page only. Never mutate fonts
 // or shared content objects; refusal does not allocate any indirect objects.
-import { decodePDFRawStream, PDFArray, PDFDict, PDFName, PDFRawStream, PDFRef, type PDFPage } from 'pdf-lib';
+import { decodePDFRawStream, PDFArray, PDFDict, PDFName, PDFNumber, PDFRawStream, PDFRef, type PDFPage } from 'pdf-lib';
 import type {RunEnvironment} from './textSafety';
 import { coalesceContentStreams } from './tokenizer';
 import { contentFontInfo } from './glyphWidths';
@@ -86,11 +86,21 @@ export function markedContentProperties(page: PDFPage): Map<string, readonly str
   return resolved;
 }
 export function runPageEnvironment(page:PDFPage):RunEnvironment {
+  const markedContentMcids=new Map<string,number>();
+  try{
+    const properties=page.node.Resources()?.lookupMaybe(PDFName.of('Properties'),PDFDict);
+    for(const[name,raw]of properties?.entries()??[]){
+      try{
+        const dict=properties!.context.lookup(raw),id=dict instanceof PDFDict?dict.lookupMaybe(PDFName.of('MCID'),PDFNumber)?.asNumber():undefined;
+        if(id!==undefined&&Number.isSafeInteger(id)&&id>=0)markedContentMcids.set(name.decodeText(),id);
+      }catch{ /* Unresolved MCIDs cannot authorize a tagged rewrite. */ }
+    }
+  }catch{ /* Unrelated plain text must survive malformed /Properties. */ }
   const extGStates=new Map<string,{setsFont:boolean;safe:boolean}>();
   const allowed=new Set(['Type','Font','LW','LC','LJ','ML','D','RI','OP','op','OPM','CA','ca','AIS','TK','BM','SA','SM','TR','TR2','BG','BG2','UCR','UCR2','HT','FL','SMask']);
   const states=page.node.Resources()?.lookupMaybe(PDFName.of('ExtGState'),PDFDict);
   for(const[name,raw]of states?.entries()??[]){const dict=states!.context.lookup(raw);if(dict instanceof PDFDict)extGStates.set(name.decodeText(),{setsFont:dict.has(PDFName.of('Font')),safe:dict.keys().every(k=>allowed.has(k.decodeText()))});}
-  return {markedContentProperties:markedContentProperties(page),extGStates};
+  return {markedContentProperties:markedContentProperties(page),markedContentMcids,extGStates};
 }
 export function replaceRunPage(page: PDFPage, plan: PageRunPlan, options: Type1Options = {}): PageRunResult {
   const source = inspectRunPage(page);
