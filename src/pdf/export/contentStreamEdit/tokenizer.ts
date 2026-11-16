@@ -354,6 +354,7 @@ function scanDictBody(s: Scanner): DictEntryExtent[] {
     const operand = parseOperand(s, ">>");
     if (operand === null) {
       if (s.peek() === 0x3e && s.peek(1) === 0x3e) {
+        if (index % 2 !== 0) s.fail("dictionary key has no value");
         s.pos += 2;
         return entries;
       }

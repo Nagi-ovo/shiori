@@ -6,6 +6,8 @@ export type SourceAddress = {
   streamHash: string; opIndex: number; itemIndex: number;
   byteStart: number; byteEnd: number; fontObject: string;
 };
+/** JSON array of [BMC/BDC operator, decoded tag name] pairs; excludes MCIDs.
+ * The empty stack is "[]", distinct from every marked-content scope. */
 export type ScopeKey = string;
 /** Full state, supplied by a revision-bound R1 walker (not ShowTextState). */
 export type TextTrace = {

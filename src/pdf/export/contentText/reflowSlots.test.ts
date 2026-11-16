@@ -34,7 +34,8 @@ test('Artifact and nested tag scopes never join the P body at the same style',as
  for(const tag of ['Artifact','H1']){
   const f=await slotPlan(regionStream(true).replace('/P','/'+tag)),ops=tokenizeContentStream(f.content),target=ops.findLastIndex(op=>op.operator==='Tj');
   const traced=traceReflowSource(ops,f.fonts,'revision');
-  expect([...traced.shows.values()].map(s=>s.before)).toMatchObject([{scopeKey:tag+'>Span'},{scopeKey:'P>Span'},{scopeKey:'P>Span'}]);
+  expect([...traced.shows.values()].map(s=>JSON.parse(s.before.scopeKey!))).toEqual([
+   [['BDC',tag],['BMC','Span']],[['BDC','P'],['BMC','Span']],[['BDC','P'],['BMC','Span']]]);
   const e=streamReflowEvidence(f.page,f.content,f.fonts,target);if(!e.ok)throw Error(e.detail);
   expect(e.proof.owned.map(s=>s.opIndex)).not.toContain(ops.findIndex(op=>op.operator==='Tj'));
  }
@@ -69,7 +70,9 @@ test('named MCID properties retain their IDs while membership ignores the number
  const s=inspectRunPage(f.page);if(!s.ok)throw Error(s.reason);
  const {runPageEnvironment}=await import('../contentStreamEdit/replaceRunPage');
  const fonts=resolveRunFonts(f.page),environment=runPageEnvironment(f.page),trace=traceReflowSource(tokenizeContentStream(s.bytes),fonts,'revision',environment);
- expect([...trace.shows.values()].map(s=>s.before)).toMatchObject([{scopeKey:'P>Span',mcids:[0]},{scopeKey:'P>Span',mcids:[1]},{scopeKey:'P>Span',mcids:[2]}]);
+ const states=[...trace.shows.values()].map(s=>s.before);
+ expect(states.map(s=>JSON.parse(s.scopeKey!))).toEqual(Array.from({length:3},()=>[['BDC','P'],['BMC','Span']]));
+ expect(states.map(s=>s.mcids)).toEqual([[0],[1],[2]]);
  const plan=planStreamReflow(f.page,s.bytes,fonts,slotEdit(),environment);if(!plan)throw Error('missing named MCID plan');
  expect(compileReflowPlan(s.bytes,fonts,plan).ok).toBe(true);
 });

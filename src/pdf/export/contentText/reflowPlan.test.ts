@@ -4,7 +4,8 @@ import {compileReflowPlan} from './reflowCompile';
 import {reflowFixture} from './reflow.fixtures';
 import {walkTextPlacements} from '../contentStreamEdit/textState';
 import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
-import {replaceRuns} from '../contentStreamEdit/replaceRun';
+import {replaceRuns,sourceFingerprint} from '../contentStreamEdit/replaceRun';
+import {traceReflowSource} from './reflowTrace';
 
 test('flag-off overflow is unchanged even with an explicit request',()=>{
  const f=reflowFixture();const result=planContentText(f.content,[f.font],f.overlay,{reflowRequest:f.request});
@@ -53,4 +54,19 @@ test('an explicit request cannot opt out of its rectangle proof using a deferred
  const f=reflowFixture();
  f.request.paragraph.occupancy={items:[],grid:new Map(),pageBlocked:false,hash:'unvalidated',guardPt:1,glyphs:new Map(),embeddedFonts:new Set()};
  expect(planContentText(f.content,[f.font],f.overlay,{stage5Reflow:true,reflowRequest:f.request})).toMatchObject({ok:false,code:'reflow-required'});
+});
+test('an explicit request resolves named MCIDs during source trace validation',()=>{
+ const f=reflowFixture(),content=new TextEncoder().encode(`/P /Body BDC ${new TextDecoder().decode(f.content)} EMC`);
+ const sourceHash=sourceFingerprint(content),ops=tokenizeContentStream(content);
+ const environment={markedContentProperties:new Map([['Body',['MCID']]]),markedContentMcids:new Map([['Body',7]])};
+ const traces=traceReflowSource(ops,[f.font],f.request.paragraph.evidence.scopeProofHash,environment);
+ const shift=(s:typeof f.request.target)=>({...s,streamHash:sourceHash,opIndex:s.opIndex+1});
+ const paragraph={...f.request.paragraph,sourceHash,ops,evidence:{...f.request.paragraph.evidence,sourceHash},
+  lines:f.request.paragraph.lines.map(line=>({...line,anchor:traces.anchors.get(line.anchor.opIndex+1)!,
+   shows:line.shows.map(show=>({...show,source:shift(show.source),...traces.shows.get(`${show.source.opIndex+1}:${show.source.itemIndex}`)!}))}))};
+ const request={...f.request,paragraph,target:shift(f.request.target),sourceInk:f.request.sourceInk.map(ink=>({...ink,source:shift(ink.source)}))};
+ const result=planContentText(content,[f.font],f.overlay,{...environment,stage5Reflow:true,reflowRequest:request});
+ expect(result.ok).toBe(true);if(!result.ok)return;
+ expect(result.plan.reflow?.layout.strategy).toBe('wrap');
+ expect(compileReflowPlan(content,[f.font],result.plan).ok).toBe(true);
 });

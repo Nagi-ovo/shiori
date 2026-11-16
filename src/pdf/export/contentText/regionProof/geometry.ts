@@ -32,7 +32,7 @@ export function validTrace(t: TextTrace): boolean {
 }
 export function compatible(t: TextTrace, base: TextTrace): boolean {
   return validTrace(t) && t.fontObject === base.fontObject &&
-    (t.scopeKey??'')===(base.scopeKey??'') &&
+    (t.scopeKey??'[]')===(base.scopeKey??'[]') &&
     t.safetyHash === base.safetyHash && near(physicalSize(t), physicalSize(base), 0.05) &&
     linear(t).every((n, i) => coefficientEqual(n, linear(base)[i]!)) &&
     (['tc', 'tw', 'tz', 'rise', 'renderMode'] as const).every(key => t[key] === base[key]);
@@ -41,7 +41,7 @@ export function compatible(t: TextTrace, base: TextTrace): boolean {
  * compatible() tight for callers that need an identical same-show state. */
 export function paragraphMember(t: TextTrace, base: TextTrace): boolean {
   return validTrace(t) && validTrace(base) && t.safetyHash === base.safetyHash &&
-    (t.scopeKey??'')===(base.scopeKey??'') &&
+    (t.scopeKey??'[]')===(base.scopeKey??'[]') &&
     near(physicalSize(t), physicalSize(base), 0.05) &&
     linear(t).every((n, i) => coefficientEqual(n, linear(base)[i]!)) &&
     (['tz', 'rise', 'renderMode'] as const).every(key => t[key] === base[key]);

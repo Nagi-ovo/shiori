@@ -22,10 +22,10 @@ export function traceReflowSource(ops:readonly ContentOp[],fonts:readonly Resolv
  let state={ctm:identity(),fontObject:'',fontName:'',size:0,tc:0,tw:0,tz:100,leading:0,rise:0,renderMode:0};
  const stack:typeof state[]=[],anchors=new Map<number,TextTrace>(),ends=new Map<number,TextTrace>();
  const shows=new Map<string,{before:TextTrace;after:TextTrace}>();
- const marked:{tag:string;mcid?:number;safe:boolean}[]=[];
+ const marked:{operator:'BMC'|'BDC';tag:string;mcid?:number;safe:boolean}[]=[];
  let bt=-1,tm=identity(),tlm=identity();
  const snapshot=(opIndex:number):TextTrace=>({...state,bt,opIndex,ctm:[...state.ctm],tm:[...tm],tlm:[...tlm],safetyHash,
-  scopeKey:marked.map(s=>s.tag).join('>'),mcids:marked.flatMap(s=>s.mcid===undefined?[]:[s.mcid]),scopeSafe:marked.every(s=>s.safe)});
+  scopeKey:JSON.stringify(marked.map(s=>[s.operator,s.tag])),mcids:marked.flatMap(s=>s.mcid===undefined?[]:[s.mcid]),scopeSafe:marked.every(s=>s.safe)});
  const translate=(matrix:number[],dx:number,dy:number)=>multiply(matrix,[1,0,0,1,dx,dy]);
  for(const [i,op]of ops.entries()){
   const n=op.operands;
@@ -41,7 +41,7 @@ export function traceReflowSource(ops:readonly ContentOp[],fonts:readonly Resolv
       safe=safe&&mcid!==undefined&&Number.isSafeInteger(mcid)&&mcid>=0&&keys.length===1;
      }
     }
-    marked.push({tag:tag?.kind==='name'?tag.value:'',mcid,safe});break;
+    marked.push({operator:op.operator,tag:tag?.kind==='name'?tag.value:'',mcid,safe});break;
    }
    case 'EMC':if(n.length||!marked.pop())throw new ReflowTraceError('unbalanced marked content');break;
    case 'q':stack.push({...state,ctm:[...state.ctm]});break;

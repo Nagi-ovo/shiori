@@ -17,7 +17,7 @@ export {reflowDefaults} from './reflowTypes';
 export const reflowAddressKey=(s:SourceAddress)=>`${s.opIndex}:${s.itemIndex}:${s.byteStart}:${s.byteEnd}:${s.fontObject}`;
 const fail=(reason:string):ContentTextPlan=>({ok:false,code:'reflow-required',reason});
 const traceEqual=(a:TextTrace,b:TextTrace)=>matrixEqual(a.tm,b.tm)&&matrixEqual(a.tlm,b.tlm)&&
- (a.scopeKey??'')===(b.scopeKey??'')&&JSON.stringify(a.mcids??[])===JSON.stringify(b.mcids??[])&&a.scopeSafe!==false&&b.scopeSafe!==false&&
+ (a.scopeKey??'[]')===(b.scopeKey??'[]')&&JSON.stringify(a.mcids??[])===JSON.stringify(b.mcids??[])&&a.scopeSafe!==false&&b.scopeSafe!==false&&
  matrixEqual(a.ctm,b.ctm)&&a.bt===b.bt&&a.fontObject===b.fontObject&&
  (['size','tc','tw','tz','leading','rise','renderMode'] as const).every(k=>near(a[k],b[k],1e-8));
 
@@ -49,7 +49,7 @@ export function planReflow(content:Uint8Array,fonts:readonly ResolvedRunFont[],o
  const proof={...region,box};
  if(proof.lineSlots.length>8||request.softBreaks.some(i=>!Number.isInteger(i)||i<0||i>=proof.lineSlots.length-1))return fail('reflow-context-unsupported: line/break budget');
  try{
-  const traces=traceReflowSource(ops,fonts,proof.scopeProofHash);
+  const traces=traceReflowSource(ops,fonts,proof.scopeProofHash,environment);
   for(const line of paragraph.lines){
    const anchor=traces.anchors.get(line.anchor.opIndex);
    if(!anchor||!traceEqual(anchor,line.anchor))return fail('reflow-context-unsupported: line anchor trace mismatch');
