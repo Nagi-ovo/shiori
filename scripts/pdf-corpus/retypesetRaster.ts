@@ -8,7 +8,7 @@ const valid=(b:readonly number[])=>b.length===4&&b.every(Number.isFinite)&&b[2]!
  * union the observed replacement text box. Dilate this union by exactly one
  * raster pixel (Chebyshev distance, 0.5 pt) for edge antialiasing/strokes.
  * This mask never consults the tier-1 proved region or the edit cover boxes. */
-export function compareRetypesetRaster(before:Raster,after:Raster,oldGlyphs:readonly RasterGlyph[],newGlyphs:readonly RasterGlyph[]){
+export function compareRetypesetRaster(before:Raster,after:Raster,oldGlyphs:readonly RasterGlyph[],newGlyphs:readonly RasterGlyph[],extraBoxes:readonly (readonly number[])[]=[]){
  assert.equal(after.width,before.width,'native page width changed');assert.equal(after.height,before.height,'native page height changed');
  assert(before.pixels&&after.pixels,'native raster missing');
  const width=Math.round(before.width*2),height=Math.round(before.height*2);
@@ -30,6 +30,7 @@ export function compareRetypesetRaster(before:Raster,after:Raster,oldGlyphs:read
   }
  };
  for(const box of oldInk)mark(box,true);
+ for(const box of extraBoxes){assert(valid(box),'invalid pushed-region bounds');mark(box,false);}
  if(newTextBox)mark([newTextBox.x,newTextBox.y,newTextBox.x+newTextBox.w,newTextBox.y+newTextBox.h],false);
  const inside=(x:number,y:number)=>{
   for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)if(x+dx>=0&&x+dx<width&&y+dy>=0&&y+dy<height&&mask[(y+dy)*width+x+dx])return true;

@@ -69,18 +69,25 @@ export function compareRetypesetNativePages(before:Snapshot,after:Snapshot,edit:
   logical.splice(at,replacement.glyphs.length,...Array.from(replacement.text,text=>({g:replacement.glyphs[0]!,text})));
  }
  const available=new Set(after.glyphs);let maxOriginDriftPt=0,untargetedGlyphs=0;
+ const expectedOrigin=(g:{origin:readonly number[]})=>{
+  const region=manifest?.pushedRegions?.find(r=>inside(g,r.before));
+  return region?[g.origin[0]!,g.origin[1]!-(region.before.y-region.after.y)]:g.origin;
+ };
  for(const g of before.glyphs){
   if(owned.has(g))continue;
+  const origin=expectedOrigin(g);
   const match=after.glyphs.find(a=>available.has(a)&&a.text===g.text&&a.fontHash===g.fontHash&&
-   (g.code===undefined||a.code===g.code)&&drift(a.origin,g.origin)<=.01&&JSON.stringify(a.nativePath)===JSON.stringify(g.nativePath));
+   (g.code===undefined||a.code===g.code)&&drift(a.origin,origin)<=.01&&JSON.stringify(a.nativePath)===JSON.stringify(g.nativePath));
   assert(match,'untargeted glyph missing or changed font/codes/outline/position');available.delete(match);untargetedGlyphs++;
-  maxOriginDriftPt=Math.max(maxOriginDriftPt,drift(match.origin,g.origin));
+  // Residual after an authorized same-column translation, not the push Δ itself.
+  maxOriginDriftPt=Math.max(maxOriginDriftPt,drift(match.origin,origin));
  }
  const output=actual.filter(g=>available.has(g));
  assert.equal(output.map(g=>g.text).join(''),logical.map(e=>e.text).join(''),'retypeset requested local text mismatch (old span retained or neighbour lost)');
  if(output.length)assert(drift(output[0]!.origin,ownedSourceGlyphs.find(g=>compact(g.text))!.origin)<=.01,'retypeset output anchor moved away from edit');
  const replacementIndices=actual.flatMap((g,i)=>available.has(g)?[i]:[]);
  for(const g of output){assert(Array.isArray(g.nativePath)&&g.nativePath.length,'retypeset replacement path missing');assert((g.inkPixels??0)>0,'retypeset replacement has no ink');}
- const raster=compareRetypesetRaster(before,after,ownedSourceGlyphs.filter(g=>compact(g.text)),output);
+ const pushedBoxes=(manifest?.pushedRegions??[]).flatMap(r=>[[r.before.x,r.before.y,r.before.x+r.before.w,r.before.y+r.before.h] as const,[r.after.x,r.after.y,r.after.x+r.after.w,r.after.y+r.after.h] as const]);
+ const raster=compareRetypesetRaster(before,after,ownedSourceGlyphs.filter(g=>compact(g.text)),output,pushedBoxes);
  return {maxOriginDriftPt,untargetedGlyphs,replacementGlyphs:replacementIndices.length,replacementIndices,ownedSourceGlyphs,...raster};
 }
