@@ -4,11 +4,12 @@ import {inspectRunPage} from '../contentStreamEdit/replaceRunPage';
 import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import type {SubstituteOptions} from '../contentStreamEdit/substitute';
 import type {ContentTextOutcome} from './outcomes';
-import {readRetypesetSource,pageXObjects,address,paragraphGroups} from './retypesetSource';
+import {readRetypesetSource,pageXObjects,paragraphGroups} from './retypesetSource';
 import {planRetypeset,selectRetypeset} from './retypesetPlan';
 import {textFormNames,imageOverlaps,imageFormNames,formImageOverlaps} from './retypesetLayers';
 import {writeRetypeset} from './retypesetWrite';
 import type {RetypesetEdit} from './retypesetTypes';
+import {addRetypesetBatch,type RetypesetBatch} from './retypesetBatches';
 /** All outstanding edits in a paragraph share one layout and one transaction. */
 export async function applyRetypesets(page:PDFPage,edits:readonly ContentTextOverlay[],outcomes:Map<string,ContentTextOutcome>,accepted:Set<string>,options:SubstituteOptions){
  const pending=edits.filter(e=>!accepted.has(e.id));if(!pending.length)return;
@@ -20,21 +21,21 @@ export async function applyRetypesets(page:PDFPage,edits:readonly ContentTextOve
   if(!read.walk.ok){for(const e of pending)refuse(e,'unsupported-unwritable',read.walk.reason);return;}
   const imageUses=[...read.walk.inlineImages,...read.walk.xobjects.filter(o=>objects.get(o.name)==='Image')];
   const imageForms=imageFormNames(page),formImages=read.walk.xobjects.filter(o=>imageForms.has(o.name));
-  const batches=new Map<string,RetypesetEdit[]>();
+  const batches:RetypesetBatch<RetypesetEdit>[]=[];
   for(const e of pending){
    if(outcomes.get(e.id)?.reason==='stale-source'){refuse(e,'unsupported-unwritable','stale source revision');continue;}
    const selected=selectRetypeset(read.glyphs,e);
    if(!selected.length){refuse(e,forms?'unsupported-form-xobject':!read.glyphs.length?'unsupported-no-text-layer':'unsupported-unwritable','no walkable glyphs at selection');continue;}
    const imageBehind=imageUses.some(o=>imageOverlaps(o.ctm,e.coverRects))||formImages.some(o=>formImageOverlaps(page,o.name,o.ctm,e.coverRects));
    if(imageBehind&&selected.some(g=>g.state.renderMode===3)){refuse(e,'unsupported-image-text');continue;}
-   const frame=paragraphGroups(read.glyphs,ops,selected[0]!);
-   const key=frame.group.lines.flatMap(l=>l.glyphs.map(g=>address(g.glyph))).join('|');
-   const batch=batches.get(key)??[];batch.push({overlay:e,selected,reason:outcomes.get(e.id)?.reason??'unsupported-state'});batches.set(key,batch);
+   const frame=paragraphGroups(read.glyphs,ops,selected[0]!,selected);
+   if(!frame.group)throw Error('no paragraph at selection');
+   addRetypesetBatch(batches,frame.group,{overlay:e,selected,reason:outcomes.get(e.id)?.reason??'unsupported-state'});
   }
   // Build all paragraphs from the same immutable revision. No partial write
   // when a shared paragraph cannot be addressed safely.
   const planned:{edits:RetypesetEdit[];plan:ReturnType<typeof planRetypeset>}[]=[];
-  for(const batch of batches.values())try{planned.push({edits:batch,plan:planRetypeset(read.glyphs,ops,batch)});}catch(error){for(const e of batch)refuse(e.overlay,'unsupported-unwritable',String(error));}
+  for(const {members:batch}of batches)try{planned.push({edits:batch,plan:planRetypeset(read.glyphs,ops,batch)});}catch(error){for(const e of batch)refuse(e.overlay,'unsupported-unwritable',String(error));}
   if(!planned.length)return;
   try{
    const manifests=await writeRetypeset(page,source.bytes,ops,read,planned.map(p=>p.plan),options);
