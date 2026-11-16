@@ -38,6 +38,8 @@ export function streamInkResolver(page:PDFPage,fonts:readonly ResolvedRunFont[],
   // idiom prevents program reuse. The encoder retains its independent gate.
   byName.set(font.resourceName,fallback);
   const input=fontInputFromDict(raw);
+  // Descendant transforms need the same proof as the parent font matrix.
+  if(input.fontMatrix&&(input.fontMatrix.length!==6||input.fontMatrix.some((n,i)=>n!==[.001,0,0,.001,0,0][i]))){byName.delete(font.resourceName);continue;}
   if(input.program&&isCffProgram(input.program))envelope=undefined;
   if(input.subtype==='Type3'){
    byName.set(font.resourceName,code=>{const p=proveType3Glyph(input,code);return p.ok?{box:p.proof.inkBounds??{x:0,y:0,w:0,h:0},conservative:false,provedEmpty:p.proof.inkBounds===null}:undefined;});
@@ -45,7 +47,12 @@ export function streamInkResolver(page:PDFPage,fonts:readonly ResolvedRunFont[],
   }
   if(input.error||!input.program)continue;
   let program:ReturnType<typeof readProgram>;
-  try{program=readProgram(input);}catch{continue;}
+  try{program=readProgram(input);}catch{
+   // A CIDFontType2/FontFile2 wrapper can hide CFF transforms. Unreadable
+   // bytes cannot prove glyf or an identity-scaled FontBBox envelope.
+   if(input.cidSubtype==='CIDFontType2')envelope=undefined;
+   continue;
+  }
   const coverage=input.toUnicode&&!runToUnicode(input.toUnicode,font.bytesPerCode)&&font.bytesPerCode===1&&input.encoding?
    createFontCoverage({...input,toUnicode:undefined},options):fontCoverageFromDict(raw,options),hash=sourceFingerprint(input.program);
   if(program.kind==='fontkit'){
