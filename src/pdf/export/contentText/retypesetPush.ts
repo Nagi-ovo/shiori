@@ -9,6 +9,7 @@ import {retypesetScopes,retypesetPaintOps} from './retypesetScopes';
 import {bounds} from './retypesetInk';
 import {reflowScene} from './reflowScene';
 import {contains,intersects} from './regionProof/geometry';
+import type {RetypesetFrame} from './retypesetFrame';
 
 type Plan=ReturnType<typeof planRetypeset>;
 type Source=ReturnType<typeof readRetypesetSource>;
@@ -20,7 +21,7 @@ export type PushPatch={start:number;end:number;prefix:string;suffix:string};
  * checks cover both the swept region and every destination; a fixed obstacle
  * never becomes fabricated whitespace. */
 export function planRetypesetPush(page:PDFPage,ops:ContentOp[],source:Source,plan:Plan,fit:ReturnType<typeof layoutRetypeset>,target:ReadonlySet<string>,
- outputInk:Ink[],sourceInk:Map<string,Ink>,blockReason?:string,fixedInk:Ink[]=[],internalOverlap=false){
+ outputInk:Ink[],sourceInk:Map<string,Ink>,blockReason?:string,fixedInk:Ink[]=[],internalOverlap=false,boundedFrame?:RetypesetFrame){
  const media=page.getMediaBox(),crop=page.getCropBox(),pageBox={x:Math.max(media.x,crop.x),y:Math.max(media.y,crop.y),w:0,h:0};
  pageBox.w=Math.min(media.x+media.width,crop.x+crop.width)-pageBox.x;pageBox.h=Math.min(media.y+media.height,crop.y+crop.height)-pageBox.y;
  const items:Item[]=source.glyphs.filter(g=>!target.has(address(g.glyph))).map(g=>{
@@ -28,10 +29,12 @@ export function planRetypesetPush(page:PDFPage,ops:ContentOp[],source:Source,pla
   return{box:ink.box,op:g.glyph.opIndex,glyph:g,kind:'text',known:ink.known};
  });
  for(const o of fixedInk)items.push({box:o.box,known:o.known,op:-1,kind:'annot'});
- reflowScene(page,ops,pageBox,(box,kind,op)=>{if(kind!=='backdrop')items.push({box,kind,op,known:kind!=='unknown'});},.01);
+ const insideFrame=boundedFrame&&outputInk.every(o=>o.known&&contains(boundedFrame.box,o.box));
+ reflowScene(page,ops,pageBox,(box,kind,op)=>{if(kind!=='backdrop'&&!(insideFrame&&boundedFrame!.paintOps.has(op)))items.push({box,kind,op,known:kind!=='unknown'});},.01);
  const newInk=outputInk.filter(o=>o.box.w>0&&o.box.h>0),overlap=(except:Set<Item>)=>newInk.some(n=>items.some(o=>!except.has(o)&&intersects(n.box,o.box)));
  const result={pushed:false,pushedDeltaPt:0,pushReason:undefined as string|undefined,overflowInkOverlap:internalOverlap||overlap(new Set()),glyphDeltas:new Map<string,number>(),paintDeltas:new Map<number,number>(),regions:[] as {before:PdfRect;after:PdfRect}[],patches:[] as PushPatch[]};
  if(internalOverlap)return{...result,pushReason:'push-blocked-by-multiple-changed-blocks'};
+ if(boundedFrame)return{...result,pushReason:!insideFrame||result.overflowInkOverlap?'push-blocked-by-bounded-frame':undefined};
  if(fit.addedHeight<=.01)return result;
  // Reserve the wrapped row's whole observed column band. A short last CJK
  // glyph and a right-aligned subtitle may not touch in x, yet must not share
@@ -61,18 +64,43 @@ export function planRetypesetPush(page:PDFPage,ops:ContentOp[],source:Source,pla
  const units=rows.map(row=>({members:row,columnBox:bounds(row.flatMap(o=>o.glyph!.glyph.coreQuad)),box:bounds(row.flatMap(o=>[
   {x:o.box.x,y:o.box.y},{x:o.box.x+o.box.w,y:o.box.y+o.box.h}]))}));
  for(const o of items.filter(o=>!o.glyph))units.push({members:[o],box:o.box,columnBox:o.box});
- const crosses=(b:PdfRect)=>b.x<right&&b.x+b.w>left&&!inBand(b);
+ // An em or one eighth of the observed measure (whichever is smaller)
+ // admits rule endcaps / small indents, not another column. A wider unit
+ // needs most of its width and its centre in this column, and cannot cross
+ // x occupied by a complete foreign row. Page-margin furniture stays fixed.
+ const pitch=plan.frame.global(0,plan.group.pitch).y,em=Math.abs(plan.frame.global(plan.tail[0]!.state.fontSize,0).x);
+ const outset=Math.min(em,(right-left)/8),margin=Math.min(pitch,media.height/10);
+ const foreign=units.filter(u=>u.members.some(o=>o.glyph)&&(u.columnBox.x>=right+.5||u.columnBox.x+u.columnBox.w<=left-.5));
+ const furniture=(u:typeof units[number])=>u.box.y<media.y+margin||u.box.y+u.box.h>media.y+media.height-margin||
+  u.columnBox.w>=media.width-2*margin;
+ const columnMember=(u:typeof units[number])=>{
+  const b=u.columnBox;
+  if(furniture(u))return false;
+  if(inBand(b))return true;
+  return b.x>=left-outset&&b.x+b.w<=right+outset&&b.x+b.w/2>=left&&b.x+b.w/2<=right&&
+   Math.min(right,b.x+b.w)-Math.max(left,b.x)>=b.w/2&&
+   !foreign.some(f=>b.x<f.columnBox.x+f.columnBox.w&&b.x+b.w>f.columnBox.x);
+ };
+ const crosses=(u:typeof units[number])=>u.columnBox.x<right&&u.columnBox.x+u.columnBox.w>left&&!columnMember(u);
  const barrier=Math.max(-Infinity,...units.filter(u=>u.members.every(below)&&
-  (crosses(u.columnBox)||u.members.some(o=>['annot','unknown'].includes(o.kind)))).map(u=>u.box.y+u.box.h));
- const eligible=units.filter(u=>inBand(u.columnBox)&&u.box.y>=barrier&&u.members.every(o=>below(o)&&!['annot','unknown'].includes(o.kind)))
+  (crosses(u)||u.columnBox.x<right&&u.columnBox.x+u.columnBox.w>left&&u.members.some(o=>['annot','unknown'].includes(o.kind)))).map(u=>u.box.y+u.box.h));
+ const eligible=units.filter(u=>columnMember(u)&&u.box.y>=barrier&&u.members.every(o=>below(o)&&!['annot','unknown'].includes(o.kind)))
   .sort((a,b)=>b.box.y+b.box.h-a.box.y-a.box.h);
  // Column evidence is local. A gap exceeding four observed pitches ends
  // this band rather than recruiting a distant page footer into the push.
  let last=threshold;
  const moving=new Set<Item>();
  for(const u of eligible){
-  if(last-(u.box.y+u.box.h)>4*delta*plan.group.pitch/fit.addedHeight)break;
+  if(last-(u.box.y+u.box.h)>4*pitch)break;
   u.members.forEach(o=>moving.add(o));last=Math.min(last,u.box.y);
+  // Stop at an actual gap that absorbs Δ. Recruiting the rest of the page
+  // would drag a footer/body across whitespace even though the affected
+  // complete rows/graphics already have clear destinations. The four-pitch
+  // rule remains the outer locality limit, including for very large edits.
+  if(!overlap(moving)&&[...moving].every(o=>{
+   const dest={...o.box,y:o.box.y-delta},swept={...dest,h:dest.h+delta};
+   return contains(pageBox,dest)&&!items.some(f=>!moving.has(f)&&intersects(swept,f.box))&&!newInk.some(n=>intersects(n.box,dest));
+  }))break;
  }
  if(!moving.size)return blocked('foreign-column-or-obstacle');
  if([...moving].some(o=>!o.known))return blocked('unknown-source-ink');

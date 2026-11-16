@@ -12,17 +12,17 @@ import type {ResolvedRunFont} from '../contentStreamEdit/replaceRun';
 import type {readRetypesetSource} from './retypesetSource';
 import {address} from './retypesetSource';
 import type {planRetypeset} from './retypesetPlan';
-import type {RetypesetCluster} from './retypesetTypes';
+import type {RetypesetCluster,RetypesetManifest} from './retypesetTypes';
 import {restoreReflowSlot} from './reflowEmit';
 import {prepareRetypesetFallback} from './retypesetFallback';
 import {verifyRetypesetGlyphs} from './retypesetVerify';
 import {originalFallbackFace,retypesetFontSelector} from './retypesetFontSelection';
-import {layoutRetypeset} from './retypesetLayout';
+import {retypesetClusterState} from './retypesetLayout';
 import {planRetypesetPush,verifyRetypesetPushPaint} from './retypesetPush';
 import {numericArray} from './reflowScene';
 import {retypesetScopes} from './retypesetScopes';
 import {contains,intersects} from './regionProof/geometry';
-import {retypesetInk} from './retypesetInk';
+import {prepareRetypesetFits} from './retypesetFit';
 
 type Plan=ReturnType<typeof planRetypeset>;
 type Source=ReturnType<typeof readRetypesetSource>;
@@ -31,7 +31,7 @@ function restore(s:ShowTextState,fonts:ResolvedRunFont[]){
 }
 /** Compile in scratch resources, rewalk, verify every untargeted glyph, then
  * install. Each home show emits under its original graphics/marked scope. */
-export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp[],source:Source,plans:Plan[],options:FallbackOptions,pushBlockReason?:string){
+export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp[],source:Source,plans:Plan[],options:FallbackOptions,pushBlockReason?:string):Promise<Omit<RetypesetManifest,'reason'>[]>{
  const scratch=await PDFDocument.create(),fonts=[...source.fonts],prepared:Awaited<ReturnType<typeof prepareRetypesetFallback>>[]=[],names:(string|null)[]=[];
  const stamp=substitutionStamp(page);
  const originalResources=page.node.Resources(),originalContents=page.node.get(PDFName.of('Contents'));
@@ -61,19 +61,15 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
   }
   names.push(selectedNames.size?[...selectedNames].join(', '):null);
  }
- const fits=plans.map(layoutRetypeset),hits=plans.flatMap(p=>p.tail.map(g=>g.glyph)),target=new Set(hits.map(address));
+ const hits=plans.flatMap(p=>p.tail.map(g=>g.glyph)),target=new Set(hits.map(address));
  if(target.size!==hits.length)throw Error('intersecting paragraph ownership');
  // Measurement-only resources may reference private scratch font dictionaries;
  // nothing is installed until compilation and the moved/untouched proofs pass.
  const measureNode=page.node.clone(),measureResources=originalResources?.clone()??page.doc.context.obj({}),measureFonts=fontDict?.clone()??page.doc.context.obj({});
  for(const p of prepared)measureFonts.set(PDFName.of(p.resolved.resourceName),scratch.context.lookup(p.ref)!);
  measureResources.set(PDFName.of('Font'),measureFonts);measureNode.set(PDFName.of('Resources'),measureResources);
- const ink=retypesetInk(PDFPage.of(measureNode,page.ref,page.doc),fonts,ops);
- const sourceInk=new Map(source.glyphs.map(g=>[address(g.glyph),ink(fonts.find(f=>f.resourceName===g.glyph.fontName)!,g.glyph.code,g.state,g.x,g.y)]));
- const outputInks=plans.map(p=>new Map(p.output.filter(a=>!a.hard).map(a=>{
-  const pt=p.frame.global(a.x!,a.y!),code=codes(a.bytes!,a.font!.bytesPerCode)[0]!;
-  return [a,ink(a.font!,code,a.home.state,pt.x,pt.y)] as const;
- })));
+ const {sourceInk,results:fitted}=prepareRetypesetFits(page,PDFPage.of(measureNode,page.ref,page.doc),ops,fonts,source,plans,target);
+ const fits=fitted.map(f=>f.fit),outputInks=fitted.map(f=>f.outputInk);
  const formBox=originalContents instanceof PDFRawStream?numericArray(originalContents.dict,'BBox'):undefined;
  const initialClip=formBox?.length===4?{x:formBox[0]!,y:formBox[1]!,w:formBox[2]!-formBox[0]!,h:formBox[3]!-formBox[1]!}:undefined;
  const scopes=retypesetScopes(ops,initialClip);
@@ -86,7 +82,7 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
    b.output.some(a=>ink.has(a)&&next.output.some(c=>ink.has(c)&&intersects(ink.get(a)!.box,ink.get(c)!.box)))));
   const fixed=outputInks.flatMap((m,j)=>j===i?[]:[...m.values()]);
   return planRetypesetPush(page,ops,source,p,fits[i]!,target,[...ink.values()],sourceInk,
-   pushBlockReason??(plans.length>1?'multiple-edited-paragraphs':undefined),fixed,internalOverlap);
+   pushBlockReason??(plans.length>1?'multiple-edited-paragraphs':undefined),fixed,internalOverlap,fitted[i]!.frame);
  });
  const deltas=new Map(pushes.flatMap(p=>[...p.glyphDeltas]));
 
@@ -112,7 +108,7 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
   const before={...source.glyphs.find(g=>g.glyph.opIndex===opIndex)!.state,...source.ends.get(opIndex)!},body:string[]=[' q'];
   for(let cursor=0;cursor<atoms.length;){
    const a=atoms[cursor]!;
-   const p=plans.find(p=>p.output.includes(a))!,global=p.frame.global(a.x!,a.y!),s=a.home.state,ct=s.ctm!,tm=s.textMatrix!,det=ct[0]!*ct[3]!-ct[1]!*ct[2]!;
+   const p=plans.find(p=>p.output.includes(a))!,global=p.frame.global(a.x!,a.y!),s=retypesetClusterState(a),ct=s.ctm!,tm=s.textMatrix!,det=ct[0]!*ct[3]!-ct[1]!*ct[2]!;
    const x=(ct[3]!*(global.x-ct[4]!)-ct[2]!*(global.y-ct[5]!))/det-s.rise!*tm[2]!;
    const y=(-ct[1]!*(global.x-ct[4]!)+ct[0]!*(global.y-ct[5]!))/det-s.rise!*tm[3]!;
    const along=(dx:number)=>{
@@ -124,7 +120,7 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
    // fragments can make PDFium extract a newline after every character.
    let end=cursor+1;
    for(;end<atoms.length;end++){
-    const next=atoms[end]!,previous=atoms[end-1]!,ns=next.home.state;
+    const next=atoms[end]!,previous=atoms[end-1]!,ns=retypesetClusterState(next);
     if(next.font!==a.font||Math.abs(next.y!-a.y!)>1e-8||Math.abs(next.x!-previous.x!-previous.advance!)>1e-7||along(next.x!-previous.x!).across>1e-8||
      (['fontSize','charSpacing','wordSpacing','horizontalScale','rise','renderMode']as const).some(k=>ns[k]!==s[k])||
      ns.textMatrix!.slice(0,4).some((v,i)=>v!==tm[i])||ns.ctm!.some((v,i)=>v!==ct[i]))break;
@@ -197,7 +193,9 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
    residualX=Math.max(residualX,Math.abs(match.coreQuad[0].x-g.x));
    residualY=Math.max(residualY,Math.abs(match.coreQuad[0].y-(g.y-delta)));
   }
-  return {paragraphBox:{x,y,w:right-x,h:top-y},substituteFont:names[i]??null,lineCount:fits[i]!.lines,overflowed:fits[i]!.addedHeight>.01||fits[i]!.maxRight>p.group.right+.01,pushed:push.pushed,pushedDeltaPt:push.pushedDeltaPt,pushedRegions:push.regions,
+  const frameFit=fitted[i]!.frameFit;
+  return {paragraphBox:{x,y,w:right-x,h:top-y},substituteFont:names[i]??null,lineCount:fits[i]!.lines,overflowed:frameFit?!frameFit.fits:fits[i]!.addedHeight>.01||fits[i]!.maxRight>p.group.right+.01,pushed:push.pushed,pushedDeltaPt:push.pushedDeltaPt,pushedRegions:push.regions,
+   ...(frameFit?{fitStrategy:'tighten-frame' as const,frameFit}:{}),
    pushReason:push.pushReason,overflowInkOverlap:push.overflowInkOverlap,
    unchangedLineDriftPt:Math.max(0,...push.glyphDeltas.values(),residualX,residualY),
    quality:{maxUnchangedLineStartXDriftPt:residualX,maxUnchangedLineBaselineDriftPt:residualY,overflowInkOverlap:push.overflowInkOverlap}};
