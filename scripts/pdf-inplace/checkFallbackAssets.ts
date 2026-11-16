@@ -18,6 +18,7 @@ await import(pathToFileURL(join(out,'dist/loader.js')).href);
 const probe=(globalThis as unknown as {fallbackAssetProbe:{fallbackFontUrl:(name:string)=>Promise<string>;loadBundledFallbackFont:(name:string)=>Promise<Uint8Array>}}).fallbackAssetProbe;
 const names=['Sans','Serif','Mono'].flatMap(f=>['Regular','Bold','Italic','BoldItalic'].map(s=>`Liberation${f}-${s}.ttf`));
 names.push('NotoSansSC-Regular.otf','NotoSansJP-Regular.otf','NotoSansKR-Regular.otf','NotoSansMath-Regular.ttf','NotoSansSymbols2-Regular.ttf');
+names.push('NotoSansSC-Bold.otf','NotoSansJP-Bold.otf','NotoSansKR-Bold.otf');
 const hash=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
 const appFiles=await readdir(join(root,'dist/assets'));
 const liberationFiles=appFiles.filter(f=>/^Liberation(Sans|Serif|Mono)-.*\.ttf$/.test(f));
