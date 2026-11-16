@@ -4,18 +4,19 @@ Current state and next steps only. History lives in `git log`, `CHANGELOG.md`
 and `docs/POSTMORTEMS.md` — when an item here is done, delete it rather than
 marking it done.
 
-Last reconciled against reality: **2026-10-23**.
+Last reconciled against reality: **2026-11-16**.
 
 ## Current state
 
-- **App 26.10.23 (唯我独尊) is the live release**: the whole 2026-10-20
-  audit batch (`docs/AUDIT-2026-10-20.md`, all 119 handled). macOS local
-  signed + notarized, Windows/Linux/Android from CI; the live updater
-  verifier passes on all four desktop platforms. Shipped without device
-  checks and not announced, both by Jesse's choice. The GitHub release is
-  not flagged latest (`gh release edit --latest` returned 422; the
-  latest-release API answers 404). The oracle-arm Discord bot posted it to
-  `shiori-zh` / `shiori-en`; that is the only announcement (no QQ).
+- **App 26.11.16 (魑魅魍魉) is the live release**: the WenKai UI font,
+  the tab-switch zoom fix (`5e25bae`), the export/print overflow warning,
+  cold-start and Android open fixes, Word pinch zoom on phones. macOS
+  local signed + notarized (notarization needed the Program License
+  Agreement issued 2026-10-29, accepted 2026-11-16; it took a few minutes
+  to reach notarytool), Windows/Linux/Android from CI; the live updater
+  verifier passes on all four desktop platforms, and the release is
+  flagged latest. Shipped without device checks and not announced, both
+  by Jesse's choice.
 - **CLI 0.1.27 is live** on curl, PowerShell and npm
   (`@nagi-ovo/shiori`, first time on npm). Its first archives crashed on
   every Mac (POSTMORTEMS 2026-10-23); nobody had installed them, so they
