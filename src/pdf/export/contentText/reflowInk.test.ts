@@ -14,10 +14,26 @@ import {planSubstitution} from '../contentStreamEdit/substitutePlan';
 import {overlay} from './fixtures.test-support';
 import {readProgram} from '../fontCoverage/program';
 import {fontInputFromDict} from '../fontCoverage/pdfLibAdapter';
+import {tinyTtf} from '../fontCoverage/fixtures/programs';
 function measure(f:Awaited<ReturnType<typeof type1Fixture>>,code=65){
  const s=inspectRunPage(f.page);if(!s.ok)throw Error(s.reason);const fonts=resolveRunFonts(f.page),trace=traceReflowSource(tokenizeContentStream(s.bytes),fonts,s.sourceHash);
  return streamInkResolver(f.page,fonts)('F1',code,[...trace.shows.values()][0]!.before);
 }
+// Office ToUnicode must preserve actual GIDs in both ink paths, rather than
+// retaining the labels while silently replacing outlines with FontBBox.
+test('Office ToUnicode keeps embedded TrueType GID ink for reflow and substitution',async()=>{
+ const f=await type1Fixture({stream:'BT /F1 10 Tf 50 100 Td (A) Tj ET'}),ctx=f.doc.context;
+ const d=f.font.lookup(PDFName.of('FontDescriptor'),PDFDict);
+ d.delete(PDFName.of('FontFile'));d.set(PDFName.of('Flags'),ctx.obj(32));
+ d.set(PDFName.of('FontFile2'),ctx.register(ctx.flateStream(tinyTtf())));
+ d.set(PDFName.of('FontBBox'),ctx.obj([0,0,500,800]));
+ f.font.set(PDFName.of('Subtype'),PDFName.of('TrueType'));
+ f.font.set(PDFName.of('Encoding'),PDFName.of('WinAnsiEncoding'));
+ f.font.set(PDFName.of('ToUnicode'),ctx.register(ctx.flateStream(
+  '1 begincodespacerange <0000> <FFFF> endcodespacerange 1 beginbfchar <41> <0041> endbfchar')));
+ expect(measure(f)).toMatchObject({box:{x:0,y:0,w:1,h:1},conservative:false,glyph:{kind:'gid',gid:7}});
+ expect(substituteInk(f.page,substituteSourceFonts(f.page))('F1',65)).toEqual({x:0,y:0,w:.1,h:.1});
+});
 test('declared PDF FontBBox supplies exact conservative ink without an invented em or advance envelope',async()=>{
  const f=await type1Fixture({brokenProgram:true});const d=f.font.lookup(PDFName.of('FontDescriptor'),PDFDict);
  d.set(PDFName.of('FontBBox'),f.doc.context.obj([125,-50,375,650]));

@@ -1,12 +1,14 @@
 // Conservative CMap subset for surgical edits. Unlike the legacy overlay
 // encoder, validate counts, source widths, Unicode scalars and duplicate codes.
 // ToUnicode establishes encoding only; outline coverage is a separate seam.
+import { codeInCodespace } from '../fontCoverage/codespace';
+
 export function runToUnicode(program: string, size: 1 | 2): Map<number, string> | null {
   try {
     const source = program.replace(/%[^\r\n]*/g, '');
     // Inherited mappings remain unknown; explicit local entries are authoritative.
     const map = new Map<number, string>();
-    const codespaces: [number, number][] = [];
+    const codespaces: [string, string][] = [];
     const tokens = source.match(/<[\da-fA-F\s]*>|\[|\]|[^\s<>[\]]+/g) ?? [];
     const hex = (s: string | undefined, width?: number): string => {
       if (!s || !/^<[\da-fA-F\s]+>$/.test(s)) throw Error('invalid hex');
@@ -37,11 +39,12 @@ export function runToUnicode(program: string, size: 1 | 2): Map<number, string> 
         // Office uses two-byte codespaces with one-byte simple-font sources.
         // Only mapping sources must match the font's code width.
         const width = kind === 'begincodespacerange' ? undefined : size;
-        const first = parseInt(hex(tokens[++i], width), 16);
+        const low = hex(tokens[++i], width), first = parseInt(low, 16);
         if (kind === 'beginbfchar') { put(first, unicode(tokens[++i]!)); continue; }
-        const last = parseInt(hex(tokens[++i], width), 16);
-        if (last < first || last - first > 65535) throw Error('bad range');
-        if (kind === 'begincodespacerange') { codespaces.push([first, last]); continue; }
+        const high = hex(tokens[++i], width), last = parseInt(high, 16);
+        if (low.length !== high.length || low.length > 8 || last < first) throw Error('bad range');
+        if (kind === 'begincodespacerange') { codespaces.push([low, high]); continue; }
+        if (last - first > 65535) throw Error('bad range');
         if (tokens[++i] === '[') {
           for (let c = first; c <= last; c++) put(c, unicode(tokens[++i]!));
           if (tokens[++i] !== ']') throw Error('bad array count');
@@ -58,7 +61,8 @@ export function runToUnicode(program: string, size: 1 | 2): Map<number, string> 
       }
       if (tokens[++i] !== (kind === 'beginbfchar' ? 'endbfchar' : kind === 'beginbfrange' ? 'endbfrange' : 'endcodespacerange')) throw Error('bad section length');
     }
-    if (codespaces.length && [...map.keys()].some(code => !codespaces.some(([lo, hi]) => code >= lo && code <= hi))) return null;
+    if (codespaces.length && [...map.keys()].some(code => !codespaces.some(([lo, hi]) =>
+      codeInCodespace(code.toString(16).padStart(size * 2, '0'), lo, hi)))) return null;
     return map.size ? map : null;
   } catch { return null; }
 }
