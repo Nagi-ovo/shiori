@@ -1,7 +1,8 @@
 import {expect,test} from 'bun:test';
 import {existsSync} from 'node:fs';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
-import {PDFArray,PDFDict,PDFDocument,PDFName} from 'pdf-lib';
+import {PDFArray,PDFDict,PDFDocument,PDFName,PDFRawStream} from 'pdf-lib';
+import {deflateSync} from 'node:zlib';
 import {fixture,model,overlay} from '../../src/pdf/export/contentText/fixtures.test-support';
 import {exportPdf} from '../../src/pdf/export/exportPdf';
 import {openPdfium} from '../pdf-inplace/nativePdfium';
@@ -26,8 +27,14 @@ test.skipIf(!existsSync(library))('saved production retypeset passes its native 
  const reports=[];
  const native=openPdfium(library);
  try{
-  for(const [name,text]of [['wrapped','new words that wrap'],['descriptor','new words that wrap'],['han','新的文字需要换行']] as const){
+  for(const [name,text]of [['wrapped','new words that wrap'],['descriptor','new words that wrap'],['inherited-warning','new words that wrap'],['han','新的文字需要换行']] as const){
    const f=await fixture('BT /F1 10 Tf 50 100 Td (ABCDE) Tj ET BT /F1 10 Tf 200 150 Td (ABCDE KEEP) Tj ET');
+   if(name==='inherited-warning'){
+    // InDesign-like incomplete zlib checksum in an unrelated source stream.
+    // The production export must retain it without creating any new qpdf noise.
+    const data=deflateSync(Buffer.from('unchanged source noise')).subarray(0,-4);
+    f.page.node.set(PDFName.of('SourceNoise'),f.doc.context.register(PDFRawStream.of(f.doc.context.obj({Filter:'FlateDecode'}),data)));
+   }
    if(name==='descriptor')f.page.node.Resources()!.lookup(PDFName.of('Font'),PDFDict).lookup(PDFName.of('F1'),PDFDict).set(PDFName.of('FontDescriptor'),f.doc.context.obj({Type:'FontDescriptor',FontName:'Courier',Flags:33,FontBBox:[0,-200,600,800],Ascent:800,Descent:-200,CapHeight:700,ItalicAngle:0,StemV:80}));
    const before=await f.doc.save({useObjectStreams:false}),edit=overlay({text});
    const result=await exportPdf(before,model([edit]),{mode:'flatten',inPlaceFallback:{loadFont}}),outcome=result.contentTextOutcomes![0]!;
@@ -39,6 +46,7 @@ test.skipIf(!existsSync(library))('saved production retypeset passes its native 
    const checked=await auditCorpusSample(native,name,directory,edit,{},true,undefined,outcome);
    expect(checked).toMatchObject({passed:true,oracleTier:'retypeset',changedPixelsOutsideRetypesetMask:0,maskDilationPx:1,qpdf:'clean'});
    expect(checked.nonNotdefGlyphs).toBeGreaterThan(0);reports.push(checked);
+   if(name==='inherited-warning')expect(checked).toMatchObject({qpdfSourceIssues:1,qpdfInheritedIssues:1});
    expect(await auditCorpusSample(native,name,directory,edit,{},true,undefined,{...outcome,mode:'fallback-font',fidelity:'approximate'})).toMatchObject({passed:true,oracleTier:'retypeset'});
    if(name==='han'){
     const bad=await PDFDocument.load(result.bytes),fonts=bad.getPage(0).node.Resources()!.lookup(PDFName.of('Font'),PDFDict);

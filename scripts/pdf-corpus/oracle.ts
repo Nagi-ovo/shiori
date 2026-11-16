@@ -18,6 +18,8 @@ import type {ContentTextOutcome} from '../../src/pdf/export/contentText/outcomes
 import {compareRetypesetNativePages} from './retypesetOracle';
 import {assertRetypesetStreamIdentity,retypesetSourceOwnership} from './retypesetStreamOracle';
 import {retypesetFontObjects,retypesetNotdefProbePdf} from './retypesetFontProbe';
+import {auditQpdfPair} from './qpdfOracle';
+import {assertRetypesetPopplerText} from './retypesetPoppler';
 const compact=(s:string)=>s.replace(/\s/gu,'');
 type Glyph={text:string;origin:readonly number[];box:readonly number[];fontHash?:string;nativePath?:unknown;inkPixels?:number;fontSize?:number};
 type Snapshot={width:number;height:number;text:string;glyphs:readonly Glyph[];pixels?:Uint8Array};
@@ -167,16 +169,13 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
   assert(before.glyphs.some(old=>old.text===g.text && old.fontHash===g.fontHash && JSON.stringify(old.nativePath)===JSON.stringify(g.nativePath)),'unverified replacement is not an existing native source glyph');
   nativeSourceProofs++;
  }
- command('qpdf',['--check',afterPath]);
+ const qpdf=await auditQpdfPair(beforePath,afterPath);
  const oldText=compact(command('pdftotext',['-layout',beforePath,'-'])),newText=compact(command('pdftotext',['-layout',afterPath,'-']));
+ let poppler;
  if(retypeset){
-  // Poppler's spatial reading order can change when a paragraph wraps past
-  // another object. Native evidence above already checks the local sequence
-  // and position; independently account for every extracted scalar here.
-  const scalars=(s:string)=>Array.from(compact(s)).sort().join('');
-  assert.equal(scalars(newText),scalars(after.text),'Poppler extracted characters mismatch');
+  poppler=assertRetypesetPopplerText(oldText,newText,before.text,after.text);
  }else assert.equal(newText,useManifest?compact(after.text):expectedPopplerText(oldText,edit),'Poppler extracted text mismatch');
  const {replacementIndices:_,ownedSourceGlyphs:__,...evidence}={ownedSourceGlyphs:undefined,...checked};void _;void __;
- const result={name,...evidence,...(retypeset?{oracleTier:'retypeset',untargetedStreamGlyphs}:{}),stage5Reflow,nativeSourceProofs,nonNotdefGlyphs:glyphEvidence.length,qpdf:'clean',nativeText:after.text,popplerText:newText,passed:true};
+ const result={name,...evidence,...(retypeset?{oracleTier:'retypeset',untargetedStreamGlyphs}:{}),stage5Reflow,nativeSourceProofs,nonNotdefGlyphs:glyphEvidence.length,...qpdf,...poppler,nativeText:after.text,popplerText:newText,passed:true};
  await writeFile(`${directory}/${name}.oracle.json`,JSON.stringify(result,null,2));return result;
 }

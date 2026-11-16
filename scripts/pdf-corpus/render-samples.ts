@@ -2,21 +2,44 @@ import assert from 'node:assert/strict';
 import {readdir, readFile, access} from 'node:fs/promises';
 import {join} from 'node:path';
 import type {PdfRect} from '../../src/pdf/model/types';
+import type {RetypesetManifest} from '../../src/pdf/export/contentText/retypesetTypes';
 
 type EditRegion = {rect?: PdfRect; paragraphRect?: PdfRect; coverRects?: PdfRect[]};
 export type EditMetadata = EditRegion & {
   overlay?: EditRegion;
-  row?: {id?: string; category?: string; outcome?: {mode?: string; reflow?: {region: {box: PdfRect;mask?:readonly PdfRect[]}}}};
+  row?: {id?: string; category?: string; outcome?: {mode?: string; fidelity?: string;
+    retypeset?: Pick<RetypesetManifest,'paragraphBox'|'lineCount'|'overflowed'>;
+    reflow?: {region: {box: PdfRect;mask?:readonly PdfRect[]}}}};
 };
 export type RenderSample = {name: string; before: string; after: string; edit?: string; metadata: EditMetadata; smoke?: boolean};
-const accepted = ['in-place', 'fallback-font', 'substituted', 'reflowed'];
-export const newMode = (sample: RenderSample) => ['substituted', 'reflowed'].includes(sample.metadata.row?.outcome?.mode ?? '');
+const accepted = ['in-place', 'fallback-font', 'substituted', 'reflowed', 'retypeset'];
+export const newMode = (sample: RenderSample) => ['substituted', 'reflowed', 'retypeset'].includes(sample.metadata.row?.outcome?.mode ?? '');
+type CropGlyph={text:string;origin:readonly number[];box:readonly number[];inkBox?:readonly number[];fontHash?:string};
 
-export function editRects(metadata: EditMetadata): PdfRect[] {
+export function editRects(metadata: EditMetadata, native?: {before:readonly CropGlyph[];after:readonly CropGlyph[]}): PdfRect[] {
   const region = metadata.overlay ?? metadata;
-  const reflow=metadata.row?.outcome?.reflow?.region;
-  const rects = [region.rect, ...(region.coverRects ?? []), region.paragraphRect,...(reflow?.mask??(reflow?[reflow.box]:[]))]
+  const outcome=metadata.row?.outcome,reflow=outcome?.reflow?.region;
+  const retypeset=outcome?.mode==='retypeset'||outcome?.fidelity==='approximate';
+  const rects = [region.rect, ...(region.coverRects ?? []), region.paragraphRect,...(reflow?.mask??(reflow?[reflow.box]:[])),
+    ...(retypeset&&outcome?.retypeset?[outcome.retypeset.paragraphBox]:[])]
     .filter((r): r is PdfRect => r !== undefined);
+  if(retypeset&&native){
+    // Union new/moved output ink with the original covers. Matching consumes
+    // occurrences, so a wrapped 'i' is still new when another 'i' survives on
+    // the page. Unchanged output already lies within the original edit boxes.
+    // Native ink determines the growth, rather than guessing pitch or adding
+    // a large fixed margin when lineCount/overflowed says wrapping occurred.
+    const available=new Map<string,CropGlyph[]>();
+    for(const g of native.before){const glyphs=available.get(g.text)??[];glyphs.push(g);available.set(g.text,glyphs);}
+    for(const g of native.after){
+      if(!g.text.replace(/\s/gu,''))continue;
+      const glyphs=available.get(g.text)??[];
+      const at=glyphs.findIndex(old=>old.fontHash===g.fontHash&&Math.hypot(old.origin[0]!-g.origin[0]!,old.origin[1]!-g.origin[1]!)<=.01);
+      if(at>=0){glyphs.splice(at,1);continue;}
+      const [left,bottom,right,top]=g.inkBox??g.box;
+      if(right!>left!&&top!>bottom!)rects.push({x:left!,y:bottom!,w:right!-left!,h:top!-bottom!});
+    }
+  }
   assert(rects.length, 'edit JSON must contain coverRects, rect or paragraphRect');
   return rects;
 }
