@@ -104,7 +104,9 @@ export function planProvedStreamReflow(e:StreamReflowEvidence,fonts:readonly Res
    const grown=proveDownwardSlot(e,proof,[...replacement,...source.slice(end)]);if(!grown)break;
    proof=grown;layout=solveMeasuredReflow({source,replacement,start,end,proof,softBreaks});
   }
-  if(!layout.ok||layout.strategy==='fixed')return null;
+  if(!layout.ok)return null;
+  // A fixed whole-selection layout can fit when the earlier byte-span edit
+  // overflowed. It still needs the same destination proof and compiler checks.
   // A preceding fixed tactic may not use speculative growth; only wrap may.
   if(layout.strategy!=='wrap'&&proof!==e.proof)return null;
   const firstOp=proof.owned[0]!.opIndex,lastOp=proof.owned.at(-1)!.opIndex;
