@@ -23,6 +23,20 @@ test('untargeted invisible spaces and other text objects cannot disappear',async
  }
 });
 
+// Only a native-verified push grants a vertical delta. Code/font/space counts
+// and every quad point still need to survive, and outsiders remain stationary.
+test('saved stream glyphs use verified push deltas and reject real outsiders',async()=>{
+ const source='BT /F1 10 Tf 50 100 Td (A) Tj ET BT /F1 6 Tf 60 80 Td (1 ) Tj ET BT /F1 10 Tf 200 150 Td (Z) Tj ET';
+ const before=await fixture(source),translated=source.replace('(A)','(X)').replace('60 80','60 64');
+ const after=await fixture(translated),pushed=[{origin:[60,80],deltaY:16},{origin:[63.6,80],deltaY:16}];
+ expect(assertRetypesetStreamIdentity(before.page,after.page,owned,{},pushed)).toBe(3);
+ expect(()=>assertRetypesetStreamIdentity(before.page,after.page,owned)).toThrow('codes/font/position');
+ for(const stream of [translated.replace('60 64','60 63.98'),translated.replace('200 150','199 150'),translated.replace('(1 )','(2 )'),translated.replace('(1 )','(1)')]){
+  const bad=await fixture(stream);
+  expect(()=>assertRetypesetStreamIdentity(before.page,bad.page,owned,{},pushed)).toThrow('codes/font/position');
+ }
+});
+
 test('source ownership keeps earlier lines and separately scoped text inside paragraph bounds untargeted',async()=>{
  const f=await fixture('BT /F1 10 Tf 14 TL 50 150 Td (ABCDE) Tj 0 -14 Td (ABCDE) Tj ET q BT /F1 10 Tf 60 143 Td (Z) Tj ET Q');
  const native=Array.from('ABCDE', (text,i)=>({text,origin:[50+i*6,136]}));

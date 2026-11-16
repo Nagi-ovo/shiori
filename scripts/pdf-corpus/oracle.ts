@@ -128,7 +128,7 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
  if('ownedSourceGlyphs' in checked){
   const original=await PDFDocument.load(new Uint8Array(await readFile(beforePath)));
   assert(sourceOwnership,'missing retypeset source ownership');
-  untargetedStreamGlyphs=assertRetypesetStreamIdentity(original.getPage(0),doc.getPage(0),sourceOwnership,stage5Type1);
+  untargetedStreamGlyphs=assertRetypesetStreamIdentity(original.getPage(0),doc.getPage(0),sourceOwnership,stage5Type1,checked.pushedSourceGlyphs);
   const {formWalkSourceIssues,formWalkInheritedIssues}=compareRetypesetFormWalk(original.getPage(0),doc.getPage(0),stage5Type1);
   formWalkEvidence={formWalkSourceIssues,formWalkInheritedIssues};
   for(const [hash,ref]of retypesetFontObjects(original.getPage(0),doc.getPage(0),after.glyphs,stage5Type1))objects.set(hash,ref);
@@ -179,7 +179,7 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
  if(retypeset){
   poppler=assertRetypesetPopplerText(oldText,newText,before.text,after.text);
  }else assert.equal(newText,useManifest?compact(after.text):expectedPopplerText(oldText,edit),'Poppler extracted text mismatch');
- const {replacementIndices:_,ownedSourceGlyphs:__,...evidence}={ownedSourceGlyphs:undefined,...checked};void _;void __;
+ const {replacementIndices:_,ownedSourceGlyphs:__,pushedSourceGlyphs:___,...evidence}={ownedSourceGlyphs:undefined,pushedSourceGlyphs:undefined,...checked};void _;void __;void ___;
  const result={name,...evidence,...(retypeset?{oracleTier:'retypeset',untargetedStreamGlyphs,...formWalkEvidence}:{}),stage5Reflow,nativeSourceProofs,nonNotdefGlyphs:glyphEvidence.length,...qpdf,...poppler,nativeText:after.text,popplerText:newText,passed:true};
  await writeFile(`${directory}/${name}.oracle.json`,JSON.stringify(result,null,2));return result;
 }

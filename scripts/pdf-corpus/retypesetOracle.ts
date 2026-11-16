@@ -5,9 +5,16 @@ import {compareRetypesetRaster} from './retypesetRaster';
 type Glyph={text:string;origin:readonly number[];box:readonly number[];inkBox?:readonly number[];fontHash?:string;nativePath?:unknown;inkPixels?:number;code?:number};
 type Snapshot={width:number;height:number;text:string;glyphs:readonly Glyph[];pixels?:Uint8Array};
 export type RetypesetEdit={originalText:string;text:string;coverRects:readonly PdfRect[]};
+export type RetypesetPushedGlyph={origin:readonly number[];deltaY:number};
 const compact=(s:string)=>s.replace(/\s/gu,'');
 const drift=(a:readonly number[],b:readonly number[])=>Math.hypot(a[0]!-b[0]!,a[1]!-b[1]!);
 const inside=(g:{origin:readonly number[]},r:PdfRect)=>g.origin[0]!>=r.x-.01&&g.origin[0]!<=r.x+r.w+.01&&g.origin[1]!>=r.y-.01&&g.origin[1]!<=r.y+r.h+.01;
+const pushedInkInside=(g:Glyph,r:PdfRect)=>{
+ const b=g.inkBox??g.box;
+ // A positive bearing (notably superscripts) puts the baseline origin outside
+ // the tight ink. Require the whole ink, never just an overlap with a region.
+ return b[2]!>b[0]!&&b[3]!>b[1]!?b[0]!>=r.x-.01&&b[2]!<=r.x+r.w+.01&&b[1]!>=r.y-.01&&b[3]!<=r.y+r.h+.01:inside(g,r);
+};
 
 export function selectRetypesetSourceSpans<T extends {text:string;origin:readonly number[]}>(glyphs:readonly T[],edit:RetypesetEdit){
  const old=glyphs.filter(g=>compact(g.text)),sourceLines=edit.originalText.split('\n'),newLines=edit.text.split('\n');
@@ -68,17 +75,15 @@ export function compareRetypesetNativePages(before:Snapshot,after:Snapshot,edit:
   assert(at>=0&&replacement.glyphs.every((g,i)=>logical[at+i]?.g===g),'retypeset source interleaves paragraph text');
   logical.splice(at,replacement.glyphs.length,...Array.from(replacement.text,text=>({g:replacement.glyphs[0]!,text})));
  }
- const available=new Set(after.glyphs);let maxOriginDriftPt=0,untargetedGlyphs=0;
- const expectedOrigin=(g:{origin:readonly number[]})=>{
-  const region=manifest?.pushedRegions?.find(r=>inside(g,r.before));
-  return region?[g.origin[0]!,g.origin[1]!-(region.before.y-region.after.y)]:g.origin;
- };
+ const available=new Set(after.glyphs),pushedSourceGlyphs:RetypesetPushedGlyph[]=[];let maxOriginDriftPt=0,untargetedGlyphs=0;
  for(const g of before.glyphs){
   if(owned.has(g))continue;
-  const origin=expectedOrigin(g);
+  const region=manifest?.pushedRegions?.find(r=>pushedInkInside(g,r.before)),deltaY=region?region.before.y-region.after.y:0;
+  const origin=[g.origin[0]!,g.origin[1]!-deltaY];
   const match=after.glyphs.find(a=>available.has(a)&&a.text===g.text&&a.fontHash===g.fontHash&&
    (g.code===undefined||a.code===g.code)&&drift(a.origin,origin)<=.01&&JSON.stringify(a.nativePath)===JSON.stringify(g.nativePath));
-  assert(match,'untargeted glyph missing or changed font/codes/outline/position');available.delete(match);untargetedGlyphs++;
+  assert(match,`untargeted glyph missing or changed font/codes/outline/position: ${JSON.stringify(g.text)} at ${g.origin} expected ${origin}`);available.delete(match);untargetedGlyphs++;
+  if(region)pushedSourceGlyphs.push({origin:g.origin,deltaY});
   // Residual after an authorized same-column translation, not the push Δ itself.
   maxOriginDriftPt=Math.max(maxOriginDriftPt,drift(match.origin,origin));
  }
@@ -89,5 +94,5 @@ export function compareRetypesetNativePages(before:Snapshot,after:Snapshot,edit:
  for(const g of output){assert(Array.isArray(g.nativePath)&&g.nativePath.length,'retypeset replacement path missing');assert((g.inkPixels??0)>0,'retypeset replacement has no ink');}
  const pushedBoxes=(manifest?.pushedRegions??[]).flatMap(r=>[[r.before.x,r.before.y,r.before.x+r.before.w,r.before.y+r.before.h] as const,[r.after.x,r.after.y,r.after.x+r.after.w,r.after.y+r.after.h] as const]);
  const raster=compareRetypesetRaster(before,after,ownedSourceGlyphs.filter(g=>compact(g.text)),output,pushedBoxes);
- return {maxOriginDriftPt,untargetedGlyphs,replacementGlyphs:replacementIndices.length,replacementIndices,ownedSourceGlyphs,...raster};
+ return {maxOriginDriftPt,untargetedGlyphs,replacementGlyphs:replacementIndices.length,replacementIndices,ownedSourceGlyphs,pushedSourceGlyphs,...raster};
 }
