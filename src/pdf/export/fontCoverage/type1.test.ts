@@ -117,3 +117,18 @@ test('Type1 ink encloses cubic controls and reachable Subrs independently of Fon
  expect(read({glyphs:{A:curve},subrs:[subr]}).verify('A')).toMatchObject({ok:true,inkBounds:{x:100,y:20,w:200,h:200}});
  expect(read({glyphs:{A:widthChar()}}).verify('A')).toMatchObject({ok:true,inkBounds:null});
 });
+
+// Failure inventory: unequal dx2/dy2 must not corrupt the endpoint used by
+// later lines/curves; negative deltas and Subr boundaries obey the same rule.
+// The existing rrcurveto-only hull test never exercised hvcurveto's endpoint.
+for(const subr of [false,true])for(const [label,deltas,tail,bounds] of [
+ ['line',[30,70,200,40],[...nums(10,50),5],{x:100,y:20,w:110,h:290}],
+ ['negative line',[-30,-70,-200,-40],[...nums(-10,-50),5],{x:-10,y:-270,w:110,h:290}],
+ ['curve and line',[30,70,200,40],[...nums(50,-80,-70,-20),30,...nums(-50,100),5],{x:50,y:20,w:150,h:320}],
+] as const)test(`Type1 hvcurveto retains its endpoint for subsequent ${label}, Subr=${subr}`,()=>{
+ const curve=[...nums(...deltas),31];
+ const glyph=Uint8Array.from([...nums(25,600),13,...nums(75,20),21,
+  ...(subr?[...nums(0),10]:curve),...tail,9,14]);
+ expect(read({glyphs:{A:glyph},subrs:subr?[Uint8Array.from([...curve,11])]:[]}).verify('A'))
+  .toMatchObject({ok:true,inkBounds:bounds});
+});

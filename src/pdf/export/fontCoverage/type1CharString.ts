@@ -94,7 +94,9 @@ export function type1CharStrings(dict:Type1Dictionary) {
             if([4,7].includes(op))dy=stack[0]!;
             if(op===8){dx=stack[0]!+stack[2]!+stack[4]!;dy=stack[1]!+stack[3]!+stack[5]!;}
             if(op===30){dx=stack[1]!+stack[3]!;dy=stack[0]!+stack[2]!;}
-            if(op===31){dx=stack[0]!+stack[2]!;dy=stack[1]!+stack[3]!;}
+            // hvcurveto is dx1 dx2 dy2 dy3. Keep the next path segment's
+            // origin at the same endpoint used by the control hull above.
+            if(op===31){dx=stack[0]!+stack[1]!;dy=stack[2]!+stack[3]!;}
             point[0]=point[0]!+dx;point[1]=point[1]!+dy;
           }
           if(point.some(n=>!Number.isFinite(n)))bad('nonfinite current point');
