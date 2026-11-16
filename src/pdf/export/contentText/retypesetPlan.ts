@@ -13,7 +13,7 @@ function sourceAtoms(group:RetypesetGroup,local:(x:number,y:number)=>{x:number;y
  const atoms:RetypesetCluster[]=[];
  for(const [i,line]of group.lines.entries()){
   if(i&&atoms.length&&!/\s$/u.test(atoms.at(-1)!.text)&&!/^\s/u.test(line.glyphs[0]!.text??'')&&
-   !/\p{Script=Han}$/u.test(atoms.at(-1)!.text))atoms.push({text:' ',home:line.glyphs[0]!});
+   !/\p{Script=Han}$/u.test(atoms.at(-1)!.text))atoms.push({text:' ',home:line.glyphs[0]!,join:true});
   for(const [j,g]of line.glyphs.entries()){
    const previous=line.glyphs[j-1];
    if(previous){
@@ -57,15 +57,28 @@ export function planRetypeset(glyphs:RetypesetGlyph[],ops:ContentOp[],edits:Rety
  if(!group)throw Error('no paragraph at selection');
  const atoms=sourceAtoms(group,frame.local),ranges=edits.map(e=>({e,...selectedRange(atoms,e,group)})).sort((a,b)=>a.range[0]-b.range[0]);
  if(ranges.some((r,i)=>i>0&&r.range[0]<ranges[i-1]!.range[1]))throw Error('overlapping edits in one paragraph');
- const first=Math.min(...ranges.map(r=>r.editedAtom)),firstGlyph=atoms[first]!.home;
- const firstLine=group.lines.findIndex(l=>l.glyphs.some(g=>address(g.glyph)===address(firstGlyph.glyph)));
- const tail=group.lines.slice(firstLine).flatMap(l=>l.glyphs),target=new Set(tail.map(g=>address(g.glyph)));
- const start=atoms.findIndex(a=>a.bytes&&target.has(address(a.home.glyph)));
  let output=[...atoms];
  for(const {replacement,range:[lo,hi]}of ranges.toReversed())output.splice(lo,hi-lo,...replacementAtoms(output.slice(lo,hi),replacement));
- // Compact addressing can change the number of whitespace atoms before the
- // first edited line. Locate its surviving/inserted homes, not the old index.
- const prefix=new Set(atoms.slice(0,start)),outputStart=output.findIndex(a=>!prefix.has(a)&&target.has(address(a.home.glyph)));
- output=outputStart<0?[]:output.slice(outputStart);
- return {frame,group,tail,output,firstLine};
+ const original=new Set(atoms),survivors=new Set(output);
+ const lineOf=new Map(group.lines.flatMap((l,i)=>l.glyphs.map(g=>[address(g.glyph),i] as const)));
+ // A source line remains owned by its original operators unless its actual
+ // atoms change. UI compact whitespace and synthetic inter-line joins never
+ // authorize deleting an otherwise untouched neighbour.
+ const changed=new Set<number>();
+ for(const a of atoms)if(a.bytes&&!survivors.has(a))changed.add(lineOf.get(address(a.home.glyph))!);
+ for(const a of output)if(!original.has(a))changed.add(lineOf.get(address(a.home.glyph))!);
+ if(!changed.size)throw Error('no changed source line');
+ const blocks:{firstLine:number;lastLine:number;output:RetypesetCluster[]}[]=[];
+ for(const i of [...changed].sort((a,b)=>a-b)){
+  const previous=blocks.at(-1);
+  if(previous&&previous.lastLine===i-1)previous.lastLine=i;
+  else blocks.push({firstLine:i,lastLine:i,output:[]});
+ }
+ for(const block of blocks)block.output=output.filter(a=>{
+  const i=lineOf.get(address(a.home.glyph))!;
+  return i>=block.firstLine&&i<=block.lastLine&&(!a.join||i>block.firstLine);
+ });
+ const firstLine=blocks[0]!.firstLine,tail=group.lines.filter((_,i)=>changed.has(i)).flatMap(l=>l.glyphs);
+ output=blocks.flatMap(b=>b.output);
+ return {frame,group,tail,output,firstLine,blocks,unchangedLines:group.lines.filter((_,i)=>!changed.has(i))};
 }

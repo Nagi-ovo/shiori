@@ -113,7 +113,9 @@ test('embedded Type1 vertical WMode and nonstandard FontMatrix stay refused with
  for(const wmode of [true,false]){
   const f=await type1Fixture({programOptions:wmode?{clear:'/WMode 1 def'}:{}});f.font.delete(PDFName.of('ToUnicode'));f.font.set(PDFName.of('Encoding'),PDFName.of('WinAnsiEncoding'));
   if(!wmode)f.font.set(PDFName.of('FontMatrix'),f.doc.context.obj([.002,0,0,.001,0,0]));
-  const before=inspectRunPage(f.page),result=await applyContentTextEdits(f.page,[overlay({originalText:'AB',text:'X'})],{loadFont});expectRetypeset(f.page,result.outcomes[0],before,'X');
+  const before=inspectRunPage(f.page),result=await applyContentTextEdits(f.page,[overlay({originalText:'AB',text:'X'})],{loadFont});
+  if(wmode){expect(result.outcomes[0]).toMatchObject({mode:'unsupported',detail:expect.stringContaining('vertical-writing')});expect(inspectRunPage(f.page)).toEqual(before);}
+  else expectRetypeset(f.page,result.outcomes[0],before,'X');
  }
 });
 test('horizontal Type3 with dictionary widths substitutes through Type0',async()=>{

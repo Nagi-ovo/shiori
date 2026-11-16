@@ -6,7 +6,7 @@ import {readRetypesetSource} from './retypesetSource';
 import type {ContentTextOutcome,ContentTextReason} from './outcomes';
 /** Inspect user-visible text and paint, not snapshots of a new implementation. */
 export function expectRetypeset(page:PDFPage,outcome:ContentTextOutcome|undefined,before:ReturnType<typeof inspectRunPage>,replacement?:string,reason?:ContentTextReason){
- expect(outcome).toMatchObject({mode:'retypeset',fidelity:'approximate',retypeset:{pushed:false,...(reason?{reason}:{})}});
+ expect(outcome).toMatchObject({mode:'retypeset',fidelity:'approximate',retypeset:{...(reason?{reason}:{})}});
  const source=inspectRunPage(page);if(!source.ok)throw Error(source.reason);if(!before.ok)throw Error(before.reason);
  const ops=tokenizeContentStream(source.bytes),old=tokenizeContentStream(before.bytes);
  expect(ops.filter(o=>o.operator==='re').length).toBe(old.filter(o=>o.operator==='re').length);

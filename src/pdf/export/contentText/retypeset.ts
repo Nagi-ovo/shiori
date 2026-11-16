@@ -27,6 +27,7 @@ export async function applyRetypesets(page:PDFPage,edits:readonly ContentTextOve
   for(const e of pending){
    if(outcomes.get(e.id)?.reason==='stale-source'){refuse(e,'unsupported-unwritable','stale source revision');continue;}
    const selections=tree.nodes.flatMap(node=>{const hits=selectRetypeset(projected.get(node)!,e);return hits.length?[{node,hits}]:[];});
+   if(!selections.length&&tree.nodes.some(n=>n.read.verticalShows.length)){refuse(e,'unsupported-unwritable','vertical-writing-unsupported-retypeset: WMode 1 / Identity-V emission is not supported');continue;}
    if(!selections.length){refuse(e,hasForms||tree.errors.length?'unsupported-form-xobject':!tree.nodes.some(n=>n.read.glyphs.length)?'unsupported-no-text-layer':'unsupported-unwritable',tree.errors.join('; ')||'no walkable glyphs at selection');continue;}
    if(selections.length!==1){refuse(e,'unsupported-form-xobject','selection spans multiple content stream occurrences');continue;}
    const {node,hits}=selections[0]!,read=node.read;
@@ -45,7 +46,7 @@ export async function applyRetypesets(page:PDFPage,edits:readonly ContentTextOve
   }catch(error){for(const e of edits)refuse(e.overlay,'unsupported-unwritable',String(error));}
   const results:{edits:RetypesetEdit[];manifest:Awaited<ReturnType<typeof writeRetypeset>>[number]}[]=[];
   for(const [node,plans]of planned)try{
-   const manifests=await writeRetypeset(node.page,node.bytes,node.ops,node.read,plans.map(p=>p.plan),options);node.changed=true;
+   const manifests=await writeRetypeset(node.page,node.bytes,node.ops,node.read,plans.map(p=>p.plan),options,node.raw?'form-context':byNode.size>1?'multiple-stream-edits':accepted.size?'other-edited-content':undefined);node.changed=true;
    plans.forEach((p,i)=>results.push({edits:p.edits,manifest:{...manifests[i]!,paragraphBox:formPageBox(node.matrix,manifests[i]!.paragraphBox)}}));
   }catch(error){for(const p of plans)for(const e of p.edits)refuse(e.overlay,'unsupported-unwritable',String(error));}
   if(!results.length)return;

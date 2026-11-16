@@ -60,8 +60,9 @@ test('tagged phrases and a restored nested clip stay in the selected visual para
  expect(edit.selected).toHaveLength(7);
  const plan=s.plan([edit]);
  expect(plan.group.lines[0]!.glyphs.map(g=>g.text).join('')).toBe('政府公共2数据');
- expect(plan.tail).toHaveLength(12);
- expect(output(plan)).toBe('新的段落国民共有K');
+ expect(plan.tail).toHaveLength(7);
+ expect(output(plan)).toBe('新的段落');
+ expect(plan.unchangedLines.map(l=>l.glyphs.map(g=>g.text).join(''))).toEqual(['国民共有K']);
 });
 
 test('unselected same-baseline neighbours cross marked-content and q scopes',async()=>{

@@ -25,14 +25,67 @@ are not a fallback for editing original page text.
 ## Fit policy (documented choice)
 
 Preserve the original font size, fill colour, and stroke. Wrap to the
-paragraph / column measure. Grow the block downward. Best-effort: translate
-later **text** in the same column down by the extra depth when a simple
-y-order + column-band heuristic says it sits below. If that would leave the
-media box, hit a full-width footer/image we will not move, or is too
-uncertain: **do not shrink the font**; **allow the paragraph to overflow**
-its original region (it may visually overlap what follows). Size fidelity
-beats fitting. This is approximate; do not invent tier-1 proofs for the
-push.
+paragraph / column measure and grow downward. Approximate retypeset now
+supports a page-local **same-column push** when added wrap rows occupy the
+baseline/ink band of following content. A short last CJK glyph and a
+right-aligned subtitle still reserve separate rows even when their ink does
+not touch horizontally.
+
+Column x edges come from the existing visual group, not the page margins.
+Membership uses complete visual rows (split at observed inter-column gaps),
+plus in-column path/image/Form bounds from the existing analytic scene
+occupancy. A crossing full-width row/graphic ends the band; a gap beyond four
+observed pitches also ends it. Only following items wholly within this local
+band move. Other columns, earlier content, and headers/footers outside it
+retain their coordinates. Moving a Form invocation as a whole is supported;
+pushing across an edited Form's own boundary is not.
+
+Every pushed item receives the same physical downward **Δ**, the extra depth
+of the changed block. Original text operators/strings remain intact under a
+local translation: x, font, codes, and intra-run spacing stay fixed, while
+PDF y decreases by Δ. Unchanged later source lines are never re-emitted just
+because an earlier line changed. Graphics paths are translated from their
+construction through paint; images/Form invocations move as complete objects.
+
+A push is claimed only after these checks:
+
+- Complete row/show ownership prevents moving an outsider in a shared TJ.
+- All translated bounds fit both crop and media boxes. Their swept regions
+  and destinations avoid stationary/foreign ink, annotations, and obstacles.
+- New emitted ink avoids every unpushed occupant and translated destination.
+  Outline/declared ink envelopes are used, never core quads as empty-ink proof.
+- Rewalking compiled text verifies every untouched glyph at its original
+  position, or at exactly `(x, y - Δ)` for the authorized move set. Rewalking
+  graphics checks moved and stationary paint envelopes independently.
+- Native regression artifacts cover stable unchanged strings/origins, one Δ
+  for text and graphics, and nonintersecting wrapped/subtitle ink bands.
+
+When the move cannot be proved, use the **common overflow fallback**:
+keep visible overflow at the original size, set `pushed:false`, and attach a
+`pushReason` starting with `push-blocked-by-`. Blockers include crop/media
+limits, fixed/foreign occupants, annotations, shared shows, active clips,
+unknown ink/unplaced text, unsafe graphics spans, rotated push frames, and
+interacting edited blocks/streams or already accepted edits. Never shrink,
+paint a cover, or introduce a clipping rectangle to invent space. If an
+inherited source clip (including a Form BBox) would hide new wrap ink, refuse
+the transaction precisely (`retypeset-output-outside-source-clip`) and retain
+the source bytes instead of reporting a silently clipped edit as success.
+
+Production per-edit diagnostics use PDF points: `unchangedLineDriftPt` is the
+maximum absolute start-x/baseline drift over unchanged source lines; it is
+zero without a push, and includes an intentional baseline move when pushed.
+`pushedDeltaPt` is positive downward (zero without a push); x drift is always
+zero. `pushedRegions` supplies old/translated following ink rectangles in page
+PDF points for a future approximate oracle consumer (empty without a push). `overflowInkOverlap` is a conservative boolean for emitted overflow
+intersecting unpushed ink envelopes, not a raster score or new headline rate;
+unknown bounds are treated conservatively. These fields do not grant exact
+tier eligibility.
+
+Any approximate push raster mask must be **old line boxes ∪ new text ∪ old
+and translated following region**, never an enlarged exact-tier mask. The
+exact-tier 0-px-outside-mask rule and grow-down proofs are unchanged. The
+existing corpus/oracle mask plumbing is not modified here; a push-aware
+consumer must use its explicit translation region before auditing that edit.
 
 ## Surgery
 
@@ -128,7 +181,8 @@ Opus plan: `/workspace/research/pdf-text-identity/OPUS-retypeset-plan.md`
 
 1. **No same-column push in M1.** Grow and wrap at the original size; overflow
    / overlap what follows; flag overflow on the manifest and in the notice.
-   Pushing other text is optional later and would weaken "other text unchanged".
+   Superseded for r22 by the bounded push contract above; outsiders still keep
+   their original positions, while the authorized following region shares Δ.
 2. **Retypeset from the first edited line, reuse original font/bytes for
    unedited words** when codes and widths are known. Use the bundled
    substitute only for characters the source font cannot encode. Full

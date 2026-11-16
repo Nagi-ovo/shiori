@@ -8,6 +8,7 @@ import type {Type1Options} from '../fontCoverage/type1Support';
 import {buildVisualGroups} from './regionProof/visualGroups';
 import type {ParagraphLine,TextTrace} from './regionProof';
 import type {RetypesetGlyph,RetypesetGroup} from './retypesetTypes';
+import {verticalRetypesetFonts} from './retypesetWritingMode';
 import type {TextGraphicsState} from '../contentStreamEdit/textGraphicsState';
 import {verticalWritingReason} from '../contentStreamEdit/verticalWriting';
 
@@ -22,17 +23,19 @@ export function retypesetAdvance(g:RetypesetGlyph,local:(x:number,y:number)=>{x:
 export function readRetypesetSource(page:PDFPage,ops:ContentOp[],options:Type1Options={},initialState?:TextGraphicsState){
  const fonts=resolveRunFonts(page,options),extra=substituteSourceFonts(page);
  for(const f of extra)if(!fonts.some(a=>a.resourceName===f.resourceName))fonts.push(f);
+ const programVertical=verticalRetypesetFonts(page),verticalFonts=new Set<string>(),verticalShows:string[]=[];
  const states=new Map<string,ShowTextState>(),ends=new Map<number,{textMatrix:readonly number[];lineMatrix:readonly number[]}>(),environment=runPageEnvironment(page);
  const invocations=new Map<number,TextGraphicsState>();
- const verticalFonts=new Set<string>(),fontDict=page.node.Resources()?.lookupMaybe(PDFName.of('Font'),PDFDict);
+ const fontDict=page.node.Resources()?.lookupMaybe(PDFName.of('Font'),PDFDict);
  const callbacks={includeStroked:true,initialState,resolveFont:(name:string)=>{
-  const dict=fontDict?.lookupMaybe(PDFName.of(name),PDFDict),vertical=dict?verticalWritingReason(dict):undefined;
-  if(vertical){verticalFonts.add(`${name}: ${vertical}`);return {ok:false as const,reason:vertical};}
+  const dict=fontDict?.lookupMaybe(PDFName.of(name),PDFDict);
+  const vertical=(dict&&verticalWritingReason(dict))||(programVertical.has(name)?'unsupported-vertical-writing: Type1 or font WMode 1':undefined);
+  if(vertical){verticalFonts.add(`${name}: ${vertical}`);verticalShows.push(name);return {ok:false as const,reason:vertical};}
   const f=fonts.find(f=>f.resourceName===name);return f?{...f,ok:true as const,appliesWordSpacing:f.bytesPerCode===1}:{ok:false as const,reason:'unmeasurable source font'};
  },extGStateSetsFont:(name:string)=>environment.extGStates?.get(name)?.setsFont??null};
  const walk=walkTextPlacements(ops,{...callbacks,onXObject:(use,state)=>invocations.set(use.opIndex,state),onShow:s=>states.set(`${s.opIndex}:${s.arrayItemIndex}`,s),onTextOpEnd:(i,m)=>ends.set(i,m)});
  const glyphs:RetypesetGlyph[]=walk.ok?walk.glyphs.map(g=>({glyph:g,state:states.get(`${g.opIndex}:${g.arrayItemIndex}`)!,text:fonts.find(f=>f.resourceName===g.fontName)!.unicodeByCode.get(g.code),x:g.coreQuad[0].x,y:g.coreQuad[0].y})):[];
- return {fonts,walk,glyphs,callbacks,ends,invocations,verticalFonts};
+ return {fonts,walk,glyphs,callbacks,ends,invocations,verticalFonts,verticalShows};
 }
 /** Paragraph detection reuses the visual-group heuristic in a normalized
  * local text frame. It supplies approximate membership, never tier-1 proof. */

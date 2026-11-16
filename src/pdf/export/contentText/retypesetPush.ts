@@ -1,0 +1,129 @@
+import type {PDFPage} from 'pdf-lib';
+import type {PdfRect} from '../../model/types';
+import type {ContentOp} from '../contentStreamEdit/tokenizer';
+import {pdfNumber} from '../contentStreamEdit/runEncoding';
+import {address,type readRetypesetSource} from './retypesetSource';
+import type {planRetypeset} from './retypesetPlan';
+import type {layoutRetypeset} from './retypesetLayout';
+import {retypesetScopes,retypesetPaintOps} from './retypesetScopes';
+import {bounds} from './retypesetInk';
+import {reflowScene} from './reflowScene';
+import {contains,intersects} from './regionProof/geometry';
+
+type Plan=ReturnType<typeof planRetypeset>;
+type Source=ReturnType<typeof readRetypesetSource>;
+type Ink={box:PdfRect;known:boolean};
+type Item={box:PdfRect;op:number;glyph?:Source['glyphs'][number];kind:string;known:boolean};
+export type PushPatch={start:number;end:number;prefix:string;suffix:string};
+/** This changes only approximate retypeset. Column edges come from the same
+ * visual group as layout. Entire below-band items move, or none do. Geometry
+ * checks cover both the swept region and every destination; a fixed obstacle
+ * never becomes fabricated whitespace. */
+export function planRetypesetPush(page:PDFPage,ops:ContentOp[],source:Source,plan:Plan,fit:ReturnType<typeof layoutRetypeset>,target:ReadonlySet<string>,
+ outputInk:Ink[],sourceInk:Map<string,Ink>,blockReason?:string,fixedInk:Ink[]=[],internalOverlap=false){
+ const media=page.getMediaBox(),crop=page.getCropBox(),pageBox={x:Math.max(media.x,crop.x),y:Math.max(media.y,crop.y),w:0,h:0};
+ pageBox.w=Math.min(media.x+media.width,crop.x+crop.width)-pageBox.x;pageBox.h=Math.min(media.y+media.height,crop.y+crop.height)-pageBox.y;
+ const items:Item[]=source.glyphs.filter(g=>!target.has(address(g.glyph))).map(g=>{
+  const ink=sourceInk.get(address(g.glyph))!;
+  return{box:ink.box,op:g.glyph.opIndex,glyph:g,kind:'text',known:ink.known};
+ });
+ for(const o of fixedInk)items.push({box:o.box,known:o.known,op:-1,kind:'annot'});
+ reflowScene(page,ops,pageBox,(box,kind,op)=>{if(kind!=='backdrop')items.push({box,kind,op,known:kind!=='unknown'});},.01);
+ const newInk=outputInk.filter(o=>o.box.w>0&&o.box.h>0),overlap=(except:Set<Item>)=>newInk.some(n=>items.some(o=>!except.has(o)&&intersects(n.box,o.box)));
+ const result={pushed:false,pushedDeltaPt:0,pushReason:undefined as string|undefined,overflowInkOverlap:internalOverlap||overlap(new Set()),glyphDeltas:new Map<string,number>(),paintDeltas:new Map<number,number>(),regions:[] as {before:PdfRect;after:PdfRect}[],patches:[] as PushPatch[]};
+ if(internalOverlap)return{...result,pushReason:'push-blocked-by-multiple-changed-blocks'};
+ if(fit.addedHeight<=.01)return result;
+ // Reserve the wrapped row's whole observed column band. A short last CJK
+ // glyph and a right-aligned subtitle may not touch in x, yet must not share
+ // a baseline/ink band after wrapping.
+ const edge0=plan.frame.global(plan.group.left,0),edge1=plan.frame.global(plan.group.right,0);
+ const wrapBandOverlap=newInk.some(n=>items.some(o=>o.box.x<edge1.x&&o.box.x+o.box.w>edge0.x&&
+  o.box.y<n.box.y+n.box.h&&o.box.y+o.box.h>n.box.y));
+ if(!wrapBandOverlap&&!result.overflowInkOverlap)return result;
+ const blocked=(reason:string)=>({...result,pushReason:`push-blocked-by-${reason}`});
+ if(blockReason)return blocked(blockReason);
+ if(!source.walk.ok||source.walk.unplacedText)return blocked('unplaced-text');
+ if(outputInk.some(o=>!o.known))return blocked('unknown-output-ink');
+ const p0=plan.frame.global(plan.group.left,0),p1=plan.frame.global(plan.group.right,0),down=plan.frame.global(0,-fit.addedHeight);
+ if(Math.abs(p0.y)>1e-8||Math.abs(p1.y)>1e-8||Math.abs(down.x)>1e-8||down.y>=0)return blocked('nonhorizontal-frame');
+ const delta=-down.y,left=p0.x,right=p1.x,threshold=Math.max(...plan.tail.map(g=>g.glyph.coreQuad[0].y));
+ const inBand=(b:PdfRect)=>b.x>=left-.5&&b.x+b.w<=right+.5;
+ const below=(o:Item)=>o.glyph?o.glyph.y<threshold-.05:o.box.y+o.box.h<=threshold+.01;
+ // Classify complete visual rows, split at observed inter-column gaps.
+ // A full-width author/footer line is a barrier, never a bag of individual
+ // glyphs from which a partial in-column suffix may be selected.
+ const rows:Item[][]=[];
+ for(const o of items.filter(o=>o.glyph).sort((a,b)=>b.glyph!.y-a.glyph!.y||a.glyph!.x-b.glyph!.x)){
+  const row=rows.findLast(r=>Math.abs(r[0]!.glyph!.y-o.glyph!.y)<.05&&
+   o.glyph!.x-(r.at(-1)!.glyph!.glyph.coreQuad[1].x)<2*Math.max(o.glyph!.state.fontSize,r.at(-1)!.glyph!.state.fontSize));
+  if(row)row.push(o);else rows.push([o]);
+ }
+ const units=rows.map(row=>({members:row,columnBox:bounds(row.flatMap(o=>o.glyph!.glyph.coreQuad)),box:bounds(row.flatMap(o=>[
+  {x:o.box.x,y:o.box.y},{x:o.box.x+o.box.w,y:o.box.y+o.box.h}]))}));
+ for(const o of items.filter(o=>!o.glyph))units.push({members:[o],box:o.box,columnBox:o.box});
+ const crosses=(b:PdfRect)=>b.x<right&&b.x+b.w>left&&!inBand(b);
+ const barrier=Math.max(-Infinity,...units.filter(u=>u.members.every(below)&&
+  (crosses(u.columnBox)||u.members.some(o=>['annot','unknown'].includes(o.kind)))).map(u=>u.box.y+u.box.h));
+ const eligible=units.filter(u=>inBand(u.columnBox)&&u.box.y>=barrier&&u.members.every(o=>below(o)&&!['annot','unknown'].includes(o.kind)))
+  .sort((a,b)=>b.box.y+b.box.h-a.box.y-a.box.h);
+ // Column evidence is local. A gap exceeding four observed pitches ends
+ // this band rather than recruiting a distant page footer into the push.
+ let last=threshold;
+ const moving=new Set<Item>();
+ for(const u of eligible){
+  if(last-(u.box.y+u.box.h)>4*delta*plan.group.pitch/fit.addedHeight)break;
+  u.members.forEach(o=>moving.add(o));last=Math.min(last,u.box.y);
+ }
+ if(!moving.size)return blocked('foreign-column-or-obstacle');
+ if([...moving].some(o=>!o.known))return blocked('unknown-source-ink');
+ if(overlap(moving))return blocked('unpushable-ink');
+ // A line/show can span columns. Moving only some of its glyphs would alter
+ // its intra-run spacing or drag outsiders: reject before changing bytes.
+ const movingOps=new Set([...moving].filter(o=>o.glyph).map(o=>o.op));
+ for(const g of source.glyphs)if(movingOps.has(g.glyph.opIndex)&&(!moving.has(items.find(o=>o.glyph===g)!)||target.has(address(g.glyph))))return blocked('shared-show');
+ for(const o of moving){
+  const dest={...o.box,y:o.box.y-delta},swept={...dest,h:dest.h+delta};
+  if(!contains(pageBox,dest))return blocked('crop-media-box');
+  if(items.some(f=>!moving.has(f)&&intersects(swept,f.box)))return blocked('fixed-or-foreign-obstacle');
+  if(newInk.some(n=>intersects(n.box,dest)))return blocked('destination-overlap');
+ }
+ // Recover graphics construction spans and their CTMs. Active clipping or
+ // interleaved path/state mutations cannot be translated independently.
+ const contexts=retypesetScopes(ops);
+ const patches:PushPatch[]=[];
+ for(const opIndex of new Set([...moving].map(o=>o.op))){
+  const op=ops[opIndex],context=contexts.get(opIndex);
+  if(!op||!context||context.clip!==undefined)return blocked('clip-or-annotation');
+  const isText=movingOps.has(opIndex),start=isText?opIndex:context.start;
+  if(!isText&&(!context.clean||!['Do','BI',...retypesetPaintOps].includes(op.operator)))return blocked('graphics-scope');
+  const c=context.ct,det=c[0]!*c[3]!-c[1]!*c[2]!;
+  if(!Number.isFinite(det)||Math.abs(det)<1e-10)return blocked('singular-ctm');
+  // cm is local to the current CTM: its translated page vector is (0,-Δ).
+  const tx=c[2]!*delta/det,ty=-c[0]!*delta/det;
+  let suffix=' Q ';
+  // q/Q saves text parameters, not Tm/Tlm. A double quote sets Tw/Tc;
+  // retain those persistent effects after restoring the translation CTM.
+  if(op.operator==='"')suffix+=`${op.operands.slice(0,2).map(n=>n.kind==='number'?pdfNumber(n.value):'').join(' Tw ')} Tc `;
+  patches.push({start:ops[start]!.start,end:op.end,prefix:` q 1 0 0 1 ${pdfNumber(tx)} ${pdfNumber(ty)} cm `,suffix});
+ }
+ if(patches.some((p,i)=>patches.slice(i+1).some(q=>p.start<q.end&&q.start<p.end)))return blocked('interleaved-graphics');
+ for(const o of moving)if(o.glyph)result.glyphDeltas.set(address(o.glyph.glyph),delta);else result.paintDeltas.set(o.op,delta);
+ return{...result,pushed:true,pushedDeltaPt:delta,overflowInkOverlap:false,patches,regions:units.filter(u=>u.members.every(o=>moving.has(o))).map(u=>({before:u.box,after:{...u.box,y:u.box.y-delta}}))};
+}
+
+/** Rewalk compiled graphics as a multiset of conservative paint bounds. This
+ * complements the writer's glyph proof: each moved object shares Δ and every
+ * unpushed object retains its envelope. No raster authorizes a destination. */
+export function verifyRetypesetPushPaint(page:PDFPage,before:ContentOp[],after:ContentOp[],deltas:Map<number,number>){
+ if(!deltas.size)return;
+ const m=page.getMediaBox(),media={x:m.x,y:m.y,w:m.width,h:m.height};
+ const signature=(box:PdfRect,kind:string)=>JSON.stringify([kind,...[box.x,box.y,box.w,box.h].map(v=>Math.round(v*1e5))]);
+ const actual=new Map<string,number>();
+ reflowScene(page,after,media,(box,kind)=>{const k=signature(box,kind);actual.set(k,(actual.get(k)??0)+1);},.01);
+ reflowScene(page,before,media,(box,kind,op)=>{
+  const k=signature({...box,y:box.y-(deltas.get(op)??0)},kind),count=actual.get(k)??0;
+  if(!count)throw Error('compiled push changed an unpushed graphic or applied a different delta');
+  actual.set(k,count-1);
+ },.01);
+ if([...actual.values()].some(n=>n!==0))throw Error('compiled push introduced unexplained page paint');
+}
