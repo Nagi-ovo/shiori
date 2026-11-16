@@ -130,7 +130,12 @@ export function planRetypesetPush(page:PDFPage,ops:ContentOp[],source:Source,pla
   if(!op||!context)return blocked('missing-source-scope');
   if(context.clip===null)return blocked('unknown-clip');
   const isText=movingOps.has(opIndex),start=isText?opIndex:context.start;
-  if(context.clip){
+  // A Form BBox supplied as the initial clip is already the form-local page
+  // box; it is not a content-stream clip that would hide paint. Tighter or
+  // page-level clips still require a complete source/destination proof.
+  const formBound=formSpace&&context.clip&&Math.abs(context.clip.x-formSpace.box.x)<1e-6&&Math.abs(context.clip.y-formSpace.box.y)<1e-6&&
+   Math.abs(context.clip.w-formSpace.box.w)<1e-6&&Math.abs(context.clip.h-formSpace.box.h)<1e-6;
+  if(context.clip&&!formBound){
    if(!isText)return blocked('clipped-graphics');
    const members=[...moving].filter(o=>o.op===opIndex);
    if(members.some(o=>!contains(context.clip!,o.box)))return blocked('source-ink-outside-clip');
