@@ -1,5 +1,10 @@
 import type {ContentTextOutcome} from '../../src/pdf/export/contentText/outcomes';
-type CorpusOutcome=ContentTextOutcome;
+import {qualityMarkdown,summarizeQuality,type RetypesetQualityMetrics} from './qualityReport';
+// The quality producer can land separately; legacy production outcomes remain
+// assignable and preserve their complete manifest in report.json.
+export type CorpusOutcome=Omit<ContentTextOutcome,'retypeset'>&{
+ retypeset?:NonNullable<ContentTextOutcome['retypeset']>&{quality?:RetypesetQualityMetrics};
+};
 export type CorpusRow={id:string;category:string;page:number;kind:string;original:string;text:string;ms:number;outcome:CorpusOutcome;error?:string;oracle?:unknown;fallbackFonts?:string[]};
 export function summarize(rows:readonly CorpusRow[]){
  const counts={'in-place':0,'fallback-font':0,substituted:0,reflowed:0,retypeset:0,unsupported:0},reasons:Record<string,number>={};let ms=0;
@@ -17,6 +22,7 @@ export function summarizeReport(rows:readonly CorpusRow[]){
   unbreakableOverflow:summarize(rows.filter(r=>r.kind==='overflow-unbreakable')),
   // The legacy overflow construction now occupies the unbreakable slot.
   oldDefinition:summarize(rows.filter(r=>r.kind!=='overflow'&&r.kind!=='overflow-2')),
+  quality:summarizeQuality(rows.filter(r=>isHeadlineKind(r.kind))),
  };
 }
 function summaryRow(label:string,s:ReturnType<typeof summarize>){
@@ -26,7 +32,7 @@ const percent=(rate:number)=>`${(100*rate).toFixed(1)}%`;
 const table=(label:string)=>[`\n| ${label} | Edits | In place | Fallback font | Substituted | Reflowed | Retypeset | Unsupported | Succeeded without overlay | Exact-tier rate |`,'|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|'];
 export function markdownReport(report:{rows:CorpusRow[];files:number;elapsedMs:number;skips:unknown[];oracle:unknown[];categories?:string[]}){
  const rows=report.rows.filter(r=>isHeadlineKind(r.kind));
- const {headline:overall,unbreakableOverflow,oldDefinition}=summarizeReport(report.rows);
+ const {headline:overall,unbreakableOverflow,oldDefinition,quality}=summarizeReport(report.rows);
  const categories=[...new Set(report.categories??rows.map(r=>r.category))].sort();
  const oraclePassed=report.oracle.filter(o=>o!==null&&typeof o==='object'&&'passed' in o&&o.passed===true).length;
  return ['# Real PDF editing corpus',`\nFiles: ${report.files}. Edits: ${overall.edits}. Wall time: ${(report.elapsedMs/1000).toFixed(1)} s.`,
@@ -38,6 +44,7 @@ export function markdownReport(report:{rows:CorpusRow[];files:number;elapsedMs:n
  `\nMean export time: ${(overall.ms/Math.max(1,overall.edits)).toFixed(1)} ms per edit.`,
  '\n## Refusal reasons',...Object.entries(overall.reasons).map(([r,n])=>`- ${r}: ${n}`),
  `\nSampling/skip records: ${report.skips.length}. Official saved-sample oracle: ${oraclePassed}/${report.oracle.length} passed. No per-row corpus-wide raster oracle is inferred from these samples; outcome rates above are reported separately.`,
+ ...qualityMarkdown(quality),
  '\n## Simplified Chinese',
  ...table('File'),
  ...[...new Set(rows.filter(r=>r.category==='chinese').map(r=>r.id))].sort().map(id=>summaryRow(id,summarize(rows.filter(r=>r.id===id)))),

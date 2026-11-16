@@ -11,6 +11,7 @@ import {inspectRunPage,resolveRunFonts} from '../../src/pdf/export/contentStream
 import {editMatrix} from './editMatrix';
 import {auditCorpusSample} from './oracle';
 import {selectOracleSamples} from './selectOracleSamples';
+import {shouldSaveCorpusSample} from './saveSamples';
 import {markdownReport,summarize,summarizeReport,type CorpusRow} from './report';
 import {exportPdf} from '../../src/pdf/export/exportPdf';
 import type {PageModel} from '../../src/pdf/model/types';
@@ -50,9 +51,9 @@ try{
       inPlaceFallback:{loadFont:name=>{fallbackFonts.push(name);return readFile(name.startsWith('Noto')?`src/assets/fonts/${name}`:`node_modules/@docx-editor.dev/fonts/assets/${name}`);}}});
      const outcome=result.contentTextOutcomes?.[0];if(!outcome)throw Error('missing production overlay outcome');
      const row:CorpusRow={id:entry.id,category:entry.category,page:pageIndex,kind:c.kind,original:c.edit.originalText,text:c.edit.text,ms:performance.now()-start,outcome,...(fallbackFonts.length?{fallbackFonts}: {})};
-     rows.push(row);
+     const saveSample=shouldSaveCorpusSample(row,rows);rows.push(row);
      // Preserve independent saved inputs for the native sample pass.
-     if(outcome.mode!=='unsupported' && (c.kind==='missing-han' || !rows.slice(0,-1).some(r=>r.id===entry.id && r.outcome.mode===outcome.mode))){
+     if(saveSample){
       const name=`${entry.id}-${pageIndex}-${c.kind}`;await writeFile(join(out,'samples',`${name}.before.pdf`),before);await writeFile(join(out,'samples',`${name}.after.pdf`),result.bytes);await writeFile(join(out,'samples',`${name}.edit.json`),JSON.stringify({page,overlay:c.edit,row,stage5Type1,stage5Reflow,stage5Substitute},null,2));
      }
     }catch(error){throw new Error(`Corpus export failed: ${entry.id}/${pageIndex}/${c.kind}`,{cause:error});}

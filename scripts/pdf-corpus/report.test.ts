@@ -26,7 +26,8 @@ test('legacy and empty inputs retain finite rates and explicit mode counts',()=>
   acceptedRate:0,refusalRate:0,ms:0,reasons:{},
  });
  expect(summarize([row('fallback-font')])).toMatchObject({acceptedRate:1,exactTierRate:1,substituted:0,reflowed:0});
- for(const summary of Object.values(summarizeReport([])))expect(summary).toEqual(summarize([]));
+ const {quality:_,...summaries}=summarizeReport([]);void _;
+ for(const summary of Object.values(summaries))expect(summary).toEqual(summarize([]));
 });
 
 test('markdown exposes both rates and retypeset/unsupported counts by category and Chinese file',()=>{

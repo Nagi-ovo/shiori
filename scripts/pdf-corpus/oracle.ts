@@ -20,6 +20,7 @@ import {assertRetypesetStreamIdentity,retypesetSourceOwnership} from './retypese
 import {retypesetFontObjects,retypesetNotdefProbePdf} from './retypesetFontProbe';
 import {auditQpdfPair} from './qpdfOracle';
 import {assertRetypesetPopplerText} from './retypesetPoppler';
+import {compareRetypesetFormWalk} from './retypesetFormWalkOracle';
 const compact=(s:string)=>s.replace(/\s/gu,'');
 type Glyph={text:string;origin:readonly number[];box:readonly number[];fontHash?:string;nativePath?:unknown;inkPixels?:number;fontSize?:number};
 type Snapshot={width:number;height:number;text:string;glyphs:readonly Glyph[];pixels?:Uint8Array};
@@ -123,11 +124,14 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
  }
  const bytes=new Uint8Array(await readFile(afterPath)),doc=await PDFDocument.load(bytes),objects=new Map<string,string>();
  let untargetedStreamGlyphs:number|undefined;
+ let formWalkEvidence:{formWalkSourceIssues:number;formWalkInheritedIssues:number}|undefined;
  if('ownedSourceGlyphs' in checked){
   const original=await PDFDocument.load(new Uint8Array(await readFile(beforePath)));
   assert(sourceOwnership,'missing retypeset source ownership');
   untargetedStreamGlyphs=assertRetypesetStreamIdentity(original.getPage(0),doc.getPage(0),sourceOwnership,stage5Type1);
-  for(const [hash,ref]of retypesetFontObjects(doc.getPage(0),after.glyphs,stage5Type1))objects.set(hash,ref);
+  const {formWalkSourceIssues,formWalkInheritedIssues}=compareRetypesetFormWalk(original.getPage(0),doc.getPage(0),stage5Type1);
+  formWalkEvidence={formWalkSourceIssues,formWalkInheritedIssues};
+  for(const [hash,ref]of retypesetFontObjects(original.getPage(0),doc.getPage(0),after.glyphs,stage5Type1))objects.set(hash,ref);
  }
  for(const[ref,value]of doc.context.enumerateIndirectObjects())if(value instanceof PDFDict && value.get(PDFName.of('Type'))===PDFName.of('FontDescriptor')){
   const raw=value.lookup(PDFName.of('FontFile2'))??value.lookup(PDFName.of('FontFile3'))??value.lookup(PDFName.of('FontFile'));
@@ -176,6 +180,6 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
   poppler=assertRetypesetPopplerText(oldText,newText,before.text,after.text);
  }else assert.equal(newText,useManifest?compact(after.text):expectedPopplerText(oldText,edit),'Poppler extracted text mismatch');
  const {replacementIndices:_,ownedSourceGlyphs:__,...evidence}={ownedSourceGlyphs:undefined,...checked};void _;void __;
- const result={name,...evidence,...(retypeset?{oracleTier:'retypeset',untargetedStreamGlyphs}:{}),stage5Reflow,nativeSourceProofs,nonNotdefGlyphs:glyphEvidence.length,...qpdf,...poppler,nativeText:after.text,popplerText:newText,passed:true};
+ const result={name,...evidence,...(retypeset?{oracleTier:'retypeset',untargetedStreamGlyphs,...formWalkEvidence}:{}),stage5Reflow,nativeSourceProofs,nonNotdefGlyphs:glyphEvidence.length,...qpdf,...poppler,nativeText:after.text,popplerText:newText,passed:true};
  await writeFile(`${directory}/${name}.oracle.json`,JSON.stringify(result,null,2));return result;
 }
