@@ -22,6 +22,7 @@
 
 import type { ContentOp, ContentOperand } from "./tokenizer";
 import type { ContentFontInfo, UnsupportedFont } from "./glyphWidths";
+import type { TextGraphicsState as GraphicsState } from './textGraphicsState';
 
 export type Point = { x: number; y: number };
 
@@ -111,21 +112,6 @@ export type TextWalkResult =
     }
   | { ok: false; reason: string };
 
-type GraphicsState = {
-  ctm: Matrix;
-  charSpacing: number;
-  wordSpacing: number;
-  horizontalScale: number; // Tz/100
-  leading: number;
-  rise: number;
-  renderMode: number;
-  fontName: string | null;
-  fontSize: number;
-  // Set when a gs op may have replaced the font via ExtGState /Font; a show
-  // before the next Tf is then unmodelable.
-  fontTainted: boolean;
-};
-
 export type ShowTextState = {
   opIndex: number; arrayItemIndex: number; fontName: string;
   fontSizePt?: number;
@@ -147,6 +133,9 @@ export type UnplacedShow = {
 };
 
 export type TextWalkCallbacks = {
+  // Opt-in for the approximate Form walker; strict callers retain defaults.
+  initialState?: GraphicsState;
+  onXObject?: (use:XObjectUse,state:GraphicsState)=>void;
   includeStroked?: boolean;
   onTextOpEnd?: (opIndex:number,matrices:{textMatrix:readonly number[];lineMatrix:readonly number[]})=>void;
   // Exact state at a source string, including empty shows.
@@ -189,6 +178,7 @@ export function walkTextPlacements(
     fontName: null,
     fontSize: 0,
     fontTainted: false,
+    ...callbacks.initialState,
   };
   let tm: Matrix = IDENTITY;
   let tlm: Matrix = IDENTITY;
@@ -511,7 +501,9 @@ export function walkTextPlacements(
             ? op.operands[0]!.value
             : null;
         if (name === null) return fail("malformed Do operands");
-        xobjects.push({ opIndex, name, ctm: [...gs.ctm] });
+        const use={ opIndex, name, ctm: [...gs.ctm] as Matrix };
+        xobjects.push(use);
+        callbacks.onXObject?.(use,{...gs,ctm:[...gs.ctm]});
         break;
       }
       case "BI":

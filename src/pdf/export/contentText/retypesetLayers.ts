@@ -1,8 +1,8 @@
 import {PDFDict,PDFName,PDFRawStream,PDFArray,PDFNumber,decodePDFRawStream,type PDFPage} from 'pdf-lib';
 import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import type {PdfRect} from '../../model/types';
-/** Form streams remain read-only in M1. Distinguish real form text from a
- * vector-only form so graphic-only pages still report no text layer. */
+/** Distinguish real form text from a vector-only form so graphic-only pages
+ * still report no text layer, even when another form cannot be walked. */
 function formNamesWith(page:PDFPage,kind:'text'|'image'):Set<string>{
  const seen=new Set<PDFRawStream>();
  const hasText=(raw:PDFRawStream):boolean=>{

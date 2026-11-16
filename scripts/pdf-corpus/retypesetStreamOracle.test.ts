@@ -39,3 +39,21 @@ test('an unrelated object sharing a target origin keeps its own glyph identity',
  const ownership=retypesetSourceOwnership(before.page,native,{originalText:'ABCDE',text:'new words',coverRects:[{x:49,y:99,w:32,h:2}]});
  expect(()=>assertRetypesetStreamIdentity(before.page,after.page,ownership)).toThrow('codes/font/position');
 });
+
+// Form audit failure list: stream-local op addresses collide across repeated
+// uses; untargeted form codes/spaces/font/positions and page text must all be
+// audited, and paragraph ownership must map through the Do transform.
+test('form-local ownership and saved-stream identity include repeated uses and page text',async()=>{
+ const make=async(body:string)=>{
+  const f=await fixture('/Fm Do q 1 0 0 1 0 -70 cm /Fm Do Q BT /F1 10 Tf 20 180 Td (PAGE) Tj ET');
+  const form=f.doc.context.register(f.doc.context.stream(new TextEncoder().encode(body),{Type:'XObject',Subtype:'Form',BBox:[0,0,300,200],Resources:f.page.node.Resources()!.clone()}));
+  f.page.node.Resources()!.set(PDFName.of('XObject'),f.doc.context.obj({Fm:form}));return f;
+ };
+ const before=await make('BT /F1 10 Tf 50 100 Td (ABCDE) Tj ET BT /F1 10 Tf 200 150 Td (Z ) Tj ET');
+ const native=Array.from('ABCDE',(text,i)=>({text,origin:[50+i*6,100]}));
+ const ownership=retypesetSourceOwnership(before.page,native,{originalText:'ABCDE',text:'longer words',coverRects:[{x:49,y:98,w:32,h:13}]});
+ expect(ownership).toHaveLength(5);
+ expect(assertRetypesetStreamIdentity(before.page,before.page,ownership)).toBe(13);
+ const changed=await make('BT /F1 10 Tf 50 100 Td (ABCDE) Tj ET BT /F1 10 Tf 200 150 Td (Z) Tj ET');
+ expect(()=>assertRetypesetStreamIdentity(before.page,changed.page,ownership)).toThrow('codes/font/position');
+});
