@@ -12,6 +12,7 @@ for(const [source,flags,text,name]of [
  ['AvantGarde-Book',0,'Hello','TeXGyreAdventor-Regular.otf'],
  ['Unknown',1|64|(1<<18),'Hello','LiberationMono-BoldItalic.ttf'],
  ['Times',0,'漢字','NotoSansSC-Regular.otf'],['Times',0,'漢字かな','NotoSansJP-Regular.otf'],
+ ['Arial-BoldItalic',64,'한국어','NotoSansKR-Regular.otf'],['Times',0,'ㄱéㄴ','NotoSansKR-Regular.otf'],
 ]as const)test(`substitute ${source} / ${text} with ${name}`,()=>expect(substituteFontName(source,flags,text)).toBe(name));
 for(const family of ['Carlito','Caladea','TeXGyreAdventor'])for(const style of ['Regular','Bold','Italic','BoldItalic'])test(`${family} ${style} creates a verified searchable Type0 subset`,async()=>{
  const name=`${family}-${style}.${family==='TeXGyreAdventor'?'otf':'ttf'}`,data=await readFile(`node_modules/@docx-editor.dev/fonts/assets/${name}`),copy=Buffer.from(data);

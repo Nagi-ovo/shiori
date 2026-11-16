@@ -2,6 +2,7 @@ import { fontInputFromDict } from '../fontCoverage/pdfLibAdapter';
 import { resolveStandardMetrics } from '../fontCoverage/standardMetrics';
 import { createFontCoverage } from '../fontCoverage/coverage';
 import { stage5Type1 } from '../fontCoverage/type1Support';
+import { verticalWritingReason } from './verticalWriting';
 import type { Type1Options, Type1Diagnostic } from '../fontCoverage/type1Support';
 // Font metrics for the glyph-removal export pass: advance widths, vertical
 // extent, and code layout, read from the PDF font dictionaries only — glyph
@@ -201,6 +202,8 @@ export function contentFontInfo(
   font: PDFDict,
   options: Type1Options = {},
 ): ContentFontInfo | UnsupportedFont {
+  const vertical=verticalWritingReason(font);
+  if(vertical)return {ok:false,reason:vertical};
   const subtype = nameValue(lookup(font, "Subtype"));
   if(subtype === 'Type1' && ((options.sourceReuse ?? stage5Type1.sourceReuse) || (options.standard14Afm ?? stage5Type1.standard14Afm))) {
     const input=fontInputFromDict(font);

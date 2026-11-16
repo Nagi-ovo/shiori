@@ -1163,7 +1163,8 @@
       "unsupported-no-text-layer": "此页没有可编辑的文字层。",
       "unsupported-image-text": "暂不支持编辑扫描图像上的文字。",
       "unsupported-form-xobject": "暂不支持编辑 Form XObject 中的文字。",
-      "unsupported-unwritable": "无法安全地改写此处文字。"
+      "unsupported-unwritable": "无法安全地改写此处文字。",
+      "unsupported-vertical-writing": "暂不支持编辑竖排文字。"
     }
   }
 }

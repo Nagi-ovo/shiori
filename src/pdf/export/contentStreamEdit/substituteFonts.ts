@@ -1,6 +1,7 @@
 /** Whole-run substitution is deliberately separate from missing-cluster fallback. */
 export function substituteFontName(baseFont:string,flags:number,text:string):string {
  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return 'NotoSansJP-Regular.otf';
+ if (/\p{Script=Hangul}/u.test(text)) return 'NotoSansKR-Regular.otf';
  if (/\p{Script=Han}/u.test(text)) return 'NotoSansSC-Regular.otf';
  const base=baseFont.replace(/^[A-Z]{6}\+/u,'');
  let family=/Calibri|Carlito/i.test(base)?'Carlito':/Cambria|Caladea/i.test(base)?'Caladea'
