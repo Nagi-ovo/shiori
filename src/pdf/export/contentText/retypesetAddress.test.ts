@@ -7,6 +7,7 @@ import {planRetypeset,selectRetypeset} from './retypesetPlan';
 import type {RetypesetEdit} from './retypesetTypes';
 import {applyContentTextEdits} from './apply';
 import {inspectRunPage} from '../contentStreamEdit/replaceRunPage';
+import {writeRetypeset} from './retypesetWrite';
 
 // Failure list is recorded in STATUS.md before these tests and the fix.
 async function source(stream:string,unicode?:string){
@@ -132,8 +133,9 @@ test('two edits share ownership when only one selection includes a superscript',
   s.edit({id:'second',originalText:'EFGH',text:'next words',coverRects:[{x:49,y:84,w:26,h:13}]}).overlay];
  const result=await applyContentTextEdits(s.page,edits,{stage5Reflow:false});
  expect(result.outcomes.map(o=>o.mode)).toEqual(['retypeset','retypeset']);
- expect(result.outcomes[0]!.retypeset?.paragraphBox).toEqual(result.outcomes[1]!.retypeset?.paragraphBox);
- expect(result.outcomes[0]!.retypeset?.lineCount).toBe(result.outcomes[1]!.retypeset?.lineCount);
+ const manifests=result.outcomes.map(o=>'retypeset' in o?o.retypeset:undefined);
+ expect(manifests[0]?.paragraphBox).toEqual(manifests[1]?.paragraphBox);
+ expect(manifests[0]?.lineCount).toBe(manifests[1]?.lineCount);
  const stream=inspectRunPage(s.page);if(!stream.ok)throw Error(stream.reason);
  const text=readRetypesetSource(s.page,tokenizeContentStream(stream.bytes)).glyphs.map(g=>g.text).join('');
  expect(text.replace(/\s/gu,'')).toBe('firsttitlenextwords');
@@ -147,4 +149,63 @@ test('empty, overlapping and truly unmatched addresses still fail closed',async(
  expect(()=>s.plan([s.edit({originalText:'AB',coverRects:[{x:68,y:98,w:12,h:13}]})])).toThrow('user source text does not match addressed paragraph');
  expect(()=>s.plan([s.edit({coverRects:[{x:0,y:0,w:1,h:1}]})])).toThrow();
  expect(()=>s.plan([s.edit({originalText:'ABC'}),s.edit({id:'two',originalText:'BCD'})])).toThrow('overlapping edits in one paragraph');
+});
+
+for(const [printed,original]of [['AB-','AB\u0002\nCD'],['AB','AB\u0002\nCD'],['AB-','AB-\r\nCD'],['AB','AB\u00ad\nCD']] as const)
+ test(`discretionary hyphen address ${JSON.stringify(original)} over ${printed}`,async()=>{
+  const s=await source(`BT /F1 10 Tf 14 TL 50 150 Td (${printed}) Tj 0 -14 Td (CD) Tj ET`);
+  const edit=s.edit({originalText:original,text:original.replace('AB','XY'),coverRects:[{x:49,y:148,w:20,h:13},{x:49,y:134,w:14,h:13}]});
+  const plan=s.plan([edit]);
+  expect(output(plan)).toBe(`${printed.replace('AB','XY')} CD`);
+  expect(plan.tail.map(g=>address(g.glyph))).toEqual(edit.selected.map(g=>address(g.glyph)));
+ });
+
+test('trailing PDFium hyphen and a soft hyphen omitted by the UI retain glyph homes',async()=>{
+ const s=await source('BT /F1 10 Tf 14 TL 50 150 Td (AB-) Tj 0 -14 Td (CD-) Tj ET');
+ const plan=s.plan([s.edit({originalText:'AB\u0002\nCD\u0002',text:'XB\u0002\nCD\u0002',coverRects:[{x:49,y:148,w:20,h:13},{x:49,y:134,w:20,h:13}]})]);
+ expect(output(plan)).toBe('XB- CD-');
+ const sh=await source('BT /F1 10 Tf 50 100 Td (ABCD) Tj ET',
+  '4 beginbfchar <41> <0041> <42> <00ad> <43> <0042> <44> <0043> endbfchar');
+ expect(output(sh.plan([sh.edit({originalText:'ABC',text:'ABX'})]))).toBe('A\u00adBX');
+});
+
+test('one unmapped glyph matches one scalar without bypassing known neighbours',async()=>{
+ const s=await source('BT /F1 10 Tf 50 100 Td (ABC) Tj ET');
+ s.glyphs[1]!.text=undefined;
+ expect(output(s.plan([s.edit({originalText:'A😀C',text:'X😀C'})]))).toBe('X\ufffdC');
+ expect(()=>s.plan([s.edit({originalText:'A😀Z',text:'new'})])).toThrow('user source text');
+ expect(()=>s.plan([s.edit({originalText:'A😀😀C',text:'new'})])).toThrow('user source text');
+});
+
+test('folded offsets still edit the second line and delete all selected hyphen glyphs',async()=>{
+ const s=await source('BT /F1 10 Tf 14 TL 50 150 Td (AB-) Tj 0 -14 Td (CD) Tj ET');
+ const selected={coverRects:[{x:49,y:148,w:20,h:13},{x:49,y:134,w:14,h:13}]};
+ const plan=s.plan([s.edit({...selected,originalText:'AB\u0002\nCD',text:'AB\u0002\nCX'})]);
+ expect(plan.firstLine).toBe(1);expect(output(plan)).toBe('CX');
+ const full=s.plan([s.edit({...selected,originalText:'AB\u0002\nCD',text:'new'})]);
+ expect(output(full)).toBe('new');expect(full.tail).toHaveLength(5);
+});
+
+test('editing an omitted discretionary marker neither duplicates the source gap nor skips its line',async()=>{
+ const s=await source('BT /F1 10 Tf 14 TL 50 150 Td (AB) Tj 0 -14 Td (CD) Tj ET');
+ const coverRects=[{x:49,y:148,w:14,h:13},{x:49,y:134,w:14,h:13}];
+ const removed=s.plan([s.edit({coverRects,originalText:'AB\u0002\nCD',text:'AB\nCD'})]);
+ expect(output(removed)).toBe('AB CD');
+ const inserted=s.plan([s.edit({coverRects,originalText:'AB\u0002\nCD',text:'ABX\nCD'})]);
+ expect(inserted.firstLine).toBe(0);expect(output(inserted)).toBe('ABX CD');
+});
+
+test('source lines with different horizontal matrices still emit at planned destinations',async()=>{
+ const s=await source('BT /F1 10 Tf 1.02 0 0 1 50 150 Tm (ABCDE) Tj .98 0 0 1 50 136 Tm (FGHIJ) Tj ET');
+ const plan=s.plan([s.edit({originalText:'ABCDE\nFGHIJ',text:'XBCDE\nFGHIJ',
+  coverRects:[{x:49,y:148,w:33,h:13},{x:49,y:134,w:33,h:13}]})]);
+ await writeRetypeset(s.page,s.source,s.ops,s,[plan],{});
+});
+
+test('ordinary interior hyphens and compatibility characters remain significant',async()=>{
+ const s=await source('BT /F1 10 Tf 50 100 Td (AB-CD) Tj ET');
+ expect(()=>s.plan([s.edit({originalText:'ABCD'})])).toThrow('user source text');
+ expect(()=>s.plan([s.edit({originalText:'AB\u2014CD'})])).toThrow('user source text');
+ expect(()=>s.plan([s.edit({originalText:'\uff21B-CD'})])).toThrow('user source text');
+ expect(output(s.plan([s.edit({originalText:'AB-CD',text:'\uff21B-CD'})]))).toBe('\uff21B-CD');
 });
