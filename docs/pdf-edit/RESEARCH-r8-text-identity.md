@@ -30,3 +30,23 @@ The 68 LaTeX no-row-capacity rows are a separate residual and are not in scope.
 Recovered identity must stay proven (explicit ToUnicode, published Encoding+AGL, cmap/`post` with presence proof, or a known ROS UCS2 table). Never guess. In-place replacement still requires a ToUnicode proof. 0 pixels outside the proved region. Then corpus r14.
 
 Do not implement shape-hash, CID-as-Unicode, PUA bullet relabeling, or LaTeX capacity in this round.
+
+## Phase B (implemented) and corpus r14
+
+Implemented at `28525e9` (T1–T3) and `38f3322` (Grok P1: shared `codeInCodespace` in `fontCoverage/codespace.ts` for `parseCMap` and `runToUnicode`). Grok re-review of `38f3322` (session `01a1e4da-52c6-7383-9265-490d99dc6470`) was **ready**, no P0/P1. Residual P2s (`substituteSource` overwriting recovered maps; last-wins `parseCMap` vs surgical reject) were left alone.
+
+Corpus r14 at `38f3322`, 16 Nov 2026 Europe/London: **551/1328 = 41.5%** vs r13 **500/1328 = 37.7%** (**+51 rows, +3.8pp**). No previously accepted row was lost. Reflowed **1 → 5**. Membership gates cleared: `no-member-lines` 118→0, `target-not-in-member-lines` 47→0.
+
+| Category | r13 accepted | r14 accepted |
+|---|---:|---:|
+| tagged | 178/467 (38.1%), all substitutions | 228/467 (48.8%): 113 in-place, 82 fallback, 30 subst, 3 reflowed |
+| word | 18/33 (54.5%), all substitutions | 19/33 (57.6%): 11 in-place, 2 fallback, 5 subst, 1 reflowed |
+| chinese / latex / japanese / indesign / scanned-ocr | unchanged rates | indesign mix only: more in-place/fallback, fewer subst |
+
+The 51 new accepts are tagged (50) and word (1). 167 previously substituted Office rows moved to in-place, fallback, or reflow once ToUnicode became a real encode proof.
+
+LaTeX no-row-capacity is unchanged (still the bulk of 108 latex `region-unproved`). New tagged residuals after membership: `region-unproved` (including no witnessed column edge), `missing-line-anchor` (28), `target-state` (39 tagged).
+
+Oracle exit 1, 5 sample fails, **none with pixels outside the proved box/mask**. Pre-existing class: `gsa-17-195-same-length` (whitespace font program), `gsa-1-4-same-length` and `gsa-2-2-missing-glyph` / `gsa-2-5-multi-line` (Poppler text). New class: three GSA wrap reflows fail `raster veto: backdrop dependency revision differs` when the oracle reloads the saved before-PDF (`runResourceStamp` ≠ plan-time `dependencyHash`); source hash and proved backdrop ops still match, and a reconstructed backdrop reference measures **0 pixels outside box and mask** (`gsa-11/15/8` p.0 multi-line; `gsa-2` p.5 and `zh-d2l-pytorch` p.597 also 0 outside). PNG pairs: `test-artifacts/reflow-r14/renders/*-{before,after,pair}.png`.
+
+Gain ≥ 1pp, so this line of work does not wrap on the standing rule. Next holes are occupancy/capacity and the oracle resource-stamp mismatch, not identity for the old 165-row pool.
