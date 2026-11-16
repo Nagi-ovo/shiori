@@ -5,7 +5,7 @@ import {fontInputFromDict} from '../../src/pdf/export/fontCoverage/pdfLibAdapter
 import type {Type1Options} from '../../src/pdf/export/fontCoverage/type1Support';
 import {address,paragraphGroups} from '../../src/pdf/export/contentText/retypesetSource';
 import {pageFormGlyphs} from '../../src/pdf/export/contentText/retypesetForms';
-import {selectRetypesetSourceSpans,type RetypesetEdit} from './retypesetOracle';
+import {selectRetypesetSourceSpans,type RetypesetEdit,type RetypesetPushedGlyph} from './retypesetOracle';
 import {compareRetypesetFormWalk} from './retypesetFormWalkOracle';
 
 /** Recover membership from the immutable source's text frames/scopes and
@@ -33,7 +33,7 @@ export function retypesetSourceOwnership(page:PDFPage,native:readonly {text:stri
 /** Supplement native Unicode/outline checks with the saved character codes,
  * including invisible spaces. Read both saved streams; never trust a producer
  * assertion or object numbers (pdf-lib may renumber them while exporting). */
-export function assertRetypesetStreamIdentity(before:PDFPage,after:PDFPage,owned:readonly {origin:readonly number[];sourceKey?:string}[],options:Type1Options={}){
+export function assertRetypesetStreamIdentity(before:PDFPage,after:PDFPage,owned:readonly {origin:readonly number[];sourceKey?:string}[],options:Type1Options={},pushed:readonly RetypesetPushedGlyph[]=[]){
  const walks=compareRetypesetFormWalk(before,after,options);
  const snapshot=(streams:typeof walks.before)=>{
   return streams.nodes.flatMap(node=>{
@@ -50,7 +50,11 @@ export function assertRetypesetStreamIdentity(before:PDFPage,after:PDFPage,owned
  const original=snapshot(walks.before),actual=snapshot(walks.after),available=new Set(actual);let checked=0;
  for(const g of original){
   if(owned.some(o=>o.sourceKey!==undefined?o.sourceKey===g.sourceKey:Math.hypot(o.origin[0]!-g.quad[0].x,o.origin[1]!-g.quad[0].y)<=.01))continue;
-  const match=actual.find(a=>available.has(a)&&a.code===g.code&&a.font===g.font&&a.quad.every((p,i)=>Math.hypot(p.x-g.quad[i]!.x,p.y-g.quad[i]!.y)<=.01));
+  // Native comparison already proved this source glyph's identity at the
+  // claimed destination. Apply only that vertical delta, retaining all quad
+  // residuals, font/code evidence and invisible-space multiplicity here.
+  const delta=pushed.find(p=>Math.hypot(p.origin[0]!-g.quad[0].x,p.origin[1]!-g.quad[0].y)<=.01)?.deltaY??0;
+  const match=actual.find(a=>available.has(a)&&a.code===g.code&&a.font===g.font&&a.quad.every((p,i)=>Math.hypot(p.x-g.quad[i]!.x,p.y-(g.quad[i]!.y-delta))<=.01));
   assert(match,'untargeted stream glyph codes/font/position changed');available.delete(match);checked++;
  }
  return checked;

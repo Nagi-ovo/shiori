@@ -323,6 +323,16 @@ native Unicode, font program, outline, multiplicity and origins (within
 character codes, font identity and quads, including invisible spaces. Source
 operator/item/byte identities keep coincident unrelated objects distinct.
 
+For a claimed push, native membership uses containment of the complete tight
+glyph ink in `pushedRegions.before`, since a positive bearing can place the
+origin outside that ink (for example, a small superscript). Degenerate ink,
+including spaces, uses the origin. Only the declared vertical translation is
+authorized: x, font, codes, outlines, multiplicity and the 0.01-pt residual
+still must match. The verified source glyph deltas also reach the saved-stream
+check, which subtracts them from every expected quad point. The raster mask
+includes both source and destination region boxes, including moved rules;
+any changed pixel outside the existing one-pixel dilation still fails.
+
 `compareRetypesetFormWalk` applies compare-before to the source ownership,
 saved-stream and font-resource walks. After errors must be a **multiset subset**
 of source errors on the **same unchanged Form graph**: defect text plus decoded
