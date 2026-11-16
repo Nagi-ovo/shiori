@@ -101,7 +101,7 @@ export function planProvedStreamReflow(e:StreamReflowEvidence,fonts:readonly Res
   }
   let proof=e.proof,layout=solveMeasuredReflow({source,replacement,start,end,proof,softBreaks});
   while(!layout.ok&&layout.code==='overflow'){
-   const grown=proveDownwardSlot(e,proof);if(!grown)break;
+   const grown=proveDownwardSlot(e,proof,[...replacement,...source.slice(end)]);if(!grown)break;
    proof=grown;layout=solveMeasuredReflow({source,replacement,start,end,proof,softBreaks});
   }
   if(!layout.ok||layout.strategy==='fixed')return null;

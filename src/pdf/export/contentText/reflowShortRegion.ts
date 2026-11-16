@@ -1,8 +1,8 @@
 import type {ParagraphBlocker,ParagraphInput,ParagraphRefusal,ParagraphResult,RegionProof,TextTrace} from './regionProof';
 import {proveOperators} from './regionProof/operators';
 import {compatible,paragraphMember,paragraphFrame,lineStart,anchorForShow,lineAnchors,contains,intersects,matrixEqual,near,physicalLeading,validTrace} from './regionProof/geometry';
-/** Short stream candidates use their observed advance widths only. Two rows
- * prove a leading, not a wider column; a single row needs explicit TL to grow.
+/** Short candidates use only the visual group's observed extent. A lone
+ * group still needs explicit TL to grow; a multi-line group supplies pitch.
  * The preceding numeric snapshot proves relative first anchors from the same
  * immutable walk. Overlay newlines never contribute capacity or ownership.
  */
@@ -23,13 +23,11 @@ export function shortStreamRegionResult(input:ParagraphInput,before?:TextTrace):
  }
  const operators=proveOperators(input,before);if('blocker'in operators)return refuse(operators.blocker,operators.detail);
  const starts=lines.map(l=>lineStart(l,perGlyph)),ends=operators.endpoints;
- const explicit=physicalLeading(base),leading=lines.length===2?starts[0]![1]-starts[1]![1]:explicit;
+ const group=input.visualGroup,explicit=physicalLeading(base),leading=group?.pitchPt??(lines.length===2?starts[0]![1]-starts[1]![1]:explicit);
  if(leading<0||lines.length===2&&(!(leading>0)||explicit>0&&!near(leading,explicit,.1)))return refuse('leading','Short-region baseline advance differs');
- const validLeading=(t:TextTrace)=>lines.length===2?(physicalLeading(t)===0||near(physicalLeading(t),leading,.1)):near(physicalLeading(t),explicit,.1);
+ const validLeading=(t:TextTrace)=>lines.length===2||group?(physicalLeading(t)===0||near(physicalLeading(t),leading,.1)):near(physicalLeading(t),explicit,.1);
  if(lines.some(l=>lineAnchors(l).some(t=>!validLeading(t))||l.shows.some(s=>!validLeading(s.before)||!validLeading(s.after))))return refuse('leading','Short-region show leading differs');
- // No capacity beyond the first observed right edge. A longer second row
- // has no short-paragraph column proof and must use a separate candidate.
- const right=ends[0]!;if(ends.some(v=>v>right+1e-7)||starts.some(p=>p[0]>=right))return refuse('edges','Short-region row exceeds the first observed right edge');
+ const right=group?.capacityRight??ends[0]!;if(ends.some(v=>v>right+1e-7)||starts.some(p=>p[0]>=right))return refuse('edges','Short-region row exceeds the observed group extent');
  const left=Math.min(...starts.map(p=>p[0]),...lines.map(l=>l.ink!.x)),bottom=Math.min(...lines.map(l=>l.ink!.y))-.5,top=Math.max(...lines.map(l=>l.ink!.y+l.ink!.h))+.5;
  const box={x:left,y:bottom,w:right-left,h:top-bottom};
  if(!perGlyph&&(!contains(e.crop,box)||!contains(e.clip,box))||lines.some(l=>!contains(box,l.ink!)))return refuse('bounds','Short-region ink exceeds box/crop/clip');
@@ -37,7 +35,7 @@ export function shortStreamRegionResult(input:ParagraphInput,before?:TextTrace):
  if(lines.length===2&&lines[1]!.ink!.y+lines[1]!.ink!.h>lines[0]!.ink!.y)return refuse('bounds','Short-region row ink overlaps');
  const firstLeft=starts[0]![0],bodyLeft=starts[1]?.[0]??firstLeft;
  return {ok:true,proof:{kind:lines.length===1?'explicit-line-region':'paragraph',sourceHash:input.sourceHash,dependencyHash:input.dependencyHash,bt:base.bt,box,
-  indent:{kind:near(firstLeft,bodyLeft,.01)?'flush':firstLeft>bodyLeft?'first-line':'hanging',amountPt:Math.abs(firstLeft-bodyLeft)},leadingPt:leading,
-  lineSlots:starts.map(p=>({left:p[0],right,baseline:p[1],kind:'observed'})),owned:lines.flatMap(l=>l.shows.map(s=>s.source)),tjBoundaries:operators.boundaries,
+  indent:group?.indent??{kind:near(firstLeft,bodyLeft,.01)?'flush':firstLeft>bodyLeft?'first-line':'hanging',amountPt:Math.abs(firstLeft-bodyLeft)},leadingPt:leading,
+  lineSlots:starts.map((p,i)=>({left:group?(lines[i]===group.lines[0]?group.firstLeft:group.left):p[0],right,baseline:p[1],kind:'observed'})),owned:lines.flatMap(l=>l.shows.map(s=>s.source)),tjBoundaries:operators.boundaries,
   obstacleProofHash:e.obstacleProofHash,boundaryProofHash:e.boundaryProofHash,scopeProofHash:e.scopeProofHash}};
 }

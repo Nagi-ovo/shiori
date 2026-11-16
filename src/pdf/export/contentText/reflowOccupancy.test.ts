@@ -21,7 +21,7 @@ async function fixture(stream:string){
 test('short region clears a neighbour 2 pt below the glyph ink rather than using em envelopes',async()=>{
  const f=await fixture(first+row('(AB ) Tj')+row('(AB) Tj',127)),p=f.plan();
  expect(p?.reflow?.layout.strategy).toBe('suffix-shift');if(!p?.reflow)throw Error('missing short-geometry plan');
- expect(p.reflow.proof.lineSlots.map(s=>s.baseline)).toEqual([150,136]);
+ expect(p.reflow.proof.lineSlots.map(s=>s.baseline)).toEqual([136]);
  expect(p.reflow.proof.mask?.length).toBeGreaterThan(0);expect(p.reflow.proof.occupancyHash).toBeTruthy();
  expect(p.reflow.proof.mask!.every(b=>b.y>134)).toBe(true);
  expect(compileReflowPlan(f.s.bytes,f.fonts,p).ok).toBe(true);
@@ -39,11 +39,20 @@ for(const rise of [0,3])test(`moving a different-size suffix still refuses (rise
 });
 test('white paint after the text occupies the destination analytically',async()=>{
  const f=await fixture(first+row('(AB ) Tj')+'1 g 70 135 5 8 re f');
- expect(f.plan()).toBeNull();
+ const target=tokenizeContentStream(f.s.bytes).findLastIndex(op=>op.operator==='Tj');
+ const e=streamReflowEvidence(f.page,f.s.bytes,f.fonts,target);if(!e.ok)throw Error(e.detail);
+ expect(e.proof.lineSlots[0]!.right).toBe(69);
+ const origins=e.source.map(t=>[t.original!.x,t.original!.y] as [number,number]);origins[1]=[70,136];
+ expect(proveGlyphRegion(e,e.proof,e.source,origins,[])).toBeNull();
+ // M3 may wrap around the small white rectangle, but cannot use it as space.
+ const p=f.plan();expect(p?.reflow?.layout.strategy).toBe('wrap');
+ if(!p)throw Error('missing safe wrap');expect(compileReflowPlan(f.s.bytes,f.fonts,p).ok).toBe(true);
+ const blocked=await fixture(first+row('(AB ) Tj')+'1 g 70 0 5 143 re f');
+ expect(blocked.plan()).toBeNull();
 });
 test('paragraph spacing in one BT does not become a reflow slot',async()=>{
  const f=await fixture('BT /F1 10 Tf 14 TL 50 150 Td (AB AB AB ) Tj 0 -14 Td (AB ) Tj 0 -28 Td (AB AB AB ) Tj 0 -14 Td (AB ) Tj ET'),p=f.plan();
- expect(p?.reflow?.proof.lineSlots.map(s=>s.baseline)).toEqual([150,136]);
+ expect(p?.reflow?.proof.lineSlots.map(s=>s.baseline)).toEqual([136]);
  if(!p)throw Error('missing first paragraph');expect(compileReflowPlan(f.s.bytes,f.fonts,p).ok).toBe(true);
 });
 test('a non-embedded font cannot enter the move or replacement set',async()=>{
@@ -89,6 +98,6 @@ test('a nonzero member rise stays part of the physical line slots',async()=>{
  const f=await fixture('3 Ts '+first+row('(AB ) Tj'));
  const a=edit();a.coverRects[0]!.y+=3;
  const p=planStreamReflow(f.page,f.s.bytes,f.fonts,a);
- expect(p?.reflow?.proof.lineSlots.map(s=>s.baseline)).toEqual([153,139]);
+ expect(p?.reflow?.proof.lineSlots.map(s=>s.baseline)).toEqual([139]);
  if(!p)throw Error('missing raised-style plan');expect(compileReflowPlan(f.s.bytes,f.fonts,p).ok).toBe(true);
 });

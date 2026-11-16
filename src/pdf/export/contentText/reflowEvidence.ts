@@ -6,9 +6,10 @@ import {textObjectScopes,followsUnplaced} from '../contentStreamEdit/textSafety'
 import {runPageEnvironment} from '../contentStreamEdit/replaceRunPage';
 import {runResourceStamp} from '../contentStreamEdit/resourceStamp';
 import type {Type1Options} from '../fontCoverage/type1Support';
-import {detectParagraphRegion,type ParagraphBlocker,type ParagraphRefusal,type ParagraphLine,type RegionProof,type Rect,type SourceAddress} from './regionProof';
-import {paragraphFrame,contains,origin,physicalSize,validTrace,linear} from './regionProof/geometry';
+import {detectParagraphRegion,type ParagraphBlocker,type ParagraphLine,type RegionProof,type Rect,type SourceAddress} from './regionProof';
+import {contains,origin,physicalSize,validTrace,linear,paragraphMember} from './regionProof/geometry';
 import {buildPageOccupancy,boundBoxes,glyphKey,queryOccupancy} from './regionProof/occupancy';
+import {buildVisualGroups,capVisualSlots} from './regionProof/visualGroups';
 import {traceReflowSource} from './reflowTrace';
 import {streamInkResolver} from './reflowInk';
 import type {ReflowCodeCluster} from './reflowTypes';
@@ -37,6 +38,7 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
  const ink=streamInkResolver(page,fonts,options,addressOnly),target=[...trace.shows.values()].find(s=>s.before.opIndex===targetOp)?.before;
  if(!target||!validTrace(target))return refuse('target-state','Missing or unsupported target show state');
  let lines:ParagraphLine[]=[],source:ReflowCodeCluster[]=[];
+ let sourceGap=false;
  const excluded={unmeasured:0,badUnicode:0,unsafe:0,incompatible:0};
  const occupancy=buildPageOccupancy({page,ops,fonts,trace,glyphs:walk.glyphs,unplaced,ink,sourceHash,dependencyHash,media});
  if(occupancy.pageBlocked)return refuse('region-unproved','A media-sized occupant blocks the page','obstacles');
@@ -45,15 +47,15 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   const show=trace.shows.get(`${g.opIndex}:${g.arrayItemIndex}`),font=byName.get(g.fontName);
   if(!show||!font)return refuse('missing-show-or-font',`op=${g.opIndex} font=${g.fontName}`);
   const measured=occupancy.glyphs.get(`${g.opIndex}:${g.arrayItemIndex}:${g.byteOffset}`)?.ink,unicode=font.unicodeByCode.get(g.code);
-  if(!measured){excluded.unmeasured++;continue;}
+  if(!measured){excluded.unmeasured++;sourceGap=true;continue;}
   const o=g.coreQuad[0],box={...measured.box,x:o.x+measured.box.x,y:o.y+measured.box.y};
   // Size/rise differences may be an unchanged prefix. Keep their source
   // slots, but defer permission to move them until origins have been solved.
-  if(!unicode||/[\r\n\t\uFFFD]/u.test(unicode)||safety.unsafe.has(g.opIndex)||!paragraphFrame(show.before,target)||!paragraphFrame(show.after,target)){
+  if(!unicode||/[\r\n\t\uFFFD]/u.test(unicode)||safety.unsafe.has(g.opIndex)||!validTrace(show.before)||!validTrace(show.after)){
    if(!unicode||/[\r\n\t\uFFFD]/u.test(unicode))excluded.badUnicode++;
    else if(safety.unsafe.has(g.opIndex))excluded.unsafe++;
    else excluded.incompatible++;
-   continue;
+   sourceGap=true;continue;
   }
   const address:SourceAddress={streamHash:sourceHash,opIndex:g.opIndex,itemIndex:g.arrayItemIndex,byteStart:g.byteOffset,byteEnd:g.byteOffset+g.byteLength,fontObject:font.objectId};
   let line=lines.at(-1);
@@ -66,11 +68,12 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   // column is another row candidate, never whitespace capacity for this one.
   const separated=continuation&&(gap>Math.max(.5,.5*physicalSize(show.before))||gap<-.5);
   const baseline=(t:typeof target)=>origin({...t,rise:target.rise})[1];
-  if(!line||Math.abs(baseline(line.shows[0]!.before)-baseline(show.before))>.01||separated){
-   line={anchor,baseline:baseline(show.before),shows:[],ink:null};lines.push(line);
+  if(!line||sourceGap||Math.abs(baseline(line.shows[0]!.before)-baseline(show.before))>.01||separated){
+   line={anchor,baseline:baseline(show.before),sourceGapBefore:sourceGap,shows:[],ink:null};lines.push(line);
   }else if(anchor.opIndex!==line.anchor.opIndex&&!line.continuations?.some(t=>t.opIndex===anchor.opIndex)){
    (line.continuations??=[]).push(anchor);
   }
+  sourceGap=false;
   if(!line.shows.some(s=>s.source.opIndex===g.opIndex&&s.source.itemIndex===g.arrayItemIndex)){
    const op=ops[g.opIndex]!,item=op.operator==='TJ'&&op.operands[0]?.kind==='array'?op.operands[0].items[g.arrayItemIndex]:op.operands[0];
    if(item?.kind!=='string')return refuse('non-string-show-item',`op=${g.opIndex} item=${g.arrayItemIndex}`);
@@ -91,55 +94,57 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
  for(let i=0;i<source.length-1;i++)if(source[i]!.original!.line===source[i+1]!.original!.line)
   source[i]!.gap=source[i+1]!.original!.x-source[i]!.original!.x-source[i]!.advance;
  let proof:RegionProof;
+ let visualGroup:import('./regionProof').VisualGroup;
  {
   const targetLine=source.find(t=>t.source!.opIndex===targetOp)?.original?.line;if(targetLine===undefined)return refuse('target-not-in-member-lines',`lines=${lines.length} obstacles=${obstacles.length}`);
-  // A BT can contain several paragraphs. Try bounded consecutive tails from
-  // longest to shortest; every excluded placement becomes an obstacle. The
-  // detector still proves all anchors/items in the chosen operator window.
-  let chosen:{proof:RegionProof;start:number;end:number}|undefined;
-  const failures:{start:number;count:number;failure:ParagraphRefusal}[]=[];
-  for(let count=Math.min(lines.length,8);count>=1&&!chosen;count--)for(let start=Math.max(0,targetLine-count+1);start<=targetLine&&start+count<=lines.length;start++){
-   const end=start+count;
-   const input={sourceHash,dependencyHash,ops,lines:lines.slice(start,end),rasterGuardPt:.5,occupancy,evidence:{sourceHash,dependencyHash,
+  const grouping=buildVisualGroups(lines,target,trace.ends);
+  if(!grouping.ok)return refuse('region-unproved',grouping.detail,'boundary');
+  const group=grouping.groups.find(g=>targetLine>=g.start&&targetLine<g.end)!;
+  visualGroup=group;
+  const start=targetLine,end=group.end,count=end-start;
+  if(count>8)return refuse('region-unproved','Target is more than eight source lines from the visual group end','lines');
+  const input={sourceHash,dependencyHash,ops,lines:lines.slice(start,end),rasterGuardPt:.5,occupancy,visualGroup:group,evidence:{sourceHash,dependencyHash,
    obstacleProofHash:occupancy.hash,boundaryProofHash:sourceHash,scopeProofHash:sourceHash,completeScene:true,
    readingOrder:'proven',whitespace:'source-codes',structure:'body-text',columnBoundary:'proven',semantics:'plain',inlineFeatures:'plain-prose',
    crop,clip:media,obstacles:[]}} satisfies import('./regionProof').ParagraphInput;
-   const beforeFirst=trace.ends.get(input.lines[0]!.anchor.opIndex-1);
-   const result=count>=3?detectParagraphRegion(input,beforeFirst):shortStreamRegionResult(input,beforeFirst);
-   if(result.ok){chosen={proof:result.proof,start,end};break;}
-   failures.push({start,count,failure:result});
-  }
-  if(!chosen){
-   const primary=failures.find(f=>f.failure.blocker==='operators')??failures[0]!;
-   return refuse('region-unproved',`lines=${lines.length} targetLine=${targetLine} obstacles=${obstacles.length} | `+
-    failures.map(f=>`${f.count}@${f.start}:${f.failure.blocker}:${f.failure.detail}`).join('; '),primary.failure.blocker);
-  }
-  proof={...chosen.proof,occupancyHash:occupancy.hash};
-  lines=lines.slice(chosen.start,chosen.end);
-  source=source.filter(t=>t.original!.line>=chosen.start&&t.original!.line<chosen.end).map(t=>({...t,original:{...t.original!,line:t.original!.line-chosen.start}}));
+  const beforeFirst=trace.ends.get(input.lines[0]!.anchor.opIndex-1);
+  const result=count>=3?detectParagraphRegion(input,beforeFirst):shortStreamRegionResult(input,beforeFirst);
+  if(!result.ok)return refuse('region-unproved',`${count}@${start}:${result.detail}`,result.blocker);
+  proof={...result.proof,occupancyHash:occupancy.hash};
+  lines=lines.slice(start,end);
+  source=source.filter(t=>t.original!.line>=start&&t.original!.line<end).map(t=>({...t,original:{...t.original!,line:t.original!.line-start}}));
+  const members=source.filter(t=>paragraphMember(trace.shows.get(`${t.source!.opIndex}:${t.source!.itemIndex}`)!.before,target));
+  if(!members.length)return refuse('no-member-lines','No member ink in the visual window');
+  const lower=Math.min(...members.map(t=>t.ink.y))-occupancy.guardPt,upper=Math.max(...members.map(t=>t.ink.y+t.ink.h))+occupancy.guardPt;
+  const owners=new Set(source.map(t=>glyphKey(t.source!)));
+  const lineSlots=capVisualSlots(proof.lineSlots,occupancy,owners,lower,upper);
+  if(lineSlots.some(s=>s.right<=s.left))return refuse('region-unproved','Analytic occupancy leaves no row capacity','obstacles');
+  proof={...proof,lineSlots};
  }
  // This is only the old-ink bound. The authorized mask is fixed from
  // changed old/new ink after layout and before the compiler sees the plan.
  const mask=source.flatMap(t=>t.ink.w>0&&t.ink.h>0?[{x:t.original!.x+t.ink.x-occupancy.guardPt,y:t.original!.y+t.ink.y-occupancy.guardPt,w:t.ink.w+2*occupancy.guardPt,h:t.ink.h+2*occupancy.guardPt}]:[]);
  proof={...proof,mask,box:boundBoxes(mask)};
- return {ok:true as const,ops,trace,walk,source,proof,lines,ink,crop,media,obstacles,occupancy,target,fonts};
+ return {ok:true as const,ops,trace,walk,source,proof,lines,ink,crop,media,obstacles,occupancy,target,fonts,visualGroup};
 }
 
 /** Add ONE baseline only after its whole leading-height body band is clear.
  * The new box can only extend downward. No baseline, horizontal edge or
  * previously proved top may be moved to make an edit fit.
  */
-export function proveDownwardSlot(e:StreamReflowEvidence,proof:RegionProof):RegionProof|null{
+export function proveDownwardSlot(e:StreamReflowEvidence,proof:RegionProof,planned:readonly ReflowCodeCluster[]=e.source):RegionProof|null{
  if(proof.lineSlots.length>=8||!(proof.leadingPt>0))return null;
- const last=proof.lineSlots.at(-1)!,body=proof.lineSlots[1]??last,baseline=last.baseline-proof.leadingPt;
- const lower=Math.min(...e.source.map(t=>t.ink.y))-e.occupancy.guardPt,upper=Math.max(...e.source.map(t=>t.ink.y+t.ink.h))+e.occupancy.guardPt;
+ const last=proof.lineSlots.at(-1)!,baseline=last.baseline-proof.leadingPt;
+ if(baseline>=e.visualGroup.lines.at(-1)!.baseline!||!planned.length)return null;
+ const lower=Math.min(...planned.map(t=>t.ink.y))-e.occupancy.guardPt,upper=Math.max(...planned.map(t=>t.ink.y+t.ink.h))+e.occupancy.guardPt;
  // Keep the full leading-height floor. Only source placements in the
  // candidate are potentially vacated; every outsider remains an obstacle.
  const bottom=baseline+Math.min(lower,-.25*proof.leadingPt),top=baseline+Math.max(upper,.75*proof.leadingPt);
- const band={x:body.left,y:bottom,w:body.right-body.left,h:top-bottom};
  const candidate=new Set(e.source.map(t=>glyphKey(t.source!)));
+ const slot={left:e.visualGroup.left,right:e.visualGroup.capacityRight,baseline,kind:'explicit-blank' as const};
+ const band={x:slot.left,y:bottom,w:slot.right-slot.left,h:top-bottom};
  if(!contains(e.crop,band)||!contains(e.media,band)||queryOccupancy(e.occupancy,band).some(o=>!o.owner||!candidate.has(o.owner)))return null;
  const box={...proof.box,y:Math.min(proof.box.y,bottom),h:proof.box.y+proof.box.h-Math.min(proof.box.y,bottom)};
- return {...proof,box,lineSlots:[...proof.lineSlots,{left:body.left,right:body.right,baseline,kind:'explicit-blank'}],
+ return {...proof,box,lineSlots:[...proof.lineSlots,slot],
   obstacleProofHash:`${proof.obstacleProofHash}:empty-band:${baseline}`};
 }

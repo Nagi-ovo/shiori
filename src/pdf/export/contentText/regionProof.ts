@@ -72,7 +72,7 @@ export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextT
   const ends = operators.endpoints;
   const advances = starts.slice(1).map((p, i) => starts[i]![1] - p[1]);
   const explicit = physicalLeading(base);
-  const leading = explicit > 0 ? explicit : advances[0]!;
+  const leading = input.visualGroup?.pitchPt ?? (explicit > 0 ? explicit : advances[0]!);
   const leadingTolerance = Math.min(0.25, Math.max(0.10, leading * 0.01));
   if (!(leading > 0) || advances.some(a => !near(a, leading, leadingTolerance)) ||
     lines.some(l => {
@@ -98,14 +98,15 @@ export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextT
     if (multiple) indent.emMultiple = multiple;
   }
   const nonfinalEnds = lines.flatMap((l, i) => l.shows.length && i < lines.length - 1 ? [ends[i]!] : []);
-  if (nonfinalEnds.length < 2 || Math.max(...nonfinalEnds) - Math.min(...nonfinalEnds) > rightTolerance + EPS) {
+  if (!input.visualGroup&&(nonfinalEnds.length < 2 || Math.max(...nonfinalEnds) - Math.min(...nonfinalEnds) > rightTolerance + EPS)) {
     return refuse('edges', 'At least two nonfinal advances must share the right edge');
   }
-  const right = Math.min(...nonfinalEnds);
+  const right = input.visualGroup?.capacityRight ?? Math.min(...nonfinalEnds);
   if (ends.at(-1)! > right + rightTolerance + EPS) return refuse('edges', 'Final line exceeds the proven right edge');
   const flushLeft = Math.max(...allLefts);
+  const group=input.visualGroup;
   const slots: LineSlot[] = starts.map((p, i) => ({ baseline: p[1],
-    left: flush ? flushLeft : i === 0 ? firstLeft : bodyLeft, right,
+    left: group ? (lines[i]===group.lines[0]?group.firstLeft:group.left) : flush ? flushLeft : i === 0 ? firstLeft : bodyLeft, right,
     kind: lines[i]!.shows.length ? 'observed' : 'explicit-blank' }));
   if (slots.some(s => s.left >= s.right)) return refuse('edges', 'Empty or inverted line capacity');
   const guard = input.rasterGuardPt ?? 0.5;
@@ -131,7 +132,7 @@ export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextT
   })) return refuse('obstacles', 'Incomplete scene or intersecting unowned text, annotation or paint');
   return { ok: true, proof: {
     sourceHash: input.sourceHash, dependencyHash: input.dependencyHash, bt: base.bt,
-    kind: 'paragraph', box, indent, leadingPt: leading, lineSlots: slots,
+    kind: 'paragraph', box, indent:group?.indent??indent, leadingPt: leading, lineSlots: slots,
     owned: lines.flatMap(l => l.shows.map(s => ({ ...s.source }))),
     tjBoundaries: operators.boundaries, obstacleProofHash: e.obstacleProofHash,
     boundaryProofHash: e.boundaryProofHash, scopeProofHash: e.scopeProofHash,

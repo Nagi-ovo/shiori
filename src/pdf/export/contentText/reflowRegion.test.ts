@@ -21,8 +21,8 @@ function plan(page:Parameters<typeof inspectRunPage>[0],a=edit()){
 }
 for(const tagged of [false,true])test(`${tagged?'Word tagged':'one-BT-per-line'} wraps a paragraph as a unit and rejoins the original state`,async()=>{
  const f=await spacingPage(multi(tagged)+' BT /F1 10 Tf 220 150 Td (i) Tj ET'),{s,fonts,p}=plan(f.page,edit(136));
- expect(p?.reflow?.proof.lineSlots.map(s=>s.baseline)).toEqual([150,136,122]);
- expect(p?.reflow?.proof.owned).toHaveLength(3);if(!p?.reflow)throw Error('no paragraph plan');
+ expect(p?.reflow?.proof.lineSlots.map(s=>s.baseline)).toEqual([136,122]);
+ expect(p?.reflow?.proof.owned).toHaveLength(2);if(!p?.reflow)throw Error('no paragraph plan');
  expect(p.reflow.firstOp).toBe(p.reflow.proof.owned[0]!.opIndex);
  const out=compileReflowPlan(s.bytes,fonts,p);expect(out.ok).toBe(true);if(!out.ok)throw Error(out.reason);
  if(tagged)expect(mcidCodes(out.bytes)).toEqual({...mcidCodes(s.bytes),1:[...'n n i i i i '].map(c=>c.charCodeAt(0))});
@@ -34,12 +34,12 @@ for(const tagged of [false,true])test(`${tagged?'Word tagged':'one-BT-per-line'}
 test('Type1 measured Latin one-BT lines produce a paragraph wrap',async()=>{
  const f=await type1RegionPage();
  const {s,fonts,p}=plan(f.page,overlay({originalText:'A',text:'AB AB',coverRects:[{x:49.9,y:134,w:6.2,h:12}]}));
- expect(p?.reflow?.layout.strategy).toBe('wrap');expect(p?.reflow?.proof.owned).toHaveLength(3);
+ expect(p?.reflow?.layout.strategy).toBe('wrap');expect(p?.reflow?.proof.owned).toHaveLength(2);
  if(!p)throw Error('missing Type1 plan');expect(compileReflowPlan(s.bytes,fonts,p).ok).toBe(true);
 });
 for(const sameBt of [false,true])for(const spacing of [false,true])test(`mixed Type1 paragraph owns sibling slots and compiles: sameBT=${sameBt}, justified=${spacing}`,async()=>{
  const f=await mixedRegionPage({sameBt,spacing,tail:' BT /F1 10 Tf 220 60 Td (A) Tj ET'}),{s,fonts,p}=plan(f.page,mixedEdit());
- expect(p?.reflow?.proof.lineSlots.filter(s=>s.kind==='observed').map(s=>s.baseline)).toEqual([150,136,122]);
+ expect(p?.reflow?.proof.lineSlots.filter(s=>s.kind==='observed').map(s=>s.baseline)).toEqual([136,122]);
  expect(p?.reflow?.layout.strategy).toBe('wrap');if(!p?.reflow)throw Error('missing mixed paragraph');
  expect(new Set(p.reflow.clusters.map(c=>c.fontObject)).size).toBe(2);
  const result=compileReflowPlan(s.bytes,fonts,p);expect(result.ok).toBe(true);if(!result.ok)throw Error(result.reason);
@@ -49,28 +49,25 @@ for(const sameBt of [false,true])for(const spacing of [false,true])test(`mixed T
 test.each([15,-15])('mixed paragraph keeps a %s pt first/hanging indent',async indent=>{
  const f=await mixedRegionPage({indent}),{p}=plan(f.page,mixedEdit());
  expect(p?.reflow?.proof.indent.kind).toBe(indent>0?'first-line':'hanging');
- expect(p?.reflow?.proof.lineSlots.map(s=>s.left)).toEqual([50+indent,50,50]);
+ expect(p?.reflow?.proof.lineSlots.map(s=>s.left)).toEqual([50,50]);
 });
 test('two mixed-font lines retain their observed short-region right edge',async()=>{
  const f=await mixedRegionPage({short:true}),{s,fonts,p}=plan(f.page,mixedEdit());
- expect(p?.reflow?.proof.owned).toHaveLength(4);if(!p?.reflow)throw Error('missing short paragraph');
+ expect(p?.reflow?.proof.owned).toHaveLength(3);if(!p?.reflow)throw Error('missing short paragraph');
  expect(p.reflow.proof.lineSlots.every(s=>s.right===95)).toBe(true);
  expect(compileReflowPlan(s.bytes,fonts,p).ok).toBe(true);
 });
 test('BT fragments on the same baseline remain one owned visual line',async()=>{
  const f=await mixedRegionPage({fragments:true}),{s,fonts,p}=plan(f.page,mixedEdit());
- expect(p?.reflow?.proof.lineSlots.map(s=>s.baseline)).toEqual([150,136,122]);
+ expect(p?.reflow?.proof.lineSlots.map(s=>s.baseline)).toEqual([136,122]);
  if(!p)throw Error('missing fragmented paragraph');expect(compileReflowPlan(s.bytes,fonts,p).ok).toBe(true);
 });
 test('a distant column on the same baseline cannot enlarge a short line',async()=>{
  const f=await mixedRegionPage({fragments:true}),s=inspectRunPage(f.page);if(!s.ok)throw Error(s.reason);
  const stream=new TextDecoder().decode(s.bytes).replace('56 136 Td','156 136 Td');
  f.page.node.set(PDFName.of('Contents'),f.doc.context.register(f.doc.context.flateStream(stream)));
- const {s:source,fonts,p}=plan(f.page,mixedEdit());
- if(!p?.reflow)throw Error('missing left-column region');
- expect(p.reflow.proof.lineSlots.every(s=>s.right===95)).toBe(true);
- expect(p.reflow.clusters.every(t=>!t.original||t.original.x<95)).toBe(true);
- expect(compileReflowPlan(source.bytes,fonts,p).ok).toBe(true);
+ const {p}=plan(f.page,mixedEdit());
+ expect(p).toBeNull();
 });
 test('a whitespace-only font fragment refuses when native extraction cannot preserve it',async()=>{
  const f=await mixedRegionPage({spaceInRoman:true}),{s,fonts,p}=plan(f.page,mixedEdit());
@@ -93,7 +90,7 @@ test('mixed paragraph grows below its original last row only when the whole band
   const e=streamReflowEvidence(f.page,s.bytes,fonts,target);if(!e.ok)throw Error(e.detail);expect(e.proof.lineSlots).toHaveLength(3);
   expect(proveDownwardSlot(e,e.proof)?.lineSlots.at(-1)?.baseline??null).toBe(tail?null:108);
   const p=plan(f.page,mixedEdit()).p;
-  if(tail)expect(p).toBeNull();else expect(p?.reflow?.proof.lineSlots.map(s=>s.baseline)).toEqual([150,136,122,108]);
+  if(tail)expect(p).toBeNull();else expect(p?.reflow?.proof.lineSlots.map(s=>s.baseline)).toEqual([136,122,108]);
  }
 });
 for(const bridge of [' /X Do ',' 0 0 1 1 re f ',' 0 0 m 1 1 l S ',' 0 0 1 1 re W n '])test(`mixed paragraph cannot cross a figure/path/clip: ${bridge}`,async()=>{

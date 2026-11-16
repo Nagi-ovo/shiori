@@ -55,6 +55,12 @@ test('an explicit request cannot opt out of its rectangle proof using a deferred
  f.request.paragraph.occupancy={items:[],grid:new Map(),pageBlocked:false,hash:'unvalidated',guardPt:1,glyphs:new Map(),embeddedFonts:new Set()};
  expect(planContentText(f.content,[f.font],f.overlay,{stage5Reflow:true,reflowRequest:f.request})).toMatchObject({ok:false,code:'reflow-required'});
 });
+test('an explicit request cannot supply unvalidated visual-group capacity',()=>{
+ const f=reflowFixture(),paragraph=f.request.paragraph;
+ paragraph.visualGroup={start:0,end:3,lines:paragraph.lines,style:paragraph.lines[0]!.anchor,pitchPt:14,capacityRight:250,
+  left:50,firstLeft:50,indent:{kind:'flush',amountPt:0},column:{x0:50,x1:250}};
+ expect(planContentText(f.content,[f.font],f.overlay,{stage5Reflow:true,reflowRequest:f.request})).toMatchObject({ok:false,code:'reflow-required'});
+});
 test('an explicit request resolves named MCIDs during source trace validation',()=>{
  const f=reflowFixture(),content=new TextEncoder().encode(`/P /Body BDC ${new TextDecoder().decode(f.content)} EMC`);
  const sourceHash=sourceFingerprint(content),ops=tokenizeContentStream(content);

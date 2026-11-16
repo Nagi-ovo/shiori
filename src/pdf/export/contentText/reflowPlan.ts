@@ -32,7 +32,7 @@ export function planReflow(content:Uint8Array,fonts:readonly ResolvedRunFont[],o
  // Only the stream producer can defer membership/scene checks and then run
  // proveGlyphRegion on the solved origins. Explicit requests keep their
  // original rectangle contract and cannot opt into half of that protocol.
- if(paragraph.occupancy)return fail('reflow-context-unsupported: deferred occupancy requires stream evidence');
+ if(paragraph.occupancy||paragraph.visualGroup)return fail('reflow-context-unsupported: deferred occupancy/group capacity requires stream evidence');
  if(paragraph.sourceHash!==sourceHash||request.dependencyHash!==paragraph.dependencyHash||target.streamHash!==sourceHash)
   return fail('reflow-paragraph-unproven: stale source/dependency revision');
  const ops=tokenizeContentStream(content);

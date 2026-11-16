@@ -22,7 +22,8 @@ const cases=[
  {name:'nearby-line',stream:first+row('(AB ) Tj')+row('(AB) Tj',127),x:50,accept:true},
  ...[0,3].map(rise=>({name:`prefix-rise-${rise}`,stream:first+row(`/F1 6 Tf 1 Tc ${rise} Ts (B) Tj /F1 10 Tf 0 Tc 0 Ts (AB ) Tj`),x:54.6,accept:true})),
  {name:'one-bt-paragraphs',stream:'BT /F1 10 Tf 14 TL 50 150 Td (AB AB AB ) Tj 0 -14 Td (AB ) Tj 0 -28 Td (AB AB AB ) Tj 0 -14 Td (AB ) Tj ET',x:50,accept:true},
- {name:'white-after-text',stream:first+row('(AB ) Tj')+'1 g 70 135 5 8 re f',x:50,accept:false},
+ {name:'white-after-text',stream:first+row('(AB ) Tj')+'1 g 70 135 5 8 re f',x:50,accept:true},
+ {name:'white-blocked-growth',stream:first+row('(AB ) Tj')+'1 g 70 0 5 143 re f',x:50,accept:false},
  {name:'moved-superscript',stream:first+row('(A) Tj /F1 6 Tf 3 Ts (B) Tj /F1 10 Tf 0 Ts ( AB ) Tj'),x:50,accept:false},
  {name:'occupied-growth',stream:first+row('(AB AB AB ) Tj')+'/Artifact BMC '+row('(AB) Tj',122)+' EMC',x:50,accept:false},
 ];
@@ -38,6 +39,10 @@ try{
   const evidence=streamReflowEvidence(f.page,s.bytes,fonts,target);assert(evidence.ok);
   const mask=structuredClone(plan.reflow.proof.mask);assert(mask?.length&&plan.reflow.proof.occupancyHash);
   const manifest=reflowManifest(plan.reflow,evidence.walk.glyphs,fonts);
+  if(c.name==='white-after-text'){
+   assert.equal(plan.reflow.layout.strategy,'wrap','white paint must force avoidance');
+   assert.equal(plan.reflow.proof.lineSlots[0]!.right,69,'white paint was not an analytic occupant');
+  }
   const compiled=compileReflowPlan(s.bytes,fonts,plan);assert(compiled.ok,compiled.ok?'':compiled.reason);
   assert.deepEqual(plan.reflow.proof.mask,mask,'compilation changed the mask');
   f.page.node.set(PDFName.of('Contents'),f.doc.context.register(f.doc.context.flateStream(compiled.bytes)));

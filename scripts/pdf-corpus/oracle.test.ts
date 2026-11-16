@@ -39,7 +39,8 @@ test('an untouched native space must retain its origin even when text and ink ar
 test('manifest-aware audit checks owned movement while keeping unowned glyphs strict',async()=>{
  const {compareReflowNativePages}=await import('./reflowOracle');
  const reflowEdit={originalText:'B',text:'X',coverRects:[{x:1.9,y:4,w:.2,h:2}]};
- const manifest={strategy:'suffix-shift' as const,sourceHash:'source',dependencyHash:'deps',region:{box:{x:1,y:4,w:4,h:2}},
+ const box={x:1,y:4,w:4,h:2};
+ const manifest={strategy:'suffix-shift' as const,sourceHash:'source',dependencyHash:'deps',region:{box,mask:[box],oldInk:[{x:1.5,y:4.5,w:2,h:1}]},
   source:[{unicode:'B',origin:[2,5],fontHash:'font'},{unicode:'C',origin:[3,5],fontHash:'font'}],
   output:[{unicode:'X',origin:[2,5]},{unicode:'C',origin:[3.2,5],oldOrigin:[3,5],fontHash:'font'}]};
  const moved={...after,glyphs:[glyph('A',1),glyph('X',2),glyph('C',3.2)]};

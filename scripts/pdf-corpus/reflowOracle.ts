@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type {AppliedReflowManifest,ManifestGlyph} from '../../src/pdf/export/contentText/reflowManifest';
 import type {PdfRect} from '../../src/pdf/model/types';
+import {vetoReflowRaster} from './reflowRasterVeto';
 type Glyph={text:string;origin:readonly number[];fontHash?:string;nativePath?:unknown;inkPixels?:number};
 type Snapshot={width:number;height:number;text:string;glyphs:readonly Glyph[];pixels?:Uint8Array};
 const compact=(s:string)=>s.replace(/\s/gu,'');
@@ -49,6 +50,7 @@ export function compareReflowNativePages(before:Snapshot,after:Snapshot,edit:{or
  assert.equal(spaces.length,expectedSpaces.length,'native whitespace count changed');
  for(const e of expectedSpaces){const index=spaces.findIndex(g=>g.text===e.text&&drift(g.origin,e.origin)<=.005);assert(index>=0,'native whitespace destination drift');const [g]=spaces.splice(index,1);if(e.original)assert.equal(g!.fontHash,e.original.fontHash,'native whitespace font changed');}
  assert(before.pixels&&after.pixels,'native raster missing');assert.equal(before.pixels.length,after.pixels.length);
+ assert.equal(after.width,before.width,'native page width changed');assert.equal(after.height,before.height,'native page height changed');
  const box=manifest.region.box;assert([box.x,box.y,box.w,box.h].every(Number.isFinite)&&box.w>0&&box.h>0,'invalid manifest bounds');
  const mask=manifest.region.mask??[box];assert(mask.length&&mask.every(b=>[b.x,b.y,b.w,b.h].every(Number.isFinite)&&b.w>0&&b.h>0),'invalid manifest mask');
  const width=Math.round(before.width*2),height=Math.round(before.height*2);let changedPixels=0,changedPixelsOutsideBox=0,changedPixelsOutsideMask=0;
@@ -59,5 +61,6 @@ export function compareReflowNativePages(before:Snapshot,after:Snapshot,edit:{or
  }
  assert.equal(changedPixelsOutsideBox,0,'changed pixels outside manifest region');
  assert.equal(changedPixelsOutsideMask,0,'changed pixels outside manifest mask');
- return {maxOriginDriftPt,changedPixels,changedPixelsOutsideBox,changedPixelsOutsideMask,replacementGlyphs:replacementIndices.length,replacementIndices};
+ const rasterVeto=vetoReflowRaster(before,manifest.region);
+ return {maxOriginDriftPt,changedPixels,changedPixelsOutsideBox,changedPixelsOutsideMask,...rasterVeto,replacementGlyphs:replacementIndices.length,replacementIndices};
 }

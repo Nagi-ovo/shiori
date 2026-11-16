@@ -26,6 +26,8 @@ export type ParagraphLine = {
   anchor: TextTrace;
   /** Physical baseline of the target member style; prefix Ts can differ. */
   baseline?: number;
+  /** An excluded source placement is a boundary, never a line to skip. */
+  sourceGapBefore?: boolean;
   /** Further explicit anchors on the same baseline (including sibling BTs).
    * Every anchor remains owned and checked against the source grammar. */
   continuations?: TextTrace[];
@@ -58,6 +60,13 @@ export type ParagraphInput = {
   lines: ParagraphLine[]; evidence: ParagraphEvidence; rasterGuardPt?: number;
   /** Production defers scene/membership checks to the solved move set. */
   occupancy?: PageOccupancy;
+  visualGroup?: VisualGroup;
+};
+export type VisualGroup = {
+  start: number; end: number; lines: readonly ParagraphLine[];
+  style: TextTrace; pitchPt: number; capacityRight: number;
+  left: number; firstLeft: number; indent: ParagraphIndent;
+  column: {x0:number;x1:number};
 };
 export type ParagraphIndent = {
   kind: 'flush' | 'first-line' | 'hanging';
@@ -79,6 +88,8 @@ export type RegionProof = {
   kind: 'paragraph' | 'explicit-line-region'; box: Rect;
   /** Fixed before compilation. box is only this mask's union bound. */
   mask?: readonly Rect[]; occupancyHash?: string;
+  /** All owned original ink, guard-dilated; oracle veto evidence only. */
+  oldInk?: readonly Rect[];
   indent: Readonly<ParagraphIndent>; leadingPt: number;
   lineSlots: readonly Readonly<LineSlot>[];
   owned: readonly Readonly<SourceAddress>[];

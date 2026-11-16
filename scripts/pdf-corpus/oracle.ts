@@ -9,6 +9,7 @@ import {notdefProbePdf} from '../pdf-inplace/notdefProbe';
 import {assertReplacementGlyphs,assertNativeReplacementGlyphs} from '../pdf-inplace/glyphEvidence';
 import type {openPdfium} from '../pdf-inplace/nativePdfium';
 import {compareReflowNativePages} from './reflowOracle';
+import {saveReflowVetoArtifact} from './reflowVetoArtifact';
 import {inspectRunPage} from '../../src/pdf/export/contentStreamEdit/replaceRunPage';
 import type {AppliedReflowManifest} from '../../src/pdf/export/contentText/reflowManifest';
 import type {PdfRect} from '../../src/pdf/model/types';
@@ -98,7 +99,13 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
  const before=native.inspectPage(beforePath,0,true),after=native.inspectPage(afterPath,0,true);
  const useManifest=stage5Reflow&&manifest;
  if(useManifest){const original=await PDFDocument.load(new Uint8Array(await readFile(beforePath))),source=inspectRunPage(original.getPage(0));assert(source.ok&&source.sourceHash===useManifest.sourceHash,'manifest source revision differs');}
- const checked=useManifest?compareReflowNativePages(before,after,edit,useManifest):compareNativePages(before,after,edit,mode==='substituted');
+ let checked;
+ try{checked=useManifest?compareReflowNativePages(before,after,edit,useManifest):compareNativePages(before,after,edit,mode==='substituted');}
+ catch(error){
+  if(useManifest&&error instanceof Error&&error.message.includes('raster veto'))await saveReflowVetoArtifact({name,
+   before:new Uint8Array(await readFile(beforePath)),after:new Uint8Array(await readFile(afterPath)),edit,manifest:useManifest,error});
+  throw error;
+ }
  const bytes=new Uint8Array(await readFile(afterPath)),doc=await PDFDocument.load(bytes),objects=new Map<string,string>();
  for(const[ref,value]of doc.context.enumerateIndirectObjects())if(value instanceof PDFDict && value.get(PDFName.of('Type'))===PDFName.of('FontDescriptor')){
   const raw=value.lookup(PDFName.of('FontFile2'))??value.lookup(PDFName.of('FontFile3'))??value.lookup(PDFName.of('FontFile'));

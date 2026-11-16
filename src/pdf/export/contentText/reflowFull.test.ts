@@ -104,7 +104,7 @@ test('line-count changes do not bypass the original style refusal',async()=>{
  const r=await applyContentTextEdits(f.page,[a]);expect(r.outcomes[0]!.mode).toBe('overlay');expect(inspectRunPage(f.page)).toEqual(before);
 });
 test('a short paragraph boundary leaves later same-BT text unowned and fixed',async()=>{
- const f=await spacingPage(stream().replace(' ET',' 1 0 0 1 50 108 Tm (i) Tj ET')),before=read(f.page);
+ const f=await spacingPage(stream().replace(' ET',' 1 0 0 1 50 94 Tm (i) Tj ET')),before=read(f.page);
  const r=await applyContentTextEdits(f.page,[edit()]);expect(r.outcomes[0]).toMatchObject({mode:'reflowed',reflow:{strategy:'wrap'}});
  expect(read(f.page).at(-1)).toEqual(before.at(-1));
  const outcome=r.outcomes[0]!;if(!('reflow'in outcome)||!outcome.reflow)throw Error('missing reflow manifest');

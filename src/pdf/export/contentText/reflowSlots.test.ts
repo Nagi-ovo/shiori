@@ -27,7 +27,8 @@ test('a Word wrap keeps each MCID code sequence and splits its home show over so
 });
 test('a recipe cannot rehome replacement glyphs into another MCID',async()=>{
  const f=await slotPlan();if(!f.plan?.reflow)throw Error('missing plan');
- const reflow={...f.plan.reflow,clusters:f.plan.reflow.clusters.map(c=>c.source?c:{...c,homeOp:f.plan!.reflow!.firstOp})};
+ const header=readSlots(f.content).shows[0]!.op;
+ const reflow={...f.plan.reflow,clusters:f.plan.reflow.clusters.map(c=>c.source?c:{...c,homeOp:header})};
  expect(compileReflowPlan(f.content,f.fonts,{...f.plan,reflow})).toMatchObject({ok:false,bytes:f.content});
 });
 test('Artifact and nested tag scopes never join the P body at the same style',async()=>{
@@ -86,13 +87,13 @@ test('slot compilation uses the home BT text matrix when equal physical transfor
  const ops=tokenizeContentStream(f.content),trace=traceReflowSource(ops,f.fonts,'revision');
  const mcids=readSlots(f.content).shows;
  expect(mcids).toHaveLength(3);
- const own=plain.plan.reflow.proof.owned.map((s,i)=>({...s,opIndex:mcids[i]!.op}));
+ const own=plain.plan.reflow.proof.owned.map((s,i)=>({...s,opIndex:mcids[i+1]!.op}));
  const map=new Map(plain.plan.reflow.proof.owned.map((s,i)=>[s.opIndex,own[i]!.opIndex]));
  const clusters=plain.plan.reflow.clusters.map(c=>({...c,homeOp:c.source?map.get(c.source.opIndex):mcids[1]!.op,
   source:c.source?{...c.source,opIndex:map.get(c.source.opIndex)!}:undefined}));
  const {sourceFingerprint}=await import('../contentStreamEdit/replaceRun');
  const hash=sourceFingerprint(f.content),lastOp=mcids[2]!.op;
- const recipe={...plain.plan.reflow,clusters,firstOp:mcids[0]!.op,lastOp,proof:{...plain.plan.reflow.proof,owned:own,sourceHash:hash},rejoin:trace.ends.get(lastOp)!};
+ const recipe={...plain.plan.reflow,clusters,firstOp:mcids[1]!.op,lastOp,proof:{...plain.plan.reflow.proof,owned:own,sourceHash:hash},rejoin:trace.ends.get(lastOp)!};
  const plan={...plain.plan,sourceHash:hash,edits:plain.plan.edits.map(e=>({...e,opIndex:map.get(e.opIndex)!})),reflow:recipe};
  const result=compileReflowPlan(f.content,f.fonts,plan);expect(result.ok).toBe(true);
  if(result.ok)expect(mcidCodes(result.bytes)[1]).toEqual([...regionRows[1]!.replace('S','n n')].map(c=>c.charCodeAt(0)));

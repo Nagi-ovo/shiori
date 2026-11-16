@@ -1,6 +1,7 @@
 import type { ContentOperand } from '../../contentStreamEdit/tokenizer';
 import { anchorForShow, lineAnchors, matrixEqual, near, origin } from './geometry';
 import type { ParagraphBlocker, ParagraphInput, ParagraphShow, TextTrace, TjBoundary } from './types';
+import {operatorScopes} from './operatorScopes';
 
 type Failure = { blocker: ParagraphBlocker; detail: string };
 export type OperatorProof = { boundaries: TjBoundary[]; endpoints: number[] } | Failure;
@@ -48,27 +49,15 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
   // Validate real source scopes, including wrappers that open before the
   // candidate. q/Q never saves Tm/Tlm. Each rewritten show keeps its source
   // slot, so colours restored by Q stay attached to that slot's glyphs.
-  let bt = -1, graphics = 0, marked = 0;
-  const owners = new Map<number,number>();
-  for (let i = 0; i < ops.length; i++) {
-    const op=ops[i]!;
-    if (op.operator === 'BT') {
-      if (bt !== -1 || op.operands.length) return fail('operators', 'Nested or malformed BT');
-      bt=i;
-    } else if (op.operator === 'ET') {
-      if (bt === -1 || op.operands.length) return fail('operators', 'Unbalanced ET');
-      bt=-1;
-    } else if(op.operator==='q') {
-      if(op.operands.length)return fail('operators','Malformed q');
-      graphics++;
-    }
-    else if(op.operator==='Q') {
-      if(op.operands.length||--graphics<0)return fail('operators','Unbalanced graphics state');
-    } else if(op.operator==='BMC'||op.operator==='BDC') marked++;
-    else if(op.operator==='EMC'&&--marked<0)return fail('operators','Unbalanced marked content');
-    owners.set(i,bt);
-  }
-  if(bt!==-1||graphics||marked)return fail('operators','Unterminated source scope');
+  const scopes=operatorScopes(ops);if(!scopes.ok)return fail('operators',scopes.detail);
+  const {owners}=scopes;
+  for(const line of lines)for(const op of [...lineAnchors(line).map(t=>t.opIndex),...line.shows.map(s=>s.source.opIndex)])
+    if(scopes.appliedCms.get(op)?.some(i=>!scopes.safeCms.has(i)))return fail('operators','Owned slot has an unwrapped or nontranslation cm');
+  // cm before the first anchor still supplies the first owned slot's CTM.
+  // Validate every cm inside an owned BT or its enclosing wrapper as well.
+  const ownedBts=new Set(lines.flatMap(l=>lineAnchors(l).map(t=>t.bt)));
+  for(let i=0;i<=last;i++)if(ops[i]!.operator==='cm'&&!scopes.safeCms.has(i)&&
+    (i>=first||ownedBts.has(owners.get(i)!)))return fail('operators','cm requires a translation inside a whole-BT q/Q wrapper');
   for(const line of lines){
     if(lineAnchors(line).some(t=>owners.get(t.opIndex)!==t.bt))return fail('state','Anchor BT snapshot differs from source');
     for(const show of line.shows)if(owners.get(show.source.opIndex)!==show.before.bt||show.after.bt!==show.before.bt||
@@ -84,6 +73,10 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
   let currentLine=lines[0];
   for (let i = first; i <= last; i++) {
     const op = ops[i]!;
+    if(op.operator==='cm'){
+      if(!scopes.safeCms.has(i))return fail('operators','cm requires a translation inside a whole-BT q/Q wrapper');
+      cursor={...cursor,ctm:scopes.ctms.get(i)!};continue;
+    }
     if(['g','G','rg','RG','k','K','cs','CS','sc','scn','SC','SCN'].includes(op.operator)){
       const count=deviceColours[op.operator];
       if(count!==undefined?!numbers(op.operands,count):['cs','CS'].includes(op.operator)?
@@ -126,7 +119,7 @@ export function proveOperators(input: ParagraphInput, beforeFirst?:TextTrace): O
       else if(op.operator==='ET')cursor={...cursor,bt:-1};
       else if(op.operator==='q')parameters.push(cursor);
       else if(op.operator==='Q'){
-        const saved=parameters.pop();if(saved)cursor={...saved,bt:cursor.bt,tm:cursor.tm,tlm:cursor.tlm};
+        const saved=parameters.pop();cursor={...(saved??cursor),bt:cursor.bt,tm:cursor.tm,tlm:cursor.tlm,ctm:scopes.ctms.get(i)!};
       }else if(op.operator==='Tf'){
         if(op.operands.length!==2||op.operands[0]?.kind!=='name'||op.operands[1]?.kind!=='number'||
           !Number.isFinite(op.operands[1].value)||op.operands[1].value<=0)return fail('operators','Malformed Tf');
