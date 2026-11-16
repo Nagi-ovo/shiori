@@ -23,6 +23,8 @@ import {retypesetFormPushSpace} from './retypesetForms';
 import {retypesetScopes} from './retypesetScopes';
 import {contains,intersects} from './regionProof/geometry';
 import {prepareRetypesetFits} from './retypesetFit';
+import {retypesetInk} from './retypesetInk';
+import {layoutRetypesetInClip} from './retypesetClip';
 
 type Plan=ReturnType<typeof planRetypeset>;
 type Source=ReturnType<typeof readRetypesetSource>;
@@ -70,13 +72,18 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
  const measureNode=page.node.clone(),measureResources=originalResources?.clone()??page.doc.context.obj({}),measureFonts=fontDict?.clone()??page.doc.context.obj({});
  for(const p of prepared)measureFonts.set(PDFName.of(p.resolved.resourceName),scratch.context.lookup(p.ref)!);
  measureResources.set(PDFName.of('Font'),measureFonts);measureNode.set(PDFName.of('Resources'),measureResources);
- const {sourceInk,results:fitted}=prepareRetypesetFits(page,PDFPage.of(measureNode,page.ref,page.doc),ops,fonts,source,plans,target);
- const fits=fitted.map(f=>f.fit),outputInks=fitted.map(f=>f.outputInk);
+ const measurePage=PDFPage.of(measureNode,page.ref,page.doc);
+ const {sourceInk,results:fitted}=prepareRetypesetFits(page,measurePage,ops,fonts,source,plans,target);
+ const fits=fitted.map(f=>f.fit);
+ const ink=retypesetInk(measurePage,fonts,ops);
  const scopes=retypesetScopes(ops,formSpace?.box);
- for(const [i]of plans.entries())if(fits[i]!.addedHeight>.01)for(const [a,ink]of outputInks[i]!){
-  const clip=scopes.get(a.home.glyph.opIndex)?.clip;
-  if(clip===null||clip&&(!ink.known||!contains(clip,ink.box)))throw Error('retypeset-output-outside-source-clip: cannot expose new wrap without changing the original clip');
- }
+ const outputInks=plans.map((p,i)=>{
+  const laid=layoutRetypesetInClip(p,fits[i]!,scopes,a=>{
+   const pt=p.frame.global(a.x!,a.y!),code=codes(a.bytes!,a.font!.bytesPerCode)[0]!;
+   return ink(a.font!,code,retypesetClusterState(a),pt.x,pt.y);
+  });
+  fits[i]=laid.fit;return laid.ink;
+ });
  const pushes=plans.map((p,i)=>{
   const ink=outputInks[i]!,internalOverlap=p.blocks.some((b,j)=>p.blocks.slice(j+1).some(next=>
    b.output.some(a=>ink.has(a)&&next.output.some(c=>ink.has(c)&&intersects(ink.get(a)!.box,ink.get(c)!.box)))));
