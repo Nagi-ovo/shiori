@@ -75,9 +75,10 @@ try {
     assert.deepEqual(beforePage.getCropBox(), afterPage.getCropBox(), 'before/after page boxes differ');
     const rotation = ((beforePage.getRotation().angle % 360 + 360) % 360) as Rotation;
     assert.equal(rotation, (afterPage.getRotation().angle % 360 + 360) % 360, 'before/after rotations differ');
-    const rects = editRects(sample.metadata);
-    const before = cropPage(native.inspectPage(beforeBytes, pageIndex, true), rects, rotation, margin);
-    const after = cropPage(native.inspectPage(afterBytes, pageIndex, true), rects, rotation, margin);
+    const beforeNative=native.inspectPage(beforeBytes,pageIndex,true),afterNative=native.inspectPage(afterBytes,pageIndex,true);
+    const rects = editRects(sample.metadata,{before:beforeNative.glyphs,after:afterNative.glyphs});
+    const before = cropPage(beforeNative, rects, rotation, margin);
+    const after = cropPage(afterNative, rects, rotation, margin);
     assert.deepEqual(before.bounds, after.bounds, 'before/after raster crops differ');
     const mode = sample.metadata.row?.outcome?.mode ?? 'explicit';
     const name = `${sample.name}-${mode}`.replace(/[^a-zA-Z0-9_.-]/g, '_');
@@ -94,5 +95,5 @@ try {
 const quote = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
 const command = ['bun', ...process.argv.slice(1)].map(quote).join(' ');
 await writeFile(join(out, 'manifest.json'), JSON.stringify({dpi: 144, marginPt: margin, pairOrder: ['before', 'after'], command, notes, renders}, null, 2));
-await writeFile(join(out, 'README.md'), `# Saved-PDF render evidence\n\nRun from the repository root:\n\n\`\`\`sh\n${command}\n\`\`\`\n\nPairs show before on the left and after on the right at 144 dpi.\nCrops include covers, paragraph bounds and the recorded reflow region, with ${margin} pt margin.\nSee manifest.json for source hashes, page, crop, filenames and missing-sample notices.\nSynthetic smoke pairs verify rendering only; they are not corpus acceptance evidence.\n\n${notes.join('\n\n')}\n`);
+await writeFile(join(out, 'README.md'), `# Saved-PDF render evidence\n\nRun from the repository root:\n\n\`\`\`sh\n${command}\n\`\`\`\n\nPairs show before on the left and after on the right at 144 dpi.\nCrops include covers, paragraph bounds, the recorded reflow region and new/moved retypeset native ink, with ${margin} pt margin.\nSee manifest.json for source hashes, page, crop, filenames and missing-sample notices.\nSynthetic smoke pairs verify rendering only; they are not corpus acceptance evidence.\n\n${notes.join('\n\n')}\n`);
 console.log(`Render manifest: ${join(out, 'manifest.json')}`);

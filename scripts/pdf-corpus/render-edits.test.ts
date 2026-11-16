@@ -44,6 +44,7 @@ test('selection prioritizes new Chinese modes and Word, with tagged as the Word 
   expect(selectSamples(samples).map(s => s.name)).toEqual(['zh-new', 'latex', 'word']);
   expect(selectSamples(samples.filter(s => s.name !== 'word')).map(s => s.name)).toEqual(['zh-new', 'latex', 'gsa-tagged']);
   expect(selectSamples([])).toEqual([]);
+  expect(selectSamples([sample('zh-retypeset','chinese','retypeset')]).map(s=>s.name)).toEqual(['zh-retypeset']);
 });
 
 test('crop includes original cover, paragraph rect and the full downward reflow region', () => {
@@ -55,6 +56,28 @@ test('crop includes original cover, paragraph rect and the full downward reflow 
 test('sample renders include the fixed glyph mask when present',()=>{
  const mask=[{x:10,y:20,w:3,h:4},{x:20,y:10,w:4,h:5}];
  expect(editRects({row:{outcome:{reflow:{region:{box:{x:0,y:0,w:100,h:100},mask}}}}})).toEqual(mask);
+});
+
+// Overflow failure list: new lines below the paragraph, wide output to its
+// right, duplicate scalars, and rotations must all fit the shared pair crop.
+test('overflow crop includes complete after ink even beyond the original paragraph and margin',()=>{
+ const glyph=(text:string,x:number,y:number)=>({text,origin:[x,y],box:[x,y-2,x+4,y+8],inkBox:[x,y-1,x+3,y+7],fontHash:'font'});
+ const source=[glyph('A',10,80),glyph('i',15,80),glyph('i',70,80)];
+ const output=[...source,glyph('i',10,50),glyph('g',40,50)];
+ const metadata={overlay:{rect:{x:9,y:78,w:10,h:12},coverRects:[{x:9,y:78,w:10,h:12}]},
+  row:{outcome:{mode:'retypeset',retypeset:{paragraphBox:{x:10,y:78,w:9,h:12},lineCount:2,overflowed:true}}}};
+ const rects=editRects(metadata,{before:source,after:output});
+ expect(editRects({...metadata,row:{outcome:{...metadata.row.outcome,mode:'fallback-font',fidelity:'approximate'}}},{before:source,after:output})).toEqual(rects);
+ const page={width:100,height:100,pixels:Buffer.alloc(200*200*4,255)};
+ const before=cropPage(page,rects,0),after=cropPage(page,rects,0);
+ expect(before.bounds).toEqual(after.bounds);
+ // Wrapped descender's native ink bottom is y=49 pt, i.e. row 102 at 144 dpi.
+ expect(after.bounds.y+after.bounds.h).toBeGreaterThanOrEqual(102);
+ expect(after.bounds.x+after.bounds.w).toBeGreaterThanOrEqual(86);
+ expect(after.bounds.x+after.bounds.w).toBeLessThan(140); // unrelated i at x=70 stays outside
+ const rotated=cropPage(page,rects,90);
+ expect(rotated.bounds.x).toBeLessThanOrEqual(98);
+ expect(rotated.bounds.x+rotated.bounds.w).toBeGreaterThanOrEqual(114);
 });
 
 const library = resolve(process.env.SHIORI_PDFIUM_DIR ?? 'vendor/pdfium/linux-x64/lib', 'libpdfium.so');

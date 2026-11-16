@@ -251,7 +251,7 @@ missing-Han). `selectOracleSamples` includes `retypeset` and excludes
 before opening a sample. `run.ts` passes the entire saved outcome, including
 `fidelity` and the paragraph manifest, to the audit.
 
-**Exact tier is unchanged.** In-place, fallback-font, substituted and reflowed
+**Exact tier.** In-place, fallback-font, substituted and reflowed
 samples retain the existing native Unicode, font-program/outline/origin and
 replacement-glyph proofs, the strict zero-pixel-outside-cover/proved-mask
 checks (including the reflow raster veto), qpdf and strict Poppler expectation.
@@ -288,10 +288,24 @@ Every nonspace output glyph needs native path and ink, and an outline
 distinct from two independently forced .notdef/GID0 probes using the same
 native font program. Embedded replacements reuse the existing probe builder;
 unembedded Type1 reuse has a retypeset-only probe whose program hash must
-also match. Available coverage GIDs must remain positive. qpdf must be clean.
-Poppler independently accounts for every extracted nonspace scalar in
-retypeset output, allowing spatial reading-order differences after wrapping;
-the native gate enforces local sequence and position. Exact-tier Poppler
+also match. Available coverage GIDs must remain positive. Both tiers run
+`qpdf --check` on before and after. After diagnostics must be a multiset subset
+of before, with no worse exit (errors are worse than warnings). Paths are
+normalized; shifted offsets/object IDs are equivalent only for the same
+encoded stream fingerprint, including its decoding settings. Other locations
+remain literal, so an unrecognized relocation conservatively fails. A new
+damaged stream cannot replace an old warning of the same kind. Oracle JSON
+records `qpdf: 'clean'` when no new issue exists, plus source/inherited issue
+counts when the source was noisy.
+
+Poppler independently accounts for every extracted nonspace scalar change in
+retypeset output: its signed before/after scalar delta must equal PDFium's.
+This allows spatial reading-order differences after wrapping and inherited
+engine differences (the native helper exposes PDFium's line-end hyphen marker
+as U+0002 while Poppler extracts `-`). No scalars are globally remapped or
+dropped; a missing/extra wrapped character still changes the delta and fails.
+Oracle JSON records the comparison and source differences. The native gate
+enforces local sequence and position. Exact-tier Poppler
 checks remain strict. Successful audits write `*.oracle.json`, embedded in
 the report's separate sample evidence.
 
