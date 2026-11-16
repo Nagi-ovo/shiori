@@ -19,8 +19,9 @@ const transformedBox=(m:Matrix,b:number[])=>fromPoints([[b[0]!,b[1]!],[b[2]!,b[1
  */
 export function reflowScene(page:PDFPage,ops:readonly ContentOp[],media:Rect,record?:(box:Rect,kind:OccupantKind,op:number)=>void,guardPt=.5):Rect[]{
  const obstacles:Rect[]=[],resources=page.node.Resources(),xobjects=resources?.lookupMaybe(PDFName.of('XObject'),PDFDict);
- let state={ctm:identity(),ctmKnown:true,clip:media,clipFull:true,width:1,miter:10,strokeUnknown:false,
+ let state={ctm:identity(),ctmKnown:true,clip:media,clipFull:true,width:1,miter:10,cap:0,strokeUnknown:false,
   fillPlain:true,blendNormal:true,noSoftMask:true},path:Rect|undefined,clipPending=false,singleRect=false;
+ let subpaths=0,segments=0,joinless=true;
  const stack:typeof state[]=[];
  const r=page.getCropBox(),crop={x:r.x,y:r.y,w:r.width,h:r.height};
  // This deliberately stronger z proof precedes EVERY source show. The
@@ -29,7 +30,7 @@ export function reflowScene(page:PDFPage,ops:readonly ContentOp[],media:Rect,rec
  const firstShow=ops.findIndex(op=>['Tj','TJ',"'",'"'].includes(op.operator));
  let paintOp=-1;
  const add=(box:Rect,kind:OccupantKind='paint')=>{const b=intersection(expand(box,guardPt),state.clip);if(b.w>0&&b.h>0){obstacles.push(b);record?.(b,kind,paintOp);}};
- const clear=()=>{if(clipPending)state={...state,clip:intersection(state.clip,path??state.clip),clipFull:false};path=undefined;clipPending=false;singleRect=false;};
+ const clear=()=>{if(clipPending)state={...state,clip:intersection(state.clip,path??state.clip),clipFull:false};path=undefined;clipPending=false;singleRect=false;subpaths=segments=0;joinless=true;};
  const inert=new Set(['BT','ET','Tf','Tm','Td','TD','T*','Tc','Tw','Tz','TL','Ts','Tr','Tj','TJ',"'",'"','rg','RG','g','G','k','K','cs','CS','sc','SC','scn','SCN','J','j','d','ri','i','BMC','BDC','EMC','MP','DP','BX','EX']);
  for(const op of ops){
   paintOp++;
@@ -47,6 +48,10 @@ export function reflowScene(page:PDFPage,ops:readonly ContentOp[],media:Rect,rec
    case 'sc':case 'scn':state={...state,fillPlain:state.fillPlain&&n.length>0&&n.every(Number.isFinite)};break;
    case 'w':if(n.length!==1||!Number.isFinite(n[0])||n[0]!<0)state={...state,strokeUnknown:true};else state={...state,width:n[0]!};break;
    case 'M':if(n.length!==1||!Number.isFinite(n[0])||n[0]!<1)state={...state,strokeUnknown:true};else state={...state,miter:n[0]!};break;
+   case 'J':case 'j':
+    if(n.length!==1||!Number.isInteger(n[0])||n[0]!<0||n[0]!>2)state={...state,strokeUnknown:true};
+    else if(op.operator==='J')state={...state,cap:n[0]!};
+    break;
    case 'gs':{
     const name=op.operands[0],states=resources?.lookupMaybe(PDFName.of('ExtGState'),PDFDict),d=op.operands.length===1&&name?.kind==='name'?states?.lookupMaybe(PDFName.of(name.value),PDFDict):undefined;
     if(!d){state={...state,strokeUnknown:true,blendNormal:false,noSoftMask:false};break;}
@@ -58,23 +63,36 @@ export function reflowScene(page:PDFPage,ops:readonly ContentOp[],media:Rect,rec
      if(!(v instanceof PDFNumber)||!Number.isFinite(v.asNumber())||v.asNumber()<(field==='miter'?1:0))state={...state,strokeUnknown:true};
      else state={...state,[field]:v.asNumber()};
     }
+    for(const key of ['LC','LJ']){
+     const v=d.lookup(PDFName.of(key));if(v===undefined)continue;
+     if(!(v instanceof PDFNumber)||!Number.isInteger(v.asNumber())||v.asNumber()<0||v.asNumber()>2)state={...state,strokeUnknown:true};
+     else if(key==='LC')state={...state,cap:v.asNumber()};
+    }
     break;
    }
    case 'm':case 'l':case 'c':case 'v':case 'y':case 're':{
     const count={m:2,l:2,c:6,v:4,y:4,re:4}[op.operator];
-    if(n.length!==count||!n.every(Number.isFinite)||!state.ctmKnown){path=state.clip;singleRect=false;break;}
+    if(n.length!==count||!n.every(Number.isFinite)||!state.ctmKnown){path=state.clip;singleRect=false;joinless=false;break;}
+    if(op.operator==='m')subpaths++;
+    else if(op.operator==='l'&&subpaths===1)segments++;
+    else joinless=false;
     singleRect=op.operator==='re'&&!path&&Math.abs(state.ctm[1]!)<=1e-9&&Math.abs(state.ctm[2]!)<=1e-9&&state.ctm[0]!==0&&state.ctm[3]!==0;
     const b=op.operator==='re'?transformedBox(state.ctm,[n[0]!,n[1]!,n[0]!+n[2]!,n[1]!+n[3]!]):fromPoints(Array.from({length:n.length/2},(_,i)=>transform(state.ctm,n[2*i]!,n[2*i+1]!)));
     path=path?union(path,b):b;break;
    }
-   case 'h':break;
+   case 'h':joinless=false;break;
    case 'W':case 'W*':clipPending=true;break;
    case 'n':clear();break;
    case 'S':case 's':case 'B':case 'B*':case 'b':case 'b*':{
-    // A Frobenius norm bounds scaling under any affine transform; miter
-    // joins and square caps remain inside this deliberately broad envelope.
+    // One open straight segment has no joins; a dash only removes ink.
+    // A Frobenius disk covers butt/round caps. Under a non-conformal CTM a
+    // square cap can exceed that disk: retain the miter envelope unless the
+    // disk also covers sqrt(2) times each CTM row norm. Hairlines stay broad.
     const scale=Math.hypot(...state.ctm.slice(0,4));
-    add(state.strokeUnknown?state.clip:expand(path??state.clip,Math.max(.5,state.width*scale*state.miter)));clear();break;
+    const squareBound=Math.SQRT2*Math.max(Math.hypot(state.ctm[0]!,state.ctm[2]!),Math.hypot(state.ctm[1]!,state.ctm[3]!));
+    const radius=joinless&&subpaths===1&&segments===1&&state.ctmKnown&&state.width>0&&op.operator==='S'&&(state.cap!==2||scale>=squareBound)
+     ?state.width*scale/2:Math.max(.5,state.width*scale*state.miter);
+    add(state.strokeUnknown?state.clip:expand(path??state.clip,radius));clear();break;
    }
    case 'f':case 'F':case 'f*':{
     // A bbox around an arbitrary path is never enough. Active/pending clips

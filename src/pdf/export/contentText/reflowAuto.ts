@@ -100,7 +100,7 @@ export function planProvedStreamReflow(e:StreamReflowEvidence,fonts:readonly Res
    if(a.original!.line!==b.original!.line&&legalMeasuredBreak(a,b))softBreaks.push(a.original!.line);
   }
   let proof=e.proof,layout=solveMeasuredReflow({source,replacement,start,end,proof,softBreaks});
-  while(!layout.ok&&layout.code==='overflow'){
+  while(!proof.rowLocal&&!layout.ok&&layout.code==='overflow'){
    const grown=proveDownwardSlot(e,proof,[...replacement,...source.slice(end)]);if(!grown)break;
    proof=grown;layout=solveMeasuredReflow({source,replacement,start,end,proof,softBreaks});
   }

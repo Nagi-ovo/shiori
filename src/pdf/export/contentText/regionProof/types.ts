@@ -81,7 +81,7 @@ export type ParagraphIndent = {
 };
 export type LineSlot = {
   baseline: number; left: number; right: number;
-  kind: 'observed' | 'explicit-blank';
+  kind: 'observed' | 'observed-row' | 'explicit-blank';
 };
 export type TjBoundary = {
   opIndex: number; itemIndex: number; value: number;
@@ -92,6 +92,8 @@ export type RegionProof = {
   kind: 'paragraph' | 'explicit-line-region'; box: Rect;
   /** Fixed before compilation. box is only this mask's union bound. */
   mask?: readonly Rect[]; occupancyHash?: string;
+  /** Only this source row's observed extent; no suffix shift, wrap or growth. */
+  rowLocal?: true;
   /** All owned original ink, guard-dilated; oracle veto evidence only. */
   oldInk?: readonly Rect[];
   /** Source paint ops with a complete analytic page-backdrop proof. Native

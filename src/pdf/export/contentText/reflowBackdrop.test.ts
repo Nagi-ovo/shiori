@@ -5,6 +5,7 @@ import {inspectRunPage,resolveRunFonts} from '../contentStreamEdit/replaceRunPag
 import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {streamReflowEvidence} from './reflowEvidence';
 import {reflowScene} from './reflowScene';
+import {proveGlyphRegion} from './regionProof/glyphRegion';
 import type {OccupantKind} from './regionProof/occupancy';
 import type {Rect} from './regionProof';
 
@@ -36,7 +37,11 @@ test('a smaller coloured rect remains an analytic occupant of that rect',async()
  const f=await fixture('0 .2 .4 rg 0 0 150 200 re f'),{items,e}=f.inspect();
  expect(items.some(o=>o.kind==='backdrop')).toBe(false);
  expect(items).toContainEqual({box:{x:0,y:0,w:151,h:200},kind:'paint',op:2});
- expect(e.ok).toBe(false);
+ expect(e.ok).toBe(true);if(!e.ok)throw Error(e.detail);
+ const old=e.source[0]!,clusters=[{...old,source:undefined,original:undefined,homeOp:old.source!.opIndex},...e.source.slice(1)];
+ const origins=e.source.map(t=>[t.original!.x,t.original!.y]as [number,number]);
+ // Row-local evidence defers the paint collision to the actual destination.
+ expect(proveGlyphRegion(e,e.proof,clusters,origins,[old])).toBeNull();
 });
 for(const prefix of [
  '0 0 m 300 0 l 150 200 l h f',

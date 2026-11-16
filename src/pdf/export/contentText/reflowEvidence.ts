@@ -9,8 +9,9 @@ import type {Type1Options} from '../fontCoverage/type1Support';
 import {detectParagraphRegion,type ParagraphBlocker,type ParagraphLine,type RegionProof,type Rect,type SourceAddress} from './regionProof';
 import {contains,origin,physicalSize,validTrace,linear,paragraphMember,lastPositionAnchor} from './regionProof/geometry';
 import {buildPageOccupancy,boundBoxes,glyphKey,queryOccupancy} from './regionProof/occupancy';
-import {buildVisualGroups,capVisualSlots} from './regionProof/visualGroups';
+import {buildVisualGroups,capVisualSlots,visualLineEnd} from './regionProof/visualGroups';
 import {proveOneLineCapacity} from './regionProof/columnCapacity';
+import {proveRowLocalSlot} from './regionProof/rowLocal';
 import {traceReflowSource} from './reflowTrace';
 import {streamInkResolver} from './reflowInk';
 import type {ReflowCodeCluster} from './reflowTypes';
@@ -124,7 +125,15 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   if(!members.length)return refuse('no-member-lines','No member ink in the visual window');
   const lower=Math.min(...members.map(t=>t.ink.y))-occupancy.guardPt,upper=Math.max(...members.map(t=>t.ink.y+t.ink.h))+occupancy.guardPt;
   const owners=new Set(source.map(t=>glyphKey(t.source!)));
-  const lineSlots=capVisualSlots(proof.lineSlots,occupancy,owners,lower,upper);
+  let lineSlots=capVisualSlots(proof.lineSlots,occupancy,owners,lower,upper);
+  if(count===1&&lineSlots[0]!.right<visualLineEnd(lines[0]!,trace.ends)){
+   const local=proveRowLocalSlot(group,lines,occupancy,owners,trace.ends);
+   if(!local.ok)return refuse('region-unproved',`Row-local occupancy unproved: ${local.reason}`,'obstacles');
+   lineSlots=[local.slot];
+   proof={...proof,rowLocal:true,obstacleProofHash:sourceFingerprint(new TextEncoder().encode(JSON.stringify({
+    occupancy:occupancy.hash,rowLocal:true,slot:local.slot,band:lines[0]!.ink,owners:[...owners],
+   })))};
+  }
   if(lineSlots.some(s=>s.right<=s.left))return refuse('region-unproved',`Analytic occupancy leaves no row capacity${group.columnEvidence?`; column=${JSON.stringify(group.columnEvidence)}`:''}`,'obstacles');
   proof={...proof,lineSlots};
  }
@@ -140,7 +149,7 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
  * previously proved top may be moved to make an edit fit.
  */
 export function proveDownwardSlot(e:StreamReflowEvidence,proof:RegionProof,planned:readonly ReflowCodeCluster[]=e.source):RegionProof|null{
- if(proof.lineSlots.length>=8||!(proof.leadingPt>0))return null;
+ if(proof.rowLocal||proof.lineSlots.length>=8||!(proof.leadingPt>0))return null;
  const last=proof.lineSlots.at(-1)!,baseline=last.baseline-proof.leadingPt;
  if(baseline>=e.visualGroup.lines.at(-1)!.baseline!||!planned.length)return null;
  const lower=Math.min(...planned.map(t=>t.ink.y))-e.occupancy.guardPt,upper=Math.max(...planned.map(t=>t.ink.y+t.ink.h))+e.occupancy.guardPt;

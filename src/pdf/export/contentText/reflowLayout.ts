@@ -110,9 +110,9 @@ export function solveMeasuredReflow(input:MeasuredReflowInput):MeasuredReflowRes
  for(let i=start+replacement.length;i<tokens.length;i++)if(tokens[i]!.original!.line===row)shifted[i]![0]+=delta;
  const fitsRow=(p:readonly number[],t:MeasuredCluster,line:number)=>p[0]!>=slots[line]!.left-1e-7&&
   p[0]!+Math.max(t.advance,t.ink.x+t.ink.w)<=slots[line]!.right+1e-7;
- if(input.allowSuffix!==false&&!hardReplacement&&shifted.every((p,i)=>fitsRow(p,tokens[i]!,tokens[i]!.original?.line??row)))return finish('suffix-shift',shifted);
+ if(!proof.rowLocal&&input.allowSuffix!==false&&!hardReplacement&&shifted.every((p,i)=>fitsRow(p,tokens[i]!,tokens[i]!.original?.line??row)))return finish('suffix-shift',shifted);
 
- if(input.allowWrap===false)return fail('reflow-spacing-limit: replacement exceeds original slot','overflow');
+ if(proof.rowLocal||input.allowWrap===false)return fail('reflow-spacing-limit: replacement exceeds original slot','overflow');
  const origins=baseOrigins().slice(0,start);
  let cursor=start,line=row,x=first.x;
  while(cursor<tokens.length){

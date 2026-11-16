@@ -16,7 +16,7 @@ export type OccupantKind='glyph'|'placement'|'paint'|'image'|'form'|'annot'|'unp
 export type Occupant={id:number;kind:OccupantKind;box:Rect;owner?:GlyphKey;paintOp:number;measured:boolean};
 export type PageOccupancy={
  items:Occupant[];grid:Map<number,number[]>;pageBlocked:boolean;hash:string;guardPt:number;
- glyphs:Map<GlyphKey,{ink?:ReflowInk;placement:Rect}>;embeddedFonts:Set<string>;
+ glyphs:Map<GlyphKey,{ink?:ReflowInk;placement:Rect;baseline:number}>;embeddedFonts:Set<string>;
 };
 export const glyphKey=(s:SourceAddress):GlyphKey=>`${s.opIndex}:${s.itemIndex}:${s.byteStart}`;
 export const placedGlyphKey=(g:GlyphPlacement):GlyphKey=>`${g.opIndex}:${g.arrayItemIndex}:${g.byteOffset}`;
@@ -90,7 +90,7 @@ export function buildPageOccupancy(input:{page:PDFPage;ops:readonly ContentOp[];
   const t=trace.shows.get(`${g.opIndex}:${g.arrayItemIndex}`)?.before,font=byName.get(g.fontName),owner=placedGlyphKey(g),o=g.coreQuad[0];
   if(!t||!font){add('unknown',media,g.opIndex);continue;}
   const measured=ink(g.fontName,g.code,t),placement=placementBox(font,t,g.code,o.x,o.y);
-  measures.set(owner,{ink:measured,placement});add('placement',placement,g.opIndex,!!measured,owner);
+  measures.set(owner,{ink:measured,placement,baseline:o.y});add('placement',placement,g.opIndex,!!measured,owner);
   if(measured){
    // A measured empty outline (space) paints nothing. Its placement above
    // still protects extraction; dilating an empty outline would invent ink.

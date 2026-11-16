@@ -77,3 +77,26 @@ export const contains = (outer: Rect, inner: Rect) => inner.x >= outer.x - EPS &
   inner.x + inner.w <= outer.x + outer.w + EPS && inner.y + inner.h <= outer.y + outer.h + EPS;
 export const intersects = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w &&
   a.y < b.y + b.h && b.y < a.y + a.h;
+
+export function intersectRect(a:Rect,b:Rect):Rect|null{
+ const x=Math.max(a.x,b.x),y=Math.max(a.y,b.y),right=Math.min(a.x+a.w,b.x+b.w),top=Math.min(a.y+a.h,b.y+b.h);
+ return right>x&&top>y?{x,y,w:right-x,h:top-y}:null;
+}
+/** Exact rectangle difference, without a tolerance that could erase a new
+ * sliver of ink. Covers may overlap; their bounding union is insufficient. */
+export function subtractRectangles(subject:Rect,covers:readonly Rect[]):Rect[]{
+ let remaining=subject.w>0&&subject.h>0?[subject]:[];
+ for(const cover of covers){
+  remaining=remaining.flatMap(b=>{
+   const cut=intersectRect(b,cover);if(!cut)return[b];
+   return [
+    {x:b.x,y:b.y,w:b.w,h:cut.y-b.y},
+    {x:b.x,y:cut.y+cut.h,w:b.w,h:b.y+b.h-cut.y-cut.h},
+    {x:b.x,y:cut.y,w:cut.x-b.x,h:cut.h},
+    {x:cut.x+cut.w,y:cut.y,w:b.x+b.w-cut.x-cut.w,h:cut.h},
+   ].filter(r=>r.w>0&&r.h>0);
+  });
+  if(!remaining.length)break;
+ }
+ return remaining;
+}
