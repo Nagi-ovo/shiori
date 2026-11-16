@@ -1,15 +1,20 @@
 import type {Rect,RegionProof} from './regionProof';
+import {planSuffixGlue} from './reflowJustify';
 
 /** L1 port: only measured PDF advances/ink enter this solver. It cannot find
  * fonts, infer whitespace, grant ownership, or extend a RegionProof. */
 export type MeasuredCluster={
  unicode:string;advance:number;ink:Rect;em:number;wordSpace:boolean;gap:number;
+ /** Code identity and actual TJ positioning evidence, never Unicode guesses. */
+ code?:Uint8Array;tjGap?:true;
  fullEmHan?:boolean;
  original?:{line:number;x:number;y:number};hardAfter?:boolean;lockedAfter?:boolean;
 };
 export type MeasuredReflowInput={source:readonly MeasuredCluster[];replacement:readonly MeasuredCluster[];
- start:number;end:number;proof:RegionProof;softBreaks:readonly number[];allowSuffix?:boolean;allowWrap?:boolean};
-export type MeasuredReflowResult={ok:true;strategy:'fixed'|'spacing-only'|'suffix-shift'|'wrap';
+ start:number;end:number;proof:RegionProof;softBreaks:readonly number[];allowSuffix?:boolean;allowWrap?:boolean;
+ /** Complete observed row end, including a source trailing TJ displacement. */
+ ownEnd?:number};
+export type MeasuredReflowResult={ok:true;strategy:'fixed'|'spacing-only'|'row-justify'|'suffix-shift'|'wrap';
  clusters:MeasuredCluster[];origins:[number,number][];reductions:number[];tc:number;tw:number;
  visualLines:string[]}|{ok:false;code:'overflow'|'reflow-required';reason:string};
 const fail=(reason:string,code:'overflow'|'reflow-required'='reflow-required'):MeasuredReflowResult=>({ok:false,code,reason});
@@ -81,7 +86,7 @@ export function solveMeasuredReflow(input:MeasuredReflowInput):MeasuredReflowRes
    const origin:[number,number]=[x,first.y];x+=t.advance-(shrunk.reductions[i-start]??0);return origin;
   });
  };
- const finish=(strategy:'fixed'|'spacing-only'|'suffix-shift'|'wrap',origins:[number,number][]):MeasuredReflowResult=>{
+ const finish=(strategy:Extract<MeasuredReflowResult,{ok:true}>['strategy'],origins:[number,number][]):MeasuredReflowResult=>{
   if(!proof.occupancyHash&&origins.some((p,i)=>!inside(tokens[i]!.ink,p[0],p[1],proof.box)))return fail('reflow-obstacle: destination ink exceeds proven box','overflow');
   const bands=new Map<number,{bottom:number;top:number;last:number}>();
   for(let i=0;i<tokens.length;i++){
@@ -110,6 +115,18 @@ export function solveMeasuredReflow(input:MeasuredReflowInput):MeasuredReflowRes
  for(let i=start+replacement.length;i<tokens.length;i++)if(tokens[i]!.original!.line===row)shifted[i]![0]+=delta;
  const fitsRow=(p:readonly number[],t:MeasuredCluster,line:number)=>p[0]!>=slots[line]!.left-1e-7&&
   p[0]!+Math.max(t.advance,t.ink.x+t.ink.w)<=slots[line]!.right+1e-7;
+ const ownEnd=input.ownEnd??Math.max(...source.map(t=>t.original!.x+Math.max(t.advance,t.ink.x+t.ink.w)));
+ if(!hardReplacement&&slots.length===1&&source.every(t=>t.original!.line===row)&&
+  (proof.rowLocal||Math.abs(slots[row]!.right-ownEnd)<=1e-7)){
+  const justified=baseOrigins(),suffix=start+replacement.length;
+  const previous=tokens[suffix-1],p=justified[suffix-1];
+  const glue=planSuffixGlue(tokens.slice(suffix),{...slots[row]!,
+   previousInkRight:previous&&p&&previous.ink.w>0&&previous.ink.h>0?p[0]+previous.ink.x+previous.ink.w-delta:undefined},delta);
+  if(glue){
+   for(let i=suffix;i<tokens.length;i++)justified[i]![0]+=glue.shifts[i-suffix]!;
+   if(justified.every((p,i)=>fitsRow(p,tokens[i]!,row)))return finish('row-justify',justified);
+  }
+ }
  if(!proof.rowLocal&&input.allowSuffix!==false&&!hardReplacement&&shifted.every((p,i)=>fitsRow(p,tokens[i]!,tokens[i]!.original?.line??row)))return finish('suffix-shift',shifted);
 
  if(proof.rowLocal||input.allowWrap===false)return fail('reflow-spacing-limit: replacement exceeds original slot','overflow');

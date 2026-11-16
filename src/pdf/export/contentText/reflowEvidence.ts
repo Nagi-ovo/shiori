@@ -97,8 +97,14 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
    code:font.bytesPerCode===1?Uint8Array.of(g.code):Uint8Array.of(g.code>>8,g.code&255),fontResource:font.resourceName,fontObject:font.objectId});
  }
  if(!lines.length)return refuse('no-member-lines',`glyphs=${walk.glyphs.length} unplaced=${unplaced.length} obstacles=${obstacles.length} excluded=${JSON.stringify(excluded)}`);
- for(let i=0;i<source.length-1;i++)if(source[i]!.original!.line===source[i+1]!.original!.line)
-  source[i]!.gap=source[i+1]!.original!.x-source[i]!.original!.x-source[i]!.advance;
+ for(let i=0;i<source.length-1;i++)if(source[i]!.original!.line===source[i+1]!.original!.line){
+  const a=source[i]!,b=source[i+1]!,s=a.source!,next=b.source!;
+  a.gap=b.original!.x-a.original!.x-a.advance;
+  const op=ops[s.opIndex]!,items=op.operator==='TJ'&&op.operands[0]?.kind==='array'?op.operands[0].items:undefined;
+  if(items&&s.opIndex===next.opIndex&&next.itemIndex>s.itemIndex&&
+   items.slice(s.itemIndex+1,next.itemIndex).length>0&&
+   items.slice(s.itemIndex+1,next.itemIndex).every(item=>item.kind==='number'||item.kind==='string'&&!item.bytes.length))a.tjGap=true;
+ }
  let proof:RegionProof;
  let visualGroup:import('./regionProof').VisualGroup;
  {
