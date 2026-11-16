@@ -21,7 +21,7 @@ import {retypesetClusterState} from './retypesetLayout';
 import {planRetypesetPush,verifyRetypesetPushPaint} from './retypesetPush';
 import {retypesetFormPushSpace} from './retypesetForms';
 import {retypesetScopes} from './retypesetScopes';
-import {contains,intersects} from './regionProof/geometry';
+import {intersects} from './regionProof/geometry';
 import {prepareRetypesetFits} from './retypesetFit';
 import {retypesetInk} from './retypesetInk';
 import {layoutRetypesetInClip} from './retypesetClip';

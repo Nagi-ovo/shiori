@@ -102,7 +102,11 @@ export function createFontCoverage(input:FontInput,options:Type1Options={}):Font
         codeCid=hex=>parsed.cids.get(hex) ?? (parsed.identity && hex.length===4?codeNumber(hex):undefined);
       } else throw new Error('unsupported predefined CMap');
       if(!['CIDFontType2','CIDFontType0'].includes(input.cidSubtype ?? ''))throw new Error('unsupported CID font subtype');
-      if(input.cidSubtype==='CIDFontType2' && program?.cff)throw new Error('CIDFontType2 requires TrueType glyf program');
+      // Some producers put CID-keyed CFF bytes in FontFile2/CIDFontType2.
+      // readProgram detects the actual outlines. Raw CID CFF can use native
+      // CID access rather than sfnt GID access, so require identical CID/GID
+      // mappings below instead of trusting the wrapper or either map alone.
+      if(input.cidSubtype==='CIDFontType2' && program?.cff && !program.cid)throw new Error('CIDFontType2 CFF requires a CID-keyed program');
       if(input.cidSubtype==='CIDFontType0' && !program?.cid)throw new Error('CIDFontType0 requires CID-keyed CFF program');
       if(input.cidToGid instanceof Uint8Array && input.cidToGid.length%2)throw new Error('truncated CIDToGIDMap stream');
     }
@@ -124,14 +128,21 @@ export function createFontCoverage(input:FontInput,options:Type1Options={}):Font
             const offset=cid*2,map=input.cidToGid;
             gid=offset+1<map.length?map[offset]!*256+map[offset+1]!:0;
           } else gid=cid;
+          if(cid!==undefined && input.cidSubtype==='CIDFontType2' && program?.cff && (gid!==cid || gid!==program.cidGid(cid))) {
+            reason='CIDFontType2 CFF requires identical CID/GID mappings';gid=0;
+          }
         } else if(hex.length!==2)reason='simple font code must be one byte';
         else {
           const selected=program!.simpleGid(codeNumber(hex),names.get(codeNumber(hex)));
           if(typeof selected==='number')gid=selected;
           else reason=selected.reason;
         }
-        if(!reason)report.glyphIds.set(hex,gid);
+        // The mismatched wrapper grants no ink identity for an absent
+        // CFF charstring; fontkit may otherwise report an empty path.
+        const cffType2=type0 && input.cidSubtype==='CIDFontType2' && program!.cff;
+        if(!reason && !cffType2)report.glyphIds.set(hex,gid);
         reason ??= program!.presence(gid,cluster);
+        if(!reason && cffType2)report.glyphIds.set(hex,gid);
         if(!reason && !type0 && program!.symbolic && !program!.cff) {
           const name=names.get(codeNumber(hex));
           if(input.toUnicode===undefined || !name)reason='missing-tounicode: symbolic replacement requires a ToUnicode label and verified glyph name';
