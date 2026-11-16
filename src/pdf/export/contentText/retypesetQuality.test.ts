@@ -72,12 +72,16 @@ test('same-column text and graphics share one delta; outsiders and spacing survi
 });
 
 for(const [name,obstacle]of [
- ['crop','BT /F1 10 Tf 100 25 Td (BOTTOM) Tj ET'],
+ ['crop',''],
  ['foreign','0.3 g 110 82 130 22 re f'],
  ['footer','BT /F1 10 Tf 20 102 Td (FULL WIDTH FOOTER OUTSIDE COLUMN) Tj ET'],
  ['clip','q 80 110 90 20 re W n '+release+'Q'],
 ] as const)test(`blocked push retains overflow and all following ink (${name})`,async()=>{
- const f=await fixture(title+(name==='clip'?'':release)+obstacle),before=read(f.page);
+ const f=await fixture(title+(name==='clip'?'':release)+obstacle);
+ // The crop boundary must block the affected block itself. A distant
+ // bottom line across an absorbing gap is correctly left stationary.
+ if(name==='crop')f.page.setCropBox(0,100,300,100);
+ const before=read(f.page);
  const m=await edit(f.page,longer());
  expect(m.pushed).toBe(false);expect(m.pushReason).toMatch(/^push-blocked-by-/);expect(m.overflowInkOverlap).toBe(true);
  expect(positions(read(f.page).glyphs.filter(g=>g.state.fontSize===10))).toEqual(positions(before.glyphs.filter(g=>g.state.fontSize===10)));

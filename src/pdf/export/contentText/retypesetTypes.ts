@@ -14,8 +14,10 @@ export type RetypesetManifest={
  pushedRegions:{before:PdfRect;after:PdfRect}[];
  /** Conservative ink-envelope intersection with unpushed page ink. */
  overflowInkOverlap:boolean;
- /** Explicit overflow fallback, never clipping or shrinking. */
+ /** Explicit overflow fallback; bounded frames alone permit tightening. */
  pushReason?:string;
+ fitStrategy?:'tighten-frame';
+ frameFit?:{frame:PdfRect;kind:'cell'|'box'|'background';sizeScale:number;floor:number;trackingEm:number;wordReductionEm:number;fits:boolean};
  /** Residual unchanged-line drift after subtracting the applied push Δ. */
  quality:{maxUnchangedLineStartXDriftPt:number;maxUnchangedLineBaselineDriftPt:number;overflowInkOverlap:boolean};
 
@@ -27,4 +29,5 @@ export type RetypesetGlyph={glyph:GlyphPlacement;state:ShowTextState;text:string
 export type RetypesetLine={glyphs:RetypesetGlyph[];x:number;y:number;right:number};
 export type RetypesetGroup={lines:RetypesetLine[];left:number;right:number;pitch:number};
 export type RetypesetEdit={overlay:ContentTextOverlay;reason:ContentTextReason;selected:RetypesetGlyph[]};
-export type RetypesetCluster={text:string;bytes?:Uint8Array;font?:ResolvedRunFont;home:RetypesetGlyph;hard?:boolean;join?:boolean;advance?:number;x?:number;y?:number};
+export type RetypesetAdjustment={sizeScale:number;trackingEm:number;wordReductionEm:number};
+export type RetypesetCluster={text:string;bytes?:Uint8Array;font?:ResolvedRunFont;home:RetypesetGlyph;hard?:boolean;join?:boolean;advance?:number;x?:number;y?:number;fit?:RetypesetAdjustment};

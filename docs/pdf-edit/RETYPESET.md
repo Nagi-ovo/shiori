@@ -34,9 +34,26 @@ not touch horizontally.
 Column x edges come from the existing visual group, not the page margins.
 Membership uses complete visual rows (split at observed inter-column gaps),
 plus in-column path/image/Form bounds from the existing analytic scene
-occupancy. A crossing full-width row/graphic ends the band; a gap beyond four
-observed pitches also ends it. Only following items wholly within this local
-band move. Other columns, earlier content, and headers/footers outside it
+occupancy. A rule, image or indented row may extend past the text measure by
+at most **one source em or one eighth of the column width**, whichever is
+smaller. This outset is evidence of a shared column only when the object's
+centre and at least half its width remain inside the measure, and its extra
+width does not enter the x extent of an observed foreign text row. This
+admits small indents and separator endcaps without treating adjacent columns
+as one flow. Entire paths/images/rows move; glyphs are not cherry-picked.
+
+A crossing full-width row/graphic ends the band. Only annotations/unknown
+occupants intersecting this column can be barriers; an annotation wholly in
+another column stays fixed and is still checked against swept destinations.
+Items in the outer physical page
+margin band (one observed pitch, capped at one tenth of the page height),
+page-width graphics, and wide backgrounds already behind the edited line
+are furniture, not following flow. A gap beyond **four observed physical
+pitches** ends recruitment. Within that locality, stop at the first complete
+prefix whose translated ink and swept bounds clear all stationary ink and
+the new wrap: an existing gap can absorb Δ without moving a distant footer
+or later body. If no such prefix exists, the whole affected band is blocked.
+Only following items wholly within the proved local band move. Other columns, earlier content, and headers/footers outside it
 retain their coordinates. Moving a Form invocation as a whole is supported;
 pushing across an edited Form's own boundary is not.
 
@@ -65,11 +82,52 @@ keep visible overflow at the original size, set `pushed:false`, and attach a
 `pushReason` starting with `push-blocked-by-`. Blockers include crop/media
 limits, fixed/foreign occupants, annotations, shared shows, active clips,
 unknown ink/unplaced text, unsafe graphics spans, rotated push frames, and
-interacting edited blocks/streams or already accepted edits. Never shrink,
-paint a cover, or introduce a clipping rectangle to invent space. If an
+interacting edited blocks/streams or already accepted edits. Ordinary column
+text **never shrinks**. Never paint a cover or introduce a clipping rectangle
+to invent space. If an
 inherited source clip (including a Form BBox) would hide new wrap ink, refuse
 the transaction precisely (`retypeset-output-outside-source-clip`) and retain
 the source bytes instead of reporting a silently clipped edit as success.
+
+### Bounded-frame exception (r23)
+
+A fixed cell, box or header banner permits tightening instead of moving the
+table or page body. Detection uses existing page geometry: an axis-aligned
+rectangle, or four connected horizontal/vertical rule segments enclosing all
+changed source glyphs. Thin filled rectangles (at most one eighth of a
+source em thick, at least one em long) are rules too. Compound table paths
+must have no additional segment crossing the chosen interior. Page-sized
+outlines do not authorize shrinking ordinary columns. A filled rectangular
+background must precede and contain the edited source, and be shorter than
+half the page; a page backdrop is not a text frame. An existing rectangular
+clip may bound the visible frame, intersected with both crop and media boxes;
+the clip is never extended or rewritten.
+Arbitrary/curved path bboxes do not prove a frame.
+
+The fit search measures the actual emitted font ink, including overhang and
+stroke guard. Keep the original anchor. Try character and word spacing
+reductions of **0.01, 0.02, then 0.03 source em** at the original size first.
+If those fail, reduce each source run's font size in one-percent steps to a
+hard **85% floor** (`RETYPESET_FRAME_SIZE_FLOOR = 0.85`), retaining the mild
+spacing reductions. Wrapped baseline pitch scales by the same size factor;
+unchanged source lines never enter this layout. Use the bounded interior's
+width, reserving the measured right overhang.
+
+A fit is accepted only when every emitted ink envelope is measurable,
+contained in the frame, and clear of other text and graphics. Paint belonging
+to the frame (including a containing background behind its border) remains
+stationary and is exempted from overlap only when all output is contained.
+When the floor still fails, retain visible overflow, never push the table or
+body, and report `push-blocked-by-bounded-frame` with the measured
+`overflowInkOverlap`. An unresolved envelope intersection stays true.
+
+Applied tightening reports `fitStrategy: 'tighten-frame'` and `frameFit`:
+frame rectangle/kind, `sizeScale`, `floor: 0.85`, `trackingEm`,
+`wordReductionEm`, and `fits`. Spacing reductions are relative to each run's
+source size, before its text matrix/CTM; measurement and emission share that
+same effective state. A contained fit needs no grow-down mask. This exception
+changes only approximate retypeset; the exact-tier **0-px-outside-mask** oracle
+and its masks remain unchanged.
 
 Production per-edit diagnostics use PDF points: `unchangedLineDriftPt` is the
 maximum absolute start-x/baseline drift over unchanged source lines; it is
