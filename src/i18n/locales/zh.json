@@ -258,7 +258,6 @@
   "meta": {
     "ppAbbr": "页",
     "local": "本地",
-    "localOnly": "● 仅本地",
     "editsNotSaved": "编辑未保存",
     "pageShort": "第",
     "pageLabel": "第 {{page}} 页",

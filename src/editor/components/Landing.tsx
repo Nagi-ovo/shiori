@@ -510,7 +510,7 @@ export function Landing({ onOpen, onReopen, onOpenChangelog }: Props) {
           {recent.length === 0 ? (
             <div
               style={{
-                font: `15px/1.55 ${T.bodySerif}`,
+                font: `15px/1.55 ${T.sans}`,
                 color: T.dim,
                 padding: "18px 0",
                 borderTop: `1px solid ${T.rule}`,
@@ -559,7 +559,7 @@ export function Landing({ onOpen, onReopen, onOpenChangelog }: Props) {
           <blockquote
             data-landing-quote
             style={{
-              font: `14.5px/1.55 ${T.bodySerif}`,
+              font: `14.5px/1.55 ${T.sans}`,
               color: T.dim,
               margin: 0,
               borderLeft: `2px solid ${T.soft}`,

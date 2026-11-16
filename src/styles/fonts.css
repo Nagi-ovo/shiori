@@ -1,18 +1,22 @@
-/* Self-hosted UI webfonts. Loaded via npm package @fontsource so the
-   woff2 files ship with the app bundle — no network fetch at runtime.
-   This keeps Shiori's local-first promise and fixes Windows-specific
-   jaggies from falling through to Courier New when no monospace font
-   matches the system.
+/* Self-hosted UI webfonts. Loaded via npm packages so the woff2 files
+   ship with the app bundle — no network fetch at runtime. This keeps
+   Shiori's local-first promise and fixes Windows-specific jaggies from
+   falling through to Courier New when no monospace font matches the
+   system.
 
-   Scope: UI Latin faces only. CJK / Cyrillic / Greek / Vietnamese
-   subsets are intentionally skipped, and the system fallback chains in
-   `--opx-font-*` cover the rest. The `unicode-range` declarations
-   mirror Google Fonts' official split so browsers only fetch the subset
-   they actually need.
+   LXGW WenKai Screen sets every UI string, Latin and CJK alike
+   (`--opx-font-sans`, and the CJK fallback of the serif and mono stacks;
+   see fontStacks.css). Its ~250 unicode-range chunks load only for the
+   glyphs on screen. The package declares them at 400 and upright;
+   `scripts/build/uiFontFaces.ts` widens them to 400–700 and to italic
+   slopes, so the face's one real cut serves bold and italic UI text and
+   the browser synthesizes neither.
 
-   Weights referenced by `src/design/tokens.ts` and inline `T.mono`
-   styles: 400 (default) and 500 (numbers, labels, shortcut chips).
-   Add more weights here if any call-site starts using them. */
+   The other faces are Latin only; their `unicode-range` declarations
+   mirror Google Fonts' official split. Weights referenced by inline
+   `T.mono` styles: 400 (default) and 500 (numbers, labels, shortcut
+   chips). Add more weights here if any call-site starts using them. */
+@import "lxgw-wenkai-screen-web/lxgwwenkaiscreen/result.css";
 
 /* Complete Nerd Fonts SymbolsOnly fallback for the embedded terminal.
    Keep this after JetBrains Mono in the xterm font stack: normal text uses
@@ -77,8 +81,8 @@
     U+A720-A7FF;
 }
 
-/* Inter Tight backs `T.sans` for Latin UI text. Audited weights:
-   400 (default/inherited), 500, 600, and 700 for highlighted find matches. */
+/* Inter Tight is a Markdown reading-font choice
+   (`BUILTIN_MARKDOWN_FONTS`). Weights: 400, 500, 600, 700. */
 
 @font-face {
   font-family: "Inter Tight";

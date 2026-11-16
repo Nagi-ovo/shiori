@@ -1,5 +1,17 @@
 # What's new
 
+## [Unreleased]
+
+### Interface
+
+- **The interface is set in LXGW WenKai.** Menus, buttons, tabs and hints use one typeface for English, Chinese and Japanese, and look the same on every system. The font ships inside the app, so nothing is downloaded. The PDFs, Markdown files and text boxes you open keep their own fonts.
+- **The status bar no longer shows "Local only".** Shiori always runs locally, so the label never changed.
+- **Sizes such as "200.0 MB" no longer break across two lines.**
+
+### Reading and pages
+
+- **Pinch zoom no longer snaps back to 100% after you open or switch to a second PDF.** A PDF opened while another was showing now fits the window width again, and zooming with the trackpad or Ctrl+scroll stays where you leave it.
+
 ## 26.10.23
 
 > A Problematic Past

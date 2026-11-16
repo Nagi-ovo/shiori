@@ -39,16 +39,22 @@ describe("markdown appearance model", () => {
         { source: "system", family: 'Writer "Display" \\ Pro' },
         "body",
       ),
-    ).toBe('"Writer \\"Display\\" \\\\ Pro", var(--opx-font-sans)');
+    ).toBe('"Writer \\"Display\\" \\\\ Pro", var(--opx-font-reading-sans)');
     expect(markdownFontFamilyCss(null, "code")).toBe(
-      "var(--opx-font-mono)",
+      "var(--opx-font-reading-mono)",
     );
     expect(
       markdownFontFamilyCss(
         { source: "builtin", family: "Instrument Serif" },
         "body",
       ),
-    ).toBe('"Instrument Serif", var(--opx-font-serif)');
+    ).toBe('"Instrument Serif", var(--opx-font-reading-serif)');
+  });
+
+  // Only the chrome is set in the UI face (LXGW WenKai Screen, one upright
+  // weight); "Automatic" reads in the document stacks, which keep real bold.
+  test("reads Automatic in the document font, not the UI font", () => {
+    expect(markdownFontFamilyCss(null, "body")).toBe("var(--opx-font-reading-sans)");
   });
 
   test("normalizes corrupted global and partial document values", () => {

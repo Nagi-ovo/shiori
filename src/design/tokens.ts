@@ -1,5 +1,5 @@
 // Design tokens — cool-white paper palette with a #3388BB accent.
-// Instrument Serif for display italics, Inter Tight for UI,
+// Instrument Serif for display italics, LXGW WenKai Screen for UI,
 // JetBrains Mono for numerics/labels, Spectral for document body serif.
 //
 // Colour tokens are CSS custom properties resolved at paint time, so
@@ -64,26 +64,31 @@ export const T = {
   displayStyle: "var(--opx-displayStyle)",
   // Primary UI stacks resolve through CSS variables so the whole app
   // tracks `<html lang>` without per-component wiring. Defaults are
-  // Latin; `html[lang^="zh"]` / `html[lang^="ja"]` in `app.css` swap in
-  // CJK-appropriate fallbacks (important for Han glyph variants).
+  // Latin; `html[lang^="zh"]` / `html[lang^="ja"]` in
+  // `styles/fontStacks.css` swap in CJK-appropriate fallbacks (important
+  // for Han glyph variants).
   serif: "var(--opx-font-serif)",
   sans: "var(--opx-font-sans)",
   mono: "var(--opx-font-mono)",
+  // What the user reads and writes (PDF text boxes; Markdown goes through
+  // markdownFontFamilyCss) stays out of the UI face.
+  readingSans: "var(--opx-font-reading-sans)",
+  readingMono: "var(--opx-font-reading-mono)",
   // Explicit per-language stacks are kept for cases like ChangelogModal
   // that render a specific language regardless of app-wide locale. They
-  // must stay in sync with the CSS variable overrides in app.css.
+  // must stay in sync with the CSS variable overrides in fontStacks.css.
   serifZh:
-    "'Songti SC', 'STSong', 'Source Han Serif SC', 'Noto Serif SC', 'PingFang SC', 'Microsoft YaHei', 'Instrument Serif', Georgia, serif",
+    "'Instrument Serif', 'LXGW WenKai Screen', 'Songti SC', 'STSong', 'Source Han Serif SC', 'Noto Serif SC', Georgia, serif",
   serifJa:
-    "'Hiragino Mincho ProN', 'Yu Mincho', 'MS PMincho', 'MS Mincho', 'Shippori Mincho', 'Source Han Serif JP', 'Noto Serif JP', 'Instrument Serif', Georgia, serif",
+    "'Instrument Serif', 'LXGW WenKai Screen', 'Hiragino Mincho ProN', 'Yu Mincho', 'MS PMincho', 'MS Mincho', 'Shippori Mincho', 'Source Han Serif JP', 'Noto Serif JP', Georgia, serif",
   sansZh:
-    "'PingFang SC', 'Heiti SC', 'Microsoft YaHei', 'Source Han Sans SC', 'Noto Sans SC', 'Inter Tight', 'Inter', -apple-system, Helvetica, Arial, sans-serif",
+    "'LXGW WenKai Screen', 'PingFang SC', 'Heiti SC', 'Microsoft YaHei', 'Source Han Sans SC', 'Noto Sans SC', -apple-system, Helvetica, Arial, sans-serif",
   sansJa:
-    "'Hiragino Sans', 'Yu Gothic', 'Yu Gothic UI', 'Meiryo', 'Meiryo UI', 'MS PGothic', 'MS Gothic', 'Source Han Sans JP', 'Noto Sans JP', 'Inter Tight', 'Inter', -apple-system, Helvetica, Arial, sans-serif",
+    "'LXGW WenKai Screen', 'Hiragino Sans', 'Yu Gothic', 'Yu Gothic UI', 'Meiryo', 'Meiryo UI', 'MS PGothic', 'MS Gothic', 'Source Han Sans JP', 'Noto Sans JP', -apple-system, Helvetica, Arial, sans-serif",
   monoZh:
-    "'JetBrains Mono', 'SF Mono', Menlo, 'Cascadia Code', 'Cascadia Mono', Consolas, 'PingFang SC', 'Heiti SC', 'Songti SC', 'Microsoft YaHei', monospace",
+    "'JetBrains Mono', 'LXGW WenKai Screen', 'SF Mono', Menlo, 'Cascadia Code', 'Cascadia Mono', Consolas, 'PingFang SC', 'Heiti SC', 'Microsoft YaHei', monospace",
   monoJa:
-    "'JetBrains Mono', 'SF Mono', Menlo, 'Cascadia Code', 'Cascadia Mono', Consolas, 'Hiragino Sans', 'Yu Gothic', 'Meiryo', monospace",
+    "'JetBrains Mono', 'LXGW WenKai Screen', 'SF Mono', Menlo, 'Cascadia Code', 'Cascadia Mono', Consolas, 'Hiragino Sans', 'Yu Gothic', 'Meiryo', monospace",
   // Kanji face for the 栞 glyph. Shippori Mincho carries the traditional
   // brushstroke weight we want; Noto Serif JP is the broadest fallback on
   // Linux; system -apple-system handles macOS when CDN is unreachable.

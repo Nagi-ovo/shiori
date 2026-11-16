@@ -1,0 +1,79 @@
+/* Intentional native-feel trade-off (REFACTOR_PLAN A3): the chrome ships
+   its own webfonts rather than the system UI font. LXGW WenKai Screen sets
+   every UI string, Latin and CJK; Instrument Serif keeps display headings
+   and JetBrains Mono the labels and numbers. The typeface is part of
+   Shiori's identity — do not "correct" this to -apple-system/Segoe.
+
+   Font stacks are CSS variables so the UI follows the document language
+   without per-component wiring. Root defaults target Latin scripts; the
+   `html[lang^="zh"]` / `html[lang^="ja"]` overrides swap the system
+   fallbacks (Han glyph variants: 说 vs 說 vs 説).
+
+   `--opx-font-*` set the chrome. `--opx-font-reading-*` set what the user
+   reads and writes: Markdown on "Automatic" (and behind a chosen font), and
+   PDF text boxes. WenKai has one upright weight, so documents keep Inter
+   Tight and the system CJK faces, which have real bold.
+
+   The values mirror `T.sans / T.serif / T.mono / T.readingSans /
+   T.readingMono / T.sansZh / T.serifZh / T.monoZh / T.sansJa / T.serifJa /
+   T.monoJa` in
+   `src/design/tokens.ts`. Keep in sync manually — we don't inject these
+   from TS to avoid a runtime dependency on the design tokens module at
+   first paint. */
+:root {
+  --opx-font-sans: "LXGW WenKai Screen", -apple-system, "Helvetica Neue",
+    Helvetica, Arial, sans-serif;
+  --opx-font-serif: "Instrument Serif", "LXGW WenKai Screen", "Spectral",
+    Charter, "Iowan Old Style", Georgia, serif;
+  --opx-font-mono: "JetBrains Mono", "LXGW WenKai Screen", "IBM Plex Mono",
+    "SF Mono", Menlo, "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+  --opx-font-reading-sans: "Inter Tight", "Inter", -apple-system,
+    "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --opx-font-reading-serif: "Instrument Serif", "Spectral", Charter,
+    "Iowan Old Style", Georgia, serif;
+  --opx-font-reading-mono: "JetBrains Mono", "IBM Plex Mono", "SF Mono", Menlo,
+    "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+}
+
+html[lang^="zh"] {
+  --opx-font-sans: "LXGW WenKai Screen", "PingFang SC", "Heiti SC",
+    "Microsoft YaHei", "Source Han Sans SC", "Noto Sans SC", -apple-system,
+    Helvetica, Arial, sans-serif;
+  --opx-font-serif: "Instrument Serif", "LXGW WenKai Screen", "Songti SC",
+    "STSong", "Source Han Serif SC", "Noto Serif SC", Georgia, serif;
+  --opx-font-mono: "JetBrains Mono", "LXGW WenKai Screen", "SF Mono", Menlo,
+    "Cascadia Code", "Cascadia Mono", Consolas, "PingFang SC", "Heiti SC",
+    "Microsoft YaHei", monospace;
+  --opx-font-reading-sans: "PingFang SC", "Heiti SC", "Microsoft YaHei",
+    "Source Han Sans SC", "Noto Sans SC", "Inter Tight", "Inter", -apple-system,
+    Helvetica, Arial, sans-serif;
+  --opx-font-reading-serif: "Songti SC", "STSong", "Source Han Serif SC",
+    "Noto Serif SC", "PingFang SC", "Microsoft YaHei", "Instrument Serif",
+    Georgia, serif;
+  --opx-font-reading-mono: "JetBrains Mono", "SF Mono", Menlo, "Cascadia Code",
+    "Cascadia Mono", Consolas, "PingFang SC", "Heiti SC", "Songti SC",
+    "Microsoft YaHei", monospace;
+}
+
+html[lang^="ja"] {
+  --opx-font-sans: "LXGW WenKai Screen", "Hiragino Sans", "Yu Gothic",
+    "Yu Gothic UI", "Meiryo", "Meiryo UI", "MS PGothic", "MS Gothic",
+    "Source Han Sans JP", "Noto Sans JP", -apple-system, Helvetica, Arial,
+    sans-serif;
+  --opx-font-serif: "Instrument Serif", "LXGW WenKai Screen",
+    "Hiragino Mincho ProN", "Yu Mincho", "MS PMincho", "MS Mincho",
+    "Shippori Mincho", "Source Han Serif JP", "Noto Serif JP", Georgia, serif;
+  --opx-font-mono: "JetBrains Mono", "LXGW WenKai Screen", "SF Mono", Menlo,
+    "Cascadia Code", "Cascadia Mono", Consolas, "Hiragino Sans", "Yu Gothic",
+    "Meiryo", monospace;
+  --opx-font-reading-sans: "Hiragino Sans", "Yu Gothic", "Yu Gothic UI",
+    "Meiryo", "Meiryo UI", "MS PGothic", "MS Gothic", "Source Han Sans JP",
+    "Noto Sans JP", "Inter Tight", "Inter", -apple-system, Helvetica, Arial,
+    sans-serif;
+  --opx-font-reading-serif: "Hiragino Mincho ProN", "Yu Mincho", "MS PMincho",
+    "MS Mincho", "Shippori Mincho", "Source Han Serif JP", "Noto Serif JP",
+    "Instrument Serif", Georgia, serif;
+  --opx-font-reading-mono: "JetBrains Mono", "SF Mono", Menlo, "Cascadia Code",
+    "Cascadia Mono", Consolas, "Hiragino Sans", "Yu Gothic", "Meiryo",
+    monospace;
+}

@@ -1,57 +1,8 @@
 /* Self-hosted webfonts — Vite inlines this at build so the woff2 files
    are copied into dist/assets and the app stays network-free. */
 @import "./styles/fonts.css";
-
-/* Intentional native-feel trade-off (REFACTOR_PLAN A3): the Latin chrome
-   deliberately ships brand webfonts (Inter Tight / Instrument Serif /
-   JetBrains Mono) rather than the system UI font. Ship-readiness flags
-   non-system chrome fonts, but the typeface is part of Shiori's visual
-   identity, and CJK already falls back to the platform stack below. Not a
-   bug — do not "correct" this to -apple-system/Segoe.
-
-   Font stacks centralised as CSS variables so the entire UI follows the
-   current document language without every component wiring an
-   `i18n.language`-aware hook. Root defaults target Latin scripts; the
-   `html[lang^="zh"]` / `html[lang^="ja"]` overrides flip the stack for
-   CJK users, which also gets Han glyph variants right (说 vs 說 vs 説
-   are fallback-dependent on the locale font). The values mirror
-   `T.sans / T.serif / T.mono / T.sansZh / T.serifZh / T.monoZh /
-   T.sansJa / T.serifJa / T.monoJa` in `src/design/tokens.ts`. Keep in
-   sync manually — we don't inject these from TS to avoid a runtime
-   dependency on the design tokens module at first paint. */
-:root {
-  --opx-font-sans: "Inter Tight", "Inter", -apple-system, "Helvetica Neue",
-    Helvetica, Arial, sans-serif;
-  --opx-font-serif: "Instrument Serif", "Spectral", Charter, "Iowan Old Style",
-    Georgia, serif;
-  --opx-font-mono: "JetBrains Mono", "IBM Plex Mono", "SF Mono", Menlo,
-    "Cascadia Code", "Cascadia Mono", Consolas, monospace;
-}
-
-html[lang^="zh"] {
-  --opx-font-sans: "PingFang SC", "Heiti SC", "Microsoft YaHei",
-    "Source Han Sans SC", "Noto Sans SC", "Inter Tight", "Inter", -apple-system,
-    Helvetica, Arial, sans-serif;
-  --opx-font-serif: "Songti SC", "STSong", "Source Han Serif SC",
-    "Noto Serif SC", "PingFang SC", "Microsoft YaHei", "Instrument Serif",
-    Georgia, serif;
-  --opx-font-mono: "JetBrains Mono", "SF Mono", Menlo, "Cascadia Code",
-    "Cascadia Mono", Consolas, "PingFang SC", "Heiti SC", "Songti SC",
-    "Microsoft YaHei", monospace;
-}
-
-html[lang^="ja"] {
-  --opx-font-sans: "Hiragino Sans", "Yu Gothic", "Yu Gothic UI", "Meiryo",
-    "Meiryo UI", "MS PGothic", "MS Gothic", "Source Han Sans JP",
-    "Noto Sans JP", "Inter Tight", "Inter", -apple-system, Helvetica, Arial,
-    sans-serif;
-  --opx-font-serif: "Hiragino Mincho ProN", "Yu Mincho", "MS PMincho",
-    "MS Mincho", "Shippori Mincho", "Source Han Serif JP", "Noto Serif JP",
-    "Instrument Serif", Georgia, serif;
-  --opx-font-mono: "JetBrains Mono", "SF Mono", Menlo, "Cascadia Code",
-    "Cascadia Mono", Consolas, "Hiragino Sans", "Yu Gothic", "Meiryo",
-    monospace;
-}
+/* --opx-font-* (chrome) and --opx-font-reading-* (documents). */
+@import "./styles/fontStacks.css";
 
 html,
 body,
@@ -440,7 +391,7 @@ button {
   opacity: 1;
   /* Keep text-layer selection geometry out of Shiori's self-hosted UI
      font stack. The textLayer is invisible and assigns per-span
-     fallback fonts itself; inheriting Inter Tight from body changes
+     fallback fonts itself; inheriting the UI font from body changes
      WebKit selection metrics at line ends. */
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     "Helvetica Neue", Arial, sans-serif;
@@ -630,7 +581,7 @@ button {
 }
 
 .shioriDocumentViewer {
-  font: 16px/1.7 var(--opx-font-sans);
+  font: 16px/1.7 var(--opx-font-reading-sans);
 }
 
 .shioriDocumentMetadata {
@@ -651,7 +602,7 @@ button {
 .shioriDocumentMetadata dt {
   min-width: 0;
   color: var(--opx-dim);
-  font: 700 10.5px/1.45 var(--opx-font-mono);
+  font: 700 10.5px/1.45 var(--opx-font-reading-mono);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   overflow-wrap: anywhere;
@@ -661,7 +612,7 @@ button {
   min-width: 0;
   margin: 0;
   color: var(--opx-ink2);
-  font: 500 13px/1.5 var(--opx-font-sans);
+  font: 500 13px/1.5 var(--opx-font-reading-sans);
   overflow-wrap: anywhere;
 }
 
@@ -721,7 +672,7 @@ button {
 
 .shioriDocumentViewer code,
 .shioriDocumentViewer pre {
-  font-family: var(--shiori-markdown-code-font, var(--opx-font-mono));
+  font-family: var(--shiori-markdown-code-font, var(--opx-font-reading-mono));
 }
 
 .shioriDocumentViewer :not(pre) > code {

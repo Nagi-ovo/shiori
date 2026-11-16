@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatRelative, nextRelativeChangeAt } from "./format";
+import { formatBytes, formatRelative, nextRelativeChangeAt } from "./format";
 
 describe("nextRelativeChangeAt", () => {
   // The boundary must be exactly where formatRelative's output flips: one
@@ -25,5 +25,15 @@ describe("nextRelativeChangeAt", () => {
   test("measures a future timestamp from the timestamp", () => {
     const now = 1_700_000_000_000;
     expect(nextRelativeChangeAt(now + 5_000, now)).toBe(now + 5_000 + 45_000);
+  });
+});
+
+describe("formatBytes", () => {
+  // A size is one token in running text: "beta limit 200.0 MB" must not wrap
+  // between the number and the unit.
+  test("keeps the number and its unit on one line", () => {
+    for (const bytes of [0, 512, 11_264, 200 * 1024 * 1024, 10 * 1024 ** 3]) {
+      expect(formatBytes(bytes)).toMatch(/^\d+(\.\d)?\u00a0(B|KB|MB|GB)$/);
+    }
   });
 });

@@ -89,6 +89,8 @@
     "globals": "^17.5.0",
     "happy-dom": "^20.9.0",
     "jsdom": "^30.0.1",
+    "lxgw-wenkai-screen-web": "1.530.0",
+    "postcss": "^8.5.26",
     "subset-font": "^2.5.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.67.0",

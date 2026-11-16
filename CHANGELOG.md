@@ -10,7 +10,32 @@
 
 ## [未发布]
 
+### 界面
+
+- **界面文字统一用霞鹜文楷 Screen（`8ff638b` `41a3005` `e4f57a1`）。** `--opx-font-sans` 换成 LXGW
+  WenKai Screen 1.530（`lxgw-wenkai-screen-web`：253 个按 unicode-range 切分的 woff2，随包打包，只加载
+  屏幕上用到的字形），拉丁与中日文同一字体。Instrument Serif 仍管展示标题、JetBrains Mono 仍管标签和
+  数字，两者之后都接 WenKai 兜中日文和符号，界面里不再出现 PingFang、宋体、冬青黑体或 Menlo。WenKai
+  只有一个直立字重：`scripts/build/uiFontFaces.ts`（PostCSS）把每个分片声明为 `font-weight: 400 700`、
+  `font-style: oblique 0deg 20deg` 并去掉 `local()`，600/700 和斜体请求都落到真字形，浏览器不再合成粗体
+  或斜体；中日文斜体展示标题因此直立，拉丁斜体仍是 Instrument Serif 的真斜体。首页引言、两处空状态和
+  工具名原先用 Times（`T.bodySerif`），改用界面字体。`formatBytes` 的数字与单位之间改为不换行空格，
+  「200.0 MB」不再折成两行。文档内容不换字体：Markdown「自动」字体、代码字体和 PDF 文本框改走
+  `--opx-font-reading-*`（即换字体前的字体栈，与界面栈同在 `src/styles/fontStacks.css`），粗体照旧。
+  web `dist/` 37.3 → 50.4 MiB，桌面前端 31.0 → 44.1 MiB，主样式表 26 KB → 239 KB（gzip 83 KB）。
+- **状态栏去掉「仅本地」（`7729635`）。** 这个标签在每个文档上都一样，读者没法据此做任何事；状态栏
+  现在止于存储按钮，前面的分隔点一起去掉，`meta.localOnly` 从 en/zh/ja 移除。
+
 ### 修复
+
+#### 阅读与页面
+
+- **开着一个 PDF 再打开或切到另一个 PDF，捏合放大会弹回 100%（`5e25bae`）。** 同一个 `Canvas` 服务所有
+  PDF 标签，而 10 月 6 日把缩放和适应宽度抽进 `viewportController` 之后，控制器只建一次，ports 捕获了第一个
+  标签的 store。之后的捏合、Ctrl+滚轮、双击放大的提交和适应宽度都写进那个标签：屏幕上的标签一打开就停在
+  100%，每次缩放预览结束又落回 100%，而被写的那个标签缩放莫名变化。ports 改为经 `viewPropsRef` 读当前
+  渲染的标签。26.10.20 与 26.10.23 受影响；⌘= 和缩放按钮不经过控制器，不受影响。回归测试
+  `Canvas.tabSwitch.test.tsx`。
 
 #### CLI
 

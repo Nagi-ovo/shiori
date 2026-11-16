@@ -1,12 +1,13 @@
 // Pure formatting helpers. No i18n here — callers pass labels when needed
 // so these functions stay side-effect free and easy to test.
 
+// A no-break space joins number and unit, so "200.0 MB" never wraps apart.
 export function formatBytes(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return "0 B";
-  if (n < 1024) return `${Math.round(n)} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
-  return `${(n / 1024 / 1024 / 1024).toFixed(1)} GB`;
+  if (!Number.isFinite(n) || n <= 0) return "0\u00a0B";
+  if (n < 1024) return `${Math.round(n)}\u00a0B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}\u00a0KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)}\u00a0MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(1)}\u00a0GB`;
 }
 
 // "47h 12m" · "59m" · "33s" · "0s" — compact, no trailing zeros.

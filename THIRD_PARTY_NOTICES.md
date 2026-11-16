@@ -185,6 +185,16 @@ under the SIL Open Font License 1.1, whose full text follows this list.
   Corporation, with Reserved Font Arimo, Tinos and Cousine; Copyright (c) 2012
   Red Hat, Inc., with Reserved Font Name Liberation
   (`src/assets/fonts/metric/LICENSE-liberation.txt`).
+- LXGW WenKai Screen (`lxgw-wenkai-screen-web` 1.530.0, the UI font: version
+  1.530 split into unicode-range WOFF2 chunks by cn-font-split): Copyright
+  2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai-Screen,
+  https://github.com/lxgw/LxgwWenKai), with Reserved Font Name '霞鹜',
+  '霞鶩', '落霞孤鹜', '落霞孤鶩' and 'LXGW'; Copyright 2020 The Klee Project
+  Authors (https://github.com/fontworks-fonts/Klee). The font's additional
+  permission lets subsetted or WOFF2-converted copies made solely for web
+  font delivery keep the Reserved Font Names, provided they are not offered
+  as installable desktop fonts; Shiori bundles the chunks unmodified as its
+  own UI font.
 - Inter Tight (`@fontsource/inter-tight`, Latin and Latin Extended subsets):
   Copyright 2022 The Inter Project Authors (https://github.com/rsms/inter-tight).
 - Instrument Serif (`@fontsource/instrument-serif`, Latin and Latin Extended
@@ -202,8 +212,9 @@ under the SIL Open Font License 1.1, whose full text follows this list.
   `NOTICE-nerd-fonts-symbols.md` in `src/assets/fonts/ui/`).
 
 Klee One and Shippori Mincho are subset to the glyphs of the Shiori wordmark
-and the 栞 mark. The Nerd Fonts, Noto and Liberation files are format
-conversions or upstream subsets; none of the fonts is otherwise modified.
+and the 栞 mark. The Nerd Fonts, Noto, Liberation and LXGW WenKai files are
+format conversions or upstream subsets; none of the fonts is otherwise
+modified.
 
 ```text
 -----------------------------------------------------------

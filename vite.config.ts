@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { startupBundleGuard } from "./scripts/build/startupBundleGuard.ts";
 import { thirdPartyNotices } from "./scripts/build/thirdPartyNotices.ts";
+import { uiFontFaces } from "./scripts/build/uiFontFaces.ts";
 import { readFileSync } from "node:fs";
 
 // Tauri-aware Vite config. The same build output serves the web deploy
@@ -192,6 +193,8 @@ function tabPerfMetrics(): Plugin {
 export default defineConfig(({ command }) => ({
   plugins: [react(), desktopWithoutWasmCore(), tabPerfMetrics(), zoomDebugCollector(), thirdPartyNotices({ wasmCore: WASM_CORE }), startupBundleGuard()],
   clearScreen: false,
+  // The UI face's chunks are declared 400 only; see uiFontFaces.ts.
+  css: { postcss: { plugins: [uiFontFaces()] } },
   server: {
     port: 1573,
     strictPort: true,
