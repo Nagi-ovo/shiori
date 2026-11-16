@@ -7,7 +7,7 @@ import {runPageEnvironment} from '../contentStreamEdit/replaceRunPage';
 import {runResourceStamp} from '../contentStreamEdit/resourceStamp';
 import type {Type1Options} from '../fontCoverage/type1Support';
 import {detectParagraphRegion,type ParagraphBlocker,type ParagraphLine,type RegionProof,type Rect,type SourceAddress} from './regionProof';
-import {contains,origin,physicalSize,validTrace,linear,paragraphMember} from './regionProof/geometry';
+import {contains,origin,physicalSize,validTrace,linear,paragraphMember,lastPositionAnchor} from './regionProof/geometry';
 import {buildPageOccupancy,boundBoxes,glyphKey,queryOccupancy} from './regionProof/occupancy';
 import {buildVisualGroups,capVisualSlots} from './regionProof/visualGroups';
 import {proveOneLineCapacity} from './regionProof/columnCapacity';
@@ -64,8 +64,8 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   }
   const address:SourceAddress={streamHash:sourceHash,opIndex:g.opIndex,itemIndex:g.arrayItemIndex,byteStart:g.byteOffset,byteEnd:g.byteOffset+g.byteLength,fontObject:font.objectId};
   let line=lines.at(-1);
-  const anchor=anchors.findLast(t=>t.opIndex<g.opIndex&&t.bt===show.before.bt);
-  if(!anchor||!validTrace(anchor))return refuse('missing-line-anchor',`op=${g.opIndex}`);
+  const anchor=lastPositionAnchor(anchors,show.before);
+  if(!anchor)return refuse('missing-line-anchor',`op=${g.opIndex}`);
   const previous=line?.shows.at(-1),previousAnchor=line?.continuations?.at(-1)??line?.anchor;
   const continuation=previous&&anchor.opIndex!==previousAnchor?.opIndex;
   const gap=previous?o.x-origin(previous.after)[0]:0;

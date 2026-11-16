@@ -32,13 +32,13 @@ export function traceReflowSource(ops:readonly ContentOp[],fonts:readonly Resolv
   switch(op.operator){
    case 'BMC':case 'BDC':{
     const tag=n[0],properties=n[1];
-    let safe=tag?.kind==='name'&&tag.value!=='OC'&&n.length===(op.operator==='BDC'?2:1),mcid:number|undefined;
+    let safe=tag?.kind==='name'&&tag.value!=='OC'&&tag.value!=='Artifact'&&n.length===(op.operator==='BDC'?2:1),mcid:number|undefined;
     if(op.operator==='BDC'){
      const keys=properties?.kind==='dict'?properties.entries.map(e=>e.key):properties?.kind==='name'?environment.markedContentProperties?.get(properties.value):null;
-     safe=!!safe&&!!keys&&keys.every(k=>k==='MCID');
+     safe=!!safe&&!!keys&&keys.includes('MCID')&&keys.every(k=>k==='MCID'||k==='Lang');
      if(keys?.includes('MCID')){
       mcid=properties?.kind==='dict'?properties.entries.find(e=>e.key==='MCID')?.numberValue:properties?.kind==='name'?environment.markedContentMcids?.get(properties.value):undefined;
-      safe=safe&&mcid!==undefined&&Number.isSafeInteger(mcid)&&mcid>=0&&keys.length===1;
+      safe=safe&&mcid!==undefined&&Number.isSafeInteger(mcid)&&mcid>=0&&keys.filter(k=>k==='MCID').length===1;
      }
     }
     marked.push({operator:op.operator,tag:tag?.kind==='name'?tag.value:'',mcid,safe});break;

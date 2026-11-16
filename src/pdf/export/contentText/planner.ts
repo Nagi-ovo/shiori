@@ -71,7 +71,10 @@ export function planContentText(content:Uint8Array,fonts:readonly ResolvedRunFon
       const decoded=glyphs.map(g=>byName.get(g.fontName)?.unicodeByCode.get(g.code));
       if(decoded.some(s=>s===undefined))return refuse('font-unavailable');
       for(let i=1;i<glyphs.length;i++) {
-        if(Math.abs(glyphs[i]!.coreQuad[0].x-glyphs[i-1]!.coreQuad[0].x)<.01)return refuse('ambiguous-match');
+        if(Math.abs(glyphs[i]!.coreQuad[0].x-glyphs[i-1]!.coreQuad[0].x)<.01){
+          if(!/^\s+$/u.test(decoded[i-1]!)||!/^\s+$/u.test(decoded[i]!))return refuse('ambiguous-match');
+          glyphs.splice(i,1);decoded.splice(i,1);i--;
+        }
       }
       const actual=decoded.join(''),needle=compact(original);
       if(!needle || compact(actual)!==needle) {

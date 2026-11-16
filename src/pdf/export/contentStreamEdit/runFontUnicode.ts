@@ -1,4 +1,5 @@
 import {createFontCoverage} from '../fontCoverage/coverage';
+import {parseCMap} from '../fontCoverage/cmap';
 import {glyphUnicode, simpleNames} from '../fontCoverage/encodings';
 import {sameGlyphUnicode} from '../fontCoverage/glyphIdentity';
 import {codeHex, codeNumber, type FontInput} from '../fontCoverage/types';
@@ -234,12 +235,14 @@ function refuse(diagnostic:Type1Diagnostic):never {
  * source-only. Neither changes the original encoder's coverage/ToUnicode. */
 export function recoverRunUnicode(input:FontInput, size:1|2, original:ReadonlyMap<number, string>|null,
   encoding:Encoding, options:Type1Options):Encoding & Pick<ResolvedRunFont, 'unicodeByCode'> {
-  const labels = new Map(original ?? []), conflicts = new Map<number, string>();
+  let explicit=original;
+  if(!explicit&&input.toUnicode!==undefined)try{
+    explicit=new Map([...parseCMap(input.toUnicode).unicode].filter(([hex])=>hex.length===size*2).map(([hex,label])=>[codeNumber(hex),label]));
+  }catch{ /* Malformed CMaps supply no source labels. */ }
+  const labels = new Map(explicit ?? []), conflicts = new Map<number, string>();
   for (const [code, label] of labels) if (label.includes('\uFFFD')) labels.delete(code);
   try {
     if (input.error) throw Error(input.error);
-    // A refused ToUnicode supplies no labels or edit authority. Independent
-    // Encoding/AGL and embedded-program proofs must still get a chance.
     const cid = size === 2 ? cidLabels(input) : undefined;
     const enc = input.encoding;
     const sourceOnly = size === 1 && !input.program && !((input.flags ?? 0) & 4)
@@ -261,11 +264,11 @@ export function recoverRunUnicode(input:FontInput, size:1|2, original:ReadonlyMa
     const candidates = new Map<string, string>();
     for (const [hex, label] of inferred) {
       if (hex.length !== size * 2) continue;
-      const code = codeNumber(hex), explicit = original?.get(code);
-      if (explicit && usable(explicit) && (label === null || !sameGlyphUnicode(label, explicit))) {
-        conflicts.set(code, `ToUnicode ${JSON.stringify(explicit)} disagrees with selected glyph (${JSON.stringify(label)})`);
+      const code = codeNumber(hex), declared = explicit?.get(code);
+      if (declared && usable(declared) && (label === null || !sameGlyphUnicode(label, declared))) {
+        conflicts.set(code, `ToUnicode ${JSON.stringify(declared)} disagrees with selected glyph (${JSON.stringify(label)})`);
       }
-      if (label && usable(label) && placeholder(explicit)) candidates.set(hex, label);
+      if (label && usable(label) && placeholder(declared)) candidates.set(hex, label);
     }
     if (sourceOnly) {
       // Published Encoding + AGL proves source text, never reusable outlines.

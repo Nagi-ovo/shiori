@@ -1,5 +1,5 @@
 import { compatible, paragraphMember, anchorForShow, lineAnchors, contains, EPS, intersects, matrixEqual, near, origin,
-  physicalLeading, physicalSize, validRect, validTrace, paragraphFrame,lineStart } from './regionProof/geometry';
+  physicalLeading, physicalSize, validRect, validPositionAnchor, positionAnchorMember, paragraphFrame,lineStart } from './regionProof/geometry';
 import { proveOperators } from './regionProof/operators';
 import type { LineSlot, ParagraphBlocker, ParagraphIndent, ParagraphInput,
   ParagraphRefusal, ParagraphResult, TextTrace } from './regionProof/types';
@@ -38,11 +38,12 @@ export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextT
     return refuse('semantics', 'Unresolved scope/reading order or inline math/superscript evidence');
   }
   const base = lines[0]!.anchor;
+  const showBase=lines[0]!.shows[0]!.before;
   const perGlyph=!!input.occupancy,member=perGlyph?paragraphFrame:paragraphMember;
-  if (!validTrace(base)) return refuse('state', 'Nonfinite or unsupported horizontal text state');
+  if (!validPositionAnchor(base)) return refuse('state', 'Nonfinite or unsupported horizontal text state');
   for (const line of lines) {
-    if (lineAnchors(line).some(t => !member(t, base) || t.safetyHash !== e.scopeProofHash)) {
-      return refuse('state', 'Line font, physical size, transform, scope or text state differs');
+    if (lineAnchors(line).some(t => !positionAnchorMember(t, base,perGlyph) || t.safetyHash !== e.scopeProofHash)) {
+      return refuse('state', 'Line font, physical size, transform or text state differs');
     }
     let end = origin(line.anchor);
     let previousStart = -Infinity;
@@ -52,7 +53,7 @@ export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextT
       }
       if (unsupportedDirection.test(show.unicode)) return refuse('direction', 'RTL/bidi is outside the paragraph subset');
       const anchor = anchorForShow(line, show.source.opIndex);
-      if (!anchor || !member(show.before, base) || !compatible(show.after, show.before) ||
+      if (!anchor || !member(show.before, showBase) || !positionAnchorMember(anchor,show.before,perGlyph) || !compatible(show.after, show.before) ||
         !matrixEqual(show.before.tlm, anchor.tlm) || !matrixEqual(show.after.tlm, anchor.tlm)) {
         return refuse('state', 'Show snapshots differ in font/style/state or saved Tlm');
       }

@@ -46,12 +46,12 @@ export function substituteSourceFonts(page:PDFPage):SubstituteSourceFont[]{
   const widthOf=info.bytesPerCode===1?(code:number)=>(widths![code-first!]??NaN)*widthScale:info.widthOf;
   const raw=dict.lookup(PDFName.of('ToUnicode'));
   let mapping:ReadonlyMap<number,string>|null=info.unicodeByCode;
-  if(raw instanceof PDFRawStream)mapping=runToUnicode(new TextDecoder('latin1').decode(raw.dict.has(PDFName.of('Filter'))?decodePDFRawStream(raw).decode():raw.getContents()),info.bytesPerCode);
+  if(!mapping.size&&raw instanceof PDFRawStream)mapping=runToUnicode(new TextDecoder('latin1').decode(raw.dict.has(PDFName.of('Filter'))?decodePDFRawStream(raw).decode():raw.getContents()),info.bytesPerCode);
   if(!mapping?.size&&info.bytesPerCode===1){
    // An explicit known Encoding supplies source labels even when the font
    // program is unusable. No source glyph is reused based on these labels.
-   if(!input.encoding)return [];
-   try{mapping=new Map([...simpleNames(input)].flatMap(([code,name])=>{const text=glyphUnicode(name);return text?[[code,text]as const]:[];}));}catch{return [];}
+   if(!input.encoding||((input.flags??0)&4))return [];
+   try{mapping=new Map([...simpleNames(input)].flatMap(([code,name])=>{const text=name.split('.')[0]!.includes('_')?undefined:glyphUnicode(name);return text?[[code,text]as const]:[];}));}catch{return [];}
   }
   if(!mapping?.size)return [];
   return [{...info,widthOf,unicodeByCode:mapping,sourceBox,base:dict.lookupMaybe(PDFName.of('BaseFont'),PDFName)?.decodeText()??'',flags:number(descriptor??dict,'Flags')??0,

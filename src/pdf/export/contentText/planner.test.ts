@@ -30,6 +30,31 @@ test('synthesized spaces between source shows match without inventing source byt
   expect(result.ok).toBe(true);
   if(result.ok) expect(result.plan.edits[0]).toMatchObject({ itemIndex:0,byteStart:0,byteEnd:1,replacement:'B' });
 });
+test('overlapping trailing TJ and Tj spaces preserve the planned letter edit',async()=>{
+ const {result,source,page}=await plan('BT /F1 10 Tf 50 100 Td [(ABCDE )] TJ 1 0 0 1 80.0028 100 Tm ( ) Tj ET',{
+  originalText:'ABCDE ',text:'AXCDE ',coverRects:[{x:49,y:98,w:38,h:13}],
+ });
+ expect(result.ok).toBe(true);if(!result.ok)throw Error(result.reason);
+ expect(result.plan.edits).toHaveLength(1);expect(result.plan.edits[0]).toMatchObject({byteStart:1,byteEnd:2,replacement:'X'});
+ expect(replaceRuns(source,resolveRunFonts(page),result.plan).ok).toBe(true);
+});
+test.each(['(A) Tj 1 0 0 1 50.0028 100 Tm (A) Tj','( ) Tj 1 0 0 1 50.0028 100 Tm (A) Tj',
+ '(A) Tj 1 0 0 1 50.0028 100 Tm ( ) Tj'])('overlapping non-whitespace stays ambiguous: %s',async shows=>{
+ const {result}=await plan(`BT /F1 10 Tf 50 100 Td ${shows} ET`,{originalText:'A',text:'X'});
+ expect(result).toMatchObject({ok:false,code:'ambiguous-match'});
+});
+test('dropping overlapping spaces still checks compact source identity',async()=>{
+ const {result}=await plan('BT /F1 10 Tf 50 100 Td [(ABCDE )] TJ 1 0 0 1 80.0028 100 Tm ( ) Tj ET',{
+  originalText:'ABCDF ',text:'AXCDF ',coverRects:[{x:49,y:98,w:38,h:13}],
+ });
+ expect(result).toMatchObject({ok:false,code:'source-mismatch'});
+});
+test('consecutive overlapping spaces all retain the original letter mapping',async()=>{
+ const {result}=await plan('BT /F1 10 Tf 50 100 Td (ABCDE ) Tj 1 0 0 1 80.0028 100 Tm ( ) Tj 1 0 0 1 80.0056 100 Tm ( ) Tj ET',{
+  originalText:'ABCDE ',text:'AXCDE ',coverRects:[{x:49,y:98,w:38,h:13}],
+ });
+ expect(result.ok).toBe(true);
+});
 test('multiline changes compile independently without reflow', async () => {
   const { result } = await plan('BT /F1 10 Tf 50 100 Td (ABCDE) Tj 0 -20 Td (FGHIJ) Tj ET', {
     originalText:'ABCDE\nFGHIJ',text:'AXCDE\nFGYIJ',coverRects:[{x:49,y:98,w:32,h:13},{x:49,y:78,w:32,h:13}],

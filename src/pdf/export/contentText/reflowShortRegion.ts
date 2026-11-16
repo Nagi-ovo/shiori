@@ -1,6 +1,6 @@
 import type {ParagraphBlocker,ParagraphInput,ParagraphRefusal,ParagraphResult,RegionProof,TextTrace} from './regionProof';
 import {proveOperators} from './regionProof/operators';
-import {compatible,paragraphMember,paragraphFrame,lineStart,anchorForShow,lineAnchors,contains,intersects,matrixEqual,near,physicalLeading,validTrace} from './regionProof/geometry';
+import {compatible,paragraphMember,paragraphFrame,lineStart,anchorForShow,lineAnchors,contains,intersects,matrixEqual,near,physicalLeading,validTrace,validPositionAnchor,positionAnchorMember} from './regionProof/geometry';
 /** Short candidates use only the visual group's observed extent. A lone
  * group still needs explicit TL to grow; a multi-line group supplies pitch.
  * The preceding numeric snapshot proves relative first anchors from the same
@@ -12,13 +12,14 @@ export function shortStreamRegion(input:ParagraphInput,before?:TextTrace):Region
 export function shortStreamRegionResult(input:ParagraphInput,before?:TextTrace):ParagraphResult{
  const refuse=(blocker:ParagraphBlocker,detail:string):ParagraphRefusal=>({ok:false,code:'reflow-paragraph-unproven',family:'reflow-required',reason:'No proven paragraph box for wrapping',blocker,detail});
  const {lines,evidence:e}=input,perGlyph=!!input.occupancy,base=perGlyph?lines[0]?.anchor:lines[0]?.shows[0]?.before,member=perGlyph?paragraphFrame:paragraphMember;
- if(!base||!validTrace(base)||lines.length>2)return refuse('state','Missing or unsupported short-region base');
+ const showBase=lines[0]?.shows[0]?.before;
+ if(!base||!showBase||!(perGlyph?validPositionAnchor(base):validTrace(base))||lines.length>2)return refuse('state','Missing or unsupported short-region base');
  for(const line of lines){
-  if(lineAnchors(line).some(t=>!member(t,base))||!line.ink||!line.shows.length)return refuse('state','Short-region line state or ink differs');
+  if(lineAnchors(line).some(t=>!positionAnchorMember(t,base,perGlyph))||!line.ink||!line.shows.length)return refuse('state','Short-region line state or ink differs');
   for(const s of line.shows){
    const anchor=anchorForShow(line,s.source.opIndex);
    if(!anchor||!s.unicode||/[\r\n\t\uFFFD\u0590-\u08ff\u200e\u200f\u202a-\u202e\u2066-\u2069]/u.test(s.unicode)||
-    !member(s.before,base)||!compatible(s.after,s.before)||!matrixEqual(s.before.tlm,anchor.tlm)||!matrixEqual(s.after.tlm,anchor.tlm))return refuse('state','Unsupported short-region show, scope or saved Tlm');
+    !member(s.before,showBase)||!positionAnchorMember(anchor,s.before,perGlyph)||!compatible(s.after,s.before)||!matrixEqual(s.before.tlm,anchor.tlm)||!matrixEqual(s.after.tlm,anchor.tlm))return refuse('state','Unsupported short-region show, scope or saved Tlm');
   }
  }
  const operators=proveOperators(input,before);if('blocker'in operators)return refuse(operators.blocker,operators.detail);

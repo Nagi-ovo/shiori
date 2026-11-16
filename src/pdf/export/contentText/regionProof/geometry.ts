@@ -30,6 +30,13 @@ export function validTrace(t: TextTrace): boolean {
     Number.isInteger(t.opIndex) && t.renderMode === 0 &&
     !!t.fontObject && !!t.safetyHash && t.scopeSafe!==false;
 }
+/** A positioning operation supplies geometry, not editable marked content.
+ * EMC does not restore Tm/Tlm; shows still require validTrace(). */
+export const validPositionAnchor=(t:TextTrace)=>validTrace({...t,scopeSafe:true});
+export function lastPositionAnchor(anchors:readonly TextTrace[],show:TextTrace):TextTrace|undefined {
+  const anchor=anchors.findLast(t=>t.opIndex<show.opIndex&&t.bt===show.bt);
+  return anchor&&validPositionAnchor(anchor)?anchor:undefined;
+}
 export function compatible(t: TextTrace, base: TextTrace): boolean {
   return validTrace(t) && t.fontObject === base.fontObject &&
     (t.scopeKey??'[]')===(base.scopeKey??'[]') &&
@@ -40,11 +47,21 @@ export function compatible(t: TextTrace, base: TextTrace): boolean {
 /** Paragraph membership permits measured face/justification changes. Keep
  * compatible() tight for callers that need an identical same-show state. */
 export function paragraphMember(t: TextTrace, base: TextTrace): boolean {
-  return validTrace(t) && validTrace(base) && t.safetyHash === base.safetyHash &&
+  return validTrace(t) && validTrace(base) &&
     (t.scopeKey??'[]')===(base.scopeKey??'[]') &&
-    near(physicalSize(t), physicalSize(base), 0.05) &&
+    paragraphGeometry(t,base);
+}
+function paragraphGeometry(t:TextTrace,base:TextTrace):boolean{
+  return t.safetyHash===base.safetyHash && near(physicalSize(t), physicalSize(base), 0.05) &&
     linear(t).every((n, i) => coefficientEqual(n, linear(base)[i]!)) &&
     (['tz', 'rise', 'renderMode'] as const).every(key => t[key] === base[key]);
+}
+/** Compare positioning anchors without assigning their scope to a show.
+ * Occupancy keeps the existing size/rise allowance for an unmoved prefix,
+ * after validating the anchor's original numeric state. */
+export function positionAnchorMember(anchor:TextTrace,base:TextTrace,perGlyph=false):boolean{
+  return validPositionAnchor(anchor)&&validPositionAnchor(base)&&
+    paragraphGeometry(perGlyph?{...anchor,size:base.size,rise:base.rise}:anchor,base);
 }
 /** Only size/rise may differ for an unmoved prefix. Scope, linear frame,
  * direction and render mode retain the paragraph membership requirements. */

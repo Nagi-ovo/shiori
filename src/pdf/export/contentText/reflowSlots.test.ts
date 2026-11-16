@@ -37,8 +37,15 @@ test('Artifact and nested tag scopes never join the P body at the same style',as
   const traced=traceReflowSource(ops,f.fonts,'revision');
   expect([...traced.shows.values()].map(s=>JSON.parse(s.before.scopeKey!))).toEqual([
    [['BDC',tag],['BMC','Span']],[['BDC','P'],['BMC','Span']],[['BDC','P'],['BMC','Span']]]);
-  const e=streamReflowEvidence(f.page,f.content,f.fonts,target);if(!e.ok)throw Error(e.detail);
-  expect(e.proof.owned.map(s=>s.opIndex)).not.toContain(ops.findIndex(op=>op.operator==='Tj'));
+  const first=ops.findIndex(op=>op.operator==='Tj'),e=streamReflowEvidence(f.page,f.content,f.fonts,target);
+  if(tag==='Artifact'){
+   expect(traced.shows.get(`${first}:-1`)!.before.scopeSafe).toBe(false);
+   expect(streamReflowEvidence(f.page,f.content,f.fonts,first)).toMatchObject({ok:false,gate:'target-state'});
+   expect(e).toMatchObject({ok:false,gate:'region-unproved',blocker:'obstacles'});
+  }else{
+   if(!e.ok)throw Error(e.detail);
+   expect(e.proof.owned.map(s=>s.opIndex)).not.toContain(first);
+  }
  }
 });
 test('a replacement spanning sibling MCIDs refuses even on one visual line',async()=>{

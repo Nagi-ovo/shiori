@@ -3,6 +3,7 @@ import {PDFDocument, PDFName} from 'pdf-lib';
 import {fontCoverageFromDict} from '../fontCoverage/pdfLibAdapter';
 import {tinyTtf} from '../fontCoverage/fixtures/programs';
 import {inspectRunPage, replaceRunPage, resolveRunFonts} from './replaceRunPage';
+import {substituteSourceFonts} from './substituteSource';
 
 async function fixture(options:{base?:string; subtype?:string; encoding?:string|null;
   differences?:Record<number, string>; embedded?:boolean; flags?:number; toUnicode?:string} = {}) {
@@ -78,4 +79,37 @@ test('published Standard-14 built-in labels retain their existing coverage proof
   const font = (await fixture({subtype:'Type1', base:'Helvetica', encoding:null})).resolved();
   expect(font.unicodeByCode.get(65)).toBe('A');
   expect(font.canEncode!('A').ok).toBe(false);
+});
+
+test('substitution preserves recovered holes beside partial ToUnicode labels',async()=>{
+ const f=await fixture({toUnicode:'2 beginbfchar <41> <0041> <65> <FFFD> endbfchar'});
+ const font=substituteSourceFonts(f.page)[0]!;
+ expect([65,101,32].map(code=>font.unicodeByCode.get(code))).toEqual(['A','e',' ']);
+ expect(font.canEncode!('A').ok).toBe(false);
+});
+test('fresh substitution fallback keeps explicit names without inferring underscore names',async()=>{
+ const f=await fixture({differences:{7:'f_h'}});
+ f.font.set(PDFName.of('FontDescriptor'),f.doc.context.obj({Flags:32,FontFile2:f.doc.context.register(f.doc.context.flateStream(Uint8Array.of(0)))}));
+ expect(f.resolved().unicodeByCode.size).toBe(0);
+ const font=substituteSourceFonts(f.page)[0]!;
+ expect(font.unicodeByCode.get(65)).toBe('A');expect(font.unicodeByCode.has(7)).toBe(false);
+ expect(font.canEncode!('A').ok).toBe(false);
+});
+test('fresh substitution fallback refuses symbolic Encoding guesses',async()=>{
+ const f=await fixture({flags:4});
+ expect(f.resolved().unicodeByCode.size).toBe(0);
+ expect(substituteSourceFonts(f.page)).toEqual([]);
+});
+test.each([false,true])('duplicate ToUnicode retains last-wins labels and conflicts, embedded=%s',async embedded=>{
+ const f=await fixture({embedded,toUnicode:'3 beginbfchar <41> <0041> <41> <0065> <42> <005A> endbfchar'}),font=f.resolved();
+ expect(font.unicodeByCode.get(65)).toBe('e');expect(font.unicodeByCode.get(66)).toBe('Z');
+ expect(font.unicodeByCode.get(32)).toBe(' ');
+ expect(()=>font.assertSource!([Uint8Array.of(65)])).toThrow('glyph-identity-conflict');
+ expect(font.canEncode!('Z').ok).toBe(false);
+});
+test('malformed ToUnicode still permits independent source-only inference',async()=>{
+ const font=(await fixture({toUnicode:'2 beginbfchar <41> <0065> endbfchar'})).resolved();
+ expect(font.unicodeByCode.get(65)).toBe('A');
+ expect(()=>font.assertSource!([Uint8Array.of(65)])).toThrow('requires a ToUnicode');
+ expect(font.canEncode!('A').ok).toBe(false);
 });

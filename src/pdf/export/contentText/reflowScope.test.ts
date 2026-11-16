@@ -4,9 +4,8 @@ import {regionRows,regionStream} from './reflowRegion.test-support';
 import {resolveRunFonts} from '../contentStreamEdit/replaceRunPage';
 import {ContentStreamParseError,tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {traceReflowSource} from './reflowTrace';
-import {paragraphMember} from './regionProof/geometry';
+import {paragraphMember,validTrace} from './regionProof/geometry';
 import {planStreamReflow} from './reflowAuto';
-import {compileReflowPlan} from './reflowCompile';
 import {overlay} from './fixtures.test-support';
 
 const enc=new TextEncoder();
@@ -22,7 +21,7 @@ for(const {name,left,right} of collisions){
   const stream=regionRows.map((row,i)=>`${i===0?left.open:right.open} BT /F1 10 Tf 14 TL 50 ${150-i*14} Td (${row}) Tj ET ${i===0?left.close:right.close}`).join(' ');
   const f=await spacingPage(stream),fonts=resolveRunFonts(f.page);
   const states=[...traceReflowSource(tokenizeContentStream(enc.encode(stream)),fonts,'revision').shows.values()].map(s=>s.before);
-  expect(states.every(s=>s.scopeSafe)).toBe(true);
+  expect(states.map(s=>s.scopeSafe)).toEqual([true,...regionRows.slice(1).map(()=>name!=='BMC and BDC')]);
   expect(states[0]!.mcids).toEqual([]);expect(states[1]!.mcids).toEqual([]);
   expect(paragraphMember(states[0]!,states[1]!)).toBe(false);
  });
@@ -53,9 +52,31 @@ test.each(['null','/Other','(0)','[]','<<>>','.5','-1','9007199254740992','0 /MC
  const state=[...traceReflowSource(tokenizeContentStream(enc.encode(stream)),[],'revision').shows.values()][0]!.before;
  expect(state.scopeSafe).toBe(false);
 });
-test('a genuinely empty BDC dictionary still permits a same-scope wrap',async()=>{
+test('a BDC dictionary without MCID cannot authorize a wrap',async()=>{
  const stream=regionStream(true).replaceAll(/<<\/MCID \d>>/g,'<<>>'),f=await spacingPage(stream),fonts=resolveRunFonts(f.page),content=enc.encode(stream);
  const plan=planStreamReflow(f.page,content,fonts,overlay({originalText:'S',text:'n n',coverRects:[{x:49.9,y:134,w:10.2,h:12}]}));
- expect(plan?.reflow?.layout.strategy).toBe('wrap');if(!plan)throw Error('missing empty-property plan');
- expect(compileReflowPlan(content,fonts,plan).ok).toBe(true);
+ expect(plan).toBeNull();
+});
+test.each(['<</MCID 0>>','<</Lang (en-US) /MCID 0>>','<</MCID 0 /Lang (en-US)>>'])('MCID metadata %s retains a valid show trace',async properties=>{
+ const stream=`/P ${properties} BDC BT /F1 10 Tf 14 TL 50 150 Td (S i) Tj ET EMC`;
+ const f=await spacingPage(stream),state=[...traceReflowSource(tokenizeContentStream(enc.encode(stream)),resolveRunFonts(f.page),'revision').shows.values()][0]!.before;
+ expect(state.scopeSafe).toBe(true);expect(state.mcids).toEqual([0]);expect(validTrace(state)).toBe(true);
+});
+test.each(['<</Lang (en-US)>>','<<>>','<</MCID 0 /ActualText (S)>>','<</MCID 0 /Alt (S)>>',
+ '<</MCID 0 /E (S)>>','<</MCID 0 /OC /Layer>>','<</MCID 0 /Other 1>>'])('BDC metadata %s remains unsafe',properties=>{
+ const stream=`/P ${properties} BDC BT 0 0 Td (S) Tj ET EMC`;
+ const state=[...traceReflowSource(tokenizeContentStream(enc.encode(stream)),[],'revision').shows.values()][0]!.before;
+ expect(state.scopeSafe).toBe(false);expect(validTrace(state)).toBe(false);
+});
+test.each(['OC','Artifact'])('%s with MCID and Lang remains unsafe',tag=>{
+ const stream=`/${tag} <</MCID 0 /Lang (en-US)>> BDC BT 0 0 Td (S) Tj ET EMC`;
+ expect([...traceReflowSource(tokenizeContentStream(enc.encode(stream)),[],'revision').shows.values()][0]!.before.scopeSafe).toBe(false);
+});
+test('named MCID and Lang properties retain the same scope checks',async()=>{
+ const stream='/P /Props BDC BT /F1 10 Tf 14 TL 50 150 Td (S i) Tj ET EMC',f=await spacingPage(stream);
+ for(const [keys,mcid,safe]of [[['MCID','Lang'],0,true],[['Lang'],0,false],[['MCID','Lang','ActualText'],0,false],[['MCID','Lang'],-1,false]]as const){
+  const environment={markedContentProperties:new Map([['Props',keys]]),markedContentMcids:new Map([['Props',mcid]])};
+  const state=[...traceReflowSource(tokenizeContentStream(enc.encode(stream)),resolveRunFonts(f.page),'revision',environment).shows.values()][0]!.before;
+  expect(state.scopeSafe).toBe(safe);expect(validTrace(state)).toBe(safe);
+ }
 });
