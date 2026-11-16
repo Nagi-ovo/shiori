@@ -1,5 +1,5 @@
 import {expect, test} from 'bun:test';
-import {markdownReport, summarize, type CorpusRow} from './report';
+import {isHeadlineKind, markdownReport, summarize, summarizeReport, type CorpusRow} from './report';
 
 const row = (mode: CorpusRow['outcome']['mode'], category = 'chinese'): CorpusRow => ({
   id: `${category}-sample`, category, page: 0, kind: 'longer', original: 'old', text: 'new', ms: 10,
@@ -32,4 +32,43 @@ test('markdown exposes the four accepted modes overall, by category and by Chine
   expect(md).toContain('| overall | 4 | 0 | 1 | 1 | 1 | 1 | 75.0% |');
   expect(md).toContain('| chinese-sample | 3 | 0 | 0 | 1 | 1 | 1 |');
   expect(md).toContain('- overflow: 1');
+});
+
+test('headline excludes only unbreakable overflow while stress and old-definition remain explicit', () => {
+  const rows = [
+    row('in-place'),
+    {...row('reflowed'), kind: 'overflow'},
+    {...row('substituted'), kind: 'overflow-2'},
+    {...row('overlay'), kind: 'overflow-unbreakable', ms: 1000},
+    {...row('overlay', 'word'), kind: 'overflow-unbreakable'},
+  ];
+  for (const kind of ['overflow', 'overflow-2', 'missing-han', 'multi-line', 'future-kind']) {
+    expect(isHeadlineKind(kind)).toBe(true);
+  }
+  expect(isHeadlineKind('overflow-unbreakable')).toBe(false);
+
+  // These are the objects persisted by run.ts, including the legacy all-row summary.
+  const summaries = JSON.parse(JSON.stringify(summarizeReport(rows)));
+  expect(summaries.summary).toEqual(summarize(rows));
+  expect(summaries.summary.edits).toBe(rows.length);
+  expect(summaries.headline).toMatchObject({edits: 3, acceptedRate: 1, overlay: 0, ms: 30, reasons: {}});
+  expect(summaries.unbreakableOverflow).toMatchObject({edits: 2, acceptedRate: 0, overlay: 2, ms: 1010});
+  expect(summaries.oldDefinition).toMatchObject({edits: 3, 'in-place': 1, substituted: 0, reflowed: 0, overlay: 2, acceptedRate: 1 / 3});
+
+  const md = markdownReport({rows, files: 2, elapsedMs: 100, skips: [], oracle: [], categories: ['chinese', 'word']});
+  const [main, stressAndOld] = md.split('\n## Unbreakable overflow stress case');
+  expect(main).toContain('Edits: 3.');
+  expect(main).toContain('| overall | 3 | 1 | 0 | 1 | 1 | 0 | 100.0% |');
+  expect(main).toContain('| chinese | 3 | 1 | 0 | 1 | 1 | 0 | 100.0% |');
+  expect(main).toContain('| word | 0 | 0 | 0 | 0 | 0 | 0 | 0.0% |');
+  expect(main).toContain('| chinese-sample | 3 | 1 | 0 | 1 | 1 | 0 |');
+  expect(main).toContain('Mean export time: 10.0 ms per edit.');
+  expect(main).not.toContain('- overflow:');
+  const [stress, oldDefinition] = stressAndOld!.split('\n## Old-definition comparison');
+  expect(stress).toContain('| overflow-unbreakable | 2 | 0 | 0 | 0 | 0 | 2 | 0.0% |');
+  expect(oldDefinition).toContain('| old-definition | 3 | 1 | 0 | 0 | 0 | 2 | 33.3% |');
+});
+
+test('empty report groups retain finite rates', () => {
+  for (const summary of Object.values(summarizeReport([]))) expect(summary).toEqual(summarize([]));
 });

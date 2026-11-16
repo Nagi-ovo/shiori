@@ -11,7 +11,7 @@ import {inspectRunPage,resolveRunFonts} from '../../src/pdf/export/contentStream
 import {editMatrix} from './editMatrix';
 import {auditCorpusSample} from './oracle';
 import {selectOracleSamples} from './selectOracleSamples';
-import {markdownReport,summarize,type CorpusRow} from './report';
+import {markdownReport,summarize,summarizeReport,type CorpusRow} from './report';
 import {exportPdf} from '../../src/pdf/export/exportPdf';
 import type {PageModel} from '../../src/pdf/model/types';
 const stage5Type1={sourceReuse:process.env.SHIORI_STAGE5_TYPE1_SOURCE_REUSE!=='0'};
@@ -59,7 +59,7 @@ try{
    }
    console.log(entry.id,pageIndex,summarize(rows.filter(r=>r.id===entry.id)));
   }
-  const report={stage5Type1,stage5Reflow,stage5Substitute,categories:[...new Set(entries.slice(0,limit).map(e=>e.category))],files:Math.min(limit,entries.length),elapsedMs:performance.now()-started,rows,skips,oracle,summary:summarize(rows)};
+  const report={stage5Type1,stage5Reflow,stage5Substitute,categories:[...new Set(entries.slice(0,limit).map(e=>e.category))],files:Math.min(limit,entries.length),elapsedMs:performance.now()-started,rows,skips,oracle,...summarizeReport(rows)};
   await writeFile(join(out,'report.json'),JSON.stringify(report,null,2));await writeFile(join(out,'report.md'),markdownReport(report));
  }
  const candidates=[];
@@ -69,7 +69,7 @@ try{
   try{const checked=await auditCorpusSample(native,name,join(out,'samples'),metadata.overlay,metadata.stage5Type1,metadata.stage5Reflow,metadata.row.outcome.reflow,metadata.row.outcome.mode);oracle.push(checked);console.log('oracle passed',name);}
   catch(error){oracle.push({name,passed:false,error:String(error)});process.exitCode=1;console.error('P0 accepted edit failed native oracle',name,String(error));}
  }
- const report={stage5Type1,stage5Reflow,stage5Substitute,categories:[...new Set(entries.slice(0,limit).map(e=>e.category))],files:Math.min(limit,entries.length),elapsedMs:performance.now()-started,rows,skips,oracle,summary:summarize(rows)};
+ const report={stage5Type1,stage5Reflow,stage5Substitute,categories:[...new Set(entries.slice(0,limit).map(e=>e.category))],files:Math.min(limit,entries.length),elapsedMs:performance.now()-started,rows,skips,oracle,...summarizeReport(rows)};
  await writeFile(join(out,'report.json'),JSON.stringify(report,null,2));await writeFile(join(out,'report.md'),markdownReport(report));
 }finally{native.close();}
 console.log('Report:',join(out,'report.md'));

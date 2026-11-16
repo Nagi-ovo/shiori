@@ -15,7 +15,7 @@ test('page sampling is deterministic, bounded and covers document endpoints',()=
  expect(samplePages(0)).toEqual([]);
 });
 test('fixed edit matrix exercises different failure paths without identity substitutions',()=>{
- const edits=editMatrix('Hello world');expect(edits.map(e=>e.kind)).toEqual(['same-length','missing-glyph','shorter','longer','overflow','substring']);
+ const edits=editMatrix('Hello world');expect(edits.map(e=>e.kind)).toEqual(['same-length','missing-glyph','shorter','longer','overflow','overflow-2','overflow-unbreakable','substring']);
  for(const e of edits)expect(e.text).not.toBe('Hello world');
  expect(editMatrix('日本語の文章').some(e=>e.kind==='cjk')).toBe(true);
 });

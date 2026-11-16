@@ -22,13 +22,29 @@ skipped sample and native sample result. `report.md` gives category totals,
 rates, top refusals and timing. Exit status is nonzero if any accepted sample
 fails its native oracle; those failures are P0, never silently counted as passes.
 
-The JSON `summary` always contains numeric `in-place`, `fallback-font`,
-`substituted`, `reflowed` and `overlay` counts, including zeros for modes absent
+The JSON `summary` retains **all rows**, so `summary.edits === rows.length`
+for compatibility with existing readers. Each summary object always contains
+numeric `in-place`, `fallback-font`, `substituted`, `reflowed` and `overlay`
+counts, including zeros for modes absent
 from an older run. `acceptedRate` is `(in-place + fallback-font + substituted +
 reflowed) / edits`; `refusalRate` is `overlay / edits`. Both rates are zero for
 an empty run. `edits`, total export `ms` and the descending `reasons` histogram
 retain their existing meanings. Modes partition the rows; a reflow that also
 uses a substitute is counted under its recorded final mode, never twice.
+The additional JSON summaries are:
+
+- `headline`: every kind except `overflow-unbreakable`. Its `acceptedRate` is
+  the headline acceptance rate; the markdown's leading edit count, acceptance
+  rate, category/overall and Chinese-file tables, refusal reasons and mean
+  export time all use these rows.
+- `unbreakableOverflow`: only `overflow-unbreakable`, shown in a separate
+  markdown stress section with all outcome counts and its acceptance rate.
+- `oldDefinition`: every kind except the new realistic `overflow` and
+  `overflow-2`, including `overflow-unbreakable` in the slot formerly named
+  `overflow`. Its separate markdown table is the comparable r18 definition
+  (48.6%, 645/1328); with the same sampled inputs and unchanged production,
+  this preserves the old denominator and edit construction.
+
 Category/overall and Chinese-file tables expose all four accepted columns.
 This schema does not recompute or overwrite earlier baseline reports.
 
@@ -171,10 +187,35 @@ paragraph confidence filter and every resulting skip are reported. OCR pages
 with no selectable text are skips; OCR text that cannot be proved exact is a
 counted refusal. InDesign is included even when no high-confidence line is found.
 
-Each line receives word-character permutation using existing characters,
-missing-glyph (`é`), shorter, longer, deliberate overflow, mid-word substitution,
-and a Han/kana/Hangul replacement where applicable. A detected two-line block
-gets a first-line edit without reflow. Cases are independent and all go through
+Each line receives these kinds in stable order: `same-length` (word-character
+permutation using existing characters), `missing-glyph` (`é`), `shorter`,
+`longer`, `overflow`, `overflow-2`, `overflow-unbreakable`, `substring`
+(mid-word substitution), then `cjk` (Han/kana/Hangul replacement) where applicable.
+Identity edits are dropped; an empty line produces no edits.
+
+`overflow` and `overflow-2` append a natural phrase to the original line,
+targeting final Unicode code-point lengths of 125% and 155% respectively.
+These are mild and stronger wrapping probes; actual wrapping depends on the
+source measure. Fixed phrase banks prefer candidates in the +10–60% growth
+band, then the closest target length, with bank order breaking ties. If even
+the shortest phrase exceeds +60% on a short line, it is kept intact. No font
+metrics, randomness, I/O or word fragments are used to choose a phrase.
+Latin/digit/punctuation lines receive ASCII words with spaces and a separating
+space unless the line already ends in whitespace. Han without kana receives a
+Chinese clause using everyday characters covered by Noto Sans SC / Source Han;
+any Hiragana or Katakana selects a Japanese clause using everyday kana and
+common kanji covered by Noto Sans JP. Hangul-only lines use the Latin bank to
+avoid introducing additional CJK glyph requirements in a layout probe. Neither
+realistic variant adds accented missing-glyph bait.
+
+`overflow-unbreakable` preserves the exact old stress construction: replace
+the first ASCII word of at least three letters (or the first three code points
+as the existing fallback) with eight copies of itself, retaining the old
+replacement span. It does not append and is excluded only from headline
+statistics, not from execution or the compatible all-row `summary`.
+
+A detected two-line block gets a first-line edit without reflow. Cases are
+independent and all go through
 `exportPdf` → `rebuildPdf` → the same production planner/compiler. A font-byte
 loader supplies the same bundled fonts to Bun that Vite serves in the app.
 Longer edits are allowed to refuse; the corpus never enables `allowOverflow`.
