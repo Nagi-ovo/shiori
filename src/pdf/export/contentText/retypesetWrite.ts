@@ -5,7 +5,7 @@ import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {removeIdentifiedGlyphs} from '../contentStreamEdit/removeGlyphs';
 import {walkTextPlacements,type ShowTextState} from '../contentStreamEdit/textState';
 import {hex,pdfName,pdfNumber,encodeRun,codes} from '../contentStreamEdit/runEncoding';
-import {prepareFallback,fallbackFontName,type FallbackOptions} from '../contentStreamEdit/fallbackFont';
+import {fallbackFontName,type FallbackOptions} from '../contentStreamEdit/fallbackFont';
 import {substitutionStamp} from '../contentStreamEdit/substituteSnapshot';
 import {inspectRunPage} from '../contentStreamEdit/replaceRunPage';
 import type {ResolvedRunFont} from '../contentStreamEdit/replaceRun';
@@ -14,6 +14,7 @@ import {address} from './retypesetSource';
 import type {planRetypeset} from './retypesetPlan';
 import type {RetypesetCluster} from './retypesetTypes';
 import {restoreReflowSlot} from './reflowEmit';
+import {prepareRetypesetFallback} from './retypesetFallback';
 
 type Plan=ReturnType<typeof planRetypeset>;
 type Source=ReturnType<typeof readRetypesetSource>;
@@ -53,7 +54,7 @@ function layout(plan:Plan){
 /** Compile in scratch resources, rewalk, verify every untargeted glyph, then
  * install. Each home show emits under its original graphics/marked scope. */
 export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp[],source:Source,plans:Plan[],options:FallbackOptions){
- const scratch=await PDFDocument.create(),fonts=[...source.fonts],prepared:Awaited<ReturnType<typeof prepareFallback>>[]=[],names:(string|null)[]=[];
+ const scratch=await PDFDocument.create(),fonts=[...source.fonts],prepared:Awaited<ReturnType<typeof prepareRetypesetFallback>>[]=[],names:(string|null)[]=[];
  const stamp=substitutionStamp(page);
  const originalResources=page.node.Resources(),originalContents=page.node.get(PDFName.of('Contents'));
  const fontDict=originalResources?.lookupMaybe(PDFName.of('Font'),PDFDict);
@@ -67,11 +68,16 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
    try{const encoded=encodeRun(a.text,font,new Uint8Array());if(encoded.ok){a.bytes=encoded.bytes;a.font=font;continue;}}catch{ /* approximate substitute below */ }
    missing.push(a);
   }
-  const name=fallbackFontName(baseFace(page,plan.tail[0]!.glyph.fontName),0,missing.map(a=>a.text).join(''));
+  // Include the unchanged prefix as well as the complete output tail: a
+  // Latin-only hole must not select Liberation for a CJK paragraph.
+  const prefix=plan.group.lines.slice(0,plan.firstLine).flatMap(l=>l.glyphs.map(g=>g.text??'')).join('');
+  const name=fallbackFontName(baseFace(page,plan.tail[0]!.glyph.fontName),0,prefix+plan.output.map(a=>a.text).join(''));
   names.push(missing.length?name:null);
   if(missing.length){
    let i=1;while(used.has(`ShioriRt${i}`))i++;const resource=`ShioriRt${i}`;used.add(resource);
-   const p=await prepareFallback(scratch,resource,name,missing.map(a=>a.text),options);prepared.push(p);fonts.push(p.resolved);
+   // These are exactly the clusters shown in this substitute. Preparation
+   // verifies their coverage and outlines before any page resources change.
+   const p=await prepareRetypesetFallback(scratch,resource,name,missing.map(a=>a.text),options);prepared.push(p);fonts.push(p.resolved);
    for(const a of missing){const encoded=encodeRun(a.text,p.resolved,new Uint8Array());if(!encoded.ok)throw Error('substitute cannot encode replacement');a.bytes=encoded.bytes;a.font=p.resolved;}
   }
  }
