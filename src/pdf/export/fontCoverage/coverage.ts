@@ -8,7 +8,7 @@ import { codeHex, codeNumber, hexBytes } from './types';
 import type { EncodeOptions, EncodeResult, FontCoverage, FontInput } from './types';
 export type { FontCoverage, FontInput, EncodeOptions, EncodeResult } from './types';
 
-function encoder(report:FontCoverage,text:string,options:EncodeOptions={}):EncodeResult {
+function encoder(report:FontCoverage,text:string,unicodeSource:'ToUnicode'|'font encoding',options:EncodeOptions={}):EncodeResult {
   if(report.replacementDisabled)return {ok:false,reason:report.replacementDisabled,firstMissing:Array.from(text)[0]??'',offset:0};
   if(text) {
     const diagnostic=report.failures?.find(d=>d.code==='glyph-identity-conflict'&&d.cluster&&text.includes(d.cluster))
@@ -33,7 +33,9 @@ function encoder(report:FontCoverage,text:string,options:EncodeOptions={}):Encod
       for(const cluster of byFirst.get(text[i]!) ?? [])if(text.startsWith(cluster,i))reachable.add(i+cluster.length);
     }
     const firstMissing=new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text.slice(furthest))[Symbol.iterator]().next().value?.segment ?? '';
-    const reason=report.missing.find(m=>m.cluster===firstMissing)?.reason ?? report.missing.find(m=>!m.code)?.reason ?? 'no verified source code for cluster';
+    // `missing` describes rejected source mappings, not arbitrary requested
+    // text. An unlisted cluster has no source label to verify or encode.
+    const reason=report.missing.find(m=>m.cluster===firstMissing)?.reason ?? report.missing.find(m=>!m.code)?.reason ?? `no ${unicodeSource} mapping for cluster`;
     return {ok:false,reason,firstMissing,offset:furthest,...(report.mappings?{code:'glyph-unavailable' as const,terminal:false}:{})};
   }
   const codes:Uint8Array[]=[];
@@ -55,10 +57,11 @@ function encoder(report:FontCoverage,text:string,options:EncodeOptions={}):Encod
  * rendering code → glyph path. No shaping, font growth, or width calculation. */
 export function createFontCoverage(input:FontInput,options:Type1Options={}):FontCoverage {
   const baseFont=input.baseFont ?? '';
+  const unicodeSource=input.toUnicode===undefined?'font encoding':'ToUnicode';
   const report:FontCoverage={subtype:input.subtype,baseFont,subsetTag:/^([A-Z]{6})\+/.exec(baseFont)?.[1] ?? null,
     encodingKind:typeof input.encoding==='string'?input.encoding:input.encoding?.cmap?'embedded CMap':input.encoding?.base ?? 'built-in',
     vertical:false,verification:'unverified',warnings:[],missing:[],codeToUnicode:new Map(),encodable:new Map(),glyphIds:new Map(),definedCodes:[],
-    canEncode:(text,options)=>encoder(report,text,options)};
+    canEncode:(text,options)=>encoder(report,text,unicodeSource,options)};
   try {
     if(input.subtype==='MMType1')rejectType1('type1-ps-unsupported','MMType1 interpolation');
     if(input.diagnostic)rejectType1(input.diagnostic.code,input.diagnostic.detail,input.diagnostic.data);
