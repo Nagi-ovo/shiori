@@ -7,6 +7,10 @@ type Snapshot={width:number;height:number;text:string;glyphs:readonly Glyph[];pi
 const compact=(s:string)=>s.replace(/\s/gu,'');
 const drift=(a:readonly number[],b:readonly number[])=>Math.hypot(a[0]!-b[0]!,a[1]!-b[1]!);
 const match=(g:Glyph,e:ManifestGlyph)=>g.text===e.unicode&&drift(g.origin,e.origin)<=.005;
+function matchCluster(glyphs:readonly Glyph[],at:number,e:ManifestGlyph,tolerance=.005){
+ const scalars=Array.from(e.unicode),components=glyphs.slice(at,at+scalars.length);
+ return components.length===scalars.length&&components.every((g,i)=>Array.from(g.text).length===1&&g.text===scalars[i]&&drift(g.origin,e.origin)<=tolerance)?components:undefined;
+}
 /** Only called for flag-on samples carrying a manifest. The ordinary oracle
  * remains unchanged. A manifest authorizes exact owned destinations, never
  * arbitrary drift or font changes elsewhere on the page. */
@@ -15,8 +19,13 @@ export function compareReflowNativePages(before:Snapshot,after:Snapshot,edit:{or
  const old=before.glyphs.filter(g=>compact(g.text)),actual=after.glyphs.filter(g=>compact(g.text));
  const source=manifest.source.filter(g=>compact(g.unicode)),output=manifest.output.filter(g=>compact(g.unicode));
  assert(source.length&&output.length,'empty manifest ownership');
- const at=old.findIndex(g=>match(g,source[0]!));assert(at>=0,'manifest source not found');
- source.forEach((e,i)=>{const g=old[at+i];assert(g&&match(g,e),'manifest source sequence/origin differs');if(e.fontHash)assert.equal(g.fontHash,e.fontHash,'manifest source font differs');});
+ const at=old.findIndex((_,i)=>matchCluster(old,i,source[0]!));assert(at>=0,'manifest source not found');
+ let sourceEnd=at;
+ for(const e of source){
+  const components=matchCluster(old,sourceEnd,e);assert(components,'manifest source sequence/origin differs');
+  if(e.fontHash)for(const g of components)assert.equal(g.fontHash,e.fontHash,'manifest source font differs');
+  sourceEnd+=components.length;
+ }
  // The edit's native selection supplies independent logical text evidence;
  // the manifest cannot authorize deleting/changing additional owned letters.
  const inCover=(g:Glyph)=>edit.coverRects.some(r=>g.origin[0]!>=r.x-.01&&g.origin[0]!<=r.x+r.w+.01&&g.origin[1]!>=r.y-.01&&g.origin[1]!<=r.y+r.h+.01);
@@ -25,19 +34,22 @@ export function compareReflowNativePages(before:Snapshot,after:Snapshot,edit:{or
  const candidates=old.flatMap((_,i)=>{const selected=old.slice(i,i+count);return selected.length===count&&selected.every(inCover)&&selected.map(g=>g.text).join('')===needle?[i]:[];});
  assert.equal(candidates.length,1,'native edit source is missing/ambiguous');
  const target=candidates[0]!;
- assert(target>=at&&target+count<=at+source.length,'edit is outside manifest source');
+ assert(target>=at&&target+count<=sourceEnd,'edit is outside manifest source');
  const logical=old.slice(0,target).map(g=>g.text).join('')+compact(edit.text)+old.slice(target+count).map(g=>g.text).join('');
  assert.equal(compact(after.text),logical,'native requested logical text mismatch');
- const expected=[...old.slice(0,at).map(g=>({text:g.text,origin:g.origin,original:g,replacement:false})),
-  ...output.map(e=>{const original=e.oldOrigin?old.slice(at,at+source.length).find(g=>g.text===e.unicode&&drift(g.origin,e.oldOrigin!)<=.01):undefined;
-   if(e.oldOrigin)assert(original,'owned output identity missing');
-   return {text:e.unicode,origin:e.origin,original,replacement:!e.oldOrigin};}),
-  ...old.slice(at+source.length).map(g=>({text:g.text,origin:g.origin,original:g,replacement:false}))];
+ const owned=old.slice(at,sourceEnd);
+ const expectedOutput=output.flatMap(e=>{
+  const start=e.oldOrigin?owned.findIndex((_,i)=>matchCluster(owned,i,{...e,origin:e.oldOrigin!},.01)):-1;
+  if(e.oldOrigin)assert(start>=0,'owned output identity missing');
+  return Array.from(e.unicode).map((text,i)=>({text,origin:e.origin,original:e.oldOrigin?owned[start+i]:undefined,replacement:!e.oldOrigin,fontHash:e.fontHash}));
+ });
+ const expected=[...old.slice(0,at).map(g=>({text:g.text,origin:g.origin,original:g,replacement:false})),...expectedOutput,
+  ...old.slice(sourceEnd).map(g=>({text:g.text,origin:g.origin,original:g,replacement:false}))];
  assert.equal(actual.length,expected.length,'native glyph count mismatch');assert.equal(compact(after.text),expected.map(e=>e.text).join(''),'native extracted text mismatch');
  const replacementIndices:number[]=[];let maxOriginDriftPt=0;
  actual.forEach((g,i)=>{const e=expected[i]!;assert.equal(g.text,e.text,'native glyph Unicode/order mismatch');
-  const distance=drift(g.origin,e.origin);assert(distance<=.005,`native ${i>=at&&i<at+output.length?'destination':'untouched glyph drift'} ${distance}`);maxOriginDriftPt=Math.max(maxOriginDriftPt,distance);
-  if(i>=at&&i<at+output.length&&output[i-at]!.fontHash)assert.equal(g.fontHash,output[i-at]!.fontHash,'manifest output font differs');
+  const distance=drift(g.origin,e.origin);assert(distance<=.005,`native ${i>=at&&i<at+expectedOutput.length?'destination':'untouched glyph drift'} ${distance}`);maxOriginDriftPt=Math.max(maxOriginDriftPt,distance);
+  if(i>=at&&i<at+expectedOutput.length&&expectedOutput[i-at]!.fontHash)assert.equal(g.fontHash,expectedOutput[i-at]!.fontHash,'manifest output font differs');
   if(e.original){assert.equal(g.fontHash,e.original.fontHash,'owned/untouched font program changed');assert.deepEqual(g.nativePath,e.original.nativePath,'owned/untouched outline changed');}
   if(e.replacement){replacementIndices.push(i);assert(g.nativePath&&(g.nativePath as unknown[]).length,'replacement path missing');assert((g.inkPixels??0)>0,'replacement has no ink');}
  });
