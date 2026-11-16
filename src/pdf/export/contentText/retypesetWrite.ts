@@ -15,6 +15,7 @@ import type {planRetypeset} from './retypesetPlan';
 import type {RetypesetCluster} from './retypesetTypes';
 import {restoreReflowSlot} from './reflowEmit';
 import {prepareRetypesetFallback} from './retypesetFallback';
+import {verifyRetypesetGlyphs} from './retypesetVerify';
 
 type Plan=ReturnType<typeof planRetypeset>;
 type Source=ReturnType<typeof readRetypesetSource>;
@@ -108,17 +109,33 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
    const p=plans.find(p=>p.output.includes(a))!,global=p.frame.global(a.x!,a.y!),s=a.home.state,ct=s.ctm!,tm=s.textMatrix!,det=ct[0]!*ct[3]!-ct[1]!*ct[2]!;
    const x=(ct[3]!*(global.x-ct[4]!)-ct[2]!*(global.y-ct[5]!))/det-s.rise!*tm[2]!;
    const y=(-ct[1]!*(global.x-ct[4]!)+ct[0]!*(global.y-ct[5]!))/det-s.rise!*tm[3]!;
+   const along=(dx:number)=>{
+    const q=p.frame.global(dx,0),tx=(ct[3]!*q.x-ct[2]!*q.y)/det,ty=(-ct[1]!*q.x+ct[0]!*q.y)/det;
+    const length=tm[0]!**2+tm[1]!**2,advance=(tx*tm[0]!+ty*tm[1]!)/length;
+    return{advance,across:Math.hypot(tx-advance*tm[0]!,ty-advance*tm[1]!)};
+   };
    // Keep adjacent characters in one real show string. Per-character Tm/Tj
    // fragments can make PDFium extract a newline after every character.
    let end=cursor+1;
    for(;end<atoms.length;end++){
     const next=atoms[end]!,previous=atoms[end-1]!,ns=next.home.state;
-    if(next.font!==a.font||Math.abs(next.y!-a.y!)>1e-8||Math.abs(next.x!-previous.x!-previous.advance!)>1e-7||
+    if(next.font!==a.font||Math.abs(next.y!-a.y!)>1e-8||Math.abs(next.x!-previous.x!-previous.advance!)>1e-7||along(next.x!-previous.x!).across>1e-8||
      (['fontSize','charSpacing','wordSpacing','horizontalScale','rise','renderMode']as const).some(k=>ns[k]!==s[k])||
      ns.textMatrix!.slice(0,4).some((v,i)=>v!==tm[i])||ns.ctm!.some((v,i)=>v!==ct[i]))break;
    }
-   const data=Uint8Array.from(atoms.slice(cursor,end).flatMap(t=>[...t.bytes!]));
-   body.push(`${[...tm.slice(0,4),x,y].map(pdfNumber).join(' ')} Tm ${pdfName(a.font!.resourceName)} ${pdfNumber(s.fontSize)} Tf ${pdfNumber(s.charSpacing)} Tc ${pdfNumber(s.wordSpacing)} Tw ${pdfNumber(s.horizontalScale!*100)} Tz ${pdfNumber(s.rise!)} Ts ${s.renderMode} Tr ${hex(data)} Tj`);
+   const items:string[]=[];let adjusted=false;
+   for(let i=cursor;i<end;i++){
+    const current=atoms[i]!;items.push(hex(current.bytes!));
+    if(i+1===end)continue;
+    const code=codes(current.bytes!,current.font!.bytesPerCode)[0]!;
+    const natural=current.font!.widthOf(code)*s.fontSize/1000+s.charSpacing+(current.font!.bytesPerCode===1&&code===32?s.wordSpacing:0);
+    // Different source lines can have different text-matrix scales. TJ
+    // reaches the planned destination in this home slot's own text space.
+    const adjustment=(natural-along(atoms[i+1]!.x!-current.x!).advance/s.horizontalScale!)*1000/s.fontSize;
+    if(Math.abs(adjustment)>1e-10){items.push(pdfNumber(adjustment));adjusted=true;}
+   }
+   const show=adjusted?`[${items.join(' ')}] TJ`:`${hex(Uint8Array.from(atoms.slice(cursor,end).flatMap(t=>[...t.bytes!])))} Tj`;
+   body.push(`${[...tm.slice(0,4),x,y].map(pdfNumber).join(' ')} Tm ${pdfName(a.font!.resourceName)} ${pdfNumber(s.fontSize)} Tf ${pdfNumber(s.charSpacing)} Tc ${pdfNumber(s.wordSpacing)} Tw ${pdfNumber(s.horizontalScale!*100)} Tz ${pdfNumber(s.rise!)} Ts ${s.renderMode} Tr ${show}`);
    cursor=end;
   }
   body.push('Q',restore(before,fonts));
@@ -132,17 +149,11 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
  chunks.push(removed.bytes.subarray(cursor));const compiled=new Uint8Array(chunks.reduce((n,c)=>n+c.length,0));let offset=0;for(const c of chunks){compiled.set(c,offset);offset+=c.length;}
  const after=walkTextPlacements(tokenizeContentStream(compiled),{...source.callbacks,resolveFont:name=>{const f=fonts.find(f=>f.resourceName===name);return f?{...f,ok:true,appliesWordSpacing:f.bytesPerCode===1}:{ok:false,reason:'unmeasurable font'};}});
  if(!after.ok)throw Error(`compiled text walk failed: ${after.reason}`);
- const signature=(g:typeof hits[number])=>JSON.stringify([g.fontName,g.code,g.quad.map(p=>[Math.round(p.x*1e5),Math.round(p.y*1e5)])]);
- const actual=new Map<string,number>();for(const g of after.glyphs){const k=signature(g);actual.set(k,(actual.get(k)??0)+1);}
- for(const g of source.glyphs)if(!target.has(address(g.glyph))){const k=signature(g.glyph),count=actual.get(k)??0;if(!count)throw Error('untargeted glyph changed font, codes or position');actual.set(k,count-1);}
- const positions=new Map<string,number>();
- const position=(font:string,code:number,x:number,y:number)=>JSON.stringify([font,code,Math.round(x*1e5),Math.round(y*1e5)]);
- for(const g of after.glyphs){const k=position(g.fontName,g.code,g.coreQuad[0].x,g.coreQuad[0].y);positions.set(k,(positions.get(k)??0)+1);}
- const consume=(key:string)=>{const count=positions.get(key)??0;if(!count)throw Error('output glyph font, codes or destination differs');positions.set(key,count-1);};
- for(const g of source.glyphs)if(!target.has(address(g.glyph)))consume(position(g.glyph.fontName,g.glyph.code,g.glyph.coreQuad[0].x,g.glyph.coreQuad[0].y));
- for(const p of plans)for(const a of p.output)if(!a.hard){const encoded=codes(a.bytes!,a.font!.bytesPerCode);if(encoded.length!==1)throw Error('unmeasurable shaped output');const point=p.frame.global(a.x!,a.y!);consume(position(a.font!.resourceName,encoded[0]!,point.x,point.y));}
- const expectedCount=source.glyphs.length-hits.length+plans.reduce((n,p)=>n+p.output.filter(a=>!a.hard).reduce((n,a)=>n+a.bytes!.length/a.font!.bytesPerCode,0),0);
- if(after.glyphs.length!==expectedCount)throw Error('compiled glyph count differs');
+ const destinations=plans.flatMap(p=>p.output.filter(a=>!a.hard).map(a=>{
+  const encoded=codes(a.bytes!,a.font!.bytesPerCode);if(encoded.length!==1)throw Error('unmeasurable shaped output');
+  return{fontName:a.font!.resourceName,code:encoded[0]!,point:p.frame.global(a.x!,a.y!)};
+ }));
+ verifyRetypesetGlyphs(after.glyphs,source.glyphs.filter(g=>!target.has(address(g.glyph))).map(g=>g.glyph),destinations);
  const current=inspectRunPage(page);if(!current.ok||current.bytes.length!==bytes.length||current.bytes.some((v,i)=>v!==bytes[i])||page.node.Resources()!==originalResources||page.node.get(PDFName.of('Contents'))!==originalContents||substitutionStamp(page)!==stamp)throw Error('page changed during retypeset preparation');
  const patchedFonts=fontDict?.clone()??page.doc.context.obj({}),copier=PDFObjectCopier.for(scratch.context,page.doc.context);
  for(const p of prepared)patchedFonts.set(PDFName.of(p.resolved.resourceName),copier.copy(p.ref));

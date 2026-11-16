@@ -45,7 +45,7 @@ test('default-on substitution rewrites a whole unusable Type1 run and preserves 
  const font=page.node.Resources()!.lookup(PDFName.of('Font'),PDFDict).lookup(PDFName.of(glyphs[0]!.font),PDFDict);
  expect(font.lookup(PDFName.of('Subtype'),PDFName).decodeText()).toBe('Type0');
  expect(font.lookup(PDFName.of('Encoding'),PDFName).decodeText()).toBe('Identity-H');
- expect(font.lookup(PDFName.of('ToUnicode'),PDFRawStream)).toBeDefined();
+ expect(font.lookup(PDFName.of('ToUnicode'))).toBeInstanceOf(PDFRawStream);
  expect(font.lookup(PDFName.of('DescendantFonts'),PDFArray).size()).toBe(1);
 });
 test('exact substitution opt-out still retypesets an unusable font',async()=>{
@@ -98,7 +98,16 @@ for(const kind of ['ocr','matrix','vertical','overlap','unknown-encoding'])test(
  const edits=[overlay({text:'AX'}),...(kind==='overlap'?[overlay({id:'other'})]:[])];let loads=0;
  const before=inspectRunPage(f.page),result=await applyContentTextEdits(f.page,edits,{loadFont:async name=>{loads++;return loadFont(name);}});
  if(kind==='ocr'||kind==='overlap'){expect(result.outcomes.every(o=>o.mode==='unsupported')).toBe(true);expect(loads).toBe(0);expect(inspectRunPage(f.page)).toEqual(before);}
- else for(const outcome of result.outcomes)expectRetypeset(f.page,outcome,before,'AX');
+ else for(const outcome of result.outcomes){
+  const glyphs=expectRetypeset(f.page,outcome,before,kind==='unknown-encoding'?undefined:'AX');
+  if(kind==='unknown-encoding'){
+   // The unchanged wildcard keeps its source code, never an invented "A"
+   // Unicode label. Only the user's changed scalar needs new font encoding.
+   expect(glyphs).toHaveLength(2);
+   expect(glyphs[0]).toMatchObject({text:undefined,glyph:{fontName:'F1',code:65}});
+   expect(glyphs[1]!.text).toBe('X');
+  }
+ }
 });
 test('embedded Type1 vertical WMode and nonstandard FontMatrix stay refused with missing ToUnicode',async()=>{
  for(const wmode of [true,false]){
