@@ -11,6 +11,7 @@ import {contains,origin,physicalSize,validTrace,linear,paragraphMember,lastPosit
 import {buildPageOccupancy,boundBoxes,glyphKey,queryOccupancy} from './regionProof/occupancy';
 import {buildVisualGroups,capVisualSlots,visualLineEnd} from './regionProof/visualGroups';
 import {proveOneLineCapacity} from './regionProof/columnCapacity';
+import {proveGroupLeading} from './regionProof/leadingWitnesses';
 import {proveRowLocalSlot} from './regionProof/rowLocal';
 import {traceReflowSource} from './reflowTrace';
 import {streamInkResolver} from './reflowInk';
@@ -65,7 +66,7 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   }
   const address:SourceAddress={streamHash:sourceHash,opIndex:g.opIndex,itemIndex:g.arrayItemIndex,byteStart:g.byteOffset,byteEnd:g.byteOffset+g.byteLength,fontObject:font.objectId};
   let line=lines.at(-1);
-  const anchor=lastPositionAnchor(anchors,show.before);
+  const anchor=trace.anchors.get(g.opIndex)??lastPositionAnchor(anchors,show.before);
   if(!anchor)return refuse('missing-line-anchor',`op=${g.opIndex}`);
   const previous=line?.shows.at(-1),previousAnchor=line?.continuations?.at(-1)??line?.anchor;
   const continuation=previous&&anchor.opIndex!==previousAnchor?.opIndex;
@@ -81,7 +82,7 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   }
   sourceGap=false;
   if(!line.shows.some(s=>s.source.opIndex===g.opIndex&&s.source.itemIndex===g.arrayItemIndex)){
-   const op=ops[g.opIndex]!,item=op.operator==='TJ'&&op.operands[0]?.kind==='array'?op.operands[0].items[g.arrayItemIndex]:op.operands[0];
+   const op=ops[g.opIndex]!,item=op.operator==='TJ'&&op.operands[0]?.kind==='array'?op.operands[0].items[g.arrayItemIndex]:op.operator==='"'?op.operands[2]:op.operands[0];
    if(item?.kind!=='string')return refuse('non-string-show-item',`op=${g.opIndex} item=${g.arrayItemIndex}`);
    line.shows.push({source:{...address,byteStart:0,byteEnd:item.bytes.length},unicode:'',...show});
   }
@@ -113,7 +114,8 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   if(!grouping.ok)return refuse('region-unproved',grouping.detail,'boundary');
   const group=grouping.groups.find(g=>targetLine>=g.start&&targetLine<g.end)!;
   if(group.refusal)return refuse('region-unproved',group.refusal,'boundary');
-  proveOneLineCapacity(group,grouping.groups,trace.ends,occupancy,crop,media);
+  proveGroupLeading(group,grouping.groups,trace.ends,target);
+  proveOneLineCapacity(group,grouping.groups,trace.ends,occupancy,crop,media,target);
   visualGroup=group;
   const start=targetLine,end=group.end,count=end-start;
   if(count>8)return refuse('region-unproved','Target is more than eight source lines from the visual group end','lines');

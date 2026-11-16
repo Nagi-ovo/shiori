@@ -15,8 +15,8 @@ async function fixture(stream:string,target=0){
  return {...f,s,fonts,e,plan:(y=150,text='AB AB AB')=>planStreamReflow(f.page,s.bytes,fonts,
   overlay({originalText:'A',text,coverRects:[{x:49.95,y:y-.5,w:6.1,h:8}]}))};
 }
-for(const rows of [['AB AB AB ','AB AB ','AB '],['AB AB ','AB AB AB ']])test(`ragged group wraps within its maximum observed extent: ${rows.length} rows`,async()=>{
- const f=await fixture(rows.map((s,i)=>row(s,150-14*i)).join('')),p=f.plan();
+for(const rows of [['AB AB AB ','AB AB ','AB '],['AB AB AB ','AB ']])test(`ragged group wraps within its maximum observed extent: ${rows.length} rows`,async()=>{
+ const f=await fixture(rows.map((s,i)=>row(s,150-14*i)).join('')),p=f.plan(150,rows.length===2?'AB AB':'AB AB AB');
  expect(f.e.ok).toBe(true);expect(p?.reflow?.layout.strategy).toBe('wrap');
  if(!p?.reflow)throw Error('missing ragged wrap');
  expect(p.reflow.proof.lineSlots.every(s=>s.right===95)).toBe(true);
@@ -80,10 +80,10 @@ test('source blank rows separate paragraphs without contributing wrap capacity',
  expect(p.reflow.proof.lineSlots.map(s=>s.baseline)).toEqual([178,164,150]);
  expect(compileReflowPlan(f.s.bytes,f.fonts,p).ok).toBe(true);
 });
-test('observed pitch grows below the group end without TL',async()=>{
- const f=await fixture(row('AB AB AB ',150)+row('AB AB ',136)),p=f.plan();
+test('two agreeing observed gaps grow below the group end without TL',async()=>{
+ const f=await fixture([150,136,122].map(y=>row('AB AB AB ',y)).join('')),p=f.plan(150,'AB AB');
  expect(p?.reflow?.layout.strategy).toBe('wrap');
- expect(p?.reflow?.proof.lineSlots.map(s=>s.baseline)).toEqual([150,136,122]);
+ expect(p?.reflow?.proof.lineSlots.map(s=>s.baseline)).toEqual([150,136,122,108]);
  if(!p)throw Error('missing observed-pitch growth');expect(compileReflowPlan(f.s.bytes,f.fonts,p).ok).toBe(true);
 });
 for(const leading of [[0,0,14],[14,0,14]])test(`observed paragraph pitch permits unset TL alongside agreeing TL: ${leading}`,async()=>{

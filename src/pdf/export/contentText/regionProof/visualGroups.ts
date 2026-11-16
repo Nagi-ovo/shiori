@@ -2,7 +2,7 @@ import type {ParagraphLine,TextTrace,VisualGroup,LineSlot} from './types';
 import {EPS,lineStart,near,origin,paragraphMember,physicalLeading,physicalSize} from './geometry';
 import {queryOccupancy,type PageOccupancy} from './occupancy';
 
-const pitchTolerance=(pitch:number)=>Math.min(.25,Math.max(.10,pitch*.01));
+export const pitchTolerance=(pitch:number)=>Math.min(.25,Math.max(.10,pitch*.01));
 export const leftTolerance=(style:TextTrace)=>Math.min(.50,Math.max(.25,.025*physicalSize(style)));
 export const visualLineEnd=(line:ParagraphLine,ends:ReadonlyMap<number,TextTrace>)=>Math.max(...line.shows.map(s=>origin(s.after)[0]),
  origin(ends.get(line.shows.at(-1)!.source.opIndex)??line.shows.at(-1)!.after)[0],line.ink?line.ink.x+line.ink.w:-Infinity);

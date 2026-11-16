@@ -134,7 +134,7 @@ export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextT
   })) return refuse('obstacles', 'Incomplete scene or intersecting unowned text, annotation or paint');
   return { ok: true, proof: {
     sourceHash: input.sourceHash, dependencyHash: input.dependencyHash, bt: base.bt,
-    kind: 'paragraph', box, indent:group?.indent??indent, leadingPt: leading, lineSlots: slots,
+    kind: 'paragraph', box, indent:group?.indent??indent, leadingPt: group?.leadingEvidence?.pitchPt??leading, lineSlots: slots,
     owned: lines.flatMap(l => l.shows.map(s => ({ ...s.source }))),
     tjBoundaries: operators.boundaries, obstacleProofHash: e.obstacleProofHash,
     boundaryProofHash: e.boundaryProofHash, scopeProofHash: e.scopeProofHash,
