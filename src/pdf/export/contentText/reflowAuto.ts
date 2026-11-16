@@ -14,6 +14,8 @@ import {RunCompileError} from '../contentStreamEdit/runRefusal';
 import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {walkTextPlacements} from '../contentStreamEdit/textState';
 import {proveGlyphRegion} from './regionProof/glyphRegion';
+import {visualLineEnd} from './regionProof/visualGroups';
+import {proveSuffixGlueScene} from './regionProof/suffixGlue';
 const normalize=(s:string)=>s.replace(/\r\n?/g,'\n');
 /** Boolean/default-on producer. Source lines, widths, ownership and first-show
  * origins are read back from the immutable stream. UI newlines grant no scene
@@ -99,10 +101,11 @@ export function planProvedStreamReflow(e:StreamReflowEvidence,fonts:readonly Res
    // code boundary. Latin with missing source whitespace stays hard.
    if(a.original!.line!==b.original!.line&&legalMeasuredBreak(a,b))softBreaks.push(a.original!.line);
   }
-  let proof=e.proof,layout=solveMeasuredReflow({source,replacement,start,end,proof,softBreaks});
+  const ownEnd=e.lines.length===1?visualLineEnd(e.lines[0]!,e.trace.ends):undefined;
+  let proof=e.proof,layout=solveMeasuredReflow({source,replacement,start,end,proof,softBreaks,ownEnd});
   while(!proof.rowLocal&&!layout.ok&&layout.code==='overflow'){
    const grown=proveDownwardSlot(e,proof,[...replacement,...source.slice(end)]);if(!grown)break;
-   proof=grown;layout=solveMeasuredReflow({source,replacement,start,end,proof,softBreaks});
+   proof=grown;layout=solveMeasuredReflow({source,replacement,start,end,proof,softBreaks,ownEnd});
   }
   if(!layout.ok||layout.strategy==='fixed')return null;
   // A preceding fixed tactic may not use speculative growth; only wrap may.
@@ -118,7 +121,8 @@ export function planProvedStreamReflow(e:StreamReflowEvidence,fonts:readonly Res
   const rejoin=e.trace.ends.get(lastOp)!;
   const saved=e.trace.shows.get(`${firstOp}:${proof.owned[0]!.itemIndex}`)!.before;
   const clusters=[...source.slice(0,start),...replacement,...source.slice(end)];
-  const region=proveGlyphRegion(e,proof,clusters,layout.origins,old);if(!region)return null;
+  if(layout.strategy==='row-justify'&&!proveSuffixGlueScene(e,proof,end,clusters,layout.origins))return null;
+  const region=proveGlyphRegion(e,proof,clusters,layout.origins,old,layout.strategy==='row-justify');if(!region)return null;
   return {sourceHash:proof.sourceHash,allowExistingCodePermutation:true,...environment,edits,
    reflow:{...(substituted?{substituted:true}:{}),proof:region,saved,layout,clusters,firstOp,lastOp,rejoin}};
  }catch(error){

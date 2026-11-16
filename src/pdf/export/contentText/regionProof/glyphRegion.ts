@@ -9,7 +9,7 @@ export type GlyphRegion={old:Rect[];new:Rect[];mask:Rect[]};
 /** Obligations 3–5. Layout grants no empty space: changed glyphs must pass
  * the analytic index, then their old/new mask is fixed before compilation. */
 export function proveGlyphRegion(e:StreamReflowEvidence,proof:RegionProof,clusters:readonly ReflowCodeCluster[],
- origins:readonly (readonly [number,number])[],replaced:readonly ReflowCodeCluster[]):RegionProof|null{
+ origins:readonly (readonly [number,number])[],replaced:readonly ReflowCodeCluster[],suffixGlue=false):RegionProof|null{
  const index=e.occupancy;
  if(index.pageBlocked||proof.occupancyHash!==index.hash||origins.length!==clusters.length)return null;
  const changed=clusters.map((t,i)=>!t.original||origins[i]![0]!==t.original.x||origins[i]![1]!==t.original.y);
@@ -33,6 +33,16 @@ export function proveGlyphRegion(e:StreamReflowEvidence,proof:RegionProof,cluste
   const code=font.bytesPerCode===1?t.code[0]!:t.code[0]!*256+t.code[1]!,measured=e.ink(font.resourceName,code,state);
   if(!measured||font.unicodeByCode.get(code)!==t.unicode)return null;
   const raw=atOrigin(measured.box,p[0],p[1]),placement=placementBox(font,state,code,p[0],p[1]);
+  const next=clusters[i+1],q=origins[i+1];
+  if(suffixGlue&&t.original&&next?.original&&q&&t.wordSpace&&font.bytesPerCode===1&&code===32&&
+   measured.box.w===0&&measured.box.h===0&&t.original.line===next.original.line&&p[1]===q[1]&&
+   p[0]-t.original.x>q[0]-next.original.x){
+   // The TJ endpoint of an empty space is its placement, rather than the
+   // unshortened nominal advance. Only this adjacent owned endpoint is used;
+   // every foreign placement still blocks the complete interval.
+   if(q[0]-p[0]<.2*t.em-1e-7)return null;
+   placement.w=Math.min(placement.w,q[0]-p[0]);
+  }
   if(proof.rowLocal&&!rowLocalDestination(e,proof,raw,placement,vacated,oldInk))return null;
   if(measured.box.w>0&&measured.box.h>0){
    const box=dilateInk(raw,index.guardPt);
