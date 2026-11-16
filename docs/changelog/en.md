@@ -1,16 +1,34 @@
 # What's new
 
-## [Unreleased]
+## 26.11.16
+
+> Beatbox Bandits
 
 ### Interface
 
 - **The interface is set in LXGW WenKai.** Menus, buttons, tabs and hints use one typeface for English, Chinese and Japanese, and look the same on every system. The font ships inside the app, so nothing is downloaded. The PDFs, Markdown files and text boxes you open keep their own fonts.
 - **The status bar no longer shows "Local only".** Shiori always runs locally, so the label never changed.
 - **Sizes such as "200.0 MB" no longer break across two lines.**
+- **The active tab's outline is smoother on high-resolution screens**, with no break where its edge meets the baseline.
 
 ### Reading and pages
 
 - **Pinch zoom no longer snaps back to 100% after you open or switch to a second PDF.** A PDF opened while another was showing now fits the window width again, and zooming with the trackpad or Ctrl+scroll stays where you leave it.
+- **Double-clicking a file while Shiori is closed opens that file.** The tab from your last session could restore first and hide the file you asked for.
+
+### Export and print
+
+- **Shiori warns before exporting or printing when text runs past the edge of a text box, callout or note.** The overflow used to be cut off without a word.
+- **Edits to a PDF's own text write every line, and keep the original font when the bold or italic stays the same.**
+- **Latin punctuation and accented letters in exported text boxes can be searched and copied.**
+
+### Word
+
+- **Pinch-zooming a Word document on a phone keeps the page under your fingers.** Zoom now goes up to 5×.
+
+### Android
+
+- **Files opened in or shared to Shiori from other apps are no longer lost.** They open even if the screen rotates or the page reloads, and sharing the same file again opens it again.
 
 ## 26.10.23
 

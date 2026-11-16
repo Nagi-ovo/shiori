@@ -51,7 +51,7 @@ export const EPIGRAPHS: Epigraph[] = [
   { episode: 6, ja: "赤毛異人", zh: "赤毛异人", en: "Stranger Searching", version: "26.9.27" },
   { episode: 7, ja: "四面楚歌", zh: "四面楚歌", en: "A Risky Racket", version: "26.10.20" },
   { episode: 8, ja: "唯我独尊", zh: "唯我独尊", en: "A Problematic Past", version: "26.10.23" },
-  { episode: 9, ja: "魑魅魍魎", zh: "魑魅魍魉", en: "Beatbox Bandits" },
+  { episode: 9, ja: "魑魅魍魎", zh: "魑魅魍魉", en: "Beatbox Bandits", version: "26.11.16" },
   { episode: 10, ja: "以毒制毒", zh: "以毒制毒", en: "Lethal Lunacy" },
   { episode: 11, ja: "堕落天使", zh: "堕落天使", en: "Gamblers and Gallantry" },
   { episode: 12, ja: "温故知新", zh: "温故知新", en: "The Disorder Diaries" },

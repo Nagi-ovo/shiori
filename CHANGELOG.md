@@ -8,7 +8,7 @@
 
 ---
 
-## [未发布]
+## [26.11.16]
 
 ### 界面
 
@@ -25,6 +25,31 @@
   web `dist/` 37.3 → 50.4 MiB，桌面前端 31.0 → 44.1 MiB，主样式表 26 KB → 239 KB（gzip 83 KB）。
 - **状态栏去掉「仅本地」（`7729635`）。** 这个标签在每个文档上都一样，读者没法据此做任何事；状态栏
   现在止于存储按钮，前面的分隔点一起去掉，`meta.localOnly` 从 en/zh/ja 移除。
+- **当前标签的外框改为一条 SVG 路径（`5451054`）。** 去掉 radial-gradient 拐角和 CSS 边框，用 chrome-tabs
+  的形状画法（MIT），高 DPR Android 屏上边缘与底线衔接不再断开。
+
+### 导出与打印
+
+- **文字溢出不再静默截断（`1cad281`）。** 原文编辑逐行绘制；展平的文本框、标注统计被裁掉的字符数，导出
+  弹 `clippedConfirm*`、打印弹 `clippedPrintConfirm*` 确认。编辑保留原 run 的粗体/斜体（含 BoldItalic、
+  BoldOblique）时沿用源字体；WinAnsi 范围的拉丁标点和重音字母画成可搜索的 Standard-14 文本，不再是
+  Noto Sans SC 轮廓。
+- **原字体原位改字的底层（`a433771` `617cbbd` `5a886d0` `c199d46` `b1d067b` `7df0e0e` `1aa506c`）。**
+  `src/pdf/export/contentStreamEdit/` 在原 Tj/TJ 处替换并补偿步进，`fontCoverage/` 按渲染编码、CID 映射和
+  嵌入字体程序核对字形存在，缺字形时回退到随包 Liberation/Noto 的 Identity-H 子集。尚未接入界面。
+
+### Word
+
+- **手机捏合缩放 Word 时页面锚定在手指下（`d575559`）。** 预览与提交锚同一内容点，第二根手指时 Android
+  不再双重平移，预览期间补偿滚动，docx 缩放上限改为引擎的 5×；`@docx-editor.dev` 升到 2.37.0。
+
+### 打开文件
+
+- **冷启动时打开请求先占屏（`cc3bc78`）。** 以前恢复上次活动标签与打开请求并行，恢复可能后到先显示；
+  现在打开请求一进入就占屏，恢复让路，被恢复文件的延迟密码框不再弹出。App.tsx 接线未覆盖，未跑 E2E。
+- **Android 待打开队列不再丢文件（`4a33325` `dc6ab60`）。** 队列移到进程级持有者，Activity 重建不丢；
+  页面在开始打开后按 delivery id 确认，未确认的重投，同一 delivery 每个页面会话只开一次，同一
+  `content://` URI 的新 intent 视为新投递。Kotlin 未在本机编译（无 JDK），只靠 CI。
 
 ### 修复
 
