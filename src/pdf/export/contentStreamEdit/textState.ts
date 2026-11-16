@@ -132,6 +132,10 @@ export type ShowTextState = {
   fontSize: number; charSpacing: number; wordSpacing: number;
   origin: Point; advanceVector: Point;
   renderMode?: number;
+  // Snapshots used only by approximate retypesetting. The strict callers
+  // retain their original walk and refusal policy.
+  textMatrix?: readonly number[]; lineMatrix?: readonly number[]; ctm?: readonly number[];
+  horizontalScale?: number; leading?: number; rise?: number;
 };
 
 export type UnplacedShow = {
@@ -143,6 +147,8 @@ export type UnplacedShow = {
 };
 
 export type TextWalkCallbacks = {
+  includeStroked?: boolean;
+  onTextOpEnd?: (opIndex:number,matrices:{textMatrix:readonly number[];lineMatrix:readonly number[]})=>void;
   // Exact state at a source string, including empty shows.
   onShow?: (state: ShowTextState) => void;
   onUnplaced?: (state: UnplacedShow)=>void;
@@ -256,7 +262,9 @@ export function walkTextPlacements(
       }
       widths.set(code, width);
     }
-    if (!stroked) callbacks.onShow?.({ opIndex, arrayItemIndex, fontName: gs.fontName,
+    if (!stroked || callbacks.includeStroked) callbacks.onShow?.({ opIndex, arrayItemIndex, fontName: gs.fontName,
+      textMatrix: [...tm], lineMatrix: [...tlm], ctm: [...gs.ctm],
+      horizontalScale: gs.horizontalScale, leading: gs.leading, rise: gs.rise,
       renderMode: gs.renderMode,
       fontSizePt: gs.fontSize * Math.hypot(tm[2] * gs.ctm[0] + tm[3] * gs.ctm[2], tm[2] * gs.ctm[1] + tm[3] * gs.ctm[3]),
       fontSize: gs.fontSize, charSpacing: gs.charSpacing, wordSpacing: gs.wordSpacing,
@@ -317,7 +325,7 @@ export function walkTextPlacements(
         (w0Em * gs.fontSize + spacing) * gs.horizontalScale;
       translateText(advance, 0);
     }
-    if (stroked) {
+    if (stroked && !callbacks.includeStroked) {
       unplacedText = true;
       callbacks.onUnplaced?.({ ...unplaced, advanceKnown: true, glyphs: measured });
     } else for (const glyph of measured) glyphs.push(glyph);
@@ -522,6 +530,7 @@ export function walkTextPlacements(
         // affect text geometry. Their bytes pass through the rewrite verbatim.
         break;
     }
+    if (['Tj','TJ',"'",'"'].includes(op.operator)) callbacks.onTextOpEnd?.(opIndex,{textMatrix:[...tm],lineMatrix:[...tlm]});
   }
   if (inTextObject) return fail("unterminated BT");
   return { ok: true, glyphs, xobjects, inlineImages, unplacedText };

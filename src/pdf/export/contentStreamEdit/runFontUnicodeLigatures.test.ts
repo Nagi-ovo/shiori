@@ -42,7 +42,7 @@ for (const [ascii, glyph] of ligatures) {
     const f = await fixture(ascii, glyph, ascii);
     const result = await applyContentTextEdits(f.page, [overlay({originalText:ascii + ascii, text:ascii,
       rect:{x:49, y:98, w:12, h:13}, coverRects:[{x:49, y:98, w:12, h:13}]})], {stage5Substitute:false});
-    expect(result.outcomes).toEqual([{overlayId:'edit', mode:'in-place'}]);
+    expect(result.outcomes).toEqual([{overlayId:'edit', mode:'in-place',fidelity:'exact'}]);
     expect(result.remaining).toEqual([]);
     const source = inspectRunPage(f.page);
     expect(source.ok).toBe(true);
@@ -63,7 +63,7 @@ for (const [ascii, glyph] of ligatures) {
     expect(font.canEncode!(ascii)).toMatchObject({ok:true, bytes:Uint8Array.of(65)});
     const result = await applyContentTextEdits(f.page, [overlay({originalText:ascii + ascii, text:ascii,
       coverRects:[{x:49, y:98, w:14, h:13}]})], {stage5Substitute:false});
-    expect(result.outcomes).toEqual([{overlayId:'edit', mode:'in-place'}]);
+    expect(result.outcomes).toEqual([{overlayId:'edit', mode:'in-place',fidelity:'exact'}]);
     expect(result.remaining).toEqual([]);
   });
 }

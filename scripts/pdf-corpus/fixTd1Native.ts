@@ -30,7 +30,7 @@ try{
  const outcome=result.contentTextOutcomes?.[0];assert(outcome);
  await writeFile(`${directory}/${name}.after.pdf`,result.bytes);
  const saved=native.inspectPage(result.bytes);assert(saved.glyphs.length>0);
- const oracle=outcome.mode==='overlay'?undefined:await auditCorpusSample(native,name,directory,edit,{sourceReuse:true},true,outcome.reflow,outcome.mode);
+ const oracle=outcome.mode==='unsupported'||outcome.mode==='retypeset'?undefined:await auditCorpusSample(native,name,directory,edit,{sourceReuse:true},true,outcome.reflow,outcome.mode);
  const report={command,case:'zh-d2l-pytorch/597/overflow',passed:true,outcome,oracle,savedGlyphs:saved.glyphs.length};
  await writeFile(`${directory}/report.json`,JSON.stringify(report,null,2));console.log(JSON.stringify(report));
 }catch(error){

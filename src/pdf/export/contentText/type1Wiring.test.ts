@@ -35,7 +35,7 @@ for(const type1Options of [{},optIn])for(const mode of ['flatten','annotations']
   let loads=0;
   const result=await exportPdf(await f.doc.save(),model([overlay({originalText:'AA',text:'BA'})]),
     {mode,...type1Options,inPlaceFallback:{loadFont:async name=>{loads++;return loadFont(name);}}});
-  expect(result.contentTextOutcomes).toEqual([{overlayId:'edit',mode:'in-place'}]);
+  expect(result.contentTextOutcomes).toEqual([{overlayId:'edit',mode:'in-place',fidelity:'exact'}]);
   expect(loads).toBe(0);
   const out=await PDFDocument.load(result.bytes),source=contents(out.getPage(0));
   expect(tokenizeContentStream(source).filter(op=>op.operator==='BT')).toHaveLength(1);
@@ -93,7 +93,7 @@ for(const bad of [{widths:[602,600,600]},{brokenProgram:true}])test(`untargeted 
   f.fonts.set(PDFName.of('Target'),ctx.register(ctx.obj({Type:'Font',Subtype:'Type1',BaseFont:'Courier',FirstChar:32,Widths:Array(95).fill(600),Encoding:'WinAnsiEncoding',
     ToUnicode:ctx.register(ctx.flateStream('1 beginbfrange <20> <7e> <0020> endbfrange'))})));
   const result=await applyContentTextEdits(f.page,[overlay({coverRects:[{x:56,y:98,w:31,h:13}]})],optIn);
-  expect(result.outcomes).toEqual([{overlayId:'edit',mode:'in-place'}]);
+  expect(result.outcomes).toEqual([{overlayId:'edit',mode:'in-place',fidelity:'exact'}]);
   expect(new TextDecoder().decode(contents(f.page))).toContain('58');
 });
 test('opt-in falls back only for unavailable clusters and retains proven source clusters',async()=>{
@@ -101,7 +101,7 @@ test('opt-in falls back only for unavailable clusters and retains proven source 
   const requested:string[]=[];
   const result=await exportPdf(await f.doc.save(),model([overlay({originalText:'ABBA',text:'AZAA'})]),
     {mode:'flatten',...optIn,inPlaceFallback:{loadFont:async name=>{requested.push(name);return loadFont(name);}}});
-  expect(result.contentTextOutcomes).toEqual([{overlayId:'edit',mode:'fallback-font'}]);
+  expect(result.contentTextOutcomes).toEqual([{overlayId:'edit',mode:'fallback-font',fidelity:'exact'}]);
   expect(requested.length).toBeGreaterThan(0);
   const out=await PDFDocument.load(result.bytes),ops=tokenizeContentStream(contents(out.getPage(0)));
   const selected=ops.filter(op=>op.operator==='Tf').map(op=>op.operands[0]);

@@ -80,7 +80,7 @@ export function compileReflowPlan(content:Uint8Array,fonts:readonly ResolvedRunF
   if(error instanceof ReflowTraceError||error instanceof ContentStreamParseError)return refuse(error.message);
   if(error instanceof RunCompileError)return {ok:false,code:error.code,reason:error.message,bytes:content};
   // Recipe compilation is speculative: failed walks or incomplete recipes
-  // must retain the source and let the caller fall back to an overlay.
+  // must retain the source and let the caller try approximate retypesetting.
   return refuse(`reflow-context-unsupported: ${error instanceof Error?error.message:'compilation failed'}`);
  }
 }

@@ -1,4 +1,5 @@
 import '../../test/setupDom';
+import '../../i18n';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, afterAll, expect, test } from 'bun:test';
 import { ContentTextPreviewSurface } from './ContentTextPreviewSurface';
@@ -19,7 +20,7 @@ test('keeps DOM fallback until PDFium has rendered edited bytes, then releases t
  await waitFor(()=>expect(view.getByTestId('state').textContent).toBe('raster'));
  expect(destroyed).toBe(1);
 });
-test('an engine open failure retains overlay preview and exposes an explicit reason',async()=>{
+test('an engine open failure exposes an explicit unsupported preview reason',async()=>{
  fail=true;const{doc}=await fixture();const view=render(<ContentTextPreviewSurface bytes={await doc.save()} page={model([]).pages[0]!} overlays={[overlay()]} scale={1}><State/></ContentTextPreviewSurface>);
  await waitFor(()=>expect(view.getByTestId('state').textContent).toBe('preview-unavailable'));
 });
@@ -31,4 +32,13 @@ test('the PDFium raster sits above source text and stays visible while a zoom fr
  view.rerender(<ContentTextPreviewSurface bytes={bytes} page={page} overlays={overlays} scale={1.2}><State/></ContentTextPreviewSurface>);
  expect(canvas.style.visibility).toBe('visible');
  await waitFor(()=>expect(view.getByTestId('state').textContent).toBe('raster'));
+});
+
+test('an unsupported edit leaves its original visible and suppresses the settled editor cover',async()=>{
+ const {ContentTextCovers}=await import('./overlays/ContentTextCovers');
+ const {doc}=await fixture('0.5 g 0 0 100 100 re f'),page=model([]).pages[0]!,edit=overlay();
+ const view=render(<ContentTextPreviewSurface bytes={await doc.save()} page={page} overlays={[edit]} scale={1}><State/><svg><ContentTextCovers overlays={[edit]} page={page} scale={1} selectedIds={[]} editingId={null} liveReveals={[]}/></svg></ContentTextPreviewSurface>);
+ expect(view.container.querySelector('rect')).not.toBeNull();
+ await waitFor(()=>expect(view.getByTestId('state').textContent).toBe('unsupported-no-text-layer'));
+ expect(view.container.querySelector('rect')).toBeNull();
 });

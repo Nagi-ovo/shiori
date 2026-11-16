@@ -63,7 +63,7 @@ try{
   const result=await exportPdf(before,{pages:[page],overlays:[edit]},{mode:'flatten',stage5Type1:{sourceReuse:true},stage5Reflow:true,stage5Substitute:true,unicodeFontBytes:sc,unicodeJpFontBytes:jp,
    inPlaceFallback:{loadFont:name=>readFile(name.startsWith('Noto')?`src/assets/fonts/${name}`:`node_modules/@docx-editor.dev/fonts/assets/${name}`)}});
   const outcome=result.contentTextOutcomes?.[0];assert(outcome);
-  if(outcome.mode!=='overlay')accepted++;
+  if(outcome.mode!=='unsupported'&&outcome.mode!=='retypeset')accepted++;
   await writeFile(`${directory}/${name}.before.pdf`,before);await writeFile(`${directory}/${name}.after.pdf`,result.bytes);
   await writeFile(`${directory}/${name}.edit.json`,JSON.stringify({page,overlay:edit,row:{...row,outcome},stage5Type1:{sourceReuse:true},stage5Reflow:true,stage5Substitute:true},null,2));
   let raster,oracle,oracleError;

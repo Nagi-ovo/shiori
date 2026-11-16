@@ -52,7 +52,7 @@ try{
      const row:CorpusRow={id:entry.id,category:entry.category,page:pageIndex,kind:c.kind,original:c.edit.originalText,text:c.edit.text,ms:performance.now()-start,outcome,...(fallbackFonts.length?{fallbackFonts}: {})};
      rows.push(row);
      // Preserve independent saved inputs for the native sample pass.
-     if(outcome.mode!=='overlay' && (c.kind==='missing-han' || !rows.slice(0,-1).some(r=>r.id===entry.id && r.outcome.mode===outcome.mode))){
+     if(outcome.mode!=='unsupported' && (c.kind==='missing-han' || !rows.slice(0,-1).some(r=>r.id===entry.id && r.outcome.mode===outcome.mode))){
       const name=`${entry.id}-${pageIndex}-${c.kind}`;await writeFile(join(out,'samples',`${name}.before.pdf`),before);await writeFile(join(out,'samples',`${name}.after.pdf`),result.bytes);await writeFile(join(out,'samples',`${name}.edit.json`),JSON.stringify({page,overlay:c.edit,row,stage5Type1,stage5Reflow,stage5Substitute},null,2));
      }
     }catch(error){throw new Error(`Corpus export failed: ${entry.id}/${pageIndex}/${c.kind}`,{cause:error});}

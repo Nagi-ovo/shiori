@@ -71,7 +71,7 @@ try{
    oracle=compareReflowNativePages(original,native.inspectPage(fixed.bytes,0,true),edit.overlay,fixed.manifest);
    assert(oracle.changedPixels>0);assert.equal(oracle.changedPixelsOutsideMask,0);assert.equal(oracle.unexplainedOriginalPixels,0);
    savedSampleOracle=compareReflowNativePages(original,native.inspectPage(await readFile(`${samples}/${name}.after.pdf`),0,true),edit.overlay,fixed.manifest);
-   assert(outcome&&outcome.mode!=='overlay','normal export refused');
+   assert(outcome&&outcome.mode!=='unsupported'&&outcome.mode!=='retypeset','normal export refused');
    const saved=native.inspectPage(result.bytes,0,true);
    exportOracle=compareReflowNativePages(original,saved,edit.overlay,outcome.reflow??fixed.manifest);
   }catch(cause){error=String(cause);process.exitCode=1;}

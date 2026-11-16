@@ -5,7 +5,9 @@ export function ContentTextWarning({id,editing,overflow,missing}:{id:string;edit
  const outcome=outcomes.find(o=>o.overlayId===id);
  // A resolved production outcome supersedes the page-character heuristic.
  const heuristicMissing=outcome && outcome.reason!=='font-unavailable'?0:missing;
- const reasons=[outcome?.mode==='substituted'||outcome?.mode==='reflowed'?t(`contentText.notices.${outcome.mode}`):null,
+ const reasons=[outcome?.mode==='retypeset'||outcome?.fidelity==='approximate'?t('contentText.notices.retypeset'):null,
+  outcome?.retypeset?.overflowed?t('contentText.notices.retypesetOverflow'):null,
+  outcome?.mode==='substituted'||outcome?.mode==='reflowed'?t(`contentText.notices.${outcome.mode}`):null,
   outcome?.reason?t(`contentText.reasons.${outcome.reason}`):null,
   editing && overflow?t('overlays.contentTextOverflow'):null,
   editing && heuristicMissing>0?t('overlays.contentTextMissingGlyphs',{count:heuristicMissing}):null].filter(Boolean);

@@ -32,7 +32,7 @@ test.each([' ET','/Tail MP ET'])('compact reflow compiles both boundaries and pr
   expect(result.bytes[result.bytes.length-tail.length-1]).toBe(32);
  }
  const result=await applyContentTextEdits(f.page,[f.edit],{stage5Substitute:false});
- expect(result.outcomes[0]).toMatchObject({mode:'reflowed'});
+ expect(result.outcomes[0]).toMatchObject({mode:'reflowed',fidelity:'exact'});
  expect(result.remaining).toEqual([]);
  const saved=inspectRunPage(f.page);if(!saved.ok)throw Error(saved.reason);
  expect(tokenizeContentStream(saved.bytes).at(-1)?.operator).toBe('ET');

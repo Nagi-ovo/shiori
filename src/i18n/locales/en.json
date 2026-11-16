@@ -709,9 +709,9 @@
     "lostCharsConfirmBody_other": "{{count}} characters cannot be encoded and will be replaced with “?” in the exported PDF.",
     "lostCharsConfirmCancel": "Go back",
     "lostCharsConfirmAction": "Export with replacements",
-    "unexcisedConfirmTitle": "The original text stays in the file",
-    "unexcisedConfirmBody_one": "{{count}} edit could not remove the original text. It is hidden under the new text but still in the PDF, so search and copy can find it.",
-    "unexcisedConfirmBody_other": "{{count}} edits could not remove the original text. It is hidden under the new text but still in the PDF, so search and copy can find it.",
+    "unexcisedConfirmTitle": "Some text edits are unsupported",
+    "unexcisedConfirmBody_one": "{{count}} text edit could not be applied. Its original text remains unchanged in the exported PDF.",
+    "unexcisedConfirmBody_other": "{{count}} text edits could not be applied. Their original text remains unchanged in the exported PDF.",
     "unexcisedConfirmAction": "Export anyway",
     "clippedConfirmTitle": "Some text does not fit its box",
     "clippedConfirmBody_one": "{{count}} character runs past the edge of its box and will be cut off in the flattened PDF. Go back and enlarge the text box, callout or note to keep it.",
@@ -1146,11 +1146,14 @@
       "reflowed": "Reflowed",
       "in-place": "In place",
       "fallback-font": "Embedded fallback font",
-      "overlay": "Overlay"
+      "retypeset": "Retypeset",
+      "unsupported": "Unsupported"
     },
     "notices": {
       "substituted": "This text was rewritten in a substitute font.",
-      "reflowed": "This text was reflowed to fit the edited paragraph."
+      "reflowed": "This text was reflowed to fit the edited paragraph.",
+      "retypeset": "Layout may change.",
+      "retypesetOverflow": "Text may overlap nearby content."
     },
     "reasons": {
       "source-mismatch": "The selected text does not match the PDF source.",
@@ -1166,11 +1169,15 @@
       "font-coverage": "Source or fallback glyph coverage could not be verified.",
       "font-permission": "The font licence does not allow editable embedding.",
       "overflow": "The replacement exceeds the original text space.",
-      "style-change": "This formatting change requires an overlay.",
+      "style-change": "This formatting change needs retypesetting.",
       "stale-source": "The source page changed; the edit needs to be retried.",
-      "preview-unavailable": "PDFium could not preview the edited bytes; showing an overlay.",
-      "missing-source-style": "The original formatting snapshot is missing; using an overlay.",
-      "shared-text-object": "A refused edit shares this text object; using the hybrid path."
+      "preview-unavailable": "The edited PDF preview is unavailable.",
+      "missing-source-style": "The original formatting snapshot is missing.",
+      "shared-text-object": "A neighbouring edit requires paragraph retypesetting.",
+      "unsupported-no-text-layer": "This page has no editable text layer.",
+      "unsupported-image-text": "Text over a scanned image cannot be edited yet.",
+      "unsupported-form-xobject": "Text inside a Form XObject cannot be edited yet.",
+      "unsupported-unwritable": "This text could not be rewritten safely."
     }
   }
 }

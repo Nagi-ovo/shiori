@@ -701,8 +701,8 @@
     "lostCharsConfirmBody_other": "{{count}} 文字をエンコードできないため、書き出す PDF では「?」に置き換わります。",
     "lostCharsConfirmCancel": "戻って確認",
     "lostCharsConfirmAction": "置き換えて書き出す",
-    "unexcisedConfirmTitle": "元のテキストがファイルに残ります",
-    "unexcisedConfirmBody_other": "{{count}} か所の編集で元のテキストを削除できませんでした。新しいテキストの下に隠れていますが PDF には残っているため、検索やコピーで見つかります。",
+    "unexcisedConfirmTitle": "一部の文字編集は未対応です",
+    "unexcisedConfirmBody_other": "{{count}} か所の文字編集を適用できませんでした。書き出す PDF では元の文字がそのまま残ります。",
     "unexcisedConfirmAction": "このまま書き出す",
     "clippedConfirmTitle": "枠に収まらないテキストがあります",
     "clippedConfirmBody_other": "{{count}} 文字が枠からはみ出しているため、焼き込んだ PDF では切れて表示されません。戻ってテキストボックス・吹き出し・付箋の枠を広げると残せます。",
@@ -1132,11 +1132,14 @@
       "reflowed": "再配置済み",
       "in-place": "元の位置で編集",
       "fallback-font": "代替フォントを埋め込み",
-      "overlay": "オーバーレイ"
+      "retypeset": "再組版",
+      "unsupported": "未対応"
     },
     "notices": {
       "substituted": "このテキストは代替フォントで書き直されました。",
-      "reflowed": "このテキストは編集後の段落に合わせて再配置されました。"
+      "reflowed": "このテキストは編集後の段落に合わせて再配置されました。",
+      "retypeset": "レイアウトが変わる場合があります。",
+      "retypesetOverflow": "周囲の内容と文字が重なる場合があります。"
     },
     "reasons": {
       "source-mismatch": "選択したテキストが PDF の原文と一致しません。",
@@ -1152,11 +1155,15 @@
       "font-coverage": "元のフォントまたは代替フォントの字形を検証できません。",
       "font-permission": "フォントのライセンスは編集可能な埋め込みを許可していません。",
       "overflow": "置換テキストが元の領域を超えています。",
-      "style-change": "この書式変更にはオーバーレイが必要です。",
+      "style-change": "この書式変更には再組版が必要です。",
       "stale-source": "元のページが変更されました。もう一度お試しください。",
-      "preview-unavailable": "PDFium で編集結果を表示できないため、オーバーレイを表示しています。",
-      "missing-source-style": "元の書式情報がないため、オーバーレイを使用します。",
-      "shared-text-object": "同じテキストオブジェクトに編集できない変更があるため、従来の描画を使用します。"
+      "preview-unavailable": "編集後の PDF をプレビューできません。",
+      "missing-source-style": "元の書式情報がありません。",
+      "shared-text-object": "隣接する編集には段落の再組版が必要です。",
+      "unsupported-no-text-layer": "このページには編集可能なテキスト層がありません。",
+      "unsupported-image-text": "スキャン画像上の文字の編集にはまだ対応していません。",
+      "unsupported-form-xobject": "Form XObject 内の文字の編集にはまだ対応していません。",
+      "unsupported-unwritable": "この文字を安全に書き換えられませんでした。"
     }
   }
 }

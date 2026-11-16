@@ -513,8 +513,18 @@ export function removeCoveredGlyphs(
     glyphs,
     coverRects,
   );
+  const rewritten = removeIdentifiedGlyphs(source, ops, hits, renameProperties);
+  return {...rewritten, cleanRects, rectFonts};
+}
+
+/** Exact immutable glyph addresses, independent of any rectangle. Reuses
+ * the compensation/partial-TJ rewrite so untargeted codes do not move. */
+export function removeIdentifiedGlyphs(
+  source: Uint8Array, ops: ContentOp[], hits: readonly GlyphPlacement[],
+  renameProperties?: RenameProperties,
+): {changed:false;removedCount:number}|{changed:true;bytes:Uint8Array;removedCount:number} {
   if (hits.length === 0) {
-    return { changed: false, removedCount: 0, cleanRects, rectFonts };
+    return { changed: false, removedCount: 0 };
   }
 
   const byOp = new Map<number, GlyphPlacement[]>();
@@ -553,7 +563,5 @@ export function removeCoveredGlyphs(
     changed: true,
     bytes: concatBytes(chunks),
     removedCount: hits.length,
-    cleanRects,
-    rectFonts,
   };
 }

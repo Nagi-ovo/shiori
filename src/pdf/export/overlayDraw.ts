@@ -40,11 +40,9 @@ import {
   CALLOUT_TARGET_OPACITY,
   calloutConnectorGeometry,
 } from "../model/callout";
-import type { ContentTextRedaction } from "./contentTextRedaction";
 import type { FontSet } from "./exportFonts";
 import {
   addTextLoss,
-  drawContentText,
   drawText,
   hexToRgb,
   NO_TEXT_LOSS,
@@ -58,14 +56,8 @@ export async function drawOverlaysForPage(
   pageOverlays: Overlay[],
   fonts: FontSet,
   embeddedImages: EmbeddedImageCache,
-  contentTextRedaction?: ContentTextRedaction,
 ): Promise<TextDrawLoss> {
-  let loss = drawContentTextEditsForPage(
-    out,
-    pageOverlays,
-    fonts,
-    contentTextRedaction,
-  );
+  let loss = NO_TEXT_LOSS;
   for (const o of pageOverlays) {
     if (o.type === "contentText") continue;
     const turned = beginFreeRotation(out, o);
@@ -132,23 +124,6 @@ export async function drawImageOverlaysForPage(
       if (turned) out.pushOperators(popGraphicsState());
     }
   }
-}
-
-export function drawContentTextEditsForPage(
-  out: PDFPage,
-  pageOverlays: Overlay[],
-  fonts: FontSet,
-  contentTextRedaction?: ContentTextRedaction,
-): TextDrawLoss {
-  let loss = NO_TEXT_LOSS;
-  for (const overlay of pageOverlays) {
-    if (overlay.type !== "contentText") continue;
-    loss = addTextLoss(
-      loss,
-      drawContentText(out, overlay, fonts, contentTextRedaction?.get(overlay.id)),
-    );
-  }
-  return loss;
 }
 
 function drawHighlight(out: PDFPage, o: HighlightOverlay) {

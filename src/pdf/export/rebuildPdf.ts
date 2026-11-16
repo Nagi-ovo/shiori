@@ -23,11 +23,6 @@ import {
   stripAllAnnotationsFromPages,
   stripReplaceableAnnotationsFromPages,
 } from "./annotations";
-import {
-  redactContentTextCoverRects,
-  unexcisedEditCount,
-  type ContentTextRedaction,
-} from "./contentTextRedaction";
 import { copySourceDocumentInfo } from "./documentInfo";
 import { ExportEncryptedSourceError } from "./encryptedSource";
 import { annotationFonts, loadExportFonts } from "./exportFonts";
@@ -59,7 +54,6 @@ import { isolatePageReferences } from "./pageIsolation";
 import { recordCopiedAnnotations } from "./catalogEntries";
 import { alignPageTreeWithPdfium } from "./sourcePageTree";
 import {
-  drawContentTextEditsForPage,
   drawImageOverlaysForPage,
   drawOverlaysForPage,
   type EmbeddedImageCache,
@@ -197,7 +191,7 @@ export async function rebuildPdf(
   const copiedPageRefMap = new Map<string, PDFRef>();
   const exportedPageNodes: { sourceIndex: number; node: PDFDict }[] = [];
 
-  const fonts = await loadExportFonts(out, exportedOverlays, mode, options);
+  const fonts = await loadExportFonts(out, exportedOverlays.filter(o => o.type !== 'contentText'), mode, options);
 
   const contentTextOutcomes: ContentTextOutcome[] = [];
   let totalLostChars = 0;
@@ -266,37 +260,20 @@ export async function rebuildPdf(
       contentTextOutcomes.push(...edits.outcomes);
       pageOverlays = [...edits.remaining];
     }
-    let contentTextRedaction: ContentTextRedaction | undefined;
-    if (mode !== "none") {
-      // Original-text edits: excise the covered source glyphs from the page
-      // content so search/copy/screen readers see only the replacement text.
-      // Best-effort — on any unsupported construct the page keeps its bytes
-      // and the cover-and-redraw below still hides the old glyphs visually.
-      contentTextRedaction = redactContentTextCoverRects(
-        inserted,
-        pageOverlays,
-      );
-      unexcisedEdits += unexcisedEditCount(contentTextRedaction);
-    }
+    // Unsupported source edits remain unchanged. Only the content-stream
+    // writers above may render original-text replacements.
+    if(mode !== 'none')unexcisedEdits += pageOverlays.filter(o => o.type === 'contentText').length;
+    pageOverlays = pageOverlays.filter(o => o.type !== 'contentText');
     if (mode === "flatten") {
       const loss = await drawOverlaysForPage(
         inserted,
         pageOverlays,
         fonts,
         embeddedImages,
-        contentTextRedaction,
       );
       totalLostChars += loss.lostChars;
       clippedChars += loss.clippedChars;
     } else if (mode === "annotations") {
-      const loss = drawContentTextEditsForPage(
-        inserted,
-        pageOverlays,
-        fonts,
-        contentTextRedaction,
-      );
-      totalLostChars += loss.lostChars;
-      clippedChars += loss.clippedChars;
       totalLostChars += annotationTextLostChars(pageOverlays, fonts);
       await drawImageOverlaysForPage(inserted, pageOverlays, embeddedImages);
       attachAnnotationsToPage(

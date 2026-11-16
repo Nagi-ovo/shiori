@@ -5,9 +5,10 @@ export const contentTextReasons = [
  'form-xobject','unsupported-matrix','unsupported-state','graphics-effect-unsupported','font-unavailable',
  'font-coverage','font-permission','overflow','style-change','stale-source',
  'preview-unavailable','missing-source-style','shared-text-object',
+ 'unsupported-no-text-layer','unsupported-image-text','unsupported-form-xobject','unsupported-unwritable',
 ] as const;
 export type ContentTextReason=typeof contentTextReasons[number];
-export type ContentTextOutcome={overlayId:string;mode:'in-place'|'fallback-font'|'substituted'|'reflowed'|'overlay';reason?:ContentTextReason;detail?:string;reflow?:import('./reflowManifest').AppliedReflowManifest};
+export type ContentTextOutcome={overlayId:string;mode:'in-place'|'fallback-font'|'substituted'|'reflowed'|'retypeset'|'unsupported';fidelity?:'exact'|'approximate';retypeset?:import('./retypesetTypes').RetypesetManifest;reason?:ContentTextReason;detail?:string;reflow?:import('./reflowManifest').AppliedReflowManifest};
 /** Compiler codes carry classification; text is diagnostic evidence only. */
 export function compilerReason(failure:Refusal|string):ContentTextReason {
  if(typeof failure!=='string' && failure.code)return failure.code;

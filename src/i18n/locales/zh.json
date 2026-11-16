@@ -701,8 +701,8 @@
     "lostCharsConfirmBody_other": "{{count}} 个字符无法编码，导出的 PDF 会用「?」替换。",
     "lostCharsConfirmCancel": "返回检查",
     "lostCharsConfirmAction": "替换后导出",
-    "unexcisedConfirmTitle": "原文仍留在文件里",
-    "unexcisedConfirmBody_other": "有 {{count}} 处修改没能删掉原文。原文被新文字盖住了，但仍在 PDF 里，搜索和复制都能找到。",
+    "unexcisedConfirmTitle": "部分文字修改暂不支持",
+    "unexcisedConfirmBody_other": "有 {{count}} 处文字修改未能应用。导出的 PDF 中将保留这些位置的原文。",
     "unexcisedConfirmAction": "仍然导出",
     "clippedConfirmTitle": "部分文字超出了框",
     "clippedConfirmBody_other": "有 {{count}} 个字符超出了所在框的边界，在展平后的 PDF 里会被截掉。返回并把文本框、标注或便签拉大即可保留。",
@@ -1132,11 +1132,14 @@
       "reflowed": "已重排",
       "in-place": "原位编辑",
       "fallback-font": "已嵌入后备字体",
-      "overlay": "覆盖层"
+      "retypeset": "重新排版",
+      "unsupported": "暂不支持"
     },
     "notices": {
       "substituted": "这段文字已用替代字体重写。",
-      "reflowed": "这段文字已重新排版以适应编辑后的段落。"
+      "reflowed": "这段文字已重新排版以适应编辑后的段落。",
+      "retypeset": "排版可能变化。",
+      "retypesetOverflow": "文字可能与附近内容重叠。"
     },
     "reasons": {
       "source-mismatch": "所选文字与 PDF 原文不一致。",
@@ -1152,11 +1155,15 @@
       "font-coverage": "无法验证原文或后备字体的字形覆盖。",
       "font-permission": "字体许可不允许可编辑嵌入。",
       "overflow": "替换文字超出了原文可用空间。",
-      "style-change": "此格式修改需要覆盖层。",
+      "style-change": "此格式更改需要重新排版。",
       "stale-source": "原始页面已变化，请重试修改。",
-      "preview-unavailable": "PDFium 无法预览修改后的数据，当前显示覆盖层。",
-      "missing-source-style": "缺少原始格式快照，使用覆盖层。",
-      "shared-text-object": "同一文字对象中有无法原位编辑的修改，使用混合路径。"
+      "preview-unavailable": "无法预览编辑后的 PDF。",
+      "missing-source-style": "缺少原始格式快照。",
+      "shared-text-object": "相邻的文字修改需要段落重新排版。",
+      "unsupported-no-text-layer": "此页没有可编辑的文字层。",
+      "unsupported-image-text": "暂不支持编辑扫描图像上的文字。",
+      "unsupported-form-xobject": "暂不支持编辑 Form XObject 中的文字。",
+      "unsupported-unwritable": "无法安全地改写此处文字。"
     }
   }
 }

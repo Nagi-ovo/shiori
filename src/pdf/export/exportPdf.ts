@@ -88,10 +88,8 @@ export type ExportResult = {
   contentTextOutcomes?: import('./contentText/outcomes').ContentTextOutcome[];
   bytes: Uint8Array;
   lostChars: number;
-  // Original-text edits whose source glyphs could not all be removed from
-  // the page content: the old text is painted over but still in the file,
-  // so search and copy return it. Absent means none (a rasterized page
-  // carries no source text).
+  // Unsupported original-text edits left unchanged in the exported PDF.
+  // Absent means none (a rasterized page carries no source text).
   unexcisedEdits?: number;
   // Characters on lines that did not fit a flattened box (free text, callout
   // label, note) and were left out of the page, as the editor clips them.

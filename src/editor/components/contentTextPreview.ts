@@ -21,7 +21,7 @@ export function buildContentTextPreview(bytes:Uint8Array,page:PageModel,overlays
   if(source.isEncrypted)throw Error('encrypted preview unavailable');
   const result=await rebuildPdf(bytes,{pages:[page],overlays:[...overlays]}, {mode:'flatten',unicodeFontUrl:cjkScExportFontUrl,unicodeJpFontUrl:cjkJpExportFontUrl});
   const outcomes=result.contentTextOutcomes??[];
-  return{bytes:outcomes.some(o=>o.mode!=='overlay')?result.bytes:null,outcomes};
+  return{bytes:outcomes.some(o=>o.mode!=='unsupported')?result.bytes:null,outcomes};
  })().catch(error=>{cache.delete(key);throw error;});
  cache.set(key,work);while(cache.size>8)cache.delete(cache.keys().next().value!);
  return work;

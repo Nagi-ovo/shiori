@@ -1,26 +1,6 @@
-// Text drawn into page content: free text, callout labels, flattened notes
-// and original-text (contentText) replacements, with the source-font reuse
-// path and the baseline placement those replacements need.
+// Text drawn into page content for new text boxes, callouts and notes.
 import {
-  PDFArray,
-  PDFDict,
-  PDFHexString,
-  PDFName,
-  TextRenderingMode,
-  beginText,
-  endText,
-  popGraphicsState,
-  pushGraphicsState,
   rgb,
-  setCharacterSpacing,
-  setCharacterSqueeze,
-  setFillingColor,
-  setFontAndSize,
-  setTextMatrix,
-  setTextRenderingMode,
-  setTextRise,
-  setWordSpacing,
-  showText,
   type PDFFont,
   type PDFPage,
   type RGB,
@@ -37,9 +17,6 @@ import {
   CALLOUT_LABEL_PADDING_Y_PT,
 } from "../model/callout";
 import { sourceLinePitchPt } from "../model/baselines";
-import { fontNamesLookBold, fontNamesLookItalic } from "../model/fontStyle";
-import type { SourceFontRef } from "./contentTextRedaction";
-import { createSourceFontEncoder } from "./contentStreamEdit/sourceFontEncoder";
 import {
   pickFont,
   pickPathFont,
@@ -96,153 +73,6 @@ export function addTextLoss(a: TextDrawLoss, b: TextDrawLoss): TextDrawLoss {
 }
 
 export const NO_TEXT_LOSS: TextDrawLoss = { lostChars: 0, clippedChars: 0 };
-
-export function drawContentText(
-  out: PDFPage,
-  o: ContentTextOverlay,
-  fonts: FontSet,
-  redaction?: { cleanRects: boolean[]; sourceFont: SourceFontRef | null },
-): TextDrawLoss {
-  const cleanRects = redaction?.cleanRects;
-  for (let index = 0; index < o.coverRects.length; index += 1) {
-    if (cleanRects?.[index]) continue;
-    const rect = o.coverRects[index]!;
-    out.drawRectangle({
-      x: rect.x,
-      y: rect.y,
-      width: rect.w,
-      height: rect.h,
-      color: hexToRgb(o.backgroundColor),
-      borderWidth: 0,
-    });
-  }
-  // Same-font replacement: when the removed glyphs all came from one source
-  // font whose subset can encode the whole replacement, reuse it — the edit
-  // becomes visually indistinguishable from untouched text. Any doubt falls
-  // through to the bundled-font path below.
-  if (
-    redaction?.sourceFont &&
-    drawContentTextWithSourceFont(out, o, redaction.sourceFont)
-  ) {
-    return NO_TEXT_LOSS;
-  }
-  return drawText(out, o, fonts);
-}
-
-// Draw a contentText replacement with the source PDF's own font, via raw
-// text operators against the font's existing resource name. Returns false —
-// having drawn nothing — whenever the source font cannot express the text
-// exactly: no usable /ToUnicode, a character outside the (possibly subset)
-// font, styling the source run didn't have (bold/italic toggles), a line
-// too wide for the edit rect (the bundled path wraps instead), or a legacy
-// overlay without captured baselines.
-function drawContentTextWithSourceFont(
-  out: PDFPage,
-  o: ContentTextOverlay,
-  sourceFont: SourceFontRef,
-): boolean {
-  if (!o.text) return false;
-  // A style the source run already has is not a toggle: a bold heading
-  // edited as bold keeps its own font. Only a style the user added or
-  // removed sends the edit to a bundled face.
-  const source = sourceFontStyle(sourceFont.dict);
-  if (o.bold !== source.bold || Boolean(o.italic) !== source.italic) {
-    return false;
-  }
-  const baselines = o.sourceBaselinesPt;
-  if (!baselines || baselines.length === 0) return false;
-
-  const encoder = createSourceFontEncoder(sourceFont.dict);
-  if (!encoder) return false;
-
-  const lines = o.text.split("\n");
-  const encoded: Array<{ bytes: Uint8Array; widthPt: number }> = [];
-  for (let i = 0; i < lines.length; i += 1) {
-    const result = encoder.encodeLine(lines[i]!);
-    if (!result) return false;
-    const widthPt = result.widthEm * o.fontSize;
-    // Wider than the available room means the bundled path would wrap the
-    // line; this path draws single runs only, so let it handle the
-    // overflow. Line 0 loses the mid-line-start indent.
-    const room = o.rect.w - (i === 0 ? (o.firstLineIndentPt ?? 0) : 0);
-    if (widthPt > room + 1) return false;
-    encoded.push({ bytes: result.bytes, widthPt });
-  }
-
-  const color = hexToRgb(o.color);
-  const lineHeight = o.fontSize;
-  const operators = [
-    pushGraphicsState(),
-    beginText(),
-    // The appended content stream inherits defaults (pdf-lib wraps the
-    // original page content in q/Q), but earlier overlay draws share this
-    // stream — pin every text-state parameter the run depends on.
-    setCharacterSpacing(0),
-    setWordSpacing(0),
-    setCharacterSqueeze(100),
-    setTextRise(0),
-    setTextRenderingMode(TextRenderingMode.Fill),
-    setFillingColor(color),
-    setFontAndSize(sourceFont.name, o.fontSize),
-  ];
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = encoded[i]!;
-    if (line.bytes.length === 0) continue;
-    let x = o.rect.x;
-    if (o.align === "center") x = o.rect.x + (o.rect.w - line.widthPt) / 2;
-    else if (o.align === "right") x = o.rect.x + (o.rect.w - line.widthPt);
-    // Mid-line selection start (matches the on-screen CSS text-indent).
-    if (i === 0 && o.align === "left") x += o.firstLineIndentPt ?? 0;
-    // Every line is drawn, past the edit box too: the editor shows the edit
-    // with overflow visible, and dropping lines here lost text silently.
-    const y = contentTextSourceBaselineY(baselines, i, lineHeight);
-    operators.push(
-      setTextMatrix(1, 0, 0, 1, x, y),
-      showText(PDFHexString.of(bytesToHex(line.bytes))),
-    );
-  }
-  operators.push(endText(), popGraphicsState());
-  out.pushOperators(...operators);
-  return true;
-}
-
-// The source font's own style, by the detector the edit inferred its style
-// with (fontNamesLookBold/Italic over the /BaseFont the text layer reports).
-// A Type0 font names its style on the descendant as well.
-function sourceFontStyle(dict: PDFDict): { bold: boolean; italic: boolean } {
-  const names = [baseFontName(dict)];
-  const descendants = dict.lookup(PDFName.of("DescendantFonts"));
-  const first = descendants instanceof PDFArray ? descendants.lookup(0) : undefined;
-  if (first instanceof PDFDict) names.push(baseFontName(first));
-  return { bold: fontNamesLookBold(names), italic: fontNamesLookItalic(names) };
-}
-
-function baseFontName(dict: PDFDict): string | undefined {
-  const name = dict.lookup(PDFName.of("BaseFont"));
-  return name instanceof PDFName ? name.decodeText() : undefined;
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  let hex = "";
-  for (const byte of bytes) hex += byte.toString(16).padStart(2, "0");
-  return hex.toUpperCase();
-}
-
-// Baseline for line i: the captured source baseline when the line existed in
-// the source, continuing downward at the measured source pitch (lineHeight
-// as fallback) when the edit has more lines. Mirrors contentTextBaselineY's
-// preferred branch.
-function contentTextSourceBaselineY(
-  baselines: readonly number[],
-  lineIndex: number,
-  lineHeight: number,
-): number {
-  const exact = baselines[lineIndex];
-  if (typeof exact === "number" && Number.isFinite(exact)) return exact;
-  const pitch = sourceLinePitchPt(baselines) ?? lineHeight;
-  const last = baselines[baselines.length - 1]!;
-  return last - (lineIndex - (baselines.length - 1)) * pitch;
-}
 
 // `clipRect`: the clip the caller pushed around this text (a flattened
 // callout clips its label to its rect). Every drawn character that falls

@@ -73,10 +73,10 @@ test.skipIf(process.env.SHIORI_AUDIT_CACHED !== '1')('cached selections expose a
     await writeFile(resolve(out, 'cmap-inventory.json'), JSON.stringify(inventory, null, 2));
     await writeFile(resolve(out, 'REPRODUCE.txt'), 'SHIORI_AUDIT_CACHED=1 bun test src/pdf/export/contentText/auditCachedSamples.test.ts\n');
     // The original GSA streams explicitly put the selected headings in Tr 2.
-    // The baseline's eight accepts therefore cannot be restored under the
-    // required addressed-stroke refusal. Japanese/zh-ojs targets also use Tr 2.
+    // Addressed-stroke refusals remain exact-tier refusals. Retypesetting
+    // now handles their paint and retains the original diagnostic.
     for (const row of results) expect({ key: row.key, outcome: row.after }).toMatchObject({ key: row.key, outcome: {
-      mode: 'overlay', reason: row.key.startsWith('zh-hans-') ? 'style-change' : 'graphics-effect-unsupported',
+      mode: 'retypeset', fidelity: 'approximate', retypeset: {reason: row.key.startsWith('zh-hans-') ? 'style-change' : 'graphics-effect-unsupported'},
     } });
   } finally { native.close(); }
 }, 120000);

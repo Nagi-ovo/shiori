@@ -38,7 +38,7 @@ test('fixed whole-selection recovery fits when an inserted glyph overflows its b
   ...read(source.bytes,fonts).slice(-1),
  ]);
  const result=await applyContentTextEdits(f.page,[edit()]);
- expect(result.outcomes[0]).toMatchObject({mode:'reflowed',reflow:{strategy:'fixed'}});
+ expect(result.outcomes[0]).toMatchObject({mode:'reflowed',fidelity:'exact',reflow:{strategy:'fixed'}});
  expect(result.remaining).toEqual([]);
 });
 for(const refusal of ['paint','disabled'] as const)test(`fixed recovery retains ${refusal} refusal atomically`,async()=>{

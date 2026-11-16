@@ -1,3 +1,4 @@
+import {expectRetypeset} from './retypesetAssertions.test';
 import {expect,test} from 'bun:test';
 import {PDFName,PDFDict} from 'pdf-lib';
 import {fixture,overlay} from './fixtures.test-support';
@@ -14,16 +15,16 @@ test('two nonoverlapping same-line edits keep every original glyph origin',async
  expect(result.outcomes.map(o=>o.mode)).toEqual(['in-place','in-place']);
  expect(placements(f.page)).toEqual([{text:'A',x:50,y:100},{text:'X',x:56,y:100},{text:'C',x:62,y:100},{text:'Y',x:68,y:100},{text:'E',x:74,y:100}]);
 });
-test('a changing-advance accepted edit is downgraded atomically beside a refused sibling in the same BT',async()=>{
+test('changing-advance siblings share one approximate paragraph layout',async()=>{
  const f=await fixture(),before=inspectRunPage(f.page);const result=await applyContentTextEdits(f.page,[at('b','B','',56),at('d','D','YYYY',68)]);
- expect(result.outcomes.map(o=>o.mode)).toEqual(['overlay','overlay']);expect(inspectRunPage(f.page)).toEqual(before);
- expect(placements(f.page).map(g=>g.text).join('')).toBe('ABCDE');
+ expect(result.outcomes.map(o=>o.mode)).toEqual(['retypeset','retypeset']);for(const o of result.outcomes)expectRetypeset(f.page,o,before);
+ expect(placements(f.page).map(g=>g.text).join('')).toBe('ACYYYYE');
 });
 test('a refused independent text object does not veto an accepted neighbour',async()=>{
  const f=await fixture('BT /F1 10 Tf 50 100 Td (ABCDE) Tj ET BT /F1 10 Tf 50 70 Td (DE) Tj ET');
  const result=await applyContentTextEdits(f.page,[at('b','B','',56),at('d','D','YYYY',50,6,70)]);
- expect(result.outcomes.map(o=>o.mode)).toEqual(['in-place','overlay']);
- expect(placements(f.page)).toEqual([{text:'A',x:50,y:100},{text:'C',x:62,y:100},{text:'D',x:68,y:100},{text:'E',x:74,y:100},{text:'D',x:50,y:70},{text:'E',x:56,y:70}]);
+ expect(result.outcomes.map(o=>o.mode)).toEqual(['in-place','retypeset']);
+ expect(placements(f.page).slice(0,4)).toEqual([{text:'A',x:50,y:100},{text:'C',x:62,y:100},{text:'D',x:68,y:100},{text:'E',x:74,y:100}]);expect(placements(f.page).slice(4).map(g=>g.text).join('')).toBe('YYYYE');
 });
 test('a legacy edit without original style always keeps hybrid rendering',async()=>{
  const f=await fixture();expect(planContentText(f.source,resolveRunFonts(f.page),overlay({sourceStyle:undefined,bold:true}))).toMatchObject({ok:false});
@@ -65,7 +66,7 @@ for(const known of [true,false])test(`font-tainted show (${known?'Font gs':'unre
  if(known)f.page.node.Resources()!.set(PDFName.of('ExtGState'),f.doc.context.obj({GS:{Font:[f.page.node.Resources()!.lookup(PDFName.of('Font'),PDFDict).get(PDFName.of('F1')),10]}}));
  const result=await applyContentTextEdits(f.page,[at('b','B','X',56)]);expect(result.outcomes[0]!.mode).toBe('in-place');
 });
-test('a target after an unplaced tainted advance in the same BT stays refused',async()=>{
+test('an explicit matrix makes later tainted-BT text measurable for approximate layout',async()=>{
  const f=await fixture('BT /F1 10 Tf 50 100 Td /GS gs (Z) Tj /F1 10 Tf 1 0 0 1 50 100 Tm (ABCDE) Tj ET'),before=inspectRunPage(f.page);
- const result=await applyContentTextEdits(f.page,[at('b','B','X',56)]);expect(result.outcomes[0]!.mode).toBe('overlay');expect(inspectRunPage(f.page)).toEqual(before);
+ const result=await applyContentTextEdits(f.page,[at('b','B','X',56)]);expectRetypeset(f.page,result.outcomes[0],before,'AXCDE');
 });

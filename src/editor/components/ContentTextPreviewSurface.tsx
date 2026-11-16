@@ -20,8 +20,9 @@ export function ContentTextPreviewSurface({bytes,page,overlays,scale,children}:{
    try{
     const preview=await buildContentTextPreview(bytes,page,overlays);
     if(cancelled)return;
-    const accepted=new Set(preview.outcomes.filter(o=>o.mode!=='overlay').map(o=>o.overlayId));
-    if(!preview.bytes){setState({request,source,value:{accepted,outcomes:preview.outcomes},ready:false});return;}
+    const accepted=new Set(preview.outcomes.filter(o=>o.mode!=='unsupported').map(o=>o.overlayId));
+    // Resolved refusals show the source page; only active typing keeps a cover.
+    if(!preview.bytes){setState({request,source,value:{accepted,rasterized:new Set(overlays.map(o=>o.id)),outcomes:preview.outcomes},ready:false});return;}
     const loaded=await appPdfEngine.load(preview.bytes,{});doc=loaded.doc;
     if(cancelled)return;
     const size=rotatedSize(page.widthPt,page.heightPt,page.rotation);
@@ -35,7 +36,7 @@ export function ContentTextPreviewSurface({bytes,page,overlays,scale,children}:{
     visible.width=width;visible.height=height;context.drawImage(target,0,0);target.width=0;target.height=0;
     setState({request,source,value:{accepted,rasterized:new Set(overlays.map(o=>o.id)),outcomes:preview.outcomes},ready:true});
    }catch{
-    if(!cancelled)setState({request,source,value:{accepted:new Set(),outcomes:overlays.map(o=>({overlayId:o.id,mode:'overlay',reason:'preview-unavailable'}))},ready:false});
+    if(!cancelled)setState({request,source,value:{accepted:new Set(),rasterized:new Set(overlays.map(o=>o.id)),outcomes:overlays.map(o=>({overlayId:o.id,mode:'unsupported',reason:'preview-unavailable'}))},ready:false});
    }finally{if(doc)await appPdfEngine.destroy(doc);}
   })();},220);
   return()=>{cancelled=true;clearTimeout(timer);task?.cancel();};

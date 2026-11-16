@@ -42,7 +42,7 @@ function checkSlot(line:SubstituteLine,font:Awaited<ReturnType<typeof prepareFal
 }
 async function substitute(page:PDFPage,overlay:ContentTextOverlay,options:SubstituteOptions,siblings:readonly ContentTextOverlay[]):Promise<ContentTextOutcome>{
  const source=inspectRunPage(page);
- const refusal=(reason:NonNullable<ContentTextOutcome['reason']>,detail:string):ContentTextOutcome=>({overlayId:overlay.id,mode:'overlay',reason,detail});
+ const refusal=(reason:NonNullable<ContentTextOutcome['reason']>,detail:string):ContentTextOutcome=>({overlayId:overlay.id,mode:'unsupported',reason,detail});
  if(!source.ok)return refusal(source.code,source.reason);
  const originalResources=page.node.Resources(),originalContents=page.node.get(PDFName.of('Contents')),stamp=substitutionStamp(page);
  try{
@@ -97,18 +97,19 @@ async function substitute(page:PDFPage,overlay:ContentTextOverlay,options:Substi
   patchedFonts.set(PDFName.of(resource),copier.copy(prepared.ref));resources.set(PDFName.of('Font'),patchedFonts);
   const stream=page.doc.context.register(page.doc.context.flateStream(compiled.bytes));
   page.node.set(PDFName.of('Resources'),resources);page.node.set(PDFName.of('Contents'),stream);
-  return {overlayId:overlay.id,mode:'substituted',...(manifest?{reflow:manifest}:{})};
+  return {overlayId:overlay.id,mode:'substituted',fidelity:'exact',...(manifest?{reflow:manifest}:{})};
  }catch(error){
   if(!(error instanceof RunCompileError))throw error;
   return refusal(error.code,error.message);
  }
 }
 /** Post-refusal only; the existing transactional reflow batch runs first. */
-export async function applyFontSubstitutions(page:PDFPage,edits:readonly ContentTextOverlay[],outcomes:Map<string,ContentTextOutcome>,accepted:Set<string>,options:SubstituteOptions){
+export async function applyFontSubstitutions(page:PDFPage,edits:readonly ContentTextOverlay[],outcomes:Map<string,ContentTextOutcome>,accepted:Set<string>,options:SubstituteOptions,deferred:ReadonlySet<string>=new Set()){
  if(options.stage5Substitute===false)return;
  for(const overlay of edits){
+  if(deferred.has(overlay.id))continue;
   const outcome=outcomes.get(overlay.id);
-  if(outcome?.mode!=='overlay'||!['font-unavailable','font-coverage','overflow'].includes(outcome.reason??''))continue;
+  if(outcome?.mode!=='unsupported'||!['font-unavailable','font-coverage','overflow'].includes(outcome.reason??''))continue;
   const result=await substitute(page,overlay,options,edits);
   // Width retries are speculative; retain the original refusal if they fail.
   if(outcome.reason!=='overflow'||result.mode==='substituted')outcomes.set(overlay.id,result);

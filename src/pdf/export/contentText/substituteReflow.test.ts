@@ -1,3 +1,4 @@
+import {expectRetypeset} from './retypesetAssertions.test';
 import {afterEach,expect,spyOn,test} from 'bun:test';
 import {readFile} from 'node:fs/promises';
 import {PDFDict,PDFDocument,PDFName,type PDFPage} from 'pdf-lib';
@@ -48,7 +49,7 @@ for(const wide of [false,true])test(`substitute ${wide?'slot':'cover'} overflow 
   return planStreamReflow(...args);
  });
  const result=await applyContentTextEdits(f.page,[edit(wide)],{loadFont});
- expect(planner).toHaveBeenCalledTimes(1);expect(result.outcomes[0]).toMatchObject({mode:'substituted',reflow:{strategy:'wrap'}});
+ expect(planner).toHaveBeenCalledTimes(1);expect(result.outcomes[0]).toMatchObject({mode:'substituted',fidelity:'exact',reflow:{strategy:'wrap'}});
  expect(result.remaining).toEqual([]);
  const glyphs=await savedGlyphs(f.page),manifest=result.outcomes[0]!.reflow!;
  expect(glyphs.map(g=>g.text).join('')).toBe(replacement);expect(glyphs.every(g=>g.font==='ShioriSub1')).toBe(true);
@@ -63,21 +64,21 @@ test('ordinary overflow reaches whole-run substitution after the original-font r
  spyOn(reflowAuto,'planStreamReflow').mockImplementation((...args)=>args[6]?planStreamReflow(...args):null);
  const a={...edit(),text:'S S S S S S S S'};
  const result=await applyContentTextEdits(f.page,[a],{loadFont});
- expect(result.outcomes[0]).toMatchObject({mode:'substituted',reflow:{strategy:'wrap'}});expect(result.remaining).toEqual([]);
+ expect(result.outcomes[0]).toMatchObject({mode:'substituted',fidelity:'exact',reflow:{strategy:'wrap'}});expect(result.remaining).toEqual([]);
  expect((await savedGlyphs(f.page)).map(g=>g.text).join('')).toBe(a.text);
 });
 
-for(const wide of [false,true])test(`no recipe preserves the substitute ${wide?'slot':'cover'} overflow atomically`,async()=>{
+for(const wide of [false,true])test(`no exact recipe retypesets the substitute ${wide?'slot':'cover'} overflow atomically`,async()=>{
  const f=await substitutePage(),before=snapshot(f.page);
  spyOn(reflowAuto,'planStreamReflow').mockReturnValue(null);
  const result=await applyContentTextEdits(f.page,[edit(wide)],{loadFont});
- expect(result.outcomes[0]).toMatchObject({mode:'overlay',reason:'overflow',detail:wide?'substitute run overflows original slot':'substitute ink exceeds original cover'});
- expect(result.remaining).toEqual([edit(wide)]);expectUnchanged(f.page,before);
+ expectRetypeset(f.page,result.outcomes[0],before.source,undefined,'overflow');
+ expect(result.remaining).toEqual([]);expect((await savedGlyphs(f.page)).map(g=>g.text).join('').replace(/\s/g,'')).toBe(replacement.replace(/\s/g,''));
 });
 
 test('failed overflow retry keeps the original refusal and destination objects',async()=>{
  const f=await substitutePage(),a=edit(),before=snapshot(f.page),accepted=new Set<string>();
- const original:ContentTextOutcome={overlayId:a.id,mode:'overlay',reason:'overflow',detail:'replacement overflows available space'};
+ const original:ContentTextOutcome={overlayId:a.id,mode:'unsupported',reason:'overflow',detail:'replacement overflows available space'};
  const outcomes=new Map([[a.id,original]]);
  const planner=spyOn(reflowAuto,'planStreamReflow').mockReturnValue(null);
  await applyFontSubstitutions(f.page,[a],outcomes,accepted,{loadFont});
@@ -90,20 +91,20 @@ async function tightSourcePage(){
 }
 test('proved source ink outside a tight cover can use the real reflow region',async()=>{
  const f=await tightSourcePage(),result=await applyContentTextEdits(f.page,[f.edit],{loadFont});
- expect(result.outcomes[0]).toMatchObject({mode:'substituted',reflow:{strategy:'wrap'}});expect(result.remaining).toEqual([]);
+ expect(result.outcomes[0]).toMatchObject({mode:'substituted',fidelity:'exact',reflow:{strategy:'wrap'}});expect(result.remaining).toEqual([]);
  const manifest=result.outcomes[0]!.reflow!;
  expect(manifest.region.box.y).toBeLessThanOrEqual(95.5);expect(manifest.source.map(g=>g.unicode).join('')).toBe('ABCDE');
  expect((await savedGlyphs(f.page)).map(g=>g.text).join('')).toBe(replacement);
 });
-test('a non-embedded tight-cover source cannot grant a substitution reflow mask',async()=>{
+test('a non-embedded tight-cover source uses approximate layout without an exact mask',async()=>{
  const f=await fixture('BT /F1 10 Tf 14 TL 50 100 Td (ABCDE) Tj ET');
  fontDict(f.page).delete(PDFName.of('ToUnicode'));
  fontDict(f.page).set(PDFName.of('FontDescriptor'),f.doc.context.obj({FontBBox:[0,-400,600,800],Ascent:800,Descent:-400}));
  const a=overlay({text:replacement,coverRects:[{x:49,y:97,w:32,h:14}]}),before=snapshot(f.page);
  const result=await applyContentTextEdits(f.page,[a],{loadFont});
- expect(result.outcomes[0]).toMatchObject({mode:'overlay',reason:'overflow'});expectUnchanged(f.page,before);
+ expectRetypeset(f.page,result.outcomes[0],before.source,replacement,'overflow');
 });
-for(const kind of ['missing','too-small','disabled']as const)test(`tight source cover stays refused when region is ${kind}`,async()=>{
+for(const kind of ['missing','too-small','disabled']as const)test(`tight source cover retypesets when exact region is ${kind}`,async()=>{
  const f=await tightSourcePage(),before=snapshot(f.page);
  const planner=spyOn(reflowAuto,'planStreamReflow').mockImplementation((...args)=>{
   if(kind==='missing')return null;
@@ -112,17 +113,17 @@ for(const kind of ['missing','too-small','disabled']as const)test(`tight source 
   return plan;
  });
  const result=await applyContentTextEdits(f.page,[f.edit],{loadFont,stage5Reflow:kind!=='disabled'});
- expect(result.outcomes[0]).toMatchObject({mode:'overlay',reason:'overflow',detail:'source ink exceeds safe cover'});
+ expectRetypeset(f.page,result.outcomes[0],before.source,undefined,'overflow');
  if(kind==='disabled')expect(planner).not.toHaveBeenCalled();else expect(planner).toHaveBeenCalledTimes(1);
- expectUnchanged(f.page,before);
+ expectRetypeset(f.page,result.outcomes[0],before.source,replacement,'overflow');
 });
 
 for(const name of ['width-only-overhang','seac-no-bbox']as const)test(`reflow cannot invent source ink for ${name}`,async()=>{
  const f=await sourceInkFixture(name),before=snapshot(f.page);let loads=0;
  const planner=spyOn(reflowAuto,'planStreamReflow');
  const result=await applyContentTextEdits(f.page,[f.edit],{stage5Type1:{sourceReuse:false},loadFont:async name=>{loads++;return loadFont(name);}});
- expect(result.outcomes[0]).toMatchObject({mode:'overlay',reason:'overflow',detail:'source ink bounds unproved'});
- expect(loads).toBe(0);expect(planner).not.toHaveBeenCalled();expectUnchanged(f.page,before);
+ expectRetypeset(f.page,result.outcomes[0],before.source,undefined,'overflow');
+ expect(loads).toBeGreaterThan(0);expect(planner).not.toHaveBeenCalled();expectRetypeset(f.page,result.outcomes[0],before.source,f.edit.text,'overflow');
 });
 
 for(const kind of ['Tr1','Tr2','clipping','unknown-advance','OCR','vertical','form']as const)test(`overflow retry does not admit ${kind}`,async()=>{
@@ -138,7 +139,7 @@ for(const kind of ['Tr1','Tr2','clipping','unknown-advance','OCR','vertical','fo
   f.page.node.set(PDFName.of('Contents'),f.doc.context.register(f.doc.context.stream(new TextEncoder().encode('/Form Do'))));
  }
  const a=overlay({text:replacement,coverRects:[{x:49,y:97,w:32,h:14}]}),before=snapshot(f.page),accepted=new Set<string>();let loads=0;
- const refusal:ContentTextOutcome={overlayId:a.id,mode:'overlay',reason:'overflow'},outcomes=new Map([[a.id,refusal]]);
+ const refusal:ContentTextOutcome={overlayId:a.id,mode:'unsupported',reason:'overflow'},outcomes=new Map([[a.id,refusal]]);
  await applyFontSubstitutions(f.page,[a],outcomes,accepted,{loadFont:async name=>{loads++;return loadFont(name);}});
- expect(outcomes.get(a.id)?.mode).toBe('overlay');expect(accepted.size).toBe(0);expect(loads).toBe(0);expectUnchanged(f.page,before);
+ expect(outcomes.get(a.id)?.mode).toBe('unsupported');expect(accepted.size).toBe(0);expect(loads).toBe(0);expectUnchanged(f.page,before);
 });
