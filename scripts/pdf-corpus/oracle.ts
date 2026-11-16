@@ -10,6 +10,7 @@ import {assertReplacementGlyphs,assertNativeReplacementGlyphs} from '../pdf-inpl
 import type {openPdfium} from '../pdf-inplace/nativePdfium';
 import {compareReflowNativePages} from './reflowOracle';
 import {saveReflowVetoArtifact} from './reflowVetoArtifact';
+import {backdropReferencePdf} from './reflowBackdropRaster';
 import {inspectRunPage} from '../../src/pdf/export/contentStreamEdit/replaceRunPage';
 import type {AppliedReflowManifest} from '../../src/pdf/export/contentText/reflowManifest';
 import type {PdfRect} from '../../src/pdf/model/types';
@@ -100,7 +101,10 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
  const useManifest=stage5Reflow&&manifest;
  if(useManifest){const original=await PDFDocument.load(new Uint8Array(await readFile(beforePath))),source=inspectRunPage(original.getPage(0));assert(source.ok&&source.sourceHash===useManifest.sourceHash,'manifest source revision differs');}
  let checked;
- try{checked=useManifest?compareReflowNativePages(before,after,edit,useManifest):compareNativePages(before,after,edit,mode==='substituted');}
+ try{
+  const reference=useManifest?await backdropReferencePdf(new Uint8Array(await readFile(beforePath)),useManifest):undefined;
+  checked=useManifest?compareReflowNativePages(before,after,edit,useManifest,reference?native.inspectPage(reference,0,true):undefined):compareNativePages(before,after,edit,mode==='substituted');
+ }
  catch(error){
   if(useManifest&&error instanceof Error&&error.message.includes('raster veto'))await saveReflowVetoArtifact({name,
    before:new Uint8Array(await readFile(beforePath)),after:new Uint8Array(await readFile(afterPath)),edit,manifest:useManifest,error});

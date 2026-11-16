@@ -10,6 +10,7 @@ import {detectParagraphRegion,type ParagraphBlocker,type ParagraphLine,type Regi
 import {contains,origin,physicalSize,validTrace,linear,paragraphMember} from './regionProof/geometry';
 import {buildPageOccupancy,boundBoxes,glyphKey,queryOccupancy} from './regionProof/occupancy';
 import {buildVisualGroups,capVisualSlots} from './regionProof/visualGroups';
+import {proveOneLineCapacity} from './regionProof/columnCapacity';
 import {traceReflowSource} from './reflowTrace';
 import {streamInkResolver} from './reflowInk';
 import type {ReflowCodeCluster} from './reflowTypes';
@@ -41,8 +42,12 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
  let sourceGap=false;
  const excluded={unmeasured:0,badUnicode:0,unsafe:0,incompatible:0};
  const occupancy=buildPageOccupancy({page,ops,fonts,trace,glyphs:walk.glyphs,unplaced,ink,sourceHash,dependencyHash,media});
- if(occupancy.pageBlocked)return refuse('region-unproved','A media-sized occupant blocks the page','obstacles');
- const obstacles=occupancy.items.filter(o=>o.kind!=='placement').map(o=>o.box);
+ if(occupancy.pageBlocked){
+  const blockers=occupancy.items.filter(o=>o.kind!=='backdrop'&&contains(o.box,media));
+  const kinds=[...new Set(blockers.map(o=>`${o.kind}@${o.paintOp}`))];
+  return refuse('region-unproved',`A media-sized occupant blocks the page: ${kinds.slice(0,8).join(', ')}`,'obstacles');
+ }
+ const obstacles=occupancy.items.filter(o=>o.kind!=='placement'&&o.kind!=='backdrop').map(o=>o.box);
  for(const g of walk.glyphs){
   const show=trace.shows.get(`${g.opIndex}:${g.arrayItemIndex}`),font=byName.get(g.fontName);
   if(!show||!font)return refuse('missing-show-or-font',`op=${g.opIndex} font=${g.fontName}`);
@@ -101,6 +106,7 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   if(!grouping.ok)return refuse('region-unproved',grouping.detail,'boundary');
   const group=grouping.groups.find(g=>targetLine>=g.start&&targetLine<g.end)!;
   if(group.refusal)return refuse('region-unproved',group.refusal,'boundary');
+  proveOneLineCapacity(group,grouping.groups,trace.ends,occupancy,crop,media);
   visualGroup=group;
   const start=targetLine,end=group.end,count=end-start;
   if(count>8)return refuse('region-unproved','Target is more than eight source lines from the visual group end','lines');
@@ -119,7 +125,7 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   const lower=Math.min(...members.map(t=>t.ink.y))-occupancy.guardPt,upper=Math.max(...members.map(t=>t.ink.y+t.ink.h))+occupancy.guardPt;
   const owners=new Set(source.map(t=>glyphKey(t.source!)));
   const lineSlots=capVisualSlots(proof.lineSlots,occupancy,owners,lower,upper);
-  if(lineSlots.some(s=>s.right<=s.left))return refuse('region-unproved','Analytic occupancy leaves no row capacity','obstacles');
+  if(lineSlots.some(s=>s.right<=s.left))return refuse('region-unproved',`Analytic occupancy leaves no row capacity${group.columnEvidence?`; column=${JSON.stringify(group.columnEvidence)}`:''}`,'obstacles');
   proof={...proof,lineSlots};
  }
  // This is only the old-ink bound. The authorized mask is fixed from

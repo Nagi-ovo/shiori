@@ -62,7 +62,7 @@ test('a stale page dependency cannot authorize an explicit recipe',async()=>{
  expect(r.outcomes[0]).toMatchObject({mode:'overlay',reason:'stale-source'});expect(inspectRunPage(f.page)).toEqual(before);
 });
 test('unknown scene paint refuses boolean spacing without manufacturing evidence',async()=>{
- const f=await spacingPage('0 0 300 200 re f BT /F1 10 Tf 1 0 0 1 50 100 Tm (Sni) Tj ET'),before=inspectRunPage(f.page);
+ const f=await spacingPage('0 0 m 300 0 l 150 200 l h f BT /F1 10 Tf 1 0 0 1 50 100 Tm (Sni) Tj ET'),before=inspectRunPage(f.page);
  const r=await applyContentTextEdits(f.page,[spacingEdit()],{stage5Reflow:true});expect(r.outcomes[0]).toMatchObject({mode:'overlay',reason:'overflow'});expect(inspectRunPage(f.page)).toEqual(before);
 });
 

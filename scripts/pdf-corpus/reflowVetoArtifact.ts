@@ -5,6 +5,7 @@ import type {AppliedReflowManifest} from '../../src/pdf/export/contentText/reflo
 import type {PdfRect} from '../../src/pdf/model/types';
 import {openPdfium} from '../pdf-inplace/nativePdfium';
 import {compareReflowNativePages} from './reflowOracle';
+import {backdropReferencePdf} from './reflowBackdropRaster';
 
 type Edit={originalText:string;text:string;coverRects:readonly PdfRect[]};
 /** Harness-only failure evidence. Store the immutable mask/old ink and both
@@ -25,8 +26,9 @@ if(import.meta.main){
  const native=openPdfium(process.env.PDFIUM_LIBRARY??'vendor/pdfium/linux-x64/lib/libpdfium.so');
  try{
   let veto:string|undefined;
+  const reference=await backdropReferencePdf(new Uint8Array(await readFile(join(dirname(file),'before.pdf'))),record.manifest);
   try{compareReflowNativePages(native.inspectPage(join(dirname(file),'before.pdf'),0,true),
-   native.inspectPage(join(dirname(file),'after.pdf'),0,true),record.edit,record.manifest);}
+   native.inspectPage(join(dirname(file),'after.pdf'),0,true),record.edit,record.manifest,reference?native.inspectPage(reference,0,true):undefined);}
   catch(error){if(error instanceof Error&&error.message.includes('raster veto'))veto=error.message;else throw error;}
   assert(veto,'saved fixture no longer triggers its expected raster veto');
   console.log(JSON.stringify({passed:true,vetoed:true,error:veto}));

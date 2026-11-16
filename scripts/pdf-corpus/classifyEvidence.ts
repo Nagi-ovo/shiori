@@ -47,7 +47,8 @@ try{
     const row=rows.find((r)=>r.page===pageIndex&&r.kind===c.kind);if(!row)continue;
     let gate:{gate:string;blocker?:string;detail?:string};
     try{
-     if(!walk.ok||!safety.ok){gate={gate:'pre-evidence-walk',detail:walk.ok?safety.reason:walk.reason};}
+     if(!walk.ok){gate={gate:'pre-evidence-walk',detail:walk.reason};}
+     else if(!safety.ok){gate={gate:'pre-evidence-walk',detail:safety.reason};}
      else {
       const selected=[...new Set(removalsByRect(walk.glyphs,c.edit.coverRects).flatMap(h=>[...h]))];
       if(!selected.length)gate={gate:'no-selected'};
@@ -63,7 +64,10 @@ try{
 const dest=resolve(process.env.OVERFLOW_EVIDENCE??'test-artifacts/pdf-corpus/overflow-evidence.json');
 await writeFile(dest,JSON.stringify({count:out.length,rows:out},null,2));
 const tally=(fn:(r:EvidenceClassification)=>string)=>{const m=new Map<string,number>();for(const r of out){const k=fn(r);m.set(k,(m.get(k)??0)+1);}return [...m.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));};
-const md=['# Production no-region-proof evidence subgates',`Rows: ${out.length}`,'','## By evidence gate','',...tally(r=>r.evidenceGate).map(([k,n])=>`- ${k}: ${n}`),'','## By evidence gate × blocker','',...tally(r=>`${r.evidenceGate} / ${r.evidenceBlocker??"none"}`).map(([k,n])=>`- ${k}: ${n}`),'','## By category × evidence gate','',...tally(r=>`${r.category} / ${r.evidenceGate}`).map(([k,n])=>`- ${k}: ${n}`),'','## Sample details',
+const md=['# Production no-region-proof evidence subgates',`Rows: ${out.length}`,
+ 'Details come from production occupancy and column proofs; media occupants are reported by kind/op, never guessed from font format.',
+ 'Successful one-line proofs report column slack, distinct witness groups and sourceGapBefore.','',
+ '## By evidence gate','',...tally(r=>r.evidenceGate).map(([k,n])=>`- ${k}: ${n}`),'','## By evidence gate × blocker','',...tally(r=>`${r.evidenceGate} / ${r.evidenceBlocker??"none"}`).map(([k,n])=>`- ${k}: ${n}`),'','## By category × evidence gate','',...tally(r=>`${r.category} / ${r.evidenceGate}`).map(([k,n])=>`- ${k}: ${n}`),'','## Sample details',
  ...tally(r=>`${r.category} / ${r.evidenceGate} / ${(r.evidenceDetail??'').slice(0,120)}`).slice(0,25).map(([k,n])=>`- ${k}: ${n}`)].join('\n');
 await writeFile(dest.replace(/\.json$/,'.md'),md);
 console.log(md);

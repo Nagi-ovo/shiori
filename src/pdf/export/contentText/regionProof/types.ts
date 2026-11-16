@@ -67,6 +67,8 @@ export type VisualGroup = {
   style: TextTrace; pitchPt: number; capacityRight: number;
   left: number; firstLeft: number; indent: ParagraphIndent;
   column: {x0:number;x1:number};
+  /** Analytic witness diagnostics, including zero-slack justified fragments. */
+  columnEvidence?: {slack:number;witnessGroups:number;sourceGapBefore:boolean;right?:number;reason?:string};
   /** A local source-order ambiguity never invalidates independent groups. */
   refusal?: string;
 };
@@ -92,6 +94,9 @@ export type RegionProof = {
   mask?: readonly Rect[]; occupancyHash?: string;
   /** All owned original ink, guard-dilated; oracle veto evidence only. */
   oldInk?: readonly Rect[];
+  /** Source paint ops with a complete analytic page-backdrop proof. Native
+   * renders of these ops explain backdrop colour for veto checks only. */
+  backdropOps?: readonly number[];
   indent: Readonly<ParagraphIndent>; leadingPt: number;
   lineSlots: readonly Readonly<LineSlot>[];
   owned: readonly Readonly<SourceAddress>[];

@@ -3,15 +3,16 @@ import {EPS,lineStart,near,origin,paragraphMember,physicalLeading,physicalSize} 
 import {queryOccupancy,type PageOccupancy} from './occupancy';
 
 const pitchTolerance=(pitch:number)=>Math.min(.25,Math.max(.10,pitch*.01));
-const leftTolerance=(style:TextTrace)=>Math.min(.50,Math.max(.25,.025*physicalSize(style)));
+export const leftTolerance=(style:TextTrace)=>Math.min(.50,Math.max(.25,.025*physicalSize(style)));
+export const visualLineEnd=(line:ParagraphLine,ends:ReadonlyMap<number,TextTrace>)=>Math.max(...line.shows.map(s=>origin(s.after)[0]),
+ origin(ends.get(line.shows.at(-1)!.source.opIndex)??line.shows.at(-1)!.after)[0],line.ink?line.ink.x+line.ink.w:-Infinity);
 /** Source order is authoritative. Boundaries split groups; a column return
  * marks only its participating groups, never an independent paragraph. */
 export function buildVisualGroups(lines:readonly ParagraphLine[],target:TextTrace,ends:ReadonlyMap<number,TextTrace>):
  {ok:true;groups:VisualGroup[]}|{ok:false;detail:string}{
  const groups:VisualGroup[]=[];
  const style=(line:ParagraphLine)=>line.shows.find(s=>paragraphMember(s.before,target))?.before??line.shows[0]!.before;
- const extent=(line:ParagraphLine)=>Math.max(...line.shows.map(s=>origin(s.after)[0]),
-  origin(ends.get(line.shows.at(-1)!.source.opIndex)??line.shows.at(-1)!.after)[0],line.ink?line.ink.x+line.ink.w:-Infinity);
+ const extent=(line:ParagraphLine)=>visualLineEnd(line,ends);
  const blank=(line:ParagraphLine)=>line.shows.every(s=>/^\s*$/u.test(s.unicode));
  const overlaps=(a:ParagraphLine,b:ParagraphLine)=>Math.max(lineStart(a,true)[0],lineStart(b,true)[0])<Math.min(extent(a),extent(b))-EPS;
  for(let i=0;i<lines.length;i++){

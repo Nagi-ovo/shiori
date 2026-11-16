@@ -46,5 +46,6 @@ export function proveGlyphRegion(e:StreamReflowEvidence,proof:RegionProof,cluste
  region.mask=[...region.old,...region.new];
  if(!region.mask.length||region.mask.some(b=>!contains(e.crop,b)||!contains(e.media,b)))return null;
  const oldInk=e.source.flatMap(t=>t.ink.w>0&&t.ink.h>0?[dilateInk(atOrigin(t.ink,t.original!.x,t.original!.y),index.guardPt)]:[]);
- return {...proof,mask:region.mask,oldInk,box:boundBoxes(region.mask),occupancyHash:index.hash};
+ const backdropOps=index.items.filter(o=>o.kind==='backdrop').map(o=>o.paintOp);
+ return {...proof,mask:region.mask,oldInk,...(backdropOps.length?{backdropOps}:{}),box:boundBoxes(region.mask),occupancyHash:index.hash};
 }

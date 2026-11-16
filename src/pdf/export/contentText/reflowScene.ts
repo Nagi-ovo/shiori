@@ -1,7 +1,7 @@
 import {PDFArray,PDFDict,PDFName,PDFNumber,PDFRawStream,type PDFPage} from 'pdf-lib';
 import type {ContentOp} from '../contentStreamEdit/tokenizer';
 import type {Rect} from './regionProof';
-import {intersects} from './regionProof/geometry';
+import {contains,intersects} from './regionProof/geometry';
 import type {OccupantKind} from './regionProof/occupancy';
 type Matrix=number[];
 const identity=()=>[1,0,0,1,0,0];
@@ -19,24 +19,40 @@ const transformedBox=(m:Matrix,b:number[])=>fromPoints([[b[0]!,b[1]!],[b[2]!,b[1
  */
 export function reflowScene(page:PDFPage,ops:readonly ContentOp[],media:Rect,record?:(box:Rect,kind:OccupantKind,op:number)=>void,guardPt=.5):Rect[]{
  const obstacles:Rect[]=[],resources=page.node.Resources(),xobjects=resources?.lookupMaybe(PDFName.of('XObject'),PDFDict);
- let state={ctm:identity(),clip:media,width:1,miter:10,strokeUnknown:false},path:Rect|undefined,clipPending=false;
+ let state={ctm:identity(),ctmKnown:true,clip:media,clipFull:true,width:1,miter:10,strokeUnknown:false,
+  fillPlain:true,blendNormal:true,noSoftMask:true},path:Rect|undefined,clipPending=false,singleRect=false;
  const stack:typeof state[]=[];
+ const r=page.getCropBox(),crop={x:r.x,y:r.y,w:r.width,h:r.height};
+ // This deliberately stronger z proof precedes EVERY source show. The
+ // compiler only writes destinations into existing shows, so it also proves
+ // the backdrop is below every owned op and every destination glyph.
+ const firstShow=ops.findIndex(op=>['Tj','TJ',"'",'"'].includes(op.operator));
  let paintOp=-1;
  const add=(box:Rect,kind:OccupantKind='paint')=>{const b=intersection(expand(box,guardPt),state.clip);if(b.w>0&&b.h>0){obstacles.push(b);record?.(b,kind,paintOp);}};
- const clear=()=>{if(clipPending)state={...state,clip:intersection(state.clip,path??state.clip)};path=undefined;clipPending=false;};
+ const clear=()=>{if(clipPending)state={...state,clip:intersection(state.clip,path??state.clip),clipFull:false};path=undefined;clipPending=false;singleRect=false;};
  const inert=new Set(['BT','ET','Tf','Tm','Td','TD','T*','Tc','Tw','Tz','TL','Ts','Tr','Tj','TJ',"'",'"','rg','RG','g','G','k','K','cs','CS','sc','SC','scn','SCN','J','j','d','ri','i','BMC','BDC','EMC','MP','DP','BX','EX']);
  for(const op of ops){
   paintOp++;
   const n=op.operands.map(v=>v.kind==='number'?v.value:NaN);
   switch(op.operator){
    case 'q':stack.push({...state,ctm:[...state.ctm]});break;
-   case 'Q':state=stack.pop()??{ctm:identity(),clip:media,width:1,miter:10,strokeUnknown:true};break;
-   case 'cm':if(n.length===6&&n.every(Number.isFinite))state={...state,ctm:multiply(state.ctm,n)};else add(state.clip);break;
+   case 'Q':state=stack.pop()??{...state,ctm:identity(),ctmKnown:false,clip:media,clipFull:false,strokeUnknown:true,fillPlain:false,blendNormal:false,noSoftMask:false};break;
+   case 'cm':if(n.length===6&&n.every(Number.isFinite)){
+    const ctm=multiply(state.ctm,n);state={...state,ctm,ctmKnown:state.ctmKnown&&ctm.every(Number.isFinite)};
+   }else{state={...state,ctmKnown:false};add(state.clip);}break;
+   case 'g':case 'rg':case 'k':state={...state,fillPlain:n.length===({g:1,rg:3,k:4}[op.operator])&&n.every(Number.isFinite)};break;
+   case 'cs':{
+    const name=op.operands[0];state={...state,fillPlain:op.operands.length===1&&name?.kind==='name'&&['DeviceGray','DeviceRGB','DeviceCMYK'].includes(name.value)};break;
+   }
+   case 'sc':case 'scn':state={...state,fillPlain:state.fillPlain&&n.length>0&&n.every(Number.isFinite)};break;
    case 'w':if(n.length!==1||!Number.isFinite(n[0])||n[0]!<0)state={...state,strokeUnknown:true};else state={...state,width:n[0]!};break;
    case 'M':if(n.length!==1||!Number.isFinite(n[0])||n[0]!<1)state={...state,strokeUnknown:true};else state={...state,miter:n[0]!};break;
    case 'gs':{
-    const name=op.operands[0],states=resources?.lookupMaybe(PDFName.of('ExtGState'),PDFDict),d=name?.kind==='name'?states?.lookupMaybe(PDFName.of(name.value),PDFDict):undefined;
-    if(!d){state={...state,strokeUnknown:true};break;}
+    const name=op.operands[0],states=resources?.lookupMaybe(PDFName.of('ExtGState'),PDFDict),d=op.operands.length===1&&name?.kind==='name'?states?.lookupMaybe(PDFName.of(name.value),PDFDict):undefined;
+    if(!d){state={...state,strokeUnknown:true,blendNormal:false,noSoftMask:false};break;}
+    for(const [key,field,value]of [['BM','blendNormal','Normal'],['SMask','noSoftMask','None']]as const){
+     if(d.has(PDFName.of(key))){const v=d.lookup(PDFName.of(key));state={...state,[field]:v instanceof PDFName&&v.decodeText()===value};}
+    }
     for(const [key,field]of [['LW','width'],['ML','miter']]as const){
      const v=d.lookup(PDFName.of(key));if(v===undefined)continue;
      if(!(v instanceof PDFNumber)||!Number.isFinite(v.asNumber())||v.asNumber()<(field==='miter'?1:0))state={...state,strokeUnknown:true};
@@ -45,7 +61,9 @@ export function reflowScene(page:PDFPage,ops:readonly ContentOp[],media:Rect,rec
     break;
    }
    case 'm':case 'l':case 'c':case 'v':case 'y':case 're':{
-    if(!n.length||!n.every(Number.isFinite)){path=state.clip;break;}
+    const count={m:2,l:2,c:6,v:4,y:4,re:4}[op.operator];
+    if(n.length!==count||!n.every(Number.isFinite)||!state.ctmKnown){path=state.clip;singleRect=false;break;}
+    singleRect=op.operator==='re'&&!path&&Math.abs(state.ctm[1]!)<=1e-9&&Math.abs(state.ctm[2]!)<=1e-9&&state.ctm[0]!==0&&state.ctm[3]!==0;
     const b=op.operator==='re'?transformedBox(state.ctm,[n[0]!,n[1]!,n[0]!+n[2]!,n[1]!+n[3]!]):fromPoints(Array.from({length:n.length/2},(_,i)=>transform(state.ctm,n[2*i]!,n[2*i+1]!)));
     path=path?union(path,b):b;break;
    }
@@ -58,7 +76,14 @@ export function reflowScene(page:PDFPage,ops:readonly ContentOp[],media:Rect,rec
     const scale=Math.hypot(...state.ctm.slice(0,4));
     add(state.strokeUnknown?state.clip:expand(path??state.clip,Math.max(.5,state.width*scale*state.miter)));clear();break;
    }
-   case 'f':case 'F':case 'f*':add(path??state.clip);clear();break;
+   case 'f':case 'F':case 'f*':{
+    // A bbox around an arbitrary path is never enough. Active/pending clips
+    // are also excluded: their bbox does not prove the rectangle was painted.
+    if(!op.operands.length&&path&&singleRect&&state.ctmKnown&&state.clipFull&&!clipPending&&state.fillPlain&&state.blendNormal&&state.noSoftMask&&
+     paintOp<firstShow&&contains(path,media)&&contains(path,crop))record?.(media,'backdrop',paintOp);
+    else add(path??state.clip);
+    clear();break;
+   }
    case 'Do':{
     const name=op.operands[0];
     const raw=name?.kind==='name'?xobjects?.lookup(PDFName.of(name.value)):undefined;

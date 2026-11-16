@@ -10,7 +10,7 @@ const match=(g:Glyph,e:ManifestGlyph)=>g.text===e.unicode&&drift(g.origin,e.orig
 /** Only called for flag-on samples carrying a manifest. The ordinary oracle
  * remains unchanged. A manifest authorizes exact owned destinations, never
  * arbitrary drift or font changes elsewhere on the page. */
-export function compareReflowNativePages(before:Snapshot,after:Snapshot,edit:{originalText:string;text:string;coverRects:readonly PdfRect[]},manifest:AppliedReflowManifest){
+export function compareReflowNativePages(before:Snapshot,after:Snapshot,edit:{originalText:string;text:string;coverRects:readonly PdfRect[]},manifest:AppliedReflowManifest,backdrop?:Snapshot){
  assert(manifest.sourceHash&&manifest.dependencyHash,'missing manifest revision');
  const old=before.glyphs.filter(g=>compact(g.text)),actual=after.glyphs.filter(g=>compact(g.text));
  const source=manifest.source.filter(g=>compact(g.unicode)),output=manifest.output.filter(g=>compact(g.unicode));
@@ -70,6 +70,6 @@ export function compareReflowNativePages(before:Snapshot,after:Snapshot,edit:{or
  }
  assert.equal(changedPixelsOutsideBox,0,'changed pixels outside manifest region');
  assert.equal(changedPixelsOutsideMask,0,'changed pixels outside manifest mask');
- const rasterVeto=vetoReflowRaster(before,manifest.region);
+ const rasterVeto=vetoReflowRaster(before,manifest.region,backdrop);
  return {maxOriginDriftPt,changedPixels,changedPixelsOutsideBox,changedPixelsOutsideMask,nativeUnobservableUnchangedSpaces,...rasterVeto,replacementGlyphs:replacementIndices.length,replacementIndices};
 }

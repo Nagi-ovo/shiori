@@ -30,3 +30,21 @@ test('a veto never widens the fixed mask',()=>{
  try{compareReflowNativePages({...original,pixels:p},{...after,pixels:p},edit,manifest);}catch{/* inspect immutable input below */}
  expect(manifest).toEqual(saved);
 });
+// Failure list: coloured backdrops vetoed as foreign paint; a raster supplied
+// without analytic backdrop authority; hidden foreground/changed outside mask.
+test('an analytic backdrop reference explains only matching background pixels',()=>{
+ const background=pixels();for(let i=0;i<background.length;i+=4)background.set([80,60,0,255],i);
+ const region={...manifest.region,backdropOps:[4]},m={...manifest,region};
+ const before={...original,pixels:background},saved={...after,pixels:background},reference={...original,pixels:background};
+ expect(compareReflowNativePages(before,saved,edit,m,reference)).toMatchObject({unexplainedOriginalPixels:0,changedPixelsOutsideMask:0});
+ const foreground=Uint8Array.from(background);foreground[(9*20+8)*4]=81;
+ expect(()=>compareReflowNativePages({...before,pixels:foreground},{...saved,pixels:foreground},edit,m,reference)).toThrow('raster veto');
+ const outside=Uint8Array.from(background);outside[0]=81;
+ expect(()=>compareReflowNativePages(before,{...saved,pixels:outside},edit,m,reference)).toThrow('outside');
+});
+test('a background reference requires analytic authority and matching dimensions',()=>{
+ const m={...manifest,region:{...manifest.region,backdropOps:[4]}};
+ expect(()=>compareReflowNativePages(original,after,edit,m)).toThrow('backdrop');
+ expect(()=>compareReflowNativePages(original,after,edit,manifest,original)).toThrow('backdrop');
+ expect(()=>compareReflowNativePages(original,after,edit,m,{...original,width:9})).toThrow('backdrop');
+});

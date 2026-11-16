@@ -37,7 +37,7 @@ function explain(page:import('pdf-lib').PDFPage,content:Uint8Array,fonts:readonl
  const e=streamReflowEvidence(page,content,fonts,selected[0]!.opIndex,type1);
  if(!e.ok){
   const uniqueY=new Set(selected.map(g=>Math.round(g.coreQuad[0].y*100)));
-  return {gate:'no-region-proof',detail:`selected=${selected.length} uniqueY=${uniqueY.size}`};
+  return {gate:'no-region-proof',detail:`${e.gate}${e.blocker?`/${e.blocker}`:''}: ${e.detail}; selected=${selected.length} uniqueY=${uniqueY.size}`};
  }
  const indices=e.source.flatMap((t,i)=>selected.some(g=>g.opIndex===t.source!.opIndex&&g.arrayItemIndex===t.source!.itemIndex&&g.byteOffset===t.source!.byteStart)?[i]:[]);
  if(indices.length!==selected.length)return {gate:'selection-not-in-proof',detail:`selected=${selected.length} inProof=${indices.length} proofLines=${e.lines.length} proofBT=${e.proof.bt}`};
@@ -83,7 +83,7 @@ function explain(page:import('pdf-lib').PDFPage,content:Uint8Array,fonts:readonl
  }
  if(!layout.ok||layout.strategy==='fixed'){
   const why=!layout.ok?layout.code:'fixed';
-  return {gate:why==='overflow'?(grew?'grow-down-still-overflow':'grow-down-space-not-proved'):'layout-refused',detail:`strategy=${'strategy'in layout?layout.strategy:why} grew=${grew} lines=${e.lines.length} leading=${e.proof.leadingPt}`};
+  return {gate:why==='overflow'?(grew?'grow-down-still-overflow':'grow-down-space-not-proved'):'layout-refused',detail:`strategy=${'strategy'in layout?layout.strategy:why} grew=${grew} lines=${e.lines.length} leading=${e.proof.leadingPt}${e.visualGroup.columnEvidence?` column=${JSON.stringify(e.visualGroup.columnEvidence)}`:''}`};
  }
  if(layout.strategy!=='wrap'&&proof!==e.proof)return {gate:'growth-not-allowed-for-strategy',detail:layout.strategy};
  const recipe=planStreamReflow(page,content,fonts,overlay,{...environment,stage5Reflow:true},type1);

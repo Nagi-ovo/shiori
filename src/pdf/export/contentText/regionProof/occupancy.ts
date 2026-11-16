@@ -9,9 +9,10 @@ import type {streamInkResolver,ReflowInk} from '../reflowInk';
 import type {traceReflowSource} from '../reflowTrace';
 import type {Rect,SourceAddress,TextTrace} from './types';
 import {contains,intersects,linear,origin,validRect} from './geometry';
+import {boundStrokedShow,strokeEnvelopes} from './strokeOccupancy';
 
 export type GlyphKey=string;
-export type OccupantKind='glyph'|'placement'|'paint'|'image'|'form'|'annot'|'unplaced'|'unknown';
+export type OccupantKind='glyph'|'placement'|'paint'|'image'|'form'|'annot'|'unplaced'|'unknown'|'backdrop';
 export type Occupant={id:number;kind:OccupantKind;box:Rect;owner?:GlyphKey;paintOp:number;measured:boolean};
 export type PageOccupancy={
  items:Occupant[];grid:Map<number,number[]>;pageBlocked:boolean;hash:string;guardPt:number;
@@ -43,7 +44,7 @@ function cells(b:Rect):number[]|null{
 }
 export function queryOccupancy(index:PageOccupancy,box:Rect):Occupant[]{
  const buckets=cells(box);
- if(!buckets)return index.items.filter(o=>intersects(o.box,box));
+ if(!buckets)return index.items.filter(o=>o.kind!=='backdrop'&&intersects(o.box,box));
  const ids=new Set([...(index.grid.get(Infinity)??[]),...buckets.flatMap(k=>index.grid.get(k)??[])]);
  return [...ids].map(id=>index.items[id]!).filter(o=>intersects(o.box,box));
 }
@@ -72,8 +73,13 @@ export function buildPageOccupancy(input:{page:PDFPage;ops:readonly ContentOp[];
   const b=numericArray(raw,'FontBBox')??(descriptor?numericArray(descriptor,'FontBBox'):undefined);
   if(b?.length===4&&b.every(Number.isFinite)&&b[2]!>b[0]!&&b[3]!>b[1]!)declaredBoxes.set(resourceName,b);
  }
+ const strokes=strokeEnvelopes(page,ops);
  for(const s of unplaced){
   const t=trace.shows.get(`${s.opIndex}:${s.arrayItemIndex}`)?.before,b=s.fontName?declaredBoxes.get(s.fontName):undefined;
+  if(t&&s.reason){
+   const boxes=boundStrokedShow(s,t,ink,b,strokes.get(s.opIndex),media,guardPt);
+   if(boxes){for(const box of boxes)add('unplaced',box,s.opIndex);continue;}
+  }
   const o=s.origin??(t?{x:origin({...t,tm:t.tlm})[0],y:origin({...t,tm:t.tlm})[1]}:undefined);
   if(o&&t&&b&&s.reason===undefined&&Number.isFinite(o.y)&&Math.abs(linear(t)[1]!)<1e-9&&Math.abs(linear(t)[2]!)<1e-9){
    const y1=o.y+b[1]!*s.fontSizePt/1000,y2=o.y+b[3]!*s.fontSizePt/1000;
@@ -98,7 +104,10 @@ export function buildPageOccupancy(input:{page:PDFPage;ops:readonly ContentOp[];
    }else add('unknown',media,g.opIndex,false,owner);
   }
  }
- for(const o of items)for(const key of contains(o.box,media)?[Infinity]:cells(o.box)??[Infinity]){const bucket=grid.get(key)??[];bucket.push(o.id);grid.set(key,bucket);}
+ for(const o of items){
+  if(o.kind==='backdrop')continue;
+  for(const key of contains(o.box,media)?[Infinity]:cells(o.box)??[Infinity]){const bucket=grid.get(key)??[];bucket.push(o.id);grid.set(key,bucket);}
+ }
  const hash=sourceFingerprint(new TextEncoder().encode(JSON.stringify({sourceHash,dependencyHash,guardPt,items})));
- return {items,grid,pageBlocked:items.some(o=>contains(o.box,media)),hash,guardPt,glyphs:measures,embeddedFonts};
+ return {items,grid,pageBlocked:items.some(o=>o.kind!=='backdrop'&&contains(o.box,media)),hash,guardPt,glyphs:measures,embeddedFonts};
 }
