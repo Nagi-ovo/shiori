@@ -2,7 +2,7 @@ import type {ParagraphBlocker,ParagraphInput,ParagraphRefusal,ParagraphResult,Re
 import {proveOperators} from './regionProof/operators';
 import {compatible,paragraphMember,paragraphFrame,lineStart,anchorForShow,lineAnchors,contains,intersects,matrixEqual,near,physicalLeading,validTrace,validPositionAnchor,positionAnchorMember} from './regionProof/geometry';
 /** Short candidates use only the visual group's observed extent. A lone
- * group still needs explicit TL to grow; a multi-line group supplies pitch.
+ * group needs witnessed leading to grow; a single gap only groups rows.
  * The preceding numeric snapshot proves relative first anchors from the same
  * immutable walk. Overlay newlines never contribute capacity or ownership.
  */
@@ -36,7 +36,7 @@ export function shortStreamRegionResult(input:ParagraphInput,before?:TextTrace):
  if(lines.length===2&&lines[1]!.ink!.y+lines[1]!.ink!.h>lines[0]!.ink!.y)return refuse('bounds','Short-region row ink overlaps');
  const firstLeft=starts[0]![0],bodyLeft=starts[1]?.[0]??firstLeft;
  return {ok:true,proof:{kind:lines.length===1?'explicit-line-region':'paragraph',sourceHash:input.sourceHash,dependencyHash:input.dependencyHash,bt:base.bt,box,
-  indent:group?.indent??{kind:near(firstLeft,bodyLeft,.01)?'flush':firstLeft>bodyLeft?'first-line':'hanging',amountPt:Math.abs(firstLeft-bodyLeft)},leadingPt:leading,
+  indent:group?.indent??{kind:near(firstLeft,bodyLeft,.01)?'flush':firstLeft>bodyLeft?'first-line':'hanging',amountPt:Math.abs(firstLeft-bodyLeft)},leadingPt:group?.leadingEvidence?.pitchPt??leading,
   lineSlots:starts.map((p,i)=>({left:group?(lines[i]===group.lines[0]?group.firstLeft:group.left):p[0],right,baseline:p[1],kind:'observed'})),owned:lines.flatMap(l=>l.shows.map(s=>s.source)),tjBoundaries:operators.boundaries,
   obstacleProofHash:e.obstacleProofHash,boundaryProofHash:e.boundaryProofHash,scopeProofHash:e.scopeProofHash}};
 }

@@ -28,7 +28,6 @@ test('two other groups prove a column edge for a short one-line overflow',async(
 });
 for(const [name,witnesses]of [
  ['only one longer sibling',long(122)],
- ['two lines of the same group',long(122)+long(108)],
  ['ragged-right siblings',long(122)+row('AB AB AB',94)],
  ['neighbouring column',long(122,180)+long(94,180)],
  ['far-away witnesses',long(80)+long(52)],
@@ -36,6 +35,11 @@ for(const [name,witnesses]of [
  ['different marked scope',`/Span BMC ${long(122)+long(94)} EMC`],
 ]as const)test(`${name} cannot lend capacity`,async()=>{
  const f=await fixture(short+witnesses);expect(f.e.visualGroup.capacityRight).toBe(65);
+});
+test('two distinct edge rows in one nearby group can lend capacity',async()=>{
+ const f=await fixture(short+long(122)+long(108));
+ expect(f.e.visualGroup.capacityRight).toBe(95);
+ expect(f.e.visualGroup.columnEvidence).toMatchObject({witnessGroups:1,witnessLines:2});
 });
 test('the edge stays in the target column when a longer neighbouring column exists',async()=>{
  const f=await fixture(short+long(122)+long(94)+long(122,180)+long(94,180));

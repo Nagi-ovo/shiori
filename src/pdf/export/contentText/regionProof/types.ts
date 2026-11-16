@@ -67,8 +67,10 @@ export type VisualGroup = {
   style: TextTrace; pitchPt: number; capacityRight: number;
   left: number; firstLeft: number; indent: ParagraphIndent;
   column: {x0:number;x1:number};
+  /** pitchPt groups observed rows; only this witness authorizes new rows. */
+  leadingEvidence?: {kind:'explicit'|'baseline-gaps'|'unproved';pitchPt:number;gapCount:number;reason?:string};
   /** Analytic witness diagnostics, including zero-slack justified fragments. */
-  columnEvidence?: {slack:number;witnessGroups:number;sourceGapBefore:boolean;right?:number;reason?:string};
+  columnEvidence?: {slack:number;witnessGroups:number;witnessLines?:number;sourceGapBefore:boolean;right?:number;reason?:string};
   /** A local source-order ambiguity never invalidates independent groups. */
   refusal?: string;
 };

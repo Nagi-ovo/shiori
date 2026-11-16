@@ -70,8 +70,18 @@ export function traceReflowSource(ops:readonly ContentOp[],fonts:readonly Resolv
     if(op.operator==='TD')state.leading=-dy!;
     tm=translate(tlm,dx!,dy!);tlm=[...tm];anchors.set(i,snapshot(i));break;
    }
-   case 'Tj':case 'TJ':{
-    const items=op.operator==='TJ'&&n[0]?.kind==='array'?n[0].items:n;
+   case 'Tj':case 'TJ':case "'":case '"':{
+    const quote=op.operator==="'"||op.operator==='"';
+    if(quote){
+     const string=n.at(-1);
+     if(string?.kind!=='string'||n.length!==(op.operator==='"'?3:1))throw new ReflowTraceError('malformed quote show');
+     if(op.operator==='"'){const [tw,tc]=nums(n.slice(0,2),2);state.tw=tw!;state.tc=tc!;}
+     tm=translate(tlm,0,-state.leading);tlm=[...tm];
+     // Read-only witness anchor. The ownership grammar still excludes quote
+     // shows from rewritten windows; their implicit move stays untouched.
+     anchors.set(i,snapshot(i));
+    }
+    const items=quote?[n.at(-1)!]:op.operator==='TJ'&&n[0]?.kind==='array'?n[0].items:n;
     const font=fonts.find(f=>f.resourceName===state.fontName);if(bt<0)throw new ReflowTraceError('unplaced trace show');
     for(const [j,item]of items.entries()){
      if(item.kind==='number'&&op.operator==='TJ')tm=translate(tm,-item.value/1000*state.size*state.tz/100,0);
