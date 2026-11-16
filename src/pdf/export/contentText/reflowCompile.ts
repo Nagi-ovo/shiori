@@ -38,6 +38,14 @@ export function compileReflowPlan(content:Uint8Array,fonts:readonly ResolvedRunF
    if(ownedOps.has(i)){
     const address=proof.owned.find(s=>s.opIndex===i)!,local=trace.shows.get(`${i}:${address.itemIndex}`)?.before,end=trace.ends.get(i);
     if(!local||!end||!['Tj','TJ'].includes(op.operator))return refuse('reflow-context-unsupported: missing home show');
+    const slot=clusters.flatMap((t,n)=>homeOp(t)===i?[{t,p:layout.origins[n]!}]:[]);
+    // Replaying an untouched source show preserves even an isolated space's
+    // native extraction and paint slot. Changed/moved slots still use the
+    // strict emitter; the final independent walk verifies every retained code.
+    if(slot.length&&slot.every(({t,p})=>t.source?.opIndex===i&&t.fontObject===t.source.fontObject&&
+     t.original&&p[0]===t.original.x&&p[1]===t.original.y)){
+     body.push(literal(op.start,op.end));continue;
+    }
     body.push(...emitReflowSlot(recipe,fonts,i,local),restoreReflowSlot(end,fonts));
    }else body.push(literal(op.start,op.end));
   }

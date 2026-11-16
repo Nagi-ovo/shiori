@@ -67,6 +67,8 @@ export type VisualGroup = {
   style: TextTrace; pitchPt: number; capacityRight: number;
   left: number; firstLeft: number; indent: ParagraphIndent;
   column: {x0:number;x1:number};
+  /** A local source-order ambiguity never invalidates independent groups. */
+  refusal?: string;
 };
 export type ParagraphIndent = {
   kind: 'flush' | 'first-line' | 'hanging';

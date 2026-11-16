@@ -77,7 +77,8 @@ export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextT
   if (!(leading > 0) || advances.some(a => !near(a, leading, leadingTolerance)) ||
     lines.some(l => {
       const values = [...lineAnchors(l), ...l.shows.flatMap(s => [s.before, s.after])].map(physicalLeading);
-      return values.some(v => explicit > 0 ? !near(v, leading, leadingTolerance) : v !== 0);
+      return values.some(v => perGlyph && input.visualGroup ? v !== 0 && !near(v, leading, leadingTolerance) :
+        explicit > 0 ? !near(v, leading, leadingTolerance) : v !== 0);
     })) return refuse('leading', 'Observed/explicit baseline advances are inconsistent; no blank row may be inferred');
   const em = physicalSize(base);
   const leftTolerance = Math.min(0.50, Math.max(0.25, 0.025 * em));

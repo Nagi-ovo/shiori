@@ -100,6 +100,7 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   const grouping=buildVisualGroups(lines,target,trace.ends);
   if(!grouping.ok)return refuse('region-unproved',grouping.detail,'boundary');
   const group=grouping.groups.find(g=>targetLine>=g.start&&targetLine<g.end)!;
+  if(group.refusal)return refuse('region-unproved',group.refusal,'boundary');
   visualGroup=group;
   const start=targetLine,end=group.end,count=end-start;
   if(count>8)return refuse('region-unproved','Target is more than eight source lines from the visual group end','lines');

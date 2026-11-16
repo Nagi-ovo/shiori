@@ -42,10 +42,19 @@ export function compareReflowNativePages(before:Snapshot,after:Snapshot,edit:{or
   if(e.replacement){replacementIndices.push(i);assert(g.nativePath&&(g.nativePath as unknown[]).length,'replacement path missing');assert((g.inkPixels??0)>0,'replacement has no ink');}
  });
  // Spaces have no painted ink, so compare their exact native origins too.
+ // PDFium can omit an isolated source space even in the original. An
+ // unchanged code at the same origin/font need not acquire native visibility.
+ let nativeUnobservableUnchangedSpaces=0;
  const ownedSpaces=manifest.source.filter(g=>!compact(g.unicode));
  const retainedSpaces=before.glyphs.filter(g=>!compact(g.text)&&!ownedSpaces.some(e=>match(g,e))).map(g=>({text:g.text,origin:g.origin,original:g}));
- const intendedSpaces=manifest.output.filter(g=>!compact(g.unicode)).map(e=>({text:e.unicode,origin:e.origin,
-  original:e.oldOrigin?before.glyphs.find(g=>g.text===e.unicode&&drift(g.origin,e.oldOrigin!)<=.01):undefined}));
+ const intendedSpaces=manifest.output.filter(g=>!compact(g.unicode)).flatMap(e=>{
+  const original=e.oldOrigin?before.glyphs.find(g=>g.text===e.unicode&&drift(g.origin,e.oldOrigin!)<=.01):undefined;
+  if(!original&&e.oldOrigin&&e.fontHash&&drift(e.origin,e.oldOrigin)===0&&ownedSpaces.some(s=>
+   s.unicode===e.unicode&&s.fontHash===e.fontHash&&drift(s.origin,e.oldOrigin!)===0)){
+   nativeUnobservableUnchangedSpaces++;return [];
+  }
+  return [{text:e.unicode,origin:e.origin,original}];
+ });
  const spaces=after.glyphs.filter(g=>!compact(g.text)),expectedSpaces=[...retainedSpaces,...intendedSpaces];
  assert.equal(spaces.length,expectedSpaces.length,'native whitespace count changed');
  for(const e of expectedSpaces){const index=spaces.findIndex(g=>g.text===e.text&&drift(g.origin,e.origin)<=.005);assert(index>=0,'native whitespace destination drift');const [g]=spaces.splice(index,1);if(e.original)assert.equal(g!.fontHash,e.original.fontHash,'native whitespace font changed');}
@@ -62,5 +71,5 @@ export function compareReflowNativePages(before:Snapshot,after:Snapshot,edit:{or
  assert.equal(changedPixelsOutsideBox,0,'changed pixels outside manifest region');
  assert.equal(changedPixelsOutsideMask,0,'changed pixels outside manifest mask');
  const rasterVeto=vetoReflowRaster(before,manifest.region);
- return {maxOriginDriftPt,changedPixels,changedPixelsOutsideBox,changedPixelsOutsideMask,...rasterVeto,replacementGlyphs:replacementIndices.length,replacementIndices};
+ return {maxOriginDriftPt,changedPixels,changedPixelsOutsideBox,changedPixelsOutsideMask,nativeUnobservableUnchangedSpaces,...rasterVeto,replacementGlyphs:replacementIndices.length,replacementIndices};
 }

@@ -4,27 +4,26 @@ import {queryOccupancy,type PageOccupancy} from './occupancy';
 
 const pitchTolerance=(pitch:number)=>Math.min(.25,Math.max(.10,pitch*.01));
 const leftTolerance=(style:TextTrace)=>Math.min(.50,Math.max(.25,.025*physicalSize(style)));
-/** Source order is authoritative. A boundary ends the group immediately;
- * disconnected/interleaved columns cannot be rescued by a shorter window. */
+/** Source order is authoritative. Boundaries split groups; a column return
+ * marks only its participating groups, never an independent paragraph. */
 export function buildVisualGroups(lines:readonly ParagraphLine[],target:TextTrace,ends:ReadonlyMap<number,TextTrace>):
  {ok:true;groups:VisualGroup[]}|{ok:false;detail:string}{
  const groups:VisualGroup[]=[];
  const style=(line:ParagraphLine)=>line.shows.find(s=>paragraphMember(s.before,target))?.before??line.shows[0]!.before;
  const extent=(line:ParagraphLine)=>Math.max(...line.shows.map(s=>origin(s.after)[0]),
   origin(ends.get(line.shows.at(-1)!.source.opIndex)??line.shows.at(-1)!.after)[0],line.ink?line.ink.x+line.ink.w:-Infinity);
+ const blank=(line:ParagraphLine)=>line.shows.every(s=>/^\s*$/u.test(s.unicode));
+ const overlaps=(a:ParagraphLine,b:ParagraphLine)=>Math.max(lineStart(a,true)[0],lineStart(b,true)[0])<Math.min(extent(a),extent(b))-EPS;
  for(let i=0;i<lines.length;i++){
   const line=lines[i]!,s=style(line),p=lineStart(line,true),end=extent(line);
-  let g=groups.at(-1),split=!g||line.sourceGapBefore||!paragraphMember(s,g.style);
+  let g=groups.at(-1),inverted=false,split=!g||line.sourceGapBefore||!paragraphMember(s,g.style)||blank(line)||blank(lines[i-1]!);
   if(g&&!split){
    const previous=lines[i-1]!,q=lineStart(previous,true),previousEnd=extent(previous);
-   if(line.anchor.opIndex<=previous.shows.at(-1)!.source.opIndex)
-    return {ok:false,detail:'Source/geometry order inversion'};
+   inverted=line.anchor.opIndex<=previous.shows.at(-1)!.source.opIndex;
+   if(inverted)g.refusal='Source/geometry order inversion';
    const disconnected=Math.max(p[0],q[0])>=Math.min(end,previousEnd)-EPS;
-   if(disconnected&&groups.slice(0,-1).some(earlier=>paragraphMember(s,earlier.style)&&
-    earlier.lines.some(l=>{const x=lineStart(l,true)[0];return Math.max(x,p[0])<Math.min(extent(l),end)-EPS;})))
-    return {ok:false,detail:'Interleaved columns invert source/geometry order'};
    const pitch=q[1]-p[1],explicit=physicalLeading(s);
-   split=disconnected||!(pitch>0)||g.pitchPt>0&&!near(pitch,g.pitchPt,pitchTolerance(g.pitchPt))||
+   split=inverted||disconnected||!(pitch>0)||g.pitchPt>0&&!near(pitch,g.pitchPt,pitchTolerance(g.pitchPt))||
     explicit>0&&g.pitchPt>0&&!near(explicit,g.pitchPt,pitchTolerance(g.pitchPt));
    if(!split&&g.lines.length>=2){
     const lefts=[...g.lines.slice(1).map(l=>lineStart(l,true)[0]),p[0]];
@@ -37,12 +36,28 @@ export function buildVisualGroups(lines:readonly ParagraphLine[],target:TextTrac
     indent:{kind:'flush',amountPt:0},column:{x0:p[0],x1:end}};
    groups.push(g);
   }
+  if(inverted)g!.refusal='Source/geometry order inversion';
   g!.lines=[...g!.lines,line];g!.end=i+1;g!.capacityRight=Math.max(g!.capacityRight,end);
   const starts=g!.lines.map(l=>lineStart(l,true)[0]),body=starts.slice(1),flush=Math.max(...starts)-Math.min(...starts)<=leftTolerance(g!.style)+EPS;
   g!.left=Math.max(...(body.length?body:starts));g!.firstLeft=starts[0]!;
   g!.indent=flush?{kind:'flush',amountPt:0}:{kind:g!.firstLeft>g!.left?'first-line':'hanging',amountPt:Math.abs(g!.firstLeft-g!.left)};
   if(flush)g!.firstLeft=g!.left=Math.max(...starts);
   g!.column={x0:Math.min(...starts),x1:g!.capacityRight};
+ }
+ // A-B-A source order is ambiguous only when A resumes its visual run.
+ // A paragraph boundary (an observed pitch gap or a blank source row) must
+ // not poison an unrelated earlier/later paragraph in the same column.
+ for(let i=2;i<groups.length;i++){
+  const current=groups[i]!,previous=groups[i-1]!,first=current.lines[0]!;
+  if(blank(first)||current.lines.some(a=>previous.lines.some(b=>overlaps(a,b))))continue;
+  const at=groups.slice(0,i-1).findLastIndex(g=>paragraphMember(current.style,g.style)&&!blank(g.lines[0]!)&&
+   current.lines.some(a=>g.lines.some(b=>overlaps(a,b))));
+  if(at<0)continue;
+  const earlier=groups[at]!,pitch=earlier.pitchPt||current.pitchPt;
+  const advance=lineStart(earlier.lines.at(-1)!,true)[1]-lineStart(first,true)[1];
+  if(pitch>0&&advance>0&&!near(advance,pitch,pitchTolerance(pitch)))continue;
+  if(groups.slice(at+1,i).some(g=>g.lines.some(blank)||g.lines[0]!.sourceGapBefore)||first.sourceGapBefore)continue;
+  for(const g of groups.slice(at,i+1))g.refusal??='Interleaved columns invert source/geometry order';
  }
  return {ok:true,groups};
 }

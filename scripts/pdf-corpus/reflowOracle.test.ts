@@ -29,3 +29,24 @@ test('pixels inside the union bound but outside every glyph mask are rejected',(
  pixels[(9*20+5)*4]=255;pixels[(9*20+4)*4]=0; // inside the first rectangle
  expect(compareReflowNativePages(before,{...after,pixels},edit,{...manifest,region:{...manifest.region,mask}})).toMatchObject({changedPixels:1,changedPixelsOutsideMask:0});
 });
+const hiddenSpace={unicode:' ',origin:[3.5,5],fontHash:'font'};
+const hiddenManifest={...manifest,source:[...manifest.source,hiddenSpace],output:[...manifest.output,{...hiddenSpace,oldOrigin:hiddenSpace.origin}]};
+test('a source space absent in both native snapshots may remain unchanged',()=>{
+ expect(compareReflowNativePages(before,after,edit,hiddenManifest)).toMatchObject({nativeUnobservableUnchangedSpaces:1,changedPixelsOutsideMask:0});
+});
+test('a natively unobservable source space cannot move without destination evidence',()=>{
+ const output=[...manifest.output,{...hiddenSpace,origin:[3.6,5],oldOrigin:hiddenSpace.origin}];
+ expect(()=>compareReflowNativePages(before,after,edit,{...hiddenManifest,output})).toThrow('whitespace count');
+});
+test('an observed source space cannot disappear from native extraction',()=>{
+ const observed={...before,glyphs:[...before.glyphs,glyph(' ',3.5)]};
+ expect(()=>compareReflowNativePages(observed,after,edit,hiddenManifest)).toThrow('whitespace count');
+});
+test('unobservable spaces cannot gain an unverified font change',()=>{
+ const output=[...manifest.output,{...hiddenSpace,fontHash:'other',oldOrigin:hiddenSpace.origin}];
+ expect(()=>compareReflowNativePages(before,after,edit,{...hiddenManifest,output})).toThrow('whitespace count');
+});
+test('newly inserted whitespace always needs native destination evidence',()=>{
+ const output=[...manifest.output,hiddenSpace];
+ expect(()=>compareReflowNativePages(before,after,edit,{...manifest,output})).toThrow('whitespace count');
+});
