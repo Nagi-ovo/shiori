@@ -10,6 +10,7 @@ import {bounds} from './retypesetInk';
 import {reflowScene} from './reflowScene';
 import {contains,intersects} from './regionProof/geometry';
 import type {RetypesetFrame} from './retypesetFrame';
+import type {RetypesetPushSpace} from './retypesetForms';
 
 type Plan=ReturnType<typeof planRetypeset>;
 type Source=ReturnType<typeof readRetypesetSource>;
@@ -21,7 +22,7 @@ export type PushPatch={start:number;end:number;prefix:string;suffix:string};
  * checks cover both the swept region and every destination; a fixed obstacle
  * never becomes fabricated whitespace. */
 export function planRetypesetPush(page:PDFPage,ops:ContentOp[],source:Source,plan:Plan,fit:ReturnType<typeof layoutRetypeset>,target:ReadonlySet<string>,
- outputInk:Ink[],sourceInk:Map<string,Ink>,blockReason?:string,fixedInk:Ink[]=[],internalOverlap=false,boundedFrame?:RetypesetFrame){
+ outputInk:Ink[],sourceInk:Map<string,Ink>,blockReason?:string,fixedInk:Ink[]=[],internalOverlap=false,formSpace?:RetypesetPushSpace,boundedFrame?:RetypesetFrame){
  const media=page.getMediaBox(),crop=page.getCropBox(),pageBox={x:Math.max(media.x,crop.x),y:Math.max(media.y,crop.y),w:0,h:0};
  pageBox.w=Math.min(media.x+media.width,crop.x+crop.width)-pageBox.x;pageBox.h=Math.min(media.y+media.height,crop.y+crop.height)-pageBox.y;
  const items:Item[]=source.glyphs.filter(g=>!target.has(address(g.glyph))).map(g=>{
@@ -50,6 +51,7 @@ export function planRetypesetPush(page:PDFPage,ops:ContentOp[],source:Source,pla
  const p0=plan.frame.global(plan.group.left,0),p1=plan.frame.global(plan.group.right,0),down=plan.frame.global(0,-fit.addedHeight);
  if(Math.abs(p0.y)>1e-8||Math.abs(p1.y)>1e-8||Math.abs(down.x)>1e-8||down.y>=0)return blocked('nonhorizontal-frame');
  const delta=-down.y,left=p0.x,right=p1.x,threshold=Math.max(...plan.tail.map(g=>g.glyph.coreQuad[0].y));
+ const contexts=retypesetScopes(ops,formSpace?.box);
  const inBand=(b:PdfRect)=>b.x>=left-.5&&b.x+b.w<=right+.5;
  const below=(o:Item)=>o.glyph?o.glyph.y<threshold-.05:o.box.y+o.box.h<=threshold+.01;
  // Classify complete visual rows, split at observed inter-column gaps.
@@ -111,17 +113,19 @@ export function planRetypesetPush(page:PDFPage,ops:ContentOp[],source:Source,pla
  for(const g of source.glyphs)if(movingOps.has(g.glyph.opIndex)&&(!moving.has(items.find(o=>o.glyph===g)!)||target.has(address(g.glyph))))return blocked('shared-show');
  for(const o of moving){
   const dest={...o.box,y:o.box.y-delta},swept={...dest,h:dest.h+delta};
-  if(!contains(pageBox,dest))return blocked('crop-media-box');
+  if(!contains(pageBox,dest))return blocked(formSpace?'form-bbox':'crop-media-box');
+  const boundReason=formSpace?.blocked(swept);if(boundReason)return blocked(boundReason);
+  const clip=contexts.get(o.op)?.clip;
+  if(formSpace&&(clip===null||clip&&!contains(clip,swept)))return blocked('form-clip');
   if(items.some(f=>!moving.has(f)&&intersects(swept,f.box)))return blocked('fixed-or-foreign-obstacle');
   if(newInk.some(n=>intersects(n.box,dest)))return blocked('destination-overlap');
  }
  // Recover graphics construction spans and their CTMs. Active clipping or
  // interleaved path/state mutations cannot be translated independently.
- const contexts=retypesetScopes(ops);
  const patches:PushPatch[]=[];
  for(const opIndex of new Set([...moving].map(o=>o.op))){
   const op=ops[opIndex],context=contexts.get(opIndex);
-  if(!op||!context||context.clip!==undefined)return blocked('clip-or-annotation');
+  if(!op||!context||!formSpace&&context.clip!==undefined)return blocked('clip-or-annotation');
   const isText=movingOps.has(opIndex),start=isText?opIndex:context.start;
   if(!isText&&(!context.clean||!['Do','BI',...retypesetPaintOps].includes(op.operator)))return blocked('graphics-scope');
   const c=context.ct,det=c[0]!*c[3]!-c[1]!*c[2]!;

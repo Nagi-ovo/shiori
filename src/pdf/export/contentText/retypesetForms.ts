@@ -8,6 +8,8 @@ import {quadIntersectsRect} from '../contentStreamEdit/removeGlyphs';
 import type {GlyphPlacement,Point} from '../contentStreamEdit/textState';
 import {readRetypesetSource} from './retypesetSource';
 import type {RetypesetGlyph} from './retypesetTypes';
+import {retypesetScopes} from './retypesetScopes';
+import {contains} from './regionProof/geometry';
 
 export type FormMatrix=readonly number[];
 export const identity=[1,0,0,1,0,0];
@@ -27,13 +29,29 @@ export function formPageBox(m:FormMatrix,r:PdfRect):PdfRect{
  const x=Math.min(...ps.map(p=>p.x)),y=Math.min(...ps.map(p=>p.y));return{x,y,w:Math.max(...ps.map(p=>p.x))-x,h:Math.max(...ps.map(p=>p.y))-y};
 }
 type Clip={inverse:FormMatrix;box:PdfRect};
+type PushClip={inverse:FormMatrix;box:PdfRect|null;reason:string};
+export type RetypesetPushSpace={box:PdfRect;blocked:(destination:PdfRect)=>string|undefined};
+// Only occurrence pages prepared here may push a Form. A raw shared stream
+// passed directly to the writer has no entry, even if it has a valid BBox.
+const cowPushSpaces=new WeakMap<PDFPage,{contents:PDFRawStream;space:RetypesetPushSpace}>();
+export function retypesetFormPushSpace(page:PDFPage){
+ const entry=cowPushSpaces.get(page);
+ return entry&&page.node.get(PDFName.of('Contents'))===entry.contents?entry.space:undefined;
+}
 export type RetypesetStream={
  key:string;page:PDFPage;bytes:Uint8Array;ops:ContentOp[];read:ReturnType<typeof readRetypesetSource>;
  matrix:FormMatrix;clips:Clip[];children:RetypesetStream[];raw?:PDFRawStream;useIndex?:number;changed:boolean;
 };
 function detachedPage(page:PDFPage,resources:PDFDict|undefined,raw?:PDFRawStream){
  const node=page.node.clone();node.set(PDFName.of('Resources'),resources??page.doc.context.obj({}));
- if(raw)node.set(PDFName.of('Contents'),raw.clone());
+ if(raw){
+  node.set(PDFName.of('Contents'),raw.clone());
+  // This page is only a stream/resource adapter, in Form user space. Page
+  // annotations and page boxes are not occupants/bounds inside the Form.
+  node.set(PDFName.of('MediaBox'),raw.dict.get(PDFName.of('BBox'))!);
+  node.set(PDFName.of('CropBox'),raw.dict.get(PDFName.of('BBox'))!);
+  node.delete(PDFName.of('Annots'));
+ }
  return PDFPage.of(node,page.ref,page.doc);
 }
 function numbers(raw:PDFRawStream,key:string){
@@ -44,12 +62,13 @@ function numbers(raw:PDFRawStream,key:string){
 export function readRetypesetStreams(page:PDFPage,options:Type1Options={}){
  const source=inspectRunPage(page);if(!source.ok)throw Error(source.reason);
  const nodes:RetypesetStream[]=[],errors:string[]=[],images:{matrix:FormMatrix}[]=[];
- const visit=(localPage:PDFPage,bytes:Uint8Array,key:string,matrix:FormMatrix,clips:Clip[],ancestors:Set<PDFRawStream>,initial?:TextGraphicsState):RetypesetStream=>{
+ const visit=(localPage:PDFPage,bytes:Uint8Array,key:string,matrix:FormMatrix,clips:Clip[],ancestors:Set<PDFRawStream>,pushClips:PushClip[],initial?:TextGraphicsState):RetypesetStream=>{
   if(nodes.length>=1024)throw Error('Form occurrence limit exceeded');
   const ops=tokenizeContentStream(bytes),read=readRetypesetSource(localPage,ops,options,initial);
   const node:RetypesetStream={key,page:localPage,bytes,ops,read,matrix,clips,children:[],changed:false};nodes.push(node);
   if(!read.walk.ok){errors.push(`${key}: ${read.walk.reason}`);return node;}
   const objects=localPage.node.Resources()?.lookupMaybe(PDFName.of('XObject'),PDFDict);
+  const scopes=retypesetScopes(ops);
   for(const image of read.walk.inlineImages)images.push({matrix:composeFormMatrix(matrix,image.ctm)});
   for(const [index,use]of read.walk.xobjects.entries())try{
    const raw=objects?.lookup(PDFName.of(use.name));if(!(raw instanceof PDFRawStream))throw Error(`unreadable XObject /${use.name}`);
@@ -68,12 +87,20 @@ export function readRetypesetStreams(page:PDFPage,options:Type1Options={}){
     if(font(resources)!==font(parent))state.fontTainted=true;
    }
    const data=raw.dict.has(PDFName.of('Filter'))?decodePDFRawStream(raw).decode():raw.getContents();
-   const child=visit(detachedPage(page,resources,raw),data,`${key}/${use.opIndex}`,combined,[...clips,clip],new Set([...ancestors,raw]),state);
+   const active=scopes.get(use.opIndex)?.clip,childClips=[...pushClips,{...clip,reason:'form-bbox'},
+    ...(active===undefined?[]:[{inverse:inverse(matrix),box:active,reason:'form-clip'}])];
+   const child=visit(detachedPage(page,resources,raw),data,`${key}/${use.opIndex}`,combined,[...clips,clip],new Set([...ancestors,raw]),childClips,state);
    child.raw=raw;child.useIndex=index;node.children.push(child);
+   const contents=child.page.node.get(PDFName.of('Contents'));
+   if(contents instanceof PDFRawStream&&contents!==raw&&contents.dict!==raw.dict)cowPushSpaces.set(child.page,{contents,space:{box:clip.box,
+    blocked:destination=>childClips.find(c=>c.box===null||!contains(c.box,formPageBox(composeFormMatrix(c.inverse,combined),destination)))?.reason,
+   }});
   }catch(error){errors.push(`${key}/${use.opIndex}: ${String(error)}`);}
   return node;
  };
- const root=visit(detachedPage(page,page.node.Resources()),source.bytes,'page',identity,[],new Set());
+ const m=page.getMediaBox(),c=page.getCropBox(),x=Math.max(m.x,c.x),y=Math.max(m.y,c.y);
+ const pageBox={x,y,w:Math.max(0,Math.min(m.x+m.width,c.x+c.width)-x),h:Math.max(0,Math.min(m.y+m.height,c.y+c.height)-y)};
+ const root=visit(detachedPage(page,page.node.Resources()),source.bytes,'page',identity,[],new Set(),[{inverse:identity,box:pageBox,reason:'crop-media-box'}]);
  return {root,nodes,errors,images};
 }
 export function pageFormGlyphs(node:RetypesetStream,clipped=true):RetypesetGlyph[]{
