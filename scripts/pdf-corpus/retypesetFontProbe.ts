@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import {PDFDict,PDFDocument,PDFName,PDFObjectCopier,PDFRef,type PDFPage} from 'pdf-lib';
-import {inspectRunPage} from '../../src/pdf/export/contentStreamEdit/replaceRunPage';
-import {tokenizeContentStream} from '../../src/pdf/export/contentStreamEdit/tokenizer';
-import {readRetypesetSource} from '../../src/pdf/export/contentText/retypesetSource';
+import {readRetypesetStreams,pageFormGlyphs} from '../../src/pdf/export/contentText/retypesetForms';
 import {notdefProbePdf} from '../pdf-inplace/notdefProbe';
 import type {Type1Options} from '../../src/pdf/export/fontCoverage/type1Support';
 
@@ -10,13 +8,13 @@ import type {Type1Options} from '../../src/pdf/export/fontCoverage/type1Support'
  * resource by native Unicode/origin, then verify the probe's native program
  * hash in auditCorpusSample, just as for embedded replacement fonts. */
 export function retypesetFontObjects(page:PDFPage,glyphs:readonly {text:string;origin:readonly number[];fontHash?:string}[],options:Type1Options){
- const stream=inspectRunPage(page);assert(stream.ok,'retypeset stream unreadable');
- const source=readRetypesetSource(page,tokenizeContentStream(stream.bytes),options);assert(source.walk.ok,'retypeset font walk failed');
- const fonts=page.node.Resources()?.lookupMaybe(PDFName.of('Font'),PDFDict),objects=new Map<string,string>();
+ const streams=readRetypesetStreams(page,options);assert(!streams.errors.length,'retypeset font walk failed');
+ const objects=new Map<string,string>();
  for(const g of glyphs){
   if(!g.fontHash||!g.text.trim())continue;
-  const at=source.glyphs.find(s=>s.text===g.text&&Math.hypot(s.x-g.origin[0]!,s.y-g.origin[1]!)<=.01);
-  const ref=at?fonts?.get(PDFName.of(at.glyph.fontName)):undefined;
+  const occurrence=streams.nodes.find(n=>pageFormGlyphs(n).some(s=>s.text===g.text&&Math.hypot(s.x-g.origin[0]!,s.y-g.origin[1]!)<=.01));
+  const at=occurrence?pageFormGlyphs(occurrence).find(s=>s.text===g.text&&Math.hypot(s.x-g.origin[0]!,s.y-g.origin[1]!)<=.01):undefined;
+  const fonts=occurrence?.page.node.Resources()?.lookupMaybe(PDFName.of('Font'),PDFDict),ref=at?fonts?.get(PDFName.of(at.glyph.fontName)):undefined;
   if(ref instanceof PDFRef)objects.set(g.fontHash,ref.toString());
  }
  return objects;

@@ -8,6 +8,7 @@ import type {Type1Options} from '../fontCoverage/type1Support';
 import {buildVisualGroups} from './regionProof/visualGroups';
 import type {ParagraphLine,TextTrace} from './regionProof';
 import type {RetypesetGlyph,RetypesetGroup} from './retypesetTypes';
+import type {TextGraphicsState} from '../contentStreamEdit/textGraphicsState';
 
 export const address=(g:RetypesetGlyph['glyph'])=>`${g.opIndex}:${g.arrayItemIndex}:${g.byteOffset}`;
 /** Whole typographic displacement in the paragraph frame, including Tc/Tw/Tz.
@@ -17,16 +18,17 @@ export function retypesetAdvance(g:RetypesetGlyph,local:(x:number,y:number)=>{x:
  return local(v.x,v.y).x*g.glyph.tjCompensation*g.state.fontSize/1000;
 }
 /** Extra placement-only fonts never grant exact-tier encoding permission. */
-export function readRetypesetSource(page:PDFPage,ops:ContentOp[],options:Type1Options={}){
+export function readRetypesetSource(page:PDFPage,ops:ContentOp[],options:Type1Options={},initialState?:TextGraphicsState){
  const fonts=resolveRunFonts(page,options),extra=substituteSourceFonts(page);
  for(const f of extra)if(!fonts.some(a=>a.resourceName===f.resourceName))fonts.push(f);
  const states=new Map<string,ShowTextState>(),ends=new Map<number,{textMatrix:readonly number[];lineMatrix:readonly number[]}>(),environment=runPageEnvironment(page);
- const callbacks={includeStroked:true,resolveFont:(name:string)=>{
+ const invocations=new Map<number,TextGraphicsState>();
+ const callbacks={includeStroked:true,initialState,resolveFont:(name:string)=>{
   const f=fonts.find(f=>f.resourceName===name);return f?{...f,ok:true as const,appliesWordSpacing:f.bytesPerCode===1}:{ok:false as const,reason:'unmeasurable source font'};
  },extGStateSetsFont:(name:string)=>environment.extGStates?.get(name)?.setsFont??null};
- const walk=walkTextPlacements(ops,{...callbacks,onShow:s=>states.set(`${s.opIndex}:${s.arrayItemIndex}`,s),onTextOpEnd:(i,m)=>ends.set(i,m)});
+ const walk=walkTextPlacements(ops,{...callbacks,onXObject:(use,state)=>invocations.set(use.opIndex,state),onShow:s=>states.set(`${s.opIndex}:${s.arrayItemIndex}`,s),onTextOpEnd:(i,m)=>ends.set(i,m)});
  const glyphs:RetypesetGlyph[]=walk.ok?walk.glyphs.map(g=>({glyph:g,state:states.get(`${g.opIndex}:${g.arrayItemIndex}`)!,text:fonts.find(f=>f.resourceName===g.fontName)!.unicodeByCode.get(g.code),x:g.coreQuad[0].x,y:g.coreQuad[0].y})):[];
- return {fonts,walk,glyphs,callbacks,ends};
+ return {fonts,walk,glyphs,callbacks,ends,invocations};
 }
 /** Paragraph detection reuses the visual-group heuristic in a normalized
  * local text frame. It supplies approximate membership, never tier-1 proof. */

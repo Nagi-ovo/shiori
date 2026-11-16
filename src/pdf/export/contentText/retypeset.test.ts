@@ -100,14 +100,14 @@ test('two edits share a paragraph layout, retaining the earlier line and origina
  expect(read.glyphs.filter(g=>g.text==='B').every(g=>g.glyph.fontName==='F1'&&g.glyph.code===66)).toBe(true);
 });
 
-test('invisible OCR over an image and Form XObjects never paint a visible replacement',async()=>{
+test('invisible OCR over an image stays unsupported; text forms retypeset',async()=>{
  for(const form of [false,true]){
   const f=await fixture(form?'/Scan Do':'q 300 0 0 200 0 0 cm /Scan Do Q BT /F1 10 Tf 3 Tr 50 100 Td (ABCDE) Tj ET');
   const stream=f.doc.context.stream(new TextEncoder().encode(form?'BT /F1 10 Tf 50 100 Td (ABCDE) Tj ET':''),form?{Type:'XObject',Subtype:'Form',BBox:[0,0,300,200],Resources:f.page.node.Resources()!}:{Type:'XObject',Subtype:'Image',Width:1,Height:1,ColorSpace:'DeviceGray',BitsPerComponent:8});
   f.page.node.Resources()!.set(PDFName.of('XObject'),f.doc.context.obj({Scan:f.doc.context.register(stream)}));
   const before=inspectRunPage(f.page),r=await applyContentTextEdits(f.page,[overlay()],{loadFont});
-  expect(r.outcomes[0]).toMatchObject({mode:'unsupported',reason:form?'unsupported-form-xobject':'unsupported-image-text'});
-  expect(inspectRunPage(f.page)).toEqual(before);
+  if(form)expect(r.outcomes[0]).toMatchObject({mode:'retypeset',fidelity:'approximate'});
+  else {expect(r.outcomes[0]).toMatchObject({mode:'unsupported',reason:'unsupported-image-text'});expect(inspectRunPage(f.page)).toEqual(before);}
  }
 });
 

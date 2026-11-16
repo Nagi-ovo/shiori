@@ -92,7 +92,7 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
   let i=1;while(properties!.has(PDFName.of(`ShioriRtProp${i}`)))i++;
   const replacement=`ShioriRtProp${i}`,copy=dict.clone();for(const k of ['ActualText','Alt','E'])copy.delete(PDFName.of(k));
   properties!.set(PDFName.of(replacement),copy);renamed.set(name,replacement);return replacement;
- });
+ },pdfNumber);
  if(!removed.changed)throw Error('no addressed glyphs removed');
  // Removal preserves op count (Tj becomes TJ), except quote operators. Map
  // rewritten source slots by their ordered show-op identity, not byte offsets.
