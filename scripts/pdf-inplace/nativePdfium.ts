@@ -78,11 +78,12 @@ export function openPdfium(library: string) {
           if(f.FPDFText_IsGenerated(text,i)===1 || /[\r\n\0]/.test(value))continue;
           const x=new Float64Array(1),y=new Float64Array(1),l=new Float64Array(1),r=new Float64Array(1),b=new Float64Array(1),t=new Float64Array(1);
           if(!f.FPDFText_GetCharOrigin(text,i,ptr(x),ptr(y)) || !f.FPDFText_GetCharBox(text,i,ptr(l),ptr(r),ptr(b),ptr(t)))continue;
+          const inkBox=[l[0]!,b[0]!,r[0]!,t[0]!] as [number,number,number,number];
           const loose=new Float32Array(4);
           if(f.FPDFText_GetLooseCharBox(text,i,ptr(loose))){l[0]=Math.min(l[0]!,loose[0]!,x[0]!);r[0]=Math.max(r[0]!,loose[2]!);b[0]=Math.min(b[0]!,loose[3]!);t[0]=Math.max(t[0]!,loose[1]!);}
           const matrix=new Float32Array([1,0,0,1,0,0]);f.FPDFText_GetMatrix(text,i,ptr(matrix));
           const object=f.FPDFText_GetTextObject(text,i);
-          glyphs.push({text:value,origin:[x[0]!,y[0]!] as [number,number],box:[l[0]!,b[0]!,r[0]!,t[0]!] as [number,number,number,number],
+          glyphs.push({text:value,origin:[x[0]!,y[0]!] as [number,number],box:[l[0]!,b[0]!,r[0]!,t[0]!] as [number,number,number,number],inkBox,
             fontSize:f.FPDFText_GetFontSize(text,i)*Math.hypot(matrix[2]!,matrix[3]!),angle:f.FPDFText_GetCharAngle(text,i),object:String(object),nativeIndex:i,
             fontHash:undefined as string|undefined,nativePath:undefined as NativePath|null|undefined,inkPixels:undefined as number|undefined});
           if(evidence && object){

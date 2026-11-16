@@ -3,7 +3,7 @@ export type OracleSampleCandidate = {
   metadata: {row: {category: string; kind: string; outcome: {mode: string}}};
 };
 
-const modes = ['reflowed', 'substituted', 'fallback-font', 'in-place'];
+const modes = ['retypeset', 'reflowed', 'substituted', 'fallback-font', 'in-place'];
 
 /** Select only saved candidates. Cover categories and modes before repeating
  * category/mode pairs, retaining a Chinese missing-Han probe when space allows. */
@@ -27,7 +27,7 @@ export function selectOracleSamples<T extends OracleSampleCandidate>(candidates:
   const missingHan = (s: T) => s.metadata.row.category === 'chinese' && s.metadata.row.kind === 'missing-han';
   if (!selected.some(missingHan)) pick(missingHan);
 
-  // Reserve coverage of every accepted mode, then prioritize both new modes
+  // Reserve coverage of every accepted mode, then prioritize newer modes
   // in each category before adding older category/mode pairs.
   for (const mode of modes) {
     if (!selected.some(s => s.metadata.row.outcome.mode === mode)) pick(s => s.metadata.row.outcome.mode === mode);

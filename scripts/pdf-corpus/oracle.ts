@@ -14,6 +14,10 @@ import {backdropReferencePdf} from './reflowBackdropRaster';
 import {inspectRunPage} from '../../src/pdf/export/contentStreamEdit/replaceRunPage';
 import type {AppliedReflowManifest} from '../../src/pdf/export/contentText/reflowManifest';
 import type {PdfRect} from '../../src/pdf/model/types';
+import type {ContentTextOutcome} from '../../src/pdf/export/contentText/outcomes';
+import {compareRetypesetNativePages} from './retypesetOracle';
+import {assertRetypesetStreamIdentity,retypesetSourceOwnership} from './retypesetStreamOracle';
+import {retypesetFontObjects,retypesetNotdefProbePdf} from './retypesetFontProbe';
 const compact=(s:string)=>s.replace(/\s/gu,'');
 type Glyph={text:string;origin:readonly number[];box:readonly number[];fontHash?:string;nativePath?:unknown;inkPixels?:number;fontSize?:number};
 type Snapshot={width:number;height:number;text:string;glyphs:readonly Glyph[];pixels?:Uint8Array};
@@ -95,15 +99,20 @@ export function compareNativePages(before:Snapshot,after:Snapshot,edit:Edit,subs
 }
 export const compareSubstitutedNativePages=(before:Snapshot,after:Snapshot,edit:Edit)=>compareNativePages(before,after,edit,true);
 const command=(name:string,args:string[])=>{const r=spawnSync(name,args,{encoding:'utf8'});assert.equal(r.status,0,`${name}: ${r.stdout}${r.stderr}`);return r.stdout;};
-export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,name:string,directory:string,edit:Edit,stage5Type1:Type1Options={},stage5Reflow=process.env.SHIORI_STAGE5_REFLOW!=='0',manifest?:AppliedReflowManifest,mode?:import('../../src/pdf/export/contentText/outcomes').ContentTextOutcome['mode']){
+export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,name:string,directory:string,edit:Edit,stage5Type1:Type1Options={},stage5Reflow=process.env.SHIORI_STAGE5_REFLOW!=='0',manifest?:AppliedReflowManifest,outcome?:ContentTextOutcome['mode']|ContentTextOutcome){
+ const mode=typeof outcome==='string'?outcome:outcome?.mode;
+ assert.notEqual(mode,'unsupported','unsupported samples cannot be audited as successes');
+ const retypeset=mode==='retypeset'||(typeof outcome==='object'&&outcome.fidelity==='approximate');
  const beforePath=`${directory}/${name}.before.pdf`,afterPath=`${directory}/${name}.after.pdf`;
  const before=native.inspectPage(beforePath,0,true),after=native.inspectPage(afterPath,0,true);
- const useManifest=stage5Reflow&&manifest;
+ const useManifest=!retypeset&&stage5Reflow&&manifest;
  if(useManifest){const original=await PDFDocument.load(new Uint8Array(await readFile(beforePath))),source=inspectRunPage(original.getPage(0));assert(source.ok&&source.sourceHash===useManifest.sourceHash,'manifest source revision differs');}
- let checked;
+ let checked,sourceOwnership:ReturnType<typeof retypesetSourceOwnership>|undefined;
  try{
   const reference=useManifest?await backdropReferencePdf(new Uint8Array(await readFile(beforePath)),useManifest):undefined;
-  checked=useManifest?compareReflowNativePages(before,after,edit,useManifest,reference?native.inspectPage(reference,0,true):undefined):compareNativePages(before,after,edit,mode==='substituted');
+  const original=retypeset?await PDFDocument.load(new Uint8Array(await readFile(beforePath))):undefined;
+  sourceOwnership=original?retypesetSourceOwnership(original.getPage(0),before.glyphs,edit,stage5Type1):undefined;
+  checked=retypeset?compareRetypesetNativePages(before,after,edit,typeof outcome==='object'?outcome.retypeset:undefined,sourceOwnership):useManifest?compareReflowNativePages(before,after,edit,useManifest,reference?native.inspectPage(reference,0,true):undefined):compareNativePages(before,after,edit,mode==='substituted');
  }
  catch(error){
   if(useManifest&&error instanceof Error&&error.message.includes('raster veto'))await saveReflowVetoArtifact({name,
@@ -111,6 +120,13 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
   throw error;
  }
  const bytes=new Uint8Array(await readFile(afterPath)),doc=await PDFDocument.load(bytes),objects=new Map<string,string>();
+ let untargetedStreamGlyphs:number|undefined;
+ if('ownedSourceGlyphs' in checked){
+  const original=await PDFDocument.load(new Uint8Array(await readFile(beforePath)));
+  assert(sourceOwnership,'missing retypeset source ownership');
+  untargetedStreamGlyphs=assertRetypesetStreamIdentity(original.getPage(0),doc.getPage(0),sourceOwnership,stage5Type1);
+  for(const [hash,ref]of retypesetFontObjects(doc.getPage(0),after.glyphs,stage5Type1))objects.set(hash,ref);
+ }
  for(const[ref,value]of doc.context.enumerateIndirectObjects())if(value instanceof PDFDict && value.get(PDFName.of('Type'))===PDFName.of('FontDescriptor')){
   const raw=value.lookup(PDFName.of('FontFile2'))??value.lookup(PDFName.of('FontFile3'))??value.lookup(PDFName.of('FontFile'));
   if(!(raw instanceof PDFRawStream))continue;
@@ -124,12 +140,12 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
  const actual=after.glyphs.filter(g=>compact(g.text)),probes=new Map<string,ReturnType<typeof native.inspectPage>['glyphs']>();
  for(const index of checked.replacementIndices){const g=actual[index]!,hash=g.fontHash!;
   if(probes.has(hash))continue;const object=objects.get(hash);assert(object,'replacement native program not found in saved PDF');
-  const probe=await notdefProbePdf(bytes,[object]);await writeFile(`${directory}/${name}.${hash.slice(0,8)}.notdef.pdf`,probe);
+  const probe=retypeset?await retypesetNotdefProbePdf(bytes,object):await notdefProbePdf(bytes,[object]);await writeFile(`${directory}/${name}.${hash.slice(0,8)}.notdef.pdf`,probe);
   const evidence=native.inspectPage(probe,0,true);assert(evidence.glyphs.every(p=>p.fontHash===hash),'native notdef probe font differs');probes.set(hash,evidence.glyphs);
  }
  const glyphEvidence=checked.replacementIndices.map(index=>{const g=actual[index]!,p=probes.get(g.fontHash!)!;
   const id=objects.get(g.fontHash!)!.split(' ').map(Number),font=doc.context.lookup(PDFRef.of(id[0]!,id[1]!),PDFDict),coverage=fontCoverageFromDict(font,stage5Type1),encoded=coverage.canEncode(g.text);
-  if(mode==='substituted'){
+  if(mode==='substituted'&&!retypeset){
    assert.equal(font.lookup(PDFName.of('Subtype'),PDFName).decodeText(),'Type0','substitute must be Type0');
    assert.equal(font.lookup(PDFName.of('Encoding'),PDFName).decodeText(),'Identity-H','substitute must be horizontal');
    assert(font.lookup(PDFName.of('ToUnicode')) instanceof PDFRawStream,'substitute ToUnicode missing');
@@ -142,6 +158,9 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
  for(let i=0;i<glyphEvidence.length;i++){
   const evidence=glyphEvidence[i]!,g=actual[checked.replacementIndices[i]!]!;
   if(evidence.glyphId!==undefined){assertReplacementGlyphs([evidence]);continue;}
+  // Approximate output needs real native ink/outline distinct from forced
+  // .notdef, already checked above; it may introduce new Type1 characters.
+  if(retypeset)continue;
   // Type1 identities use glyph names, not GIDs. Reuse also requires an
   // independent native proof: same source font program, Unicode and full
   // outline as a real original glyph, plus the GID0 discriminator above.
@@ -150,8 +169,14 @@ export async function auditCorpusSample(native:ReturnType<typeof openPdfium>,nam
  }
  command('qpdf',['--check',afterPath]);
  const oldText=compact(command('pdftotext',['-layout',beforePath,'-'])),newText=compact(command('pdftotext',['-layout',afterPath,'-']));
- assert.equal(newText,useManifest?compact(after.text):expectedPopplerText(oldText,edit),'Poppler extracted text mismatch');
- const {replacementIndices:_,...evidence}=checked;void _;
- const result={name,...evidence,stage5Reflow,nativeSourceProofs,nonNotdefGlyphs:glyphEvidence.length,qpdf:'clean',nativeText:after.text,popplerText:newText,passed:true};
+ if(retypeset){
+  // Poppler's spatial reading order can change when a paragraph wraps past
+  // another object. Native evidence above already checks the local sequence
+  // and position; independently account for every extracted scalar here.
+  const scalars=(s:string)=>Array.from(compact(s)).sort().join('');
+  assert.equal(scalars(newText),scalars(after.text),'Poppler extracted characters mismatch');
+ }else assert.equal(newText,useManifest?compact(after.text):expectedPopplerText(oldText,edit),'Poppler extracted text mismatch');
+ const {replacementIndices:_,ownedSourceGlyphs:__,...evidence}={ownedSourceGlyphs:undefined,...checked};void _;void __;
+ const result={name,...evidence,...(retypeset?{oracleTier:'retypeset',untargetedStreamGlyphs}:{}),stage5Reflow,nativeSourceProofs,nonNotdefGlyphs:glyphEvidence.length,qpdf:'clean',nativeText:after.text,popplerText:newText,passed:true};
  await writeFile(`${directory}/${name}.oracle.json`,JSON.stringify(result,null,2));return result;
 }

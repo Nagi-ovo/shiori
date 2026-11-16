@@ -72,3 +72,14 @@ test('invalid audit budgets fail clearly', () => {
     expect(() => selectOracleSamples(diverse, limit)).toThrow(RangeError);
   }
 });
+
+test('saved retypeset successes are eligible, bounded and deterministic; unsupported is never audited',()=>{
+ const candidates=[...diverse,...categories.map(c=>sample(`${c}-retypeset`,c,'retypeset')),sample('no-text','word','unsupported')];
+ const selected=selectOracleSamples(candidates);
+ expect(selected).toHaveLength(16);
+ expect(selected.some(s=>s.metadata.row.outcome.mode==='retypeset')).toBe(true);
+ expect(selected.some(s=>s.metadata.row.outcome.mode==='unsupported')).toBe(false);
+ expect(selectOracleSamples([...candidates].reverse())).toEqual(selected);
+ expect(selectOracleSamples([sample('approx','word','retypeset')],1).map(s=>s.file)).toEqual(['approx.edit.json']);
+ expect(selectOracleSamples([sample('no-text','word','unsupported')])).toEqual([]);
+});

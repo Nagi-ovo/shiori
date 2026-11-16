@@ -66,7 +66,7 @@ try{
  for(const file of (await readdir(join(out,'samples'))).filter(f=>f.endsWith('.edit.json'))){const metadata=JSON.parse(await readFile(join(out,'samples',file),'utf8'));candidates.push({file,metadata});}
  for(const {file,metadata} of selectOracleSamples(candidates)){
   const name=file.replace('.edit.json','');
-  try{const checked=await auditCorpusSample(native,name,join(out,'samples'),metadata.overlay,metadata.stage5Type1,metadata.stage5Reflow,metadata.row.outcome.reflow,metadata.row.outcome.mode);oracle.push(checked);console.log('oracle passed',name);}
+  try{const checked=await auditCorpusSample(native,name,join(out,'samples'),metadata.overlay,metadata.stage5Type1,metadata.stage5Reflow,metadata.row.outcome.reflow,metadata.row.outcome);oracle.push(checked);console.log('oracle passed',name);}
   catch(error){oracle.push({name,passed:false,error:String(error)});process.exitCode=1;console.error('P0 accepted edit failed native oracle',name,String(error));}
  }
  const report={stage5Type1,stage5Reflow,stage5Substitute,categories:[...new Set(entries.slice(0,limit).map(e=>e.category))],files:Math.min(limit,entries.length),elapsedMs:performance.now()-started,rows,skips,oracle,...summarizeReport(rows)};

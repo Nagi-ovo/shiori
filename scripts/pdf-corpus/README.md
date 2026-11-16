@@ -22,31 +22,53 @@ skipped sample and native sample result. `report.md` gives category totals,
 rates, top refusals and timing. Exit status is nonzero if any accepted sample
 fails its native oracle; those failures are P0, never silently counted as passes.
 
+## r20 report contract
+
+The headline kind set excludes **only `overflow-unbreakable`**. Unsupported
+rows remain in every applicable denominator. The markdown shows three rates
+side by side:
+
+- **Succeeded without overlay** (r20 headline): `(in-place + fallback-font +
+  substituted + reflowed + retypeset) / headline edits`.
+- **Exact-tier rate**: `(in-place + fallback-font + substituted + reflowed) /
+  headline edits`, comparable to r19's 43.5% headline.
+- **Old-definition exact-tier rate**: the same four exact modes divided by
+  edits on all kinds except realistic `overflow` and `overflow-2`, **including
+  `overflow-unbreakable`**. Compare with r19 / r18: 48.6% (645/1328).
+
+These are recorded outcome rates. Official saved-sample oracle passes are
+reported separately in the markdown and the JSON `oracle` array's `passed`
+fields. No per-row corpus-wide raster oracle is inferred or claimed.
+
 The JSON `summary` retains **all rows**, so `summary.edits === rows.length`
-for compatibility with existing readers. Each summary object always contains
-numeric `in-place`, `fallback-font`, `substituted`, `reflowed` and `overlay`
-counts, including zeros for modes absent
-from an older run. `acceptedRate` is `(in-place + fallback-font + substituted +
-reflowed) / edits`; `refusalRate` is `overlay / edits`. Both rates are zero for
-an empty run. `edits`, total export `ms` and the descending `reasons` histogram
-retain their existing meanings. Modes partition the rows; a reflow that also
-uses a substitute is counted under its recorded final mode, never twice.
-The additional JSON summaries are:
+for compatibility. Each summary always contains numeric `in-place`,
+`fallback-font`, `substituted`, `reflowed`, `retypeset` and `unsupported`
+counts, including zeros. Its additional fields are:
 
-- `headline`: every kind except `overflow-unbreakable`. Its `acceptedRate` is
-  the headline acceptance rate; the markdown's leading edit count, acceptance
-  rate, category/overall and Chinese-file tables, refusal reasons and mean
-  export time all use these rows.
-- `unbreakableOverflow`: only `overflow-unbreakable`, shown in a separate
-  markdown stress section with all outcome counts and its acceptance rate.
-- `oldDefinition`: every kind except the new realistic `overflow` and
-  `overflow-2`, including `overflow-unbreakable` in the slot formerly named
-  `overflow`. Its separate markdown table is the comparable r18 definition
-  (48.6%, 645/1328); with the same sampled inputs and unchanged production,
-  this preserves the old denominator and edit construction.
+| JSON field | Meaning |
+|---|---|
+| `succeededWithoutOverlay` | Count of the four exact modes plus retypeset |
+| `succeededWithoutOverlayRate` | That count divided by `edits` |
+| `exactTier` | Count of in-place + fallback-font + substituted + reflowed |
+| `exactTierRate` | Exact-tier count divided by `edits` |
+| `acceptedRate` | Compatibility alias of `succeededWithoutOverlayRate` |
+| `refusalRate` | `unsupported / edits` |
 
-Category/overall and Chinese-file tables expose all four accepted columns.
-This schema does not recompute or overwrite earlier baseline reports.
+All rates are zero for an empty group. `edits`, total export `ms` and the
+descending `reasons` histogram retain their meanings. Each row counts only
+under its recorded final mode. The JSON groups are:
+
+- `headline`: all kinds except `overflow-unbreakable`. The r20 headline is
+  `headline.succeededWithoutOverlayRate`; the r19-comparable rate is
+  `headline.exactTierRate`.
+- `oldDefinition`: all kinds except `overflow` and `overflow-2`. The historical
+  comparison is **`oldDefinition.exactTierRate`**, not its overlay-free rate.
+- `unbreakableOverflow`: only `overflow-unbreakable`, retained in the separate
+  stress section with all counts and both rates.
+
+Category/overall and Chinese-file tables use headline rows and show both
+rates plus all six outcome counts. Headline refusal reasons and mean export
+time use the same rows. This schema does not recompute earlier reports.
 
 ## Before/after PNG evidence
 
@@ -223,31 +245,67 @@ Longer edits are allowed to refuse; the corpus never enables `allowOverflow`.
 ## Independent native acceptance
 
 One saved success per PDF/mode is retained (up to sixteen audited samples,
-deterministically sorted by category/missing-Han/mode/name). Native PDFium reopens saved
-before/after bytes. The oracle checks expected native text, untouched Unicode
-order/font-program identity and origin drift ≤0.01 pt, exact BGRA differences
-at 144 dpi with zero pixels outside the original declared covers, replacement
-paths and ink, and path inequality against two independently forced .notdef/GID0
-probes of the exact saved embedded program. A positive coverage GID is only an
-additional guard. qpdf must return clean and Poppler extraction must equal the
-original extraction with the intended phrase replaced. Every successful audit
-writes `*.oracle.json`; report JSON embeds the evidence.
+deterministically selected for category/mode diversity and Chinese
+missing-Han). `selectOracleSamples` includes `retypeset` and excludes
+`unsupported` and unknown modes; `auditCorpusSample` also rejects unsupported
+before opening a sample. `run.ts` passes the entire saved outcome, including
+`fidelity` and the paragraph manifest, to the audit.
 
-The corpus oracle tests deliberately inject drift, text mismatch and one
-outside-box channel change. The existing surgical oracle separately tests
-inked .notdef and blank-glyph discrimination and remains a required command:
+**Exact tier is unchanged.** In-place, fallback-font, substituted and reflowed
+samples retain the existing native Unicode, font-program/outline/origin and
+replacement-glyph proofs, the strict zero-pixel-outside-cover/proved-mask
+checks (including the reflow raster veto), qpdf and strict Poppler expectation.
+Approximate rows never enter those raster vetoes.
+
+**Retypeset gate.** `mode === 'retypeset'` or `fidelity === 'approximate'`
+selects `compareRetypesetNativePages`. PDFium reopens the saved before/after
+PDFs and renders BGRA at 144 dpi. Source text is located at the edit's native
+glyph origins and cover rectangles; an identical old phrase elsewhere may
+remain. The requested local replacement must extract at the original anchor
+(within 0.01 pt), with the rest of the owned paragraph's Unicode preserved.
+`retypesetSourceOwnership` reads the immutable source's text frames, graphics
+and marked scopes and paragraph groups to identify the paragraph tail from
+the first edited line. The manifest's coarse `paragraphBox` never grants
+ownership of every object inside it. Without source ownership the comparator
+only authorizes the selected span. Earlier lines and unrelated text keep
+native Unicode, font program, outline, multiplicity and origins (within
+0.01 pt). `assertRetypesetStreamIdentity` additionally checks their saved
+character codes, font identity and quads, including invisible spaces. Source
+operator/item/byte identities keep coincident unrelated objects distinct.
+
+`compareRetypesetRaster` requires every changed pixel to lie within
+**old-glyph ink mask ∪ new text box**, dilated by exactly **one raster pixel
+(Chebyshev distance; 0.5 pt at 144 dpi)** for edge antialiasing/strokes. Old ink
+is nonwhite before-raster coverage inside PDFium's tight glyph ink bounds,
+not the loose advance boxes or edit covers. The new text box bounds only the
+owned output's native glyph boxes, including wraps/downward growth. This is
+a separate approximate mask; no tier-1 proved-region mask or old-ink/backdrop
+veto is applied. Oracle JSON exposes `changedPixelsOutsideRetypesetMask`,
+`maskDilationPx`, `newTextBox`, `untargetedGlyphs`, `untargetedStreamGlyphs` and
+`oracleTier: 'retypeset'`.
+
+Every nonspace output glyph needs native path and ink, and an outline
+distinct from two independently forced .notdef/GID0 probes using the same
+native font program. Embedded replacements reuse the existing probe builder;
+unembedded Type1 reuse has a retypeset-only probe whose program hash must
+also match. Available coverage GIDs must remain positive. qpdf must be clean.
+Poppler independently accounts for every extracted nonspace scalar in
+retypeset output, allowing spatial reading-order differences after wrapping;
+the native gate enforces local sequence and position. Exact-tier Poppler
+checks remain strict. Successful audits write `*.oracle.json`, embedded in
+the report's separate sample evidence.
+
+Focused tests (no corpus downloads/run or PNG generation):
 
 ```sh
-bun scripts/pdf-inplace/surgical-first.ts
+bun test scripts/pdf-corpus/oracle.test.ts scripts/pdf-corpus/report.test.ts scripts/pdf-corpus/reflowOracle.test.ts scripts/pdf-corpus/retypesetOracle.test.ts scripts/pdf-corpus/retypesetStreamOracle.test.ts scripts/pdf-corpus/retypesetNative.test.ts scripts/pdf-corpus/selectOracleSamples.test.ts
 ```
 
-The current conservative refusals include unknown glyph maps/fonts, Form
-invocations, graphics/semantic-dependent states, source geometry that cannot be
-matched exactly, reflow, and any measured overflow. Two cheap production fixes
-retain geometry for untargeted unmapped fonts and split equal-scalar-count
-changes at exact TJ boundaries. Length-changing changes spanning items still
-refuse. The third production fix compares the UI point size with transformed
-Tf rather than raw Tf, avoiding false style-change refusals in Word/WPS exports. Corpus baseline and final rates have different denominators because
-the native adapter was corrected from tight ink boxes to advance/ink unions;
-use the per-case reports rather than treating the rate delta as a controlled
-benchmark.
+The native retypeset test saves wrapped Latin and bundled-subset Chinese
+production exports (including unembedded Type1 descriptor reuse), their
+audit JSON, duplicate old text elsewhere and an
+inked-tofu corruption under `test-artifacts/retypeset-oracle-m2/`. Its adjacent
+README records the regeneration command. Pure tests inject wrong-position
+replacement, retained old text, neighbour deletion/font/code/position changes,
+mask-hole/outside pixels and missing raster/glyph evidence. The separate
+existing surgical oracle remains available as `bun scripts/pdf-inplace/surgical-first.ts`.
