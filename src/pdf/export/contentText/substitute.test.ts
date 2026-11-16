@@ -97,14 +97,16 @@ for(const kind of ['ocr','matrix','vertical','overlap','unknown-encoding'])test(
  if(kind==='unknown-encoding')font.set(PDFName.of('Encoding'),PDFName.of('UnknownEncoding'));
  const edits=[overlay({text:'AX'}),...(kind==='overlap'?[overlay({id:'other'})]:[])];let loads=0;
  const before=inspectRunPage(f.page),result=await applyContentTextEdits(f.page,edits,{loadFont:async name=>{loads++;return loadFont(name);}});
- if(kind==='ocr'||kind==='overlap'){expect(result.outcomes.every(o=>o.mode==='unsupported')).toBe(true);expect(loads).toBe(0);expect(inspectRunPage(f.page)).toEqual(before);}
+ if(kind==='ocr'||kind==='overlap'||kind==='vertical'){expect(result.outcomes.every(o=>o.mode==='unsupported')).toBe(true);expect(loads).toBe(0);expect(inspectRunPage(f.page)).toEqual(before);}
  else for(const outcome of result.outcomes)expectRetypeset(f.page,outcome,before,'AX');
 });
 test('embedded Type1 vertical WMode and nonstandard FontMatrix stay refused with missing ToUnicode',async()=>{
  for(const wmode of [true,false]){
   const f=await type1Fixture({programOptions:wmode?{clear:'/WMode 1 def'}:{}});f.font.delete(PDFName.of('ToUnicode'));f.font.set(PDFName.of('Encoding'),PDFName.of('WinAnsiEncoding'));
   if(!wmode)f.font.set(PDFName.of('FontMatrix'),f.doc.context.obj([.002,0,0,.001,0,0]));
-  const before=inspectRunPage(f.page),result=await applyContentTextEdits(f.page,[overlay({originalText:'AB',text:'X'})],{loadFont});expectRetypeset(f.page,result.outcomes[0],before,'X');
+  const before=inspectRunPage(f.page),result=await applyContentTextEdits(f.page,[overlay({originalText:'AB',text:'X'})],{loadFont});
+  if(wmode){expect(result.outcomes[0]).toMatchObject({mode:'unsupported',detail:expect.stringContaining('vertical-writing')});expect(inspectRunPage(f.page)).toEqual(before);}
+  else expectRetypeset(f.page,result.outcomes[0],before,'X');
  }
 });
 test('horizontal Type3 with dictionary widths substitutes through Type0',async()=>{

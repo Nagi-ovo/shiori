@@ -1,5 +1,5 @@
-import type {PDFPage} from 'pdf-lib';
-import {PDFDict,PDFName,PDFObjectCopier,PDFDocument} from 'pdf-lib';
+import {PDFPage} from 'pdf-lib';
+import {PDFDict,PDFName,PDFObjectCopier,PDFDocument,PDFRawStream} from 'pdf-lib';
 import type {ContentOp} from '../contentStreamEdit/tokenizer';
 import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {removeIdentifiedGlyphs} from '../contentStreamEdit/removeGlyphs';
@@ -15,6 +15,12 @@ import type {planRetypeset} from './retypesetPlan';
 import type {RetypesetCluster} from './retypesetTypes';
 import {restoreReflowSlot} from './reflowEmit';
 import {prepareRetypesetFallback} from './retypesetFallback';
+import {layoutRetypeset} from './retypesetLayout';
+import {planRetypesetPush,verifyRetypesetPushPaint} from './retypesetPush';
+import {numericArray} from './reflowScene';
+import {retypesetScopes} from './retypesetScopes';
+import {contains,intersects} from './regionProof/geometry';
+import {retypesetInk} from './retypesetInk';
 
 type Plan=ReturnType<typeof planRetypeset>;
 type Source=ReturnType<typeof readRetypesetSource>;
@@ -25,35 +31,9 @@ function baseFace(page:PDFPage,name:string){
  const f=page.node.Resources()?.lookupMaybe(PDFName.of('Font'),PDFDict)?.lookupMaybe(PDFName.of(name),PDFDict);
  return f?.lookupMaybe(PDFName.of('BaseFont'),PDFName)?.decodeText()??name;
 }
-function layout(plan:Plan){
- const {group,firstLine,output}=plan,size=plan.tail[0]!.state.fontSize;
- let x=group.lines[firstLine]!.x,y=group.lines[firstLine]!.y,lines=1,maxRight=x;
- const left=group.lines[1]?.x??group.left,right=Math.max(group.right,left+size),width=right-left;
- const advance=(a:RetypesetCluster)=>{
-  const f=a.font!,s=a.home.state,code=f.bytesPerCode===1?a.bytes![0]!:a.bytes![0]!*256+a.bytes![1]!;
-  return (f.widthOf(code)*s.fontSize/1000+s.charSpacing+(f.bytesPerCode===1&&code===32?s.wordSpacing:0))*(s.horizontalScale??1);
- };
- for(const a of output)if(!a.hard){a.advance=advance(a);if(!Number.isFinite(a.advance)||a.advance<0)throw Error('unmeasurable output advance');}
- const newline=()=>{x=left;y-=group.pitch;lines++;};
- for(let i=0;i<output.length;){
-  if(output[i]!.hard){newline();i++;continue;}
-  let end=i+1;
-  if(!/\s|\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}/u.test(output[i]!.text))while(end<output.length&&!output[end]!.hard&&!/\s|\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}/u.test(output[end]!.text))end++;
-  const needed=output.slice(i,end).reduce((n,a)=>n+a.advance!,0);
-  if(x>left+.01&&x+needed>right+.01&&needed<=width)newline();
-  for(;i<end;i++){
-   const a=output[i]!;
-   // A trailing space may hang past the measure; it must not start the next
-   // row and indent its first word. Only ink-bearing clusters force a wrap.
-   if(x>left+.01&&x+a.advance!>right+.01&&!/^\s+$/u.test(a.text))newline();
-   a.x=x;a.y=y;x+=a.advance!;maxRight=Math.max(maxRight,x);
-  }
- }
- return {lines,bottom:y-size*.25,top:group.lines[firstLine]!.y+size,maxRight};
-}
 /** Compile in scratch resources, rewalk, verify every untargeted glyph, then
  * install. Each home show emits under its original graphics/marked scope. */
-export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp[],source:Source,plans:Plan[],options:FallbackOptions){
+export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp[],source:Source,plans:Plan[],options:FallbackOptions,pushBlockReason?:string){
  const scratch=await PDFDocument.create(),fonts=[...source.fonts],prepared:Awaited<ReturnType<typeof prepareRetypesetFallback>>[]=[],names:(string|null)[]=[];
  const stamp=substitutionStamp(page);
  const originalResources=page.node.Resources(),originalContents=page.node.get(PDFName.of('Contents'));
@@ -81,8 +61,35 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
    for(const a of missing){const encoded=encodeRun(a.text,p.resolved,new Uint8Array());if(!encoded.ok)throw Error('substitute cannot encode replacement');a.bytes=encoded.bytes;a.font=p.resolved;}
   }
  }
- const fits=plans.map(layout),hits=plans.flatMap(p=>p.tail.map(g=>g.glyph)),target=new Set(hits.map(address));
+ const fits=plans.map(layoutRetypeset),hits=plans.flatMap(p=>p.tail.map(g=>g.glyph)),target=new Set(hits.map(address));
  if(target.size!==hits.length)throw Error('intersecting paragraph ownership');
+ // Measurement-only resources may reference private scratch font dictionaries;
+ // nothing is installed until compilation and the moved/untouched proofs pass.
+ const measureNode=page.node.clone(),measureResources=originalResources?.clone()??page.doc.context.obj({}),measureFonts=fontDict?.clone()??page.doc.context.obj({});
+ for(const p of prepared)measureFonts.set(PDFName.of(p.resolved.resourceName),scratch.context.lookup(p.ref)!);
+ measureResources.set(PDFName.of('Font'),measureFonts);measureNode.set(PDFName.of('Resources'),measureResources);
+ const ink=retypesetInk(PDFPage.of(measureNode,page.ref,page.doc),fonts,ops);
+ const sourceInk=new Map(source.glyphs.map(g=>[address(g.glyph),ink(fonts.find(f=>f.resourceName===g.glyph.fontName)!,g.glyph.code,g.state,g.x,g.y)]));
+ const outputInks=plans.map(p=>new Map(p.output.filter(a=>!a.hard).map(a=>{
+  const pt=p.frame.global(a.x!,a.y!),code=codes(a.bytes!,a.font!.bytesPerCode)[0]!;
+  return [a,ink(a.font!,code,a.home.state,pt.x,pt.y)] as const;
+ })));
+ const formBox=originalContents instanceof PDFRawStream?numericArray(originalContents.dict,'BBox'):undefined;
+ const initialClip=formBox?.length===4?{x:formBox[0]!,y:formBox[1]!,w:formBox[2]!-formBox[0]!,h:formBox[3]!-formBox[1]!}:undefined;
+ const scopes=retypesetScopes(ops,initialClip);
+ for(const [i]of plans.entries())if(fits[i]!.addedHeight>.01)for(const [a,ink]of outputInks[i]!){
+  const clip=scopes.get(a.home.glyph.opIndex)?.clip;
+  if(clip===null||clip&&(!ink.known||!contains(clip,ink.box)))throw Error('retypeset-output-outside-source-clip: cannot expose new wrap without changing the original clip');
+ }
+ const pushes=plans.map((p,i)=>{
+  const ink=outputInks[i]!,internalOverlap=p.blocks.some((b,j)=>p.blocks.slice(j+1).some(next=>
+   b.output.some(a=>ink.has(a)&&next.output.some(c=>ink.has(c)&&intersects(ink.get(a)!.box,ink.get(c)!.box)))));
+  const fixed=outputInks.flatMap((m,j)=>j===i?[]:[...m.values()]);
+  return planRetypesetPush(page,ops,source,p,fits[i]!,target,[...ink.values()],sourceInk,
+   pushBlockReason??(plans.length>1?'multiple-edited-paragraphs':undefined),fixed,internalOverlap);
+ });
+ const deltas=new Map(pushes.flatMap(p=>[...p.glyphDeltas]));
+
  // Sanitized property dictionaries are private copies, preserving OC/MCID.
  const resources=originalResources?.clone()??page.doc.context.obj({}),properties=resources.lookupMaybe(PDFName.of('Properties'),PDFDict)?.clone();
  const renamed=new Map<string,string>();
@@ -127,19 +134,33 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
   const rewritten=removedOps[newShows[oldShows.indexOf(opIndex)]!]!;
   patches.push({start:rewritten.end,body:body.join(' ')+' '});
  }
+ // Removal only expands addressed quote shows. Map every original operator
+ // boundary so graphics spans retain their source identity through that pass.
+ const mapped=new Map<number,{start:number;end:number}>();let index=0;
+ const removedShows=new Set(hits.map(g=>g.opIndex));
+ for(const [i,op]of ops.entries()){
+  const extra=removedShows.has(i)?op.operator==='"'?3:op.operator==="'"?1:0:0;
+  mapped.set(op.start,{start:removedOps[index]!.start,end:removedOps[index+extra]!.end});index+=1+extra;
+ }
+ for(const push of pushes)for(const patch of push.patches){
+  const first=mapped.get(patch.start)!,last=ops.find(o=>o.end===patch.end)!;
+  patches.push({start:first.start,body:patch.prefix},{start:mapped.get(last.start)!.end,body:patch.suffix});
+ }
  const chunks:Uint8Array[]=[];let cursor=0;
  for(const patch of patches.sort((a,b)=>a.start-b.start)){chunks.push(removed.bytes.subarray(cursor,patch.start),new TextEncoder().encode(patch.body));cursor=patch.start;}
  chunks.push(removed.bytes.subarray(cursor));const compiled=new Uint8Array(chunks.reduce((n,c)=>n+c.length,0));let offset=0;for(const c of chunks){compiled.set(c,offset);offset+=c.length;}
- const after=walkTextPlacements(tokenizeContentStream(compiled),{...source.callbacks,resolveFont:name=>{const f=fonts.find(f=>f.resourceName===name);return f?{...f,ok:true,appliesWordSpacing:f.bytesPerCode===1}:{ok:false,reason:'unmeasurable font'};}});
+ const compiledOps=tokenizeContentStream(compiled);
+ verifyRetypesetPushPaint(page,ops,compiledOps,new Map(pushes.flatMap(p=>[...p.paintDeltas])));
+ const after=walkTextPlacements(compiledOps,{...source.callbacks,resolveFont:name=>{const f=fonts.find(f=>f.resourceName===name);return f?(source.fonts.includes(f)?source.callbacks.resolveFont(name):{...f,ok:true,appliesWordSpacing:f.bytesPerCode===1}):{ok:false,reason:'unmeasurable font'};}});
  if(!after.ok)throw Error(`compiled text walk failed: ${after.reason}`);
- const signature=(g:typeof hits[number])=>JSON.stringify([g.fontName,g.code,g.quad.map(p=>[Math.round(p.x*1e5),Math.round(p.y*1e5)])]);
+ const signature=(g:typeof hits[number],delta=0)=>JSON.stringify([g.fontName,g.code,g.quad.map(p=>[Math.round(p.x*1e5),Math.round((p.y-delta)*1e5)])]);
  const actual=new Map<string,number>();for(const g of after.glyphs){const k=signature(g);actual.set(k,(actual.get(k)??0)+1);}
- for(const g of source.glyphs)if(!target.has(address(g.glyph))){const k=signature(g.glyph),count=actual.get(k)??0;if(!count)throw Error('untargeted glyph changed font, codes or position');actual.set(k,count-1);}
+ for(const g of source.glyphs)if(!target.has(address(g.glyph))){const k=signature(g.glyph,deltas.get(address(g.glyph))??0),count=actual.get(k)??0;if(!count)throw Error('untargeted glyph changed font, codes or position');actual.set(k,count-1);}
  const positions=new Map<string,number>();
  const position=(font:string,code:number,x:number,y:number)=>JSON.stringify([font,code,Math.round(x*1e5),Math.round(y*1e5)]);
  for(const g of after.glyphs){const k=position(g.fontName,g.code,g.coreQuad[0].x,g.coreQuad[0].y);positions.set(k,(positions.get(k)??0)+1);}
  const consume=(key:string)=>{const count=positions.get(key)??0;if(!count)throw Error('output glyph font, codes or destination differs');positions.set(key,count-1);};
- for(const g of source.glyphs)if(!target.has(address(g.glyph)))consume(position(g.glyph.fontName,g.glyph.code,g.glyph.coreQuad[0].x,g.glyph.coreQuad[0].y));
+ for(const g of source.glyphs)if(!target.has(address(g.glyph)))consume(position(g.glyph.fontName,g.glyph.code,g.glyph.coreQuad[0].x,g.glyph.coreQuad[0].y-(deltas.get(address(g.glyph))??0)));
  for(const p of plans)for(const a of p.output)if(!a.hard){const encoded=codes(a.bytes!,a.font!.bytesPerCode);if(encoded.length!==1)throw Error('unmeasurable shaped output');const point=p.frame.global(a.x!,a.y!);consume(position(a.font!.resourceName,encoded[0]!,point.x,point.y));}
  const expectedCount=source.glyphs.length-hits.length+plans.reduce((n,p)=>n+p.output.filter(a=>!a.hard).reduce((n,a)=>n+a.bytes!.length/a.font!.bytesPerCode,0),0);
  if(after.glyphs.length!==expectedCount)throw Error('compiled glyph count differs');
@@ -151,6 +172,8 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
  page.node.set(PDFName.of('Resources'),resources);page.node.set(PDFName.of('Contents'),stream);
  return plans.map((p,i)=>{
   const points=p.group.lines.flatMap(l=>l.glyphs.flatMap(g=>g.glyph.quad)),x=Math.min(...points.map(p=>p.x)),y=Math.min(...points.map(p=>p.y)),right=Math.max(...points.map(p=>p.x)),top=Math.max(...points.map(p=>p.y));
-  return {paragraphBox:{x,y,w:right-x,h:top-y},substituteFont:names[i]??null,lineCount:fits[i]!.lines+p.firstLine,overflowed:fits[i]!.bottom<p.group.lines.at(-1)!.y-p.tail[0]!.state.fontSize*.25-.01||fits[i]!.maxRight>p.group.right+.01,pushed:false as const};
+  return {paragraphBox:{x,y,w:right-x,h:top-y},substituteFont:names[i]??null,lineCount:fits[i]!.lines,overflowed:fits[i]!.addedHeight>.01||fits[i]!.maxRight>p.group.right+.01,pushed:pushes[i]!.pushed,pushedDeltaPt:pushes[i]!.pushedDeltaPt,pushedRegions:pushes[i]!.regions,
+   pushReason:pushes[i]!.pushReason,overflowInkOverlap:pushes[i]!.overflowInkOverlap,
+   unchangedLineDriftPt:Math.max(0,...pushes[i]!.glyphDeltas.values())};
  });
 }

@@ -33,13 +33,14 @@ test('a full paragraph grows by one independently proved empty downward band',as
  const outcome=r.outcomes[0]!;if(!('reflow'in outcome)||!outcome.reflow)throw Error('missing reflow manifest');
  expect(Math.min(...read(f.page).map(g=>g.y))).toBe(108);expect(outcome.reflow.region.box.y).toBeLessThan(108);
 });
-test('occupied downward band and crop bottom use approximate overflow without pushing',async()=>{
+test('occupied downward band is pushed; crop bottom keeps approximate overflow',async()=>{
  for(const occupied of [true,false]){
   const f=await spacingPage(stream('S i i i i')+(occupied?' BT /F1 10 Tf 1 0 0 1 60 108 Tm (i) Tj ET':''));
   if(!occupied)f.page.setCropBox(0,115,300,85);
   const before=inspectRunPage(f.page),r=await applyContentTextEdits(f.page,[edit()],{loadFont});
   expectRetypeset(f.page,r.outcomes[0],before,'n n','overflow');
-  if(occupied)expect(read(f.page).at(-1)).toEqual({text:'i',x:60,y:108});
+  if(occupied){expect(r.outcomes[0]?.retypeset).toMatchObject({pushed:true,pushedDeltaPt:14,overflowInkOverlap:false});expect(read(f.page).at(-1)).toEqual({text:'i',x:60,y:94});}
+  else expect(r.outcomes[0]?.retypeset).toMatchObject({pushed:false,pushReason:'push-blocked-by-crop-media-box'});
  }
 });
 test('exact reflow opt-out still allows approximate retypesetting',async()=>{
