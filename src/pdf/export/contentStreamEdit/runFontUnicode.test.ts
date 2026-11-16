@@ -9,6 +9,8 @@ import {streamReflowEvidence} from '../contentText/reflowEvidence';
 import {planStreamReflow} from '../contentText/reflowAuto';
 import {overlay} from '../contentText/fixtures.test-support';
 import {type1Fixture} from '../contentText/type1Wiring.test-support';
+import {fontInputFromDict} from '../fontCoverage/pdfLibAdapter';
+import {recoverRunUnicode} from './runFontUnicode';
 
 async function fixture(toUnicode?: string, differences?: Record<number, string>) {
   const doc = await PDFDocument.create(), ctx = doc.context, page = doc.addPage([300, 200]);
@@ -66,9 +68,23 @@ test('unproved replacement characters stay unknown', async () => {
   expect(font.unicodeByCode.has(4)).toBe(false);
 });
 
-test('malformed ToUnicode never grants name-based edit authority', async () => {
-  const f = await fixture('2 beginbfchar <41> <0041> endbfchar');
-  expect(resolveRunFonts(f.page)[0]!.unicodeByCode.size).toBe(0);
+for (const toUnicode of ['2 beginbfchar <41> <0041> endbfchar',
+  '2 beginbfchar <41> <0041> <41> <0041> endbfchar']) test('refused ToUnicode recovers labels without edit authority: ' + toUnicode, async () => {
+  const f = await fixture(toUnicode), font = resolveRunFonts(f.page)[0]!;
+  expect([65, 101, 32].map(code => font.unicodeByCode.get(code))).toEqual(['A', 'e', ' ']);
+  expect(font.canEncode!('A').ok).toBe(false);
+  expect(() => font.assertSource!([Uint8Array.of(65)])).toThrow('requires a ToUnicode');
+});
+
+test('Office ToUnicode keeps explicit labels and also recovers when its surgical parse is unavailable', async () => {
+  const f = await fixture('1 begincodespacerange <0000> <FFFF> endcodespacerange ' +
+    '3 beginbfchar <41> <0041> <65> <0065> <20> <0020> endbfchar');
+  const explicit = resolveRunFonts(f.page)[0]!;
+  expect([65, 101, 32].map(code => explicit.unicodeByCode.get(code))).toEqual(['A', 'e', ' ']);
+  expect(() => explicit.assertSource!([Uint8Array.of(65)])).not.toThrow();
+  const inferred = recoverRunUnicode(fontInputFromDict(f.font), 1, null, {}, {});
+  expect([65, 101, 32].map(code => inferred.unicodeByCode.get(code))).toEqual(['A', 'e', ' ']);
+  expect(() => inferred.assertSource!([Uint8Array.of(65)])).toThrow('requires a ToUnicode');
 });
 
 test('Type0 labels follow CIDToGIDMap and the program cmap, never CID values', async () => {

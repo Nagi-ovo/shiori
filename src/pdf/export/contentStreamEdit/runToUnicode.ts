@@ -34,9 +34,12 @@ export function runToUnicode(program: string, size: 1 | 2): Map<number, string> 
       const count = Number(tokens[i - 1]);
       if (!Number.isInteger(count) || count < 1 || count > 65536) throw Error('bad section count');
       for (let row = 0; row < count; row++) {
-        const first = parseInt(hex(tokens[++i], size), 16);
+        // Office uses two-byte codespaces with one-byte simple-font sources.
+        // Only mapping sources must match the font's code width.
+        const width = kind === 'begincodespacerange' ? undefined : size;
+        const first = parseInt(hex(tokens[++i], width), 16);
         if (kind === 'beginbfchar') { put(first, unicode(tokens[++i]!)); continue; }
-        const last = parseInt(hex(tokens[++i], size), 16);
+        const last = parseInt(hex(tokens[++i], width), 16);
         if (last < first || last - first > 65535) throw Error('bad range');
         if (kind === 'begincodespacerange') { codespaces.push([first, last]); continue; }
         if (tokens[++i] === '[') {

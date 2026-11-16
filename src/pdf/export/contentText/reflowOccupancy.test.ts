@@ -58,7 +58,17 @@ test('paragraph spacing in one BT does not become a reflow slot',async()=>{
 test('a non-embedded font cannot enter the move or replacement set',async()=>{
  const f=await fixture(first+row('(AB ) Tj'));
  f.font.lookup(PDFName.of('FontDescriptor'),PDFDict).delete(PDFName.of('FontFile'));
+ f.font.delete(PDFName.of('ToUnicode'));
+ f.font.set(PDFName.of('Encoding'),PDFName.of('WinAnsiEncoding'));
  const fonts=resolveRunFonts(f.page);
+ expect(fonts[0]!.unicodeByCode.get(65)).toBe('A');
+ const target=tokenizeContentStream(f.s.bytes).findLastIndex(op=>op.operator==='Tj');
+ const evidence=streamReflowEvidence(f.page,f.s.bytes,fonts,target);
+ expect(evidence.ok).toBe(true);
+ if(!evidence.ok)throw Error(evidence.detail);
+ expect(evidence.occupancy.embeddedFonts.has(fonts[0]!.objectId)).toBe(false);
+ const origins=evidence.source.map(t=>[t.original!.x+1,t.original!.y] as [number,number]);
+ expect(proveGlyphRegion(evidence,evidence.proof,evidence.source,origins,[])).toBeNull();
  expect(planStreamReflow(f.page,f.s.bytes,fonts,edit())).toBeNull();
 });
 test('a media-sized unknown still blocks the entire page',async()=>{

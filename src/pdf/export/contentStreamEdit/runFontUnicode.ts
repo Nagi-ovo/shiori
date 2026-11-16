@@ -1,6 +1,5 @@
 import {createFontCoverage} from '../fontCoverage/coverage';
-import {parseCMap} from '../fontCoverage/cmap';
-import {glyphUnicode} from '../fontCoverage/encodings';
+import {glyphUnicode, simpleNames} from '../fontCoverage/encodings';
 import {sameGlyphUnicode} from '../fontCoverage/glyphIdentity';
 import {codeHex, codeNumber, type FontInput} from '../fontCoverage/types';
 import {type1RunDiagnostic, type Type1Diagnostic, type Type1Options} from '../fontCoverage/type1Support';
@@ -230,22 +229,35 @@ function refuse(diagnostic:Type1Diagnostic):never {
   throw Object.assign(new RunCompileError(d.detail, d.code), {terminal:d.terminal, diagnostic});
 }
 
-/** Source labels and replacement eligibility are independent. A temporary
- * coverage report verifies inferred labels; it never installs a ToUnicode or
- * changes the original encoder's coverage/proof. */
+/** Source labels and replacement eligibility are independent. Embedded
+ * inferred labels need a presence proof; published non-embedded labels are
+ * source-only. Neither changes the original encoder's coverage/ToUnicode. */
 export function recoverRunUnicode(input:FontInput, size:1|2, original:ReadonlyMap<number, string>|null,
   encoding:Encoding, options:Type1Options):Encoding & Pick<ResolvedRunFont, 'unicodeByCode'> {
   const labels = new Map(original ?? []), conflicts = new Map<number, string>();
   for (const [code, label] of labels) if (label.includes('\uFFFD')) labels.delete(code);
   try {
     if (input.error) throw Error(input.error);
-    // An empty valid CMap is recoverable; malformed/unsupported maps retain
-    // the strict parser's refusal instead of being treated as missing.
-    if (original === null && input.toUnicode !== undefined && parseCMap(input.toUnicode).unicode.size) throw Error('invalid surgical ToUnicode');
+    // A refused ToUnicode supplies no labels or edit authority. Independent
+    // Encoding/AGL and embedded-program proofs must still get a chance.
     const cid = size === 2 ? cidLabels(input) : undefined;
-    const inferred = size === 1
+    const enc = input.encoding;
+    const sourceOnly = size === 1 && !input.program && !((input.flags ?? 0) & 4)
+      && !!(typeof enc === 'string' ? enc : enc?.base || Object.keys(enc?.differences ?? {}).length);
+    const inferred = sourceOnly ? new Map<string, string>() : size === 1
       ? createFontCoverage({...input, toUnicode:undefined}, {...options, sourceReuse:true}).codeToUnicode
       : cid!.labels;
+    if (sourceOnly) {
+      const base = typeof enc === 'string' ? enc : enc?.base;
+      for (const [code, name] of simpleNames(input)) {
+        // Without a published base, only explicit Differences prove names.
+        if (!base && (typeof enc !== 'object' || enc.differences?.[code] === undefined)) continue;
+        // Do not infer non-standard ligatures such as f_h from their spelling.
+        if (name.split('.')[0]!.includes('_')) continue;
+        const label = glyphUnicode(name);
+        if (label) inferred.set(code.toString(16).padStart(2, '0'), label);
+      }
+    }
     const candidates = new Map<string, string>();
     for (const [hex, label] of inferred) {
       if (hex.length !== size * 2) continue;
@@ -255,7 +267,10 @@ export function recoverRunUnicode(input:FontInput, size:1|2, original:ReadonlyMa
       }
       if (label && usable(label) && placeholder(explicit)) candidates.set(hex, label);
     }
-    if (cid) {
+    if (sourceOnly) {
+      // Published Encoding + AGL proves source text, never reusable outlines.
+      for (const [hex, label] of candidates) labels.set(codeNumber(hex), label);
+    } else if (cid) {
       // CID labels already have a table-only glyph-presence proof. Passing
       // them through generic coverage would decode every candidate outline.
       for (const [hex, label] of candidates) if (cid.verified.has(hex)) labels.set(codeNumber(hex), label);

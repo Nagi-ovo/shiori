@@ -4,11 +4,26 @@ import { runToUnicode } from './runToUnicode';
 const mapping = '1 beginbfchar <41> <0041> endbfchar';
 for (const codespace of [
   '2 begincodespacerange <00> <ff> endcodespacerange',
-  '1 begincodespacerange <0000> <ffff> endcodespacerange',
   '1 begincodespacerange <80> <ff> endcodespacerange',
   '1 begincodespacerange <ff> <00> endcodespacerange',
 ]) test(`rejects malformed or inconsistent codespace: ${codespace}`, () => {
   expect(runToUnicode(codespace + ' ' + mapping, 1)).toBeNull();
+});
+test('accepts Office two-byte codespaces with explicit one-byte source codes', () => {
+  const result = runToUnicode('1 begincodespacerange <0000> <FFFF> endcodespacerange ' +
+    '2 beginbfchar <20> <0020> <41> <0041> endbfchar', 1);
+  expect([...result!]).toEqual([[0x20, ' '], [0x41, 'A']]);
+});
+test('retains same-width two-byte source mappings', () => {
+  expect([...runToUnicode('1 begincodespacerange <0000> <FFFF> endcodespacerange ' +
+    '1 beginbfchar <0041> <0041> endbfchar', 2)!]).toEqual([[0x41, 'A']]);
+});
+for (const source of [
+  '1 beginbfchar <0041> <0041> endbfchar',
+  '1 beginbfrange <0041> <0042> <0041> endbfrange',
+  '1 beginbfrange <41> <0042> <0041> endbfrange',
+]) test(`rejects two-byte source codes in a one-byte font: ${source}`, () => {
+  expect(runToUnicode('1 begincodespacerange <0000> <FFFF> endcodespacerange ' + source, 1)).toBeNull();
 });
 test('supports bfchar, scalar and array bfrange mappings with valid codespace', () => {
   const result = runToUnicode('1 begincodespacerange <00> <ff> endcodespacerange ' + mapping +
@@ -17,7 +32,10 @@ test('supports bfchar, scalar and array bfrange mappings with valid codespace', 
 });
 for (const bad of [
   '1 beginbfchar <41> <d800> endbfchar',
+  '1 beginbfchar <41> <dc00> endbfchar',
+  '1 beginbfchar <41> <0000> endbfchar',
   '2 beginbfchar <41> <0041> <41> <0042> endbfchar',
+  '1 beginbfchar <41> <0041> endbfchar 1 beginbfrange <41> <42> <0041> endbfrange',
   '1 beginbfrange <41> <42> <ffff> endbfrange',
 ]) test(`rejects invalid Unicode, conflicting codes or inherited maps: ${bad}`, () => {
   expect(runToUnicode(bad, 1)).toBeNull();
