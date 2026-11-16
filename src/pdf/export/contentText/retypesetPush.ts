@@ -11,6 +11,7 @@ import {reflowScene} from './reflowScene';
 import {contains,intersects} from './regionProof/geometry';
 import type {RetypesetFrame} from './retypesetFrame';
 import type {RetypesetPushSpace} from './retypesetForms';
+import {emitRetypesetPushText} from './retypesetPushEmit';
 
 type Plan=ReturnType<typeof planRetypeset>;
 type Source=ReturnType<typeof readRetypesetSource>;
@@ -144,17 +145,13 @@ export function planRetypesetPush(page:PDFPage,ops:ContentOp[],source:Source,pla
   if(!isText&&(!context.clean||!['Do','BI',...retypesetPaintOps].includes(op.operator)))return blocked('graphics-scope');
   const c=context.ct,det=c[0]!*c[3]!-c[1]!*c[2]!;
   if(!Number.isFinite(det)||Math.abs(det)<1e-10)return blocked('singular-ctm');
-  // cm is local to the current CTM: its translated page vector is (0,-Δ).
+  // Invert the page-space (0,-Δ) vector into the current CTM's user space.
   const tx=c[2]!*delta/det,ty=-c[0]!*delta/det;
-  // q clones the graphics state, including the effective clip in page space.
-  // The local cm moves only this show; it does not translate the clip. Q
-  // restores the original scope for outsiders. No path operators are inserted
-  // inside BT/ET and no existing current path is consumed to rebuild a clip.
-  let suffix=' Q ';
-  // q/Q saves text parameters, not Tm/Tlm. A double quote sets Tw/Tc;
-  // retain those persistent effects after restoring the translation CTM.
-  if(op.operator==='"')suffix+=`${op.operands.slice(0,2).map(n=>n.kind==='number'?pdfNumber(n.value):'').join(' Tw ')} Tc `;
-  patches.push({start:ops[start]!.start,end:op.end,prefix:` q 1 0 0 1 ${pdfNumber(tx)} ${pdfNumber(ty)} cm `,suffix});
+  // Graphics keep their complete construction span and saved page-space clip.
+  // Text stays in its original BT/ET and never changes CTM.
+  const emission=isText?emitRetypesetPushText(source.glyphs.find(g=>g.glyph.opIndex===opIndex)!.state,op,source.ends.get(opIndex)!,delta):
+   {prefix:` q 1 0 0 1 ${pdfNumber(tx)} ${pdfNumber(ty)} cm `,suffix:' Q '};
+  patches.push({start:ops[start]!.start,end:op.end,...emission});
  }
  if(patches.some((p,i)=>patches.slice(i+1).some(q=>p.start<q.end&&q.start<p.end)))return blocked('interleaved-graphics');
  for(const o of moving)if(o.glyph)result.glyphDeltas.set(address(o.glyph.glyph),delta);else result.paintDeltas.set(o.op,delta);
