@@ -1177,7 +1177,8 @@
       "unsupported-no-text-layer": "This page has no editable text layer.",
       "unsupported-image-text": "Text over a scanned image cannot be edited yet.",
       "unsupported-form-xobject": "Text inside a Form XObject cannot be edited yet.",
-      "unsupported-unwritable": "This text could not be rewritten safely."
+      "unsupported-unwritable": "This text could not be rewritten safely.",
+      "unsupported-vertical-writing": "Editing vertical text is not supported yet."
     }
   }
 }

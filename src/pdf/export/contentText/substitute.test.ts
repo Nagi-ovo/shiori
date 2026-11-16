@@ -97,7 +97,7 @@ for(const kind of ['ocr','matrix','vertical','overlap','unknown-encoding'])test(
  if(kind==='unknown-encoding')font.set(PDFName.of('Encoding'),PDFName.of('UnknownEncoding'));
  const edits=[overlay({text:'AX'}),...(kind==='overlap'?[overlay({id:'other'})]:[])];let loads=0;
  const before=inspectRunPage(f.page),result=await applyContentTextEdits(f.page,edits,{loadFont:async name=>{loads++;return loadFont(name);}});
- if(kind==='ocr'||kind==='overlap'){expect(result.outcomes.every(o=>o.mode==='unsupported')).toBe(true);expect(loads).toBe(0);expect(inspectRunPage(f.page)).toEqual(before);}
+ if(kind==='ocr'||kind==='overlap'||kind==='vertical'){expect(result.outcomes.every(o=>o.mode==='unsupported')).toBe(true);if(kind==='vertical')expect(result.outcomes[0]?.reason).toBe('unsupported-vertical-writing');expect(loads).toBe(0);expect(inspectRunPage(f.page)).toEqual(before);}
  else for(const outcome of result.outcomes)expectRetypeset(f.page,outcome,before,'AX');
 });
 test('embedded Type1 vertical WMode and nonstandard FontMatrix stay refused with missing ToUnicode',async()=>{

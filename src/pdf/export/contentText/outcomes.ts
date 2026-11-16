@@ -5,7 +5,7 @@ export const contentTextReasons = [
  'form-xobject','unsupported-matrix','unsupported-state','graphics-effect-unsupported','font-unavailable',
  'font-coverage','font-permission','overflow','style-change','stale-source',
  'preview-unavailable','missing-source-style','shared-text-object',
- 'unsupported-no-text-layer','unsupported-image-text','unsupported-form-xobject','unsupported-unwritable',
+ 'unsupported-no-text-layer','unsupported-image-text','unsupported-form-xobject','unsupported-unwritable','unsupported-vertical-writing',
 ] as const;
 export type ContentTextReason=typeof contentTextReasons[number];
 export type ContentTextOutcome={overlayId:string;mode:'in-place'|'fallback-font'|'substituted'|'reflowed'|'retypeset'|'unsupported';fidelity?:'exact'|'approximate';retypeset?:import('./retypesetTypes').RetypesetManifest;reason?:ContentTextReason;detail?:string;reflow?:import('./reflowManifest').AppliedReflowManifest};

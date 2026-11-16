@@ -17,6 +17,8 @@ export async function applyRetypesets(page:PDFPage,edits:readonly ContentTextOve
  const refuse=(e:ContentTextOverlay,reason:ContentTextOutcome['reason'],detail?:string)=>outcomes.set(e.id,{overlayId:e.id,mode:'unsupported',reason,detail});
  try{
   const stamp=retypesetFormStamp(page),tree=readRetypesetStreams(page,options.stage5Type1);
+  const vertical=tree.nodes.flatMap(n=>[...n.read.verticalFonts]);
+  if(vertical.length){for(const e of pending)refuse(e,'unsupported-vertical-writing',vertical.join('; '));return;}
   if(!tree.root.read.walk.ok)throw Error(tree.root.read.walk.reason);
   const forms=textFormNames(page),hasForms=tree.root.read.walk.xobjects.some(o=>forms.has(o.name));
   const imageForms=imageFormNames(page),formImages=tree.root.read.walk.xobjects.filter(o=>imageForms.has(o.name));

@@ -17,7 +17,7 @@ await build({configFile:false,root,publicDir:false,logLevel:'warn',base:'/',buil
 await import(pathToFileURL(join(out,'dist/loader.js')).href);
 const probe=(globalThis as unknown as {fallbackAssetProbe:{fallbackFontUrl:(name:string)=>Promise<string>;loadBundledFallbackFont:(name:string)=>Promise<Uint8Array>}}).fallbackAssetProbe;
 const names=['Sans','Serif','Mono'].flatMap(f=>['Regular','Bold','Italic','BoldItalic'].map(s=>`Liberation${f}-${s}.ttf`));
-names.push('NotoSansSC-Regular.otf','NotoSansJP-Regular.otf');
+names.push('NotoSansSC-Regular.otf','NotoSansJP-Regular.otf','NotoSansKR-Regular.otf','NotoSansMath-Regular.ttf','NotoSansSymbols2-Regular.ttf');
 const hash=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
 const appFiles=await readdir(join(root,'dist/assets'));
 const liberationFiles=appFiles.filter(f=>/^Liberation(Sans|Serif|Mono)-.*\.ttf$/.test(f));
@@ -34,7 +34,7 @@ try{
     const url=await probe.fallbackFontUrl(name);
     const [a,b]=await Promise.all([probe.loadBundledFallbackFont(name),probe.loadBundledFallbackFont(name)]);
     assert.equal(a,b,'default loader should cache bytes');
-    const source=name.endsWith('.ttf')?join(root,'node_modules/@docx-editor.dev/fonts/assets',name):join(root,'src/assets/fonts',name);
+    const source=name.startsWith('Noto')?join(root,'src/assets/fonts',name):join(root,'node_modules/@docx-editor.dev/fonts/assets',name);
     const expected=hash(await readFile(source));assert.equal(hash(a),expected);
     assert.equal(fetches.get(url.split('/').at(-1)!),1,'selected font should be fetched once');
     assert.equal(appHashes.get(expected)?.length,1,'same font bytes must occur once in the app bundle');

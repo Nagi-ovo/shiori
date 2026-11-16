@@ -39,11 +39,11 @@ for(const [label,originalText,text,name]of [
  ['han-accent','动手学深度学习','动手学é深度学习','NotoSansSC-Regular.otf'],
  ['kana-i','かなカナ','かなiカナ','NotoSansJP-Regular.otf'],
  ['kana-accent','かなカナ','かなéカナ','NotoSansJP-Regular.otf'],
- ['hangul-i','ㄱㄴㄷㄹ','ㄱㄴiㄷㄹ','NotoSansSC-Regular.otf'],
- ['hangul-accent','ㄱㄴㄷㄹ','ㄱㄴéㄷㄹ','NotoSansSC-Regular.otf'],
+ ['hangul-i','ㄱㄴㄷㄹ','ㄱㄴiㄷㄹ','NotoSansKR-Regular.otf'],
+ ['hangul-accent','ㄱㄴㄷㄹ','ㄱㄴéㄷㄹ','NotoSansKR-Regular.otf'],
  ['replace-han','aaaa','新的i文字','NotoSansSC-Regular.otf'],
  ['replace-kana','aaaa','かなiカナ','NotoSansJP-Regular.otf'],
- ['replace-hangul','aaaa','ㄱㄴiㄷㄹ','NotoSansSC-Regular.otf'],
+ ['replace-hangul','aaaa','ㄱㄴiㄷㄹ','NotoSansKR-Regular.otf'],
  ['replace-mixed','aaaa','漢かㄱiなㄴカ','NotoSansJP-Regular.otf'],
  ['latin','aaaa','aaaéa','LiberationSans-Regular.ttf'],
  ['remove-han','动手学深度学习','iiéii','LiberationSans-Regular.ttf'],
@@ -82,10 +82,11 @@ test('CJK on an untouched earlier paragraph line still selects Noto for a Latin-
  expect(output.glyphs.filter(g=>g.text==='i').map(g=>g.glyph.fontName)).toHaveLength(1);
 });
 
-test('unavailable Hangul syllable is refused before the substitute or page is installed',async()=>{
- const f=await sourcePage(['aaaa']),before=inspectRunPage(f.page),resources=f.page.node.Resources();
+test('Hangul syllables select KR and remain searchable after saving',async()=>{
+ const f=await sourcePage(['aaaa']);
  const r=await applyContentTextEdits(f.page,[overlay({originalText:'aaaa',text:'한i',coverRects:[{x:49,y:148,w:40,h:15}]})],{loadFont,stage5Reflow:false});
- expect(r.outcomes[0]).toMatchObject({mode:'unsupported',reason:'unsupported-unwritable'});
- expect(r.outcomes[0]?.detail).toContain('missing glyph');
- expect(inspectRunPage(f.page)).toEqual(before);expect(f.page.node.Resources()).toBe(resources);
+ expect(r.outcomes[0]).toMatchObject({mode:'retypeset',retypeset:{substituteFont:'NotoSansKR-Regular.otf'}});
+ const saved=await readSavedGlyphs(await f.doc.save());
+ expect(saved.glyphs.map(g=>g.unicode).join('')).toBe('한i');
+ expect(saved.glyphs.every(g=>g.glyphId!==undefined&&g.glyphId>0)).toBe(true);
 });

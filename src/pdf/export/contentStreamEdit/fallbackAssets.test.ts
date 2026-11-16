@@ -9,7 +9,7 @@ for(const [base,flags,expected]of [
 for(const [text,expected]of [
   ['动手学i深度学习','NotoSansSC-Regular.otf'],['漢é字','NotoSansSC-Regular.otf'],
   ['かなiカナ','NotoSansJP-Regular.otf'],['漢한ｶé','NotoSansJP-Regular.otf'],
-  ['한국i어','NotoSansSC-Regular.otf'],['ㄱéㄴ','NotoSansSC-Regular.otf'],
+  ['한국i어','NotoSansKR-Regular.otf'],['ㄱéㄴ','NotoSansKR-Regular.otf'],
 ]as const)for(const base of ['Arial','Times-BoldItalic','Courier'])test(`pick a CJK face for ${base} / ${text}`,()=>{
   expect(fallbackFontName(base,1|64|(1<<18),text)).toBe(expected);
 });

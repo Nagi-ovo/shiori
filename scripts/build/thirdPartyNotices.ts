@@ -18,6 +18,11 @@ export function thirdPartyNotices({ wasmCore }: { wasmCore: boolean }): Plugin {
           readFileSync(new URL("./THIRD_PARTY_NOTICES.md", REPO_ROOT), "utf8") +
           `\n## npm packages\n\nThe license text of every npm package bundled into this build is in\n\`${NPM_NOTICES}\`, generated when the build runs.\n`,
       });
+      for (const font of ["NotoSansCJK", "NotoSansMath", "NotoSansSymbols2"]) {
+        const name = `LICENSE-${font}.txt`;
+        this.emitFile({ type: "asset", fileName: `licenses/fonts/${name}`,
+          source: readFileSync(new URL(`./src/assets/fonts/${name}`, REPO_ROOT)) });
+      }
       // The Word editor bundles harfbuzzjs, a prebuilt HarfBuzz wasm and
       // OFL/GUST fonts; each package carries the texts for what it ships.
       const docxEditor = fileURLToPath(new URL("./node_modules/@docx-editor.dev", REPO_ROOT));

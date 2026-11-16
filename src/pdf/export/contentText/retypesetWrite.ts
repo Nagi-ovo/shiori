@@ -5,7 +5,7 @@ import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {removeIdentifiedGlyphs} from '../contentStreamEdit/removeGlyphs';
 import {walkTextPlacements,type ShowTextState} from '../contentStreamEdit/textState';
 import {hex,pdfName,pdfNumber,encodeRun,codes} from '../contentStreamEdit/runEncoding';
-import {fallbackFontName,type FallbackOptions} from '../contentStreamEdit/fallbackFont';
+import {type FallbackOptions} from '../contentStreamEdit/fallbackFont';
 import {substitutionStamp} from '../contentStreamEdit/substituteSnapshot';
 import {inspectRunPage} from '../contentStreamEdit/replaceRunPage';
 import type {ResolvedRunFont} from '../contentStreamEdit/replaceRun';
@@ -15,15 +15,12 @@ import type {planRetypeset} from './retypesetPlan';
 import type {RetypesetCluster} from './retypesetTypes';
 import {restoreReflowSlot} from './reflowEmit';
 import {prepareRetypesetFallback} from './retypesetFallback';
+import {originalFallbackFace,retypesetFontSelector} from './retypesetFontSelection';
 
 type Plan=ReturnType<typeof planRetypeset>;
 type Source=ReturnType<typeof readRetypesetSource>;
 function restore(s:ShowTextState,fonts:ResolvedRunFont[]){
  return restoreReflowSlot({bt:0,opIndex:s.opIndex,ctm:s.ctm!,tm:s.textMatrix!,tlm:s.lineMatrix!,fontObject:fonts.find(f=>f.resourceName===s.fontName)!.objectId,size:s.fontSize,tc:s.charSpacing,tw:s.wordSpacing,tz:s.horizontalScale!*100,leading:s.leading!,rise:s.rise!,renderMode:s.renderMode!,safetyHash:'approximate'},fonts);
-}
-function baseFace(page:PDFPage,name:string){
- const f=page.node.Resources()?.lookupMaybe(PDFName.of('Font'),PDFDict)?.lookupMaybe(PDFName.of(name),PDFDict);
- return f?.lookupMaybe(PDFName.of('BaseFont'),PDFName)?.decodeText()??name;
 }
 function layout(plan:Plan){
  const {group,firstLine,output}=plan,size=plan.tail[0]!.state.fontSize;
@@ -59,6 +56,7 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
  const originalResources=page.node.Resources(),originalContents=page.node.get(PDFName.of('Contents'));
  const fontDict=originalResources?.lookupMaybe(PDFName.of('Font'),PDFDict);
  const used=new Set(fonts.map(f=>f.resourceName));
+ const selectFont=retypesetFontSelector(options);
  for(const plan of plans){
   const missing:RetypesetCluster[]=[];
   for(const a of plan.output){
@@ -71,15 +69,16 @@ export async function writeRetypeset(page:PDFPage,bytes:Uint8Array,ops:ContentOp
   // Include the unchanged prefix as well as the complete output tail: a
   // Latin-only hole must not select Liberation for a CJK paragraph.
   const prefix=plan.group.lines.slice(0,plan.firstLine).flatMap(l=>l.glyphs.map(g=>g.text??'')).join('');
-  const name=fallbackFontName(baseFace(page,plan.tail[0]!.glyph.fontName),0,prefix+plan.output.map(a=>a.text).join(''));
-  names.push(missing.length?name:null);
-  if(missing.length){
+  const paragraph=prefix+plan.output.map(a=>a.text).join(''),byFace=new Map<string,RetypesetCluster[]>(),selectedNames=new Set<string>();
+  for(const a of missing){const name=originalFallbackFace(page,a.home.glyph.fontName,paragraph),group=byFace.get(name)??[];group.push(a);byFace.set(name,group);}
+  for(const [primary,atoms]of byFace)for(const {name,data,clusters}of await selectFont(primary,paragraph,atoms.map(a=>a.text))){
    let i=1;while(used.has(`ShioriRt${i}`))i++;const resource=`ShioriRt${i}`;used.add(resource);
    // These are exactly the clusters shown in this substitute. Preparation
    // verifies their coverage and outlines before any page resources change.
-   const p=await prepareRetypesetFallback(scratch,resource,name,missing.map(a=>a.text),options);prepared.push(p);fonts.push(p.resolved);
-   for(const a of missing){const encoded=encodeRun(a.text,p.resolved,new Uint8Array());if(!encoded.ok)throw Error('substitute cannot encode replacement');a.bytes=encoded.bytes;a.font=p.resolved;}
+   const p=await prepareRetypesetFallback(scratch,resource,name,clusters,{loadFont:async()=>data});prepared.push(p);fonts.push(p.resolved);selectedNames.add(name);
+   for(const a of atoms.filter(a=>clusters.includes(a.text.normalize('NFC')))){const encoded=encodeRun(a.text,p.resolved,new Uint8Array());if(!encoded.ok)throw Error('substitute cannot encode replacement');a.bytes=encoded.bytes;a.font=p.resolved;}
   }
+  names.push(selectedNames.size?[...selectedNames].join(', '):null);
  }
  const fits=plans.map(layout),hits=plans.flatMap(p=>p.tail.map(g=>g.glyph)),target=new Set(hits.map(address));
  if(target.size!==hits.length)throw Error('intersecting paragraph ownership');

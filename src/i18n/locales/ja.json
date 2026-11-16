@@ -1163,7 +1163,8 @@
       "unsupported-no-text-layer": "このページには編集可能なテキスト層がありません。",
       "unsupported-image-text": "スキャン画像上の文字の編集にはまだ対応していません。",
       "unsupported-form-xobject": "Form XObject 内の文字の編集にはまだ対応していません。",
-      "unsupported-unwritable": "この文字を安全に書き換えられませんでした。"
+      "unsupported-unwritable": "この文字を安全に書き換えられませんでした。",
+      "unsupported-vertical-writing": "縦書きテキストの編集にはまだ対応していません。"
     }
   }
 }

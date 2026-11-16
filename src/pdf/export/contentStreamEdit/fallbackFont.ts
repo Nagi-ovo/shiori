@@ -11,12 +11,14 @@ import { fontCoverageFromDict } from '../fontCoverage/pdfLibAdapter';
 import type { ResolvedRunFont } from './replaceRun';
 
 export type FallbackOptions = { loadFont?: (name: string) => Promise<Uint8Array> };
-export function fallbackFontName(baseFont: string, flags: number, text: string): string {
+export function fallbackFontName(baseFont: string, flags: number, text: string, weight = 400): string {
   if (/[\u3040-\u30ff\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return 'NotoSansJP-Regular.otf';
-  if (/[\p{Script=Han}\p{Script=Hangul}]/u.test(text)) return 'NotoSansSC-Regular.otf';
+  if (/\p{Script=Hangul}/u.test(text)) return 'NotoSansKR-Regular.otf';
+  if (/\p{Script=Han}/u.test(text)) return 'NotoSansSC-Regular.otf';
   const family = flags & 1 || /Courier|Mono|Consolas/i.test(baseFont) ? 'Mono'
-    : flags & 2 || /Times|Serif|Georgia|Cambria/i.test(baseFont) ? 'Serif' : 'Sans';
-  const bold = !!(flags & (1 << 18)) || /Bold|Black|Heavy/i.test(baseFont);
+    : flags & 2 ? 'Serif' : /Gothic|Helvetica|Arial|Sans/i.test(baseFont) ? 'Sans'
+    : /Times|Mincho|Song|Serif|Georgia|Cambria/i.test(baseFont) ? 'Serif' : 'Sans';
+  const bold = weight >= 600 || !!(flags & (1 << 18)) || /Bold|Black|Heavy/i.test(baseFont);
   const italic = !!(flags & 64) || /Italic|Oblique/i.test(baseFont);
   const style = bold ? (italic ? 'BoldItalic' : 'Bold') : italic ? 'Italic' : 'Regular';
   return `Liberation${family}-${style}.ttf`;

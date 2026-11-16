@@ -1,18 +1,66 @@
 # Export Fonts
 
-`NotoSansSC-Regular.otf` and `NotoSansJP-Regular.otf` are bundled for
-PDF export only. They come from `notofonts/noto-cjk`:
+These unmodified official notofonts fonts are bundled for PDF export.
+SC/JP also serve the existing web/mobile PDFium fallback. All five fonts
+are SIL OFL 1.1; no font was copied from survey/vendor trees.
 
-- https://github.com/notofonts/noto-cjk/blob/main/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf
-- https://github.com/notofonts/noto-cjk/blob/main/Sans/SubsetOTF/JP/NotoSansJP-Regular.otf
+| File | Bytes | Pinned official source |
+| --- | ---: | --- |
+| NotoSansSC-Regular.otf (existing) | 8,331,336 | [noto-cjk SC SubsetOTF](https://github.com/notofonts/noto-cjk/blob/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf) |
+| NotoSansJP-Regular.otf (existing) | 4,533,028 | [noto-cjk JP SubsetOTF](https://github.com/notofonts/noto-cjk/blob/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/SubsetOTF/JP/NotoSansJP-Regular.otf) |
+| NotoSansKR-Regular.otf | 4,644,748 | [noto-cjk KR SubsetOTF](https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/SubsetOTF/KR/NotoSansKR-Regular.otf) |
+| NotoSansMath-Regular.ttf | 990,564 | [math NotoSansMath-v3.000 release](https://github.com/notofonts/math/releases/download/NotoSansMath-v3.000/NotoSansMath-v3.000.zip), `NotoSansMath/hinted/ttf/NotoSansMath-Regular.ttf` |
+| NotoSansSymbols2-Regular.ttf | 671,568 | [symbols NotoSansSymbols2-v2.008 release](https://github.com/notofonts/symbols/releases/download/NotoSansSymbols2-v2.008/NotoSansSymbols2-v2.008.zip), `NotoSansSymbols2/hinted/ttf/NotoSansSymbols2-Regular.ttf` |
 
-The SC subset covers CJK Unified Ideographs with Chinese-style glyph
-shapes but omits hiragana and katakana. The JP subset covers kana
-plus CJK Unified Ideographs with Japanese-style glyph shapes. The
-exporter picks per overlay: text containing kana routes through JP,
-other non-ASCII routes through SC.
+CJK is pinned at commit `f8d157532fbfaeda587e826d4cd5b21a49186f7c`
+(Sans 2.004). The existing SC/JP bytes were compared against that official
+commit and are identical. Math's release tag resolves to commit
+`00e9941d95b2a355399a66f3990ffde6e4985676`; Symbols 2's tag resolves to
+`25b00f0d3f40873a005287514ba2a48558655314`. The new fonts total 6,306,880
+bytes. KR is comparable to JP/SC and needs no additional subsetting.
 
-Noto CJK fonts are licensed under the SIL Open Font License 1.1.
+Unmodified upstream licenses (also emitted in `dist/licenses/fonts/`):
+
+- [LICENSE-NotoSansCJK.txt](LICENSE-NotoSansCJK.txt), from
+  [noto-cjk Sans/LICENSE](https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/LICENSE), 4,301 bytes.
+- [LICENSE-NotoSansMath.txt](LICENSE-NotoSansMath.txt), `OFL.txt` from the
+  pinned Math release archive, 4,380 bytes.
+- [LICENSE-NotoSansSymbols2.txt](LICENSE-NotoSansSymbols2.txt), `OFL.txt` from
+  the pinned Symbols 2 release archive, 4,383 bytes.
+
+SHA-256 of the font files:
+
+```text
+faa6c9df652116dde789d351359f3d7e5d2285a2b2a1f04a2d7244df706d5ea9  NotoSansSC-Regular.otf
+dff723ba59d57d136764a04b9b2d03205544f7cd785a711442d6d2d085ac5073  NotoSansJP-Regular.otf
+69975a0ac8472717870aefeab0a4d52739308d90856b9955313b2ad5e0148d68  NotoSansKR-Regular.otf
+d51afd5739c7ba6c44fcab35a88160e25dfb69a2d4ad0bd99533f8d894af1f96  NotoSansMath-Regular.ttf
+c4a0a80f0041ce4be81e2478faad22776d23edb98ae3f0d19bd37044820ecf9d  NotoSansSymbols2-Regular.ttf
+```
+
+Retypeset prefers JP for kana, KR for Hangul, SC for other Han, and a
+style-matched Liberation face for Latin. It reads the original resource's
+descriptor Flags/FontWeight and BaseFont/FontName/FontFamily hints, including
+Type0 descendants. Every needed scalar must map to a nonzero cmap GID.
+If the preferred face lacks coverage, selection walks the official Noto
+chain; a single face for all missing clusters is preferred. Only when none
+covers them all does it use the writer's existing per-cluster font switches.
+Encodable source text retains its original font. No Liberation candidate
+is allowed anywhere in a paragraph containing Han/kana/Hangul.
+
+JP lacks simplified `调` (U+8C03), while SC covers it. Both Math and Symbols 2
+lack U+2329/U+3008; SC supplies the angle brackets. Math supplies U+210E `ℎ`
+and mathematical italic rho. KR supplies Hangul syllables missing from SC/JP.
+The official SC/JP/KR files also contain kana and compatibility jamo; coverage
+is measured instead of inferred from locale names. NFC canonically maps
+U+2329 `〈` to U+3008 `〈`; no NFKC is applied.
+
+CJK substitutes are Regular Sans only: bold/italic/serif matching is not
+available for CJK and no synthetic bold stroke is added. Vertical writing
+is detected and refused with `unsupported-vertical-writing`; no substitute
+is shaped or encoded for such a run, and neither `vert` nor `vrt2` is applied.
+The official CJK files remain unmodified, preserving `locl`, `vert`, `vrt2`,
+`vmtx` and `VORG` for a future vertical emitter.
 
 # Embedded-terminal symbols (`ui/`)
 
