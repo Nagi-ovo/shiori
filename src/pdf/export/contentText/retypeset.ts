@@ -45,9 +45,19 @@ export async function applyRetypesets(page:PDFPage,edits:readonly ContentTextOve
    const plans=planned.get(node)??[];plans.push({edits,plan:planRetypeset(node.read.glyphs,node.ops,edits)});planned.set(node,plans);
   }catch(error){for(const e of edits)refuse(e.overlay,'unsupported-unwritable',String(error));}
   const results:{edits:RetypesetEdit[];manifest:Awaited<ReturnType<typeof writeRetypeset>>[number]}[]=[];
+  const idle=(plan:ReturnType<typeof planRetypeset>)=>{
+   const points=plan.group.lines.flatMap(l=>l.glyphs.flatMap(g=>g.glyph.quad)),x=Math.min(...points.map(p=>p.x)),y=Math.min(...points.map(p=>p.y)),right=Math.max(...points.map(p=>p.x)),top=Math.max(...points.map(p=>p.y));
+   return {paragraphBox:{x,y,w:right-x,h:top-y},substituteFont:null,lineCount:plan.group.lines.length,overflowed:false,pushed:false,pushedDeltaPt:0,pushedRegions:[],overflowInkOverlap:false,unchangedLineDriftPt:0,quality:{maxUnchangedLineStartXDriftPt:0,maxUnchangedLineBaselineDriftPt:0,overflowInkOverlap:false}};
+  };
   for(const [node,plans]of planned)try{
-   const manifests=await writeRetypeset(node.page,node.bytes,node.ops,node.read,plans.map(p=>p.plan),options,node.raw?'form-context':byNode.size>1?'multiple-stream-edits':accepted.size?'other-edited-content':undefined);node.changed=true;
-   plans.forEach((p,i)=>results.push({edits:p.edits,manifest:{...manifests[i]!,paragraphBox:formPageBox(node.matrix,manifests[i]!.paragraphBox)}}));
+   const writable=plans.filter(p=>p.plan.blocks.length);
+   const manifests=writable.length?await writeRetypeset(node.page,node.bytes,node.ops,node.read,writable.map(p=>p.plan),options,node.raw?'form-context':byNode.size>1?'multiple-stream-edits':accepted.size?'other-edited-content':undefined):[];
+   if(writable.length)node.changed=true;
+   let written=0;
+   for(const p of plans){
+    const manifest=p.plan.blocks.length?manifests[written++]!:idle(p.plan);
+    results.push({edits:p.edits,manifest:{...manifest,paragraphBox:formPageBox(node.matrix,manifest.paragraphBox)}});
+   }
   }catch(error){for(const p of plans)for(const e of p.edits)refuse(e.overlay,'unsupported-unwritable',String(error));}
   if(!results.length)return;
   if(retypesetFormStamp(page)!==stamp)throw Error('page or Form resources changed during retypeset preparation');

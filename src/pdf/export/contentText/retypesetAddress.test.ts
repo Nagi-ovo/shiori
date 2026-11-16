@@ -157,14 +157,14 @@ for(const [printed,original]of [['AB-','AB\u0002\nCD'],['AB','AB\u0002\nCD'],['A
   const s=await source(`BT /F1 10 Tf 14 TL 50 150 Td (${printed}) Tj 0 -14 Td (CD) Tj ET`);
   const edit=s.edit({originalText:original,text:original.replace('AB','XY'),coverRects:[{x:49,y:148,w:20,h:13},{x:49,y:134,w:14,h:13}]});
   const plan=s.plan([edit]);
-  expect(output(plan)).toBe(`${printed.replace('AB','XY')} CD`);
-  expect(plan.tail.map(g=>address(g.glyph))).toEqual(edit.selected.map(g=>address(g.glyph)));
+  expect(output(plan)).toBe(`${printed.replace('AB','XY')}`);
+  expect(plan.unchangedLines.map(l=>l.glyphs.map(g=>g.text).join(''))).toEqual(['CD']);
  });
 
 test('trailing PDFium hyphen and a soft hyphen omitted by the UI retain glyph homes',async()=>{
  const s=await source('BT /F1 10 Tf 14 TL 50 150 Td (AB-) Tj 0 -14 Td (CD-) Tj ET');
  const plan=s.plan([s.edit({originalText:'AB\u0002\nCD\u0002',text:'XB\u0002\nCD\u0002',coverRects:[{x:49,y:148,w:20,h:13},{x:49,y:134,w:20,h:13}]})]);
- expect(output(plan)).toBe('XB- CD-');
+ expect(output(plan)).toBe('XB-');expect(plan.unchangedLines.map(l=>l.glyphs.map(g=>g.text).join(''))).toEqual(['CD-']);
  const sh=await source('BT /F1 10 Tf 50 100 Td (ABCD) Tj ET',
   '4 beginbfchar <41> <0041> <42> <00ad> <43> <0042> <44> <0043> endbfchar');
  expect(output(sh.plan([sh.edit({originalText:'ABC',text:'ABX'})]))).toBe('A\u00adBX');
@@ -191,9 +191,9 @@ test('editing an omitted discretionary marker neither duplicates the source gap 
  const s=await source('BT /F1 10 Tf 14 TL 50 150 Td (AB) Tj 0 -14 Td (CD) Tj ET');
  const coverRects=[{x:49,y:148,w:14,h:13},{x:49,y:134,w:14,h:13}];
  const removed=s.plan([s.edit({coverRects,originalText:'AB\u0002\nCD',text:'AB\nCD'})]);
- expect(output(removed)).toBe('AB CD');
+ expect(output(removed)).toBe('');expect(removed.blocks).toHaveLength(0);
  const inserted=s.plan([s.edit({coverRects,originalText:'AB\u0002\nCD',text:'ABX\nCD'})]);
- expect(inserted.firstLine).toBe(0);expect(output(inserted)).toBe('ABX CD');
+ expect(inserted.firstLine).toBe(0);expect(output(inserted)).toBe('ABX');
 });
 
 test('source lines with different horizontal matrices still emit at planned destinations',async()=>{

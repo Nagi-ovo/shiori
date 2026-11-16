@@ -46,7 +46,10 @@ function replacementAtoms(old:RetypesetCluster[],replacement:string){
    }
   }
   if(start<0||end<0)throw Error('invalid Unicode selection');
-  const home=atoms[start]?.home??atoms.at(-1)!.home;
+  // An insert at a synthetic inter-line join belongs to the preceding line,
+  // not to the next line's first glyph (the join's home).
+  const homeAtom=start>0&&(start===end||atoms[start]?.join)?[...atoms.slice(0,start)].toReversed().find(a=>!a.join)??atoms[start-1]!:atoms[start]??atoms.at(-1)!;
+  const home=homeAtom!.home;
   atoms.splice(start,end-start,...Array.from(insert,c=>({text:c,home,hard:c==='\n'})));
  }
  return atoms;
@@ -67,7 +70,12 @@ export function planRetypeset(glyphs:RetypesetGlyph[],ops:ContentOp[],edits:Rety
  const changed=new Set<number>();
  for(const a of atoms)if(a.bytes&&!survivors.has(a))changed.add(lineOf.get(address(a.home.glyph))!);
  for(const a of output)if(!original.has(a))changed.add(lineOf.get(address(a.home.glyph))!);
- if(!changed.size)throw Error('no changed source line');
+ if(!changed.size){
+  // Compact-only hyphen/soft-hyphen folds can request a change that is
+  // already absent from the engine glyphs. Keep every original show.
+  if(output.length!==atoms.length||output.some((a,i)=>a!==atoms[i]&&a.text!==atoms[i]!.text))throw Error('no changed source line');
+  return {frame,group,tail:[],output:[],firstLine:0,blocks:[],unchangedLines:group.lines};
+ }
  const blocks:{firstLine:number;lastLine:number;output:RetypesetCluster[]}[]=[];
  for(const i of [...changed].sort((a,b)=>a-b)){
   const previous=blocks.at(-1);
