@@ -27,8 +27,16 @@ test.skipIf(!existsSync(library))('saved production retypeset passes its native 
  const reports=[];
  const native=openPdfium(library);
  try{
-  for(const [name,text]of [['wrapped','new words that wrap'],['descriptor','new words that wrap'],['inherited-warning','new words that wrap'],['han','新的文字需要换行']] as const){
+  for(const [name,text]of [['wrapped','new words that wrap'],['descriptor','new words that wrap'],['inherited-warning','new words that wrap'],['inherited-forms','new words that wrap'],['han','新的文字需要换行']] as const){
    const f=await fixture('BT /F1 10 Tf 50 100 Td (ABCDE) Tj ET BT /F1 10 Tf 200 150 Td (ABCDE KEEP) Tj ET');
+   if(name==='inherited-forms'){
+    const objects=f.doc.context.obj({});
+    for(let i=0;i<5;i++)objects.set(PDFName.of(`Bad${i}`),f.doc.context.register(f.doc.context.stream(`% unchanged bad form ${i}\nq Q`,{
+     Type:'XObject',Subtype:'Form',BBox:i%2?[0,0,300,200]:[0,0,0,200],...(i%2?{Matrix:[1,0,0,1]}:{}),
+    })));
+    f.page.node.Resources()!.set(PDFName.of('XObject'),objects);
+    f.page.node.addContentStream(f.doc.context.register(f.doc.context.stream(' /Bad0 Do /Bad1 Do /Bad2 Do /Bad3 Do /Bad4 Do')));
+   }
    if(name==='inherited-warning'){
     // InDesign-like incomplete zlib checksum in an unrelated source stream.
     // The production export must retain it without creating any new qpdf noise.

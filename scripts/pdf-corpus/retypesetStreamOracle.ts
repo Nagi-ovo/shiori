@@ -4,14 +4,15 @@ import {PDFDict,PDFName,type PDFPage} from 'pdf-lib';
 import {fontInputFromDict} from '../../src/pdf/export/fontCoverage/pdfLibAdapter';
 import type {Type1Options} from '../../src/pdf/export/fontCoverage/type1Support';
 import {address,paragraphGroups} from '../../src/pdf/export/contentText/retypesetSource';
-import {readRetypesetStreams,pageFormGlyphs} from '../../src/pdf/export/contentText/retypesetForms';
+import {pageFormGlyphs} from '../../src/pdf/export/contentText/retypesetForms';
 import {selectRetypesetSourceSpans,type RetypesetEdit} from './retypesetOracle';
+import {compareRetypesetFormWalk} from './retypesetFormWalkOracle';
 
 /** Recover membership from the immutable source's text frames/scopes and
  * paragraph grouping, rather than authorizing every object in a bounding box.
  * No replacement planning, writer output or exact-tier proofs are used. */
 export function retypesetSourceOwnership(page:PDFPage,native:readonly {text:string;origin:readonly number[]}[],edit:RetypesetEdit,options:Type1Options={}){
- const streams=readRetypesetStreams(page,options);assert(!streams.errors.length,'retypeset source walk failed');
+ const streams=compareRetypesetFormWalk(page,page,options).before;
  const spans=selectRetypesetSourceSpans(native,edit),first=spans[0]!;
  let prefix=0;const replacement=Array.from(first.text);
  while(prefix<first.glyphs.length&&prefix<replacement.length&&first.glyphs[prefix]!.text===replacement[prefix])prefix++;
@@ -33,8 +34,8 @@ export function retypesetSourceOwnership(page:PDFPage,native:readonly {text:stri
  * including invisible spaces. Read both saved streams; never trust a producer
  * assertion or object numbers (pdf-lib may renumber them while exporting). */
 export function assertRetypesetStreamIdentity(before:PDFPage,after:PDFPage,owned:readonly {origin:readonly number[];sourceKey?:string}[],options:Type1Options={}){
- const snapshot=(page:PDFPage)=>{
-  const streams=readRetypesetStreams(page,options);assert(!streams.errors.length,'retypeset stream glyph walk failed');
+ const walks=compareRetypesetFormWalk(before,after,options);
+ const snapshot=(streams:typeof walks.before)=>{
   return streams.nodes.flatMap(node=>{
    assert(node.read.walk.ok,'retypeset stream glyph walk failed');
    if(node.raw)assert(!node.read.walk.unplacedText,'retypeset Form has unmeasurable glyphs');
@@ -46,7 +47,7 @@ export function assertRetypesetStreamIdentity(before:PDFPage,after:PDFPage,owned
    return pageFormGlyphs(node,false).map(({glyph:g})=>({sourceKey:`${node.key}:${address(g)}`,code:g.code,font:hashes.get(g.fontName),quad:g.coreQuad}));
   });
  };
- const original=snapshot(before),actual=snapshot(after),available=new Set(actual);let checked=0;
+ const original=snapshot(walks.before),actual=snapshot(walks.after),available=new Set(actual);let checked=0;
  for(const g of original){
   if(owned.some(o=>o.sourceKey!==undefined?o.sourceKey===g.sourceKey:Math.hypot(o.origin[0]!-g.quad[0].x,o.origin[1]!-g.quad[0].y)<=.01))continue;
   const match=actual.find(a=>available.has(a)&&a.code===g.code&&a.font===g.font&&a.quad.every((p,i)=>Math.hypot(p.x-g.quad[i]!.x,p.y-g.quad[i]!.y)<=.01));

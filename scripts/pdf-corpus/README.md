@@ -70,6 +70,49 @@ Category/overall and Chinese-file tables use headline rows and show both
 rates plus all six outcome counts. Headline refusal reasons and mean export
 time use the same rows. This schema does not recompute earlier reports.
 
+## r22 optional quality contract
+
+`report.json.quality` and the markdown quality section use **headline rows**
+(exclude only `overflow-unbreakable`), without replacing the primary
+`headline.succeededWithoutOverlayRate`. `run.ts` preserves producer fields in
+each row's outcome. The script-side `CorpusOutcome` type accepts the optional
+`outcome.retypeset.quality` object below even before production emits it:
+
+| Optional producer field | Meaning |
+|---|---|
+| `maxUnchangedLineStartXDriftPt` | Maximum absolute unchanged-line start-x residual in PDF points |
+| `maxUnchangedLineBaselineDriftPt` | Maximum absolute unchanged-line baseline residual in PDF points |
+| `overflowInkOverlap` | Whether new wrap/overflow ink intersects unpushed other ink |
+| `overflowInkOverlapAreaPt2` | That intersection's nonnegative area in square PDF points; can supply overlap without a boolean |
+
+Drift residuals must already exclude the **applied push delta** from the
+expected line position; raw displacement from an intentional push is not drift.
+Both drift components must be finite, nonnegative numbers to count as measured.
+One PDF point is 1/72 inch (2 raster pixels at the native corpus's 144 DPI).
+These fields are producer diagnostics; no independent corpus-wide ink oracle
+is inferred from them.
+
+The quality object has `scope: 'headline'`, `retypesetRows`, an explicit
+availability `note`, and two metric objects:
+
+- `unchangedLineDrift`: `eligibleRows` is all headline retypeset rows. `count`
+  counts measured rows with max(start-x residual, baseline residual) **> 0**;
+  `thresholdPt` is 0. `maxPt` and nearest-rank `p95Pt` use each measured row's
+  maximum, including measured zero values.
+- `overflowInkOverlap`: `eligibleRows` is headline retypeset rows with
+  `retypeset.overflowed === true`. `count` counts positive overlap flags/areas.
+  `unknownOverflowRows` records retypeset rows without an overflow boolean.
+  `areaMeasuredRows`, `totalAreaPt2` and `maxAreaPt2` summarize supplied areas.
+  A boolean and area that contradict each other are unavailable.
+
+Both have `availability: 'available' | 'partial' | 'unavailable'`,
+`measuredRows`, `unavailableRows` (eligible minus measured), `rate` (count /
+eligible) and `measuredRate` (count / measured). Unknown overflow states also
+prevent full availability. Empty denominators and absent maxima/areas emit 0,
+with `unavailable` when nothing was measured. Missing/invalid telemetry is
+explicitly **not a measured zero-defect result**. The four existing summary
+groups, exact-tier/overlay-free rates and per-mode counts keep their meanings.
+
 ## Before/after PNG evidence
 
 Render saved pairs without fetching documents or rerunning the corpus:
@@ -244,9 +287,16 @@ Longer edits are allowed to refuse; the corpus never enables `allowOverflow`.
 
 ## Independent native acceptance
 
-One saved success per PDF/mode is retained (up to sixteen audited samples,
-deterministically selected for category/mode diversity and Chinese
-missing-Han). `selectOracleSamples` includes `retypeset` and excludes
+One saved success per PDF/mode is retained, plus all accepted `missing-han`
+rows. r22 additionally uses a **bounded explicit Form-page allow-list** in
+`saveSamples.ts`: keep the first successful `retypeset` row for
+`arxiv-2611.17052`, zero-based page **22**, even if an earlier page already
+filled that file's retypeset slot. The other seven headline edits on that page
+do not each get a pair. This does not infer Form ownership from a refusal code.
+Up to sixteen saved pairs are audited, deterministically selected for
+category/mode diversity and Chinese missing-Han; saving the extra Form pair
+does not reserve an additional official audit slot.
+`selectOracleSamples` includes `retypeset` and excludes
 `unsupported` and unknown modes; `auditCorpusSample` also rejects unsupported
 before opening a sample. `run.ts` passes the entire saved outcome, including
 `fidelity` and the paragraph manifest, to the audit.
@@ -272,6 +322,19 @@ native Unicode, font program, outline, multiplicity and origins (within
 0.01 pt). `assertRetypesetStreamIdentity` additionally checks their saved
 character codes, font identity and quads, including invisible spaces. Source
 operator/item/byte identities keep coincident unrelated objects distinct.
+
+`compareRetypesetFormWalk` applies compare-before to the source ownership,
+saved-stream and font-resource walks. After errors must be a **multiset subset**
+of source errors on the **same unchanged Form graph**: defect text plus decoded
+stream bytes and sorted dictionary/resource contents, resolving indirect refs
+without their numeric IDs. BBox/Matrix, nested Forms and fonts are included;
+harmless recompression and relocated Do operators are allowed. Undecodable
+streams use encoded bytes plus decoding settings instead. A rewritten Form,
+changed resource graph, new defect or extra occurrence fails. Page-stream or
+unidentifiable failures remain fatal. Partial glyphs from inherited failed
+Form walks cannot establish edit ownership. Oracle JSON records
+`formWalkSourceIssues` and `formWalkInheritedIssues`; inherited defects are
+accounted for, not asserted repaired. This parallels r21's qpdf policy below.
 
 `compareRetypesetRaster` requires every changed pixel to lie within
 **old-glyph ink mask ∪ new text box**, dilated by exactly **one raster pixel
@@ -312,12 +375,12 @@ the report's separate sample evidence.
 Focused tests (no corpus downloads/run or PNG generation):
 
 ```sh
-bun test scripts/pdf-corpus/oracle.test.ts scripts/pdf-corpus/report.test.ts scripts/pdf-corpus/reflowOracle.test.ts scripts/pdf-corpus/retypesetOracle.test.ts scripts/pdf-corpus/retypesetStreamOracle.test.ts scripts/pdf-corpus/retypesetNative.test.ts scripts/pdf-corpus/selectOracleSamples.test.ts
+bun test scripts/pdf-corpus
 ```
 
 The native retypeset test saves wrapped Latin and bundled-subset Chinese
 production exports (including unembedded Type1 descriptor reuse), their
-audit JSON, duplicate old text elsewhere and an
+audit JSON, five inherited invalid BBox/Matrix Forms, duplicate old text elsewhere and an
 inked-tofu corruption under `test-artifacts/retypeset-oracle-m2/`. Its adjacent
 README records the regeneration command. Pure tests inject wrong-position
 replacement, retained old text, neighbour deletion/font/code/position changes,

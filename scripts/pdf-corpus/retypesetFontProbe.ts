@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import {PDFDict,PDFDocument,PDFName,PDFObjectCopier,PDFRef,type PDFPage} from 'pdf-lib';
-import {readRetypesetStreams,pageFormGlyphs} from '../../src/pdf/export/contentText/retypesetForms';
+import {pageFormGlyphs} from '../../src/pdf/export/contentText/retypesetForms';
+import {compareRetypesetFormWalk} from './retypesetFormWalkOracle';
 import {notdefProbePdf} from '../pdf-inplace/notdefProbe';
 import type {Type1Options} from '../../src/pdf/export/fontCoverage/type1Support';
 
 /** Retypeset may reuse an unembedded Standard-14 font. Locate the actual saved
  * resource by native Unicode/origin, then verify the probe's native program
  * hash in auditCorpusSample, just as for embedded replacement fonts. */
-export function retypesetFontObjects(page:PDFPage,glyphs:readonly {text:string;origin:readonly number[];fontHash?:string}[],options:Type1Options){
- const streams=readRetypesetStreams(page,options);assert(!streams.errors.length,'retypeset font walk failed');
+export function retypesetFontObjects(before:PDFPage,after:PDFPage,glyphs:readonly {text:string;origin:readonly number[];fontHash?:string}[],options:Type1Options){
+ const streams=compareRetypesetFormWalk(before,after,options).after;
  const objects=new Map<string,string>();
  for(const g of glyphs){
   if(!g.fontHash||!g.text.trim())continue;
