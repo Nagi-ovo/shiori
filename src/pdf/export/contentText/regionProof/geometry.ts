@@ -46,6 +46,13 @@ export function paragraphMember(t: TextTrace, base: TextTrace): boolean {
     linear(t).every((n, i) => coefficientEqual(n, linear(base)[i]!)) &&
     (['tz', 'rise', 'renderMode'] as const).every(key => t[key] === base[key]);
 }
+/** Only size/rise may differ for an unmoved prefix. Scope, linear frame,
+ * direction and render mode retain the paragraph membership requirements. */
+export const paragraphFrame=(t:TextTrace,base:TextTrace)=>paragraphMember({...t,size:base.size,rise:base.rise},base);
+export const lineStart=(line:ParagraphLine,perGlyph=false):readonly [number,number]=>{
+ const t=line.shows[0]?.before??line.anchor,p=origin(t);
+ return perGlyph?[p[0],line.baseline??origin(line.anchor)[1]]:p;
+};
 export const lineAnchors = (line: ParagraphLine): readonly TextTrace[] => [line.anchor, ...(line.continuations ?? [])];
 export const anchorForShow = (line: ParagraphLine, op: number) => lineAnchors(line).findLast(t => t.opIndex < op);
 export const validRect = (r: Rect) => [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w >= 0 && r.h >= 0;

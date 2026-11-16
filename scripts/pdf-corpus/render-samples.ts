@@ -6,7 +6,7 @@ import type {PdfRect} from '../../src/pdf/model/types';
 type EditRegion = {rect?: PdfRect; paragraphRect?: PdfRect; coverRects?: PdfRect[]};
 export type EditMetadata = EditRegion & {
   overlay?: EditRegion;
-  row?: {id?: string; category?: string; outcome?: {mode?: string; reflow?: {region: {box: PdfRect}}}};
+  row?: {id?: string; category?: string; outcome?: {mode?: string; reflow?: {region: {box: PdfRect;mask?:readonly PdfRect[]}}}};
 };
 export type RenderSample = {name: string; before: string; after: string; edit?: string; metadata: EditMetadata; smoke?: boolean};
 const accepted = ['in-place', 'fallback-font', 'substituted', 'reflowed'];
@@ -14,7 +14,8 @@ export const newMode = (sample: RenderSample) => ['substituted', 'reflowed'].inc
 
 export function editRects(metadata: EditMetadata): PdfRect[] {
   const region = metadata.overlay ?? metadata;
-  const rects = [region.rect, ...(region.coverRects ?? []), region.paragraphRect, metadata.row?.outcome?.reflow?.region.box]
+  const reflow=metadata.row?.outcome?.reflow?.region;
+  const rects = [region.rect, ...(region.coverRects ?? []), region.paragraphRect,...(reflow?.mask??(reflow?[reflow.box]:[]))]
     .filter((r): r is PdfRect => r !== undefined);
   assert(rects.length, 'edit JSON must contain coverRects, rect or paragraphRect');
   return rects;

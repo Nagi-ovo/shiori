@@ -186,7 +186,7 @@ test('a single proved line shifts its suffix and compiles without moving a lower
  const f=await provedStream('BT /F1 10 Tf 1 0 0 1 50 150 Tm (S i) Tj ET BT /F1 10 Tf 1 0 0 1 50 136 Tm (i) Tj ET',80);
  const before=read(f.page),plan=planProvedStreamReflow(f.e,f.fonts,edit());
  expect(plan?.reflow?.layout.strategy).toBe('suffix-shift');if(!plan)throw Error('missing plan');
- expect(plan.reflow!.proof).toBe(f.e.proof);expect(plan.reflow!.layout.origins.every(p=>p[1]===150)).toBe(true);
+ expect(plan.reflow!.proof.lineSlots).toEqual(f.e.proof.lineSlots);expect(plan.reflow!.layout.origins.every(p=>p[1]===150)).toBe(true);
  expect((await replaceRunPageWithFallback(f.page,plan)).ok).toBe(true);
  const after=read(f.page);expect(after.at(-1)).toEqual(before.at(-1));expect(after.at(-2)!.x).toBeGreaterThan(before.at(-2)!.x);
 });

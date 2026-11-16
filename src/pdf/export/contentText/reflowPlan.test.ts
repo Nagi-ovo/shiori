@@ -49,3 +49,8 @@ test('an explicit Windows hard break is retained at the replacement boundary',()
  expect(result.ok).toBe(true);if(!result.ok)return;
  expect(result.plan.reflow?.layout.origins.slice(8,10)).toEqual([[130,700],[50,686]]);
 });
+test('an explicit request cannot opt out of its rectangle proof using a deferred occupancy index',()=>{
+ const f=reflowFixture();
+ f.request.paragraph.occupancy={items:[],grid:new Map(),pageBlocked:false,hash:'unvalidated',guardPt:1,glyphs:new Map(),embeddedFonts:new Set()};
+ expect(planContentText(f.content,[f.font],f.overlay,{stage5Reflow:true,reflowRequest:f.request})).toMatchObject({ok:false,code:'reflow-required'});
+});

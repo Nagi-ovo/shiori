@@ -82,7 +82,7 @@ export function solveMeasuredReflow(input:MeasuredReflowInput):MeasuredReflowRes
   });
  };
  const finish=(strategy:'fixed'|'spacing-only'|'suffix-shift'|'wrap',origins:[number,number][]):MeasuredReflowResult=>{
-  if(origins.some((p,i)=>!inside(tokens[i]!.ink,p[0],p[1],proof.box)))return fail('reflow-obstacle: destination ink exceeds proven box','overflow');
+  if(!proof.occupancyHash&&origins.some((p,i)=>!inside(tokens[i]!.ink,p[0],p[1],proof.box)))return fail('reflow-obstacle: destination ink exceeds proven box','overflow');
   const bands=new Map<number,{bottom:number;top:number;last:number}>();
   for(let i=0;i<tokens.length;i++){
    const t=tokens[i]!,p=origins[i]!;if(!t.ink.w||!t.ink.h)continue;
@@ -98,7 +98,7 @@ export function solveMeasuredReflow(input:MeasuredReflowInput):MeasuredReflowRes
    }else bands.set(p[1],{bottom:p[1]+t.ink.y,top:p[1]+t.ink.y+t.ink.h,last:i});
   }
   const ordered=[...bands].sort((a,b)=>b[0]-a[0]);
-  if(ordered.slice(1).some(([,band],i)=>band.top>ordered[i]![1].bottom+1e-7))
+  if(!proof.occupancyHash&&ordered.slice(1).some(([,band],i)=>band.top>ordered[i]![1].bottom+1e-7))
    return fail('reflow-obstacle: destination line ink overlaps','overflow');
   const rows=new Map<number,string>();tokens.forEach((t,i)=>rows.set(origins[i]![1],(rows.get(origins[i]![1])??'')+t.unicode));
   return {ok:true,strategy,clusters:tokens,origins,reductions:shrunk.reductions,tc:shrunk.tc,tw:shrunk.tw,visualLines:[...rows.values()]};

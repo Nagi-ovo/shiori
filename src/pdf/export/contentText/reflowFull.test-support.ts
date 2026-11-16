@@ -15,12 +15,15 @@ export async function cidReflowPage(stream=fullReflowStream(),resource='F1'){
  const encoded=stream.replaceAll('/F1',`/${resource}`).replace(/\(([^()]*)\)/g,(_,s:string)=>`<${Array.from(s,c=>c.charCodeAt(0).toString(16).padStart(4,'0')).join('')}>`);
  f.page.node.set(PDFName.of('Contents'),ctx.register(ctx.flateStream(encoded)));return f;
 }
-export async function cffReflowPage(fontBytes:Uint8Array,text='甲乙丙丁戊己庚辛'){
+export async function cffReflowPage(fontBytes:Uint8Array,text='甲乙丙丁戊己庚辛',clearance=true){
  const {PDFDocument}=await import('pdf-lib');const {prepareFallback}=await import('../contentStreamEdit/fallbackFont');
  const doc=await PDFDocument.create(),page=doc.addPage([300,200]);
  const prepared=await prepareFallback(doc,'F1','NotoSansSC-Regular.otf',Array.from(text),{loadFont:async()=>fontBytes});
  const encode=(s:string)=>{const r=prepared.resolved.canEncode!(s);if(!r.ok)throw Error(r.reason);return Array.from(r.bytes,b=>b.toString(16).padStart(2,'0')).join('');};
- const stream=`BT /F1 10 Tf 14 TL ${[text,text,text.slice(0,3)].map((s,i)=>`1 0 0 1 50 ${150-i*14} Tm <${encode(s)}> Tj`).join(' ')} ET`;
+ // Real Noto ascent/descent total 14.48 pt at this size. A 16 pt pitch
+ // and 1 pt tracking clear the extraction boxes and both 1 pt ink guards.
+ const pitch=clearance?16:14,tracking=clearance?1:0;
+ const stream=`BT /F1 10 Tf ${tracking} Tc ${pitch} TL ${[text,text,text.slice(0,3)].map((s,i)=>`1 0 0 1 50 ${150-i*pitch} Tm <${encode(s)}> Tj`).join(' ')} ET`;
  page.node.set(PDFName.of('Resources'),doc.context.obj({Font:{F1:prepared.ref}}));page.node.set(PDFName.of('Contents'),doc.context.register(doc.context.flateStream(stream)));
- return {doc,page,edit:{originalText:text[6]!,text:text.slice(0,2),coverRects:[{x:109.9,y:148,w:10.2,h:12}]}};
+ return {doc,page,pitch,edit:{originalText:text[6]!,text:text.slice(0,2),coverRects:[{x:109.9+6*tracking,y:148,w:10.2,h:12}]}};
 }

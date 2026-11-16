@@ -52,6 +52,10 @@ test('crop includes original cover, paragraph rect and the full downward reflow 
     {x: 1, y: 10, w: 20, h: 10}, {x: 2, y: 11, w: 18, h: 8}, {x: 1, y: 0, w: 20, h: 20},
   ]);
 });
+test('sample renders include the fixed glyph mask when present',()=>{
+ const mask=[{x:10,y:20,w:3,h:4},{x:20,y:10,w:4,h:5}];
+ expect(editRects({row:{outcome:{reflow:{region:{box:{x:0,y:0,w:100,h:100},mask}}}}})).toEqual(mask);
+});
 
 const library = resolve(process.env.SHIORI_PDFIUM_DIR ?? 'vendor/pdfium/linux-x64/lib', 'libpdfium.so');
 test.skipIf(!existsSync(library))('CLI renders a native smoke pair without corpus files and replays explicit saved inputs', async () => {

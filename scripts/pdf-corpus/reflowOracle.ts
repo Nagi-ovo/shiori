@@ -50,11 +50,14 @@ export function compareReflowNativePages(before:Snapshot,after:Snapshot,edit:{or
  for(const e of expectedSpaces){const index=spaces.findIndex(g=>g.text===e.text&&drift(g.origin,e.origin)<=.005);assert(index>=0,'native whitespace destination drift');const [g]=spaces.splice(index,1);if(e.original)assert.equal(g!.fontHash,e.original.fontHash,'native whitespace font changed');}
  assert(before.pixels&&after.pixels,'native raster missing');assert.equal(before.pixels.length,after.pixels.length);
  const box=manifest.region.box;assert([box.x,box.y,box.w,box.h].every(Number.isFinite)&&box.w>0&&box.h>0,'invalid manifest bounds');
- const width=Math.round(before.width*2),height=Math.round(before.height*2);let changedPixels=0,changedPixelsOutsideBox=0;
+ const mask=manifest.region.mask??[box];assert(mask.length&&mask.every(b=>[b.x,b.y,b.w,b.h].every(Number.isFinite)&&b.w>0&&b.h>0),'invalid manifest mask');
+ const width=Math.round(before.width*2),height=Math.round(before.height*2);let changedPixels=0,changedPixelsOutsideBox=0,changedPixelsOutsideMask=0;
  for(let p=0;p<before.pixels.length;p+=4)if(!before.pixels.subarray(p,p+4).every((v,i)=>v===after.pixels![p+i])){
   changedPixels++;const at=p/4,x=(at%width+.5)/2,y=(height-Math.floor(at/width)-.5)/2;
   if(x<box.x||x>box.x+box.w||y<box.y||y>box.y+box.h)changedPixelsOutsideBox++;
+  if(!mask.some(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h))changedPixelsOutsideMask++;
  }
  assert.equal(changedPixelsOutsideBox,0,'changed pixels outside manifest region');
- return {maxOriginDriftPt,changedPixels,changedPixelsOutsideBox,replacementGlyphs:replacementIndices.length,replacementIndices};
+ assert.equal(changedPixelsOutsideMask,0,'changed pixels outside manifest mask');
+ return {maxOriginDriftPt,changedPixels,changedPixelsOutsideBox,changedPixelsOutsideMask,replacementGlyphs:replacementIndices.length,replacementIndices};
 }

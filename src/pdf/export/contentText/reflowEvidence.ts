@@ -1,4 +1,4 @@
-import {PDFArray,PDFDict,PDFName,type PDFPage} from 'pdf-lib';
+import type {PDFPage} from 'pdf-lib';
 import {runContextSafety,sourceFingerprint,type ResolvedRunFont} from '../contentStreamEdit/replaceRun';
 import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {walkTextPlacements,type UnplacedShow} from '../contentStreamEdit/textState';
@@ -7,18 +7,13 @@ import {runPageEnvironment} from '../contentStreamEdit/replaceRunPage';
 import {runResourceStamp} from '../contentStreamEdit/resourceStamp';
 import type {Type1Options} from '../fontCoverage/type1Support';
 import {detectParagraphRegion,type ParagraphBlocker,type ParagraphRefusal,type ParagraphLine,type RegionProof,type Rect,type SourceAddress} from './regionProof';
-import {paragraphMember,contains,intersects,origin,physicalSize,validTrace,linear} from './regionProof/geometry';
+import {paragraphFrame,contains,origin,physicalSize,validTrace,linear} from './regionProof/geometry';
+import {buildPageOccupancy,boundBoxes,glyphKey,queryOccupancy} from './regionProof/occupancy';
 import {traceReflowSource} from './reflowTrace';
 import {streamInkResolver} from './reflowInk';
 import type {ReflowCodeCluster} from './reflowTypes';
-import {reflowScene,numericArray} from './reflowScene';
 import {shortStreamRegionResult} from './reflowShortRegion';
-import {fontInputFromDict} from '../fontCoverage/pdfLibAdapter';
-import {isCffProgram} from '../fontCoverage/cffHulls';
-export const unionReflowBoxes=(boxes:readonly Rect[]):Rect=>{
- const x=Math.min(...boxes.map(b=>b.x)),y=Math.min(...boxes.map(b=>b.y));
- return {x,y,w:Math.max(...boxes.map(b=>b.x+b.w))-x,h:Math.max(...boxes.map(b=>b.y+b.h))-y};
-};
+export const unionReflowBoxes=boundBoxes;
 const pageRect=(r:{x:number;y:number;width:number;height:number}):Rect=>({x:r.x,y:r.y,w:r.width,h:r.height});
 export type StreamEvidenceGate='placement-walk-failed'|'source-too-large'|'follows-unplaced'|'run-context-unsafe'|
  'target-state'|'missing-show-or-font'|'missing-line-anchor'|'non-string-show-item'|'non-positive-advance'|
@@ -43,58 +38,22 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
  if(!target||!validTrace(target))return refuse('target-state','Missing or unsupported target show state');
  let lines:ParagraphLine[]=[],source:ReflowCodeCluster[]=[];
  const excluded={unmeasured:0,badUnicode:0,unsafe:0,incompatible:0};
- const obstacles:Rect[]=reflowScene(page,ops,media);
- const declaredBoxes=new Map<string,number[]|undefined>();
- const declaredBox=(name:string|undefined)=>{
-  if(!name)return;
-  if(declaredBoxes.has(name))return declaredBoxes.get(name);
-  declaredBoxes.set(name,undefined);
-  const raw=page.node.Resources()?.lookupMaybe(PDFName.of('Font'),PDFDict)?.lookupMaybe(PDFName.of(name),PDFDict);
-  if(!raw)return;
-  const matrix=numericArray(raw,'FontMatrix');
-  if(matrix&&(matrix.length!==6||matrix.some((n,i)=>n!==[.001,0,0,.001,0,0][i])))return;
-  const child=raw.lookupMaybe(PDFName.of('DescendantFonts'),PDFArray)?.lookup(0,PDFDict),descriptor=(child??raw).lookupMaybe(PDFName.of('FontDescriptor'),PDFDict);
-  // An unmeasured CFF may require an unknown top/FD transform. Its /1000
-  // declaration cannot grant scene clearance either.
-  if(descriptor?.has(PDFName.of('FontFile3')))return;
-  const input=fontInputFromDict(raw);
-  if(input.program&&isCffProgram(input.program))return;
-  const b=numericArray(raw,'FontBBox')??(descriptor?numericArray(descriptor,'FontBBox'):undefined);
-  const result=b?.length===4&&b.every(Number.isFinite)&&b[2]!>b[0]!&&b[3]!>b[1]!?b:undefined;
-  declaredBoxes.set(name,result);return result;
- };
- // A known origin plus a declared vertical envelope bounds an unknown
- // horizontal advance to a strip. Missing envelopes/rotation occupy the page.
- for(const s of unplaced){
-  const t=trace.shows.get(`${s.opIndex}:${s.arrayItemIndex}`)?.before;
-  const b=declaredBox(s.fontName),o=s.origin??(t?{x:origin({...t,tm:t.tlm})[0],y:origin({...t,tm:t.tlm})[1]}:undefined);
-  if(o&&t&&b&&s.reason===undefined&&Number.isFinite(o.y)&&Math.abs(linear(t)[1]!)<1e-9&&Math.abs(linear(t)[2]!)<1e-9){
-   const y1=o.y+b[1]!*s.fontSizePt/1000,y2=o.y+b[3]!*s.fontSizePt/1000;
-   obstacles.push({x:media.x,y:Math.min(y1,y2)-.5,w:media.w,h:Math.abs(y2-y1)+1});
-  }else obstacles.push(media);
- }
+ const occupancy=buildPageOccupancy({page,ops,fonts,trace,glyphs:walk.glyphs,unplaced,ink,sourceHash,dependencyHash,media});
+ if(occupancy.pageBlocked)return refuse('region-unproved','A media-sized occupant blocks the page','obstacles');
+ const obstacles=occupancy.items.filter(o=>o.kind!=='placement').map(o=>o.box);
  for(const g of walk.glyphs){
   const show=trace.shows.get(`${g.opIndex}:${g.arrayItemIndex}`),font=byName.get(g.fontName);
   if(!show||!font)return refuse('missing-show-or-font',`op=${g.opIndex} font=${g.fontName}`);
-  const measured=ink(g.fontName,g.code,show.before),unicode=font.unicodeByCode.get(g.code);
-  if(!measured){
-   excluded.unmeasured++;
-   const bounds=declaredBox(g.fontName),t=show.before,[a,b,c,d]=linear(t),o=g.coreQuad[0];
-   if(bounds){
-    const points=[[bounds[0]!,bounds[1]!],[bounds[2]!,bounds[1]!],[bounds[2]!,bounds[3]!],[bounds[0]!,bounds[3]!]].map(([x,y])=>({
-     x:o.x+(a!*x!*t.tz/100+c!*y!)*t.size/1000,y:o.y+(b!*x!*t.tz/100+d!*y!)*t.size/1000}));
-    const left=Math.min(...points.map(p=>p.x))-.5,bottom=Math.min(...points.map(p=>p.y))-.5;
-    obstacles.push({x:left,y:bottom,w:Math.max(...points.map(p=>p.x))+.5-left,h:Math.max(...points.map(p=>p.y))+.5-bottom});
-   }else obstacles.push(media);
-   continue;
-  }
+  const measured=occupancy.glyphs.get(`${g.opIndex}:${g.arrayItemIndex}:${g.byteOffset}`)?.ink,unicode=font.unicodeByCode.get(g.code);
+  if(!measured){excluded.unmeasured++;continue;}
   const o=g.coreQuad[0],box={...measured.box,x:o.x+measured.box.x,y:o.y+measured.box.y};
-  if(!unicode||/[\r\n\t\uFFFD]/u.test(unicode)||safety.unsafe.has(g.opIndex)||!paragraphMember(show.before,target)||!paragraphMember(show.after,target)){
+  // Size/rise differences may be an unchanged prefix. Keep their source
+  // slots, but defer permission to move them until origins have been solved.
+  if(!unicode||/[\r\n\t\uFFFD]/u.test(unicode)||safety.unsafe.has(g.opIndex)||!paragraphFrame(show.before,target)||!paragraphFrame(show.after,target)){
    if(!unicode||/[\r\n\t\uFFFD]/u.test(unicode))excluded.badUnicode++;
    else if(safety.unsafe.has(g.opIndex))excluded.unsafe++;
    else excluded.incompatible++;
-   // Real whitespace still occupies a text placement for downward clearance.
-   obstacles.push(unionReflowBoxes([box,{x:o.x,y:o.y-.2*physicalSize(show.before),w:g.coreQuad[1].x-o.x,h:physicalSize(show.before)}]));continue;
+   continue;
   }
   const address:SourceAddress={streamHash:sourceHash,opIndex:g.opIndex,itemIndex:g.arrayItemIndex,byteStart:g.byteOffset,byteEnd:g.byteOffset+g.byteLength,fontObject:font.objectId};
   let line=lines.at(-1);
@@ -106,8 +65,9 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   // A new BT/Td may continue a word/space on the same baseline, but a distant
   // column is another row candidate, never whitespace capacity for this one.
   const separated=continuation&&(gap>Math.max(.5,.5*physicalSize(show.before))||gap<-.5);
-  if(!line||Math.abs(origin(line.shows[0]!.before)[1]-o.y)>.01||separated){
-   line={anchor,shows:[],ink:null};lines.push(line);
+  const baseline=(t:typeof target)=>origin({...t,rise:target.rise})[1];
+  if(!line||Math.abs(baseline(line.shows[0]!.before)-baseline(show.before))>.01||separated){
+   line={anchor,baseline:baseline(show.before),shows:[],ink:null};lines.push(line);
   }else if(anchor.opIndex!==line.anchor.opIndex&&!line.continuations?.some(t=>t.opIndex===anchor.opIndex)){
    (line.continuations??=[]).push(anchor);
   }
@@ -136,19 +96,17 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
   // A BT can contain several paragraphs. Try bounded consecutive tails from
   // longest to shortest; every excluded placement becomes an obstacle. The
   // detector still proves all anchors/items in the chosen operator window.
-  let chosen:{proof:RegionProof;start:number;end:number;outside:Rect[]}|undefined;
+  let chosen:{proof:RegionProof;start:number;end:number}|undefined;
   const failures:{start:number;count:number;failure:ParagraphRefusal}[]=[];
   for(let count=Math.min(lines.length,8);count>=1&&!chosen;count--)for(let start=Math.max(0,targetLine-count+1);start<=targetLine&&start+count<=lines.length;start++){
-   const end=start+count,outside=source.filter(t=>t.original!.line<start||t.original!.line>=end).map(t=>({
-    x:t.original!.x+Math.min(0,t.ink.x),y:t.original!.y+Math.min(-.2*t.em,t.ink.y),
-    w:Math.max(t.advance,t.ink.x+t.ink.w)-Math.min(0,t.ink.x),h:Math.max(.8*t.em,t.ink.y+t.ink.h)-Math.min(-.2*t.em,t.ink.y)}));
-   const input={sourceHash,dependencyHash,ops,lines:lines.slice(start,end),rasterGuardPt:.5,evidence:{sourceHash,dependencyHash,
-   obstacleProofHash:dependencyHash,boundaryProofHash:sourceHash,scopeProofHash:sourceHash,completeScene:true,
+   const end=start+count;
+   const input={sourceHash,dependencyHash,ops,lines:lines.slice(start,end),rasterGuardPt:.5,occupancy,evidence:{sourceHash,dependencyHash,
+   obstacleProofHash:occupancy.hash,boundaryProofHash:sourceHash,scopeProofHash:sourceHash,completeScene:true,
    readingOrder:'proven',whitespace:'source-codes',structure:'body-text',columnBoundary:'proven',semantics:'plain',inlineFeatures:'plain-prose',
-   crop,clip:media,obstacles:[...obstacles,...outside].map(box=>({kind:'text' as const,box}))}} satisfies import('./regionProof').ParagraphInput;
+   crop,clip:media,obstacles:[]}} satisfies import('./regionProof').ParagraphInput;
    const beforeFirst=trace.ends.get(input.lines[0]!.anchor.opIndex-1);
    const result=count>=3?detectParagraphRegion(input,beforeFirst):shortStreamRegionResult(input,beforeFirst);
-   if(result.ok){chosen={proof:result.proof,start,end,outside};break;}
+   if(result.ok){chosen={proof:result.proof,start,end};break;}
    failures.push({start,count,failure:result});
   }
   if(!chosen){
@@ -156,24 +114,17 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
    return refuse('region-unproved',`lines=${lines.length} targetLine=${targetLine} obstacles=${obstacles.length} | `+
     failures.map(f=>`${f.count}@${f.start}:${f.failure.blocker}:${f.failure.detail}`).join('; '),primary.failure.blocker);
   }
-  proof=chosen.proof;obstacles.push(...chosen.outside);
+  proof={...chosen.proof,occupancyHash:occupancy.hash};
   lines=lines.slice(chosen.start,chosen.end);
   source=source.filter(t=>t.original!.line>=chosen.start&&t.original!.line<chosen.end).map(t=>({...t,original:{...t.original!,line:t.original!.line-chosen.start}}));
  }
- // Reserve raster coverage now, before layout. This does not widen any line
- // slot and growth never changes these horizontal edges. A glyph on a body
- // left can otherwise change the antialiased pixel just outside its hull.
- // Reserve the original font's vertical line envelope before layout as well
- // as its measured ink. A replacement face may have a taller x-height; this
- // grants no higher baseline and never expands the region during growth.
- const bottom=Math.min(proof.box.y,...source.map(t=>t.original!.y+byName.get(t.fontResource)!.descentEm*t.em-.5));
- const top=Math.max(proof.box.y+proof.box.h,...source.map(t=>t.original!.y+byName.get(t.fontResource)!.ascentEm*t.em+.5));
- const rasterBox={x:proof.box.x-.5,y:bottom,w:proof.box.w+1,h:top-bottom};
- if(!contains(crop,rasterBox)||!contains(media,rasterBox))return refuse('raster-box-outside-page','Reserved font envelope exceeds crop or media','bounds');
- if(obstacles.some(b=>intersects(b,rasterBox)))return refuse('raster-box-hits-obstacles',`Reserved font envelope intersects an obstacle; obstacles=${obstacles.length}`,'obstacles');
- proof={...proof,box:rasterBox};
- return {ok:true as const,ops,trace,walk,source,proof,lines,ink,crop,media,obstacles};
+ // This is only the old-ink bound. The authorized mask is fixed from
+ // changed old/new ink after layout and before the compiler sees the plan.
+ const mask=source.flatMap(t=>t.ink.w>0&&t.ink.h>0?[{x:t.original!.x+t.ink.x-occupancy.guardPt,y:t.original!.y+t.ink.y-occupancy.guardPt,w:t.ink.w+2*occupancy.guardPt,h:t.ink.h+2*occupancy.guardPt}]:[]);
+ proof={...proof,mask,box:boundBoxes(mask)};
+ return {ok:true as const,ops,trace,walk,source,proof,lines,ink,crop,media,obstacles,occupancy,target,fonts};
 }
+
 /** Add ONE baseline only after its whole leading-height body band is clear.
  * The new box can only extend downward. No baseline, horizontal edge or
  * previously proved top may be moved to make an edit fit.
@@ -181,13 +132,14 @@ export function streamReflowEvidence(page:PDFPage,content:Uint8Array,fonts:reado
 export function proveDownwardSlot(e:StreamReflowEvidence,proof:RegionProof):RegionProof|null{
  if(proof.lineSlots.length>=8||!(proof.leadingPt>0))return null;
  const last=proof.lineSlots.at(-1)!,body=proof.lineSlots[1]??last,baseline=last.baseline-proof.leadingPt;
- const lower=Math.min(...e.source.map(t=>t.ink.y))-.5,upper=Math.max(...e.source.map(t=>t.ink.y+t.ink.h))+.5;
- // Cover both the full leading-height band and conservative ink overhangs.
+ const lower=Math.min(...e.source.map(t=>t.ink.y))-e.occupancy.guardPt,upper=Math.max(...e.source.map(t=>t.ink.y+t.ink.h))+e.occupancy.guardPt;
+ // Keep the full leading-height floor. Only source placements in the
+ // candidate are potentially vacated; every outsider remains an obstacle.
  const bottom=baseline+Math.min(lower,-.25*proof.leadingPt),top=baseline+Math.max(upper,.75*proof.leadingPt);
  const band={x:body.left,y:bottom,w:body.right-body.left,h:top-bottom};
- if(!contains(e.crop,band)||!contains(e.media,band)||e.obstacles.some(b=>intersects(b,band)))return null;
+ const candidate=new Set(e.source.map(t=>glyphKey(t.source!)));
+ if(!contains(e.crop,band)||!contains(e.media,band)||queryOccupancy(e.occupancy,band).some(o=>!o.owner||!candidate.has(o.owner)))return null;
  const box={...proof.box,y:Math.min(proof.box.y,bottom),h:proof.box.y+proof.box.h-Math.min(proof.box.y,bottom)};
- if(!contains(e.crop,box)||!contains(e.media,box)||e.obstacles.some(b=>intersects(b,box)))return null;
  return {...proof,box,lineSlots:[...proof.lineSlots,{left:body.left,right:body.right,baseline,kind:'explicit-blank'}],
   obstacleProofHash:`${proof.obstacleProofHash}:empty-band:${baseline}`};
 }

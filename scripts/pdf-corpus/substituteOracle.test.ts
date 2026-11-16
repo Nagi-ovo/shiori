@@ -5,6 +5,7 @@ import {fixture,model,overlay} from '../../src/pdf/export/contentText/fixtures.t
 import {exportPdf} from '../../src/pdf/export/exportPdf';
 import {openPdfium} from '../pdf-inplace/nativePdfium';
 import {auditCorpusSample,compareSubstitutedNativePages} from './oracle';
+import {embeddedOverflowPage} from '../../src/pdf/export/contentText/substituteReflow.test-support';
 
 const glyph=(text:string,x:number,fontHash='source')=>({text,origin:[x,5],box:[x,4,x+1,6],fontHash,fontSize:10,nativePath:[{type:2,point:[1,1],closed:false}],inkPixels:2});
 test('substitution oracle treats the whole owned run as replacement and keeps outside pixels strict',()=>{
@@ -54,10 +55,7 @@ test('native substitute overflow wraps inside its proved region and retains unow
  const native=openPdfium(process.env.SHIORI_PDFIUM_DIR?`${process.env.SHIORI_PDFIUM_DIR}/libpdfium.so`:'vendor/pdfium/linux-x64/lib/libpdfium.so'),reports=[];
  try{
   for(const name of ['cover-overflow','slot-overflow','source-cover']){
-   const f=await fixture('BT /F1 10 Tf 14 TL 50 100 Td(ABCDE)Tj ET BT /F1 10 Tf 220 10 Td (Z) Tj ET');
-   const font=f.page.node.Resources()!.lookup(PDFName.of('Font'),PDFDict).lookup(PDFName.of('F1'),PDFDict);
-   font.delete(PDFName.of('ToUnicode'));
-   font.set(PDFName.of('FontDescriptor'),f.doc.context.obj({FontBBox:[0,name==='source-cover'?-400:-200,600,800],Ascent:800,Descent:-400}));
+   const f=await embeddedOverflowPage('BT /F1 10 Tf 14 TL 50 100 Td(ABCDE)Tj ET BT /F1 10 Tf 220 10 Td (Z) Tj ET',name==='source-cover'?-400:-200);
    const edit=overlay({text:'W W W W W W W W',coverRects:[{x:49,y:97,w:name==='slot-overflow'?101:32,h:14}]});
    const before=await f.doc.save({useObjectStreams:false});await writeFile(`${directory}/${name}.before.pdf`,before);
    const result=await exportPdf(before,model([edit]),{mode:'flatten',inPlaceFallback:{loadFont:name=>readFile(`node_modules/@docx-editor.dev/fonts/assets/${name}`)}});

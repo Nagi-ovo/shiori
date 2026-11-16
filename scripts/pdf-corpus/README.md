@@ -62,7 +62,8 @@ page box, with the bottom-left origin used by app overlays. `--page` is the
 zero-based index **inside the saved pair**, default 0; the original corpus
 `row.page`/`page.sourceIndex` is not an index into a single-page saved sample.
 The crop unions the edit/paragraph rectangles and, when present,
-`row.outcome.reflow.region.box`, so recorded downward growth is included.
+`row.outcome.reflow.region.mask` (falling back to `region.box` for older
+manifests), so recorded downward growth is included.
 `--margin` defaults to 8 points, clamped to page edges. Page rotation is
 applied using the app's coordinate conversion. Different before/after page
 boxes or rotations and invalid/off-page geometry fail clearly.

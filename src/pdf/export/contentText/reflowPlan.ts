@@ -29,6 +29,10 @@ export function planReflow(content:Uint8Array,fonts:readonly ResolvedRunFont[],o
  const request=environment.reflowRequest;
  if(!environment.stage5Reflow||!request)return fail('reflow-paragraph-unproven: no explicit reflow request');
  const {paragraph,target}=request,sourceHash=sourceFingerprint(content),replacementText=overlay.text.replace(/\r\n?/g,'\n');
+ // Only the stream producer can defer membership/scene checks and then run
+ // proveGlyphRegion on the solved origins. Explicit requests keep their
+ // original rectangle contract and cannot opt into half of that protocol.
+ if(paragraph.occupancy)return fail('reflow-context-unsupported: deferred occupancy requires stream evidence');
  if(paragraph.sourceHash!==sourceHash||request.dependencyHash!==paragraph.dependencyHash||target.streamHash!==sourceHash)
   return fail('reflow-paragraph-unproven: stale source/dependency revision');
  const ops=tokenizeContentStream(content);

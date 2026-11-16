@@ -1,4 +1,5 @@
 import type { ContentOp } from '../../contentStreamEdit/tokenizer';
+import type {PageOccupancy} from './occupancy';
 
 export type Rect = { x: number; y: number; w: number; h: number };
 export type SourceAddress = {
@@ -21,6 +22,8 @@ export type ParagraphShow = {
 export type ParagraphLine = {
   /** State immediately AFTER the explicit Tm/Td/TD/T* anchor. */
   anchor: TextTrace;
+  /** Physical baseline of the target member style; prefix Ts can differ. */
+  baseline?: number;
   /** Further explicit anchors on the same baseline (including sibling BTs).
    * Every anchor remains owned and checked against the source grammar. */
   continuations?: TextTrace[];
@@ -51,6 +54,8 @@ export type ParagraphEvidence = {
 export type ParagraphInput = {
   sourceHash: string; dependencyHash: string; ops: ContentOp[];
   lines: ParagraphLine[]; evidence: ParagraphEvidence; rasterGuardPt?: number;
+  /** Production defers scene/membership checks to the solved move set. */
+  occupancy?: PageOccupancy;
 };
 export type ParagraphIndent = {
   kind: 'flush' | 'first-line' | 'hanging';
@@ -70,6 +75,8 @@ export type TjBoundary = {
 export type RegionProof = {
   sourceHash: string; dependencyHash: string; bt: number;
   kind: 'paragraph' | 'explicit-line-region'; box: Rect;
+  /** Fixed before compilation. box is only this mask's union bound. */
+  mask?: readonly Rect[]; occupancyHash?: string;
   indent: Readonly<ParagraphIndent>; leadingPt: number;
   lineSlots: readonly Readonly<LineSlot>[];
   owned: readonly Readonly<SourceAddress>[];

@@ -11,6 +11,7 @@ import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {walkTextPlacements} from '../contentStreamEdit/textState';
 import {sourceInkFixture} from './substituteInk.test-support';
 import type {ContentTextOutcome} from './outcomes';
+import {embeddedOverflowPage} from './substituteReflow.test-support';
 
 const planStreamReflow=reflowAuto.planStreamReflow;
 const loadFont=(name:string)=>readFile(`node_modules/@docx-editor.dev/fonts/assets/${name}`);
@@ -84,9 +85,7 @@ test('failed overflow retry keeps the original refusal and destination objects',
 });
 
 async function tightSourcePage(){
- const f=await fixture('BT /F1 10 Tf 14 TL 50 100 Td (ABCDE) Tj ET'),font=fontDict(f.page);
- font.delete(PDFName.of('ToUnicode'));
- font.set(PDFName.of('FontDescriptor'),f.doc.context.obj({FontBBox:[0,-400,600,800],Ascent:800,Descent:-400}));
+ const f=await embeddedOverflowPage();
  return {...f,edit:overlay({text:replacement,coverRects:[{x:49,y:97,w:32,h:14}]})};
 }
 test('proved source ink outside a tight cover can use the real reflow region',async()=>{
@@ -95,6 +94,14 @@ test('proved source ink outside a tight cover can use the real reflow region',as
  const manifest=result.outcomes[0]!.reflow!;
  expect(manifest.region.box.y).toBeLessThanOrEqual(95.5);expect(manifest.source.map(g=>g.unicode).join('')).toBe('ABCDE');
  expect((await savedGlyphs(f.page)).map(g=>g.text).join('')).toBe(replacement);
+});
+test('a non-embedded tight-cover source cannot grant a substitution reflow mask',async()=>{
+ const f=await fixture('BT /F1 10 Tf 14 TL 50 100 Td (ABCDE) Tj ET');
+ fontDict(f.page).delete(PDFName.of('ToUnicode'));
+ fontDict(f.page).set(PDFName.of('FontDescriptor'),f.doc.context.obj({FontBBox:[0,-400,600,800],Ascent:800,Descent:-400}));
+ const a=overlay({text:replacement,coverRects:[{x:49,y:97,w:32,h:14}]}),before=snapshot(f.page);
+ const result=await applyContentTextEdits(f.page,[a],{loadFont});
+ expect(result.outcomes[0]).toMatchObject({mode:'overlay',reason:'overflow'});expectUnchanged(f.page,before);
 });
 for(const kind of ['missing','too-small','disabled']as const)test(`tight source cover stays refused when region is ${kind}`,async()=>{
  const f=await tightSourcePage(),before=snapshot(f.page);

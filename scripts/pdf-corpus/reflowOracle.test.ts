@@ -20,3 +20,10 @@ test('a proved downward extension permits exact owned destinations inside it',()
  const grown={...manifest,strategy:'wrap' as const,region:{box:{x:1,y:2,w:3,h:4}},output:[manifest.output[0]!,{...manifest.output[1]!,origin:[1,3]}]};
  expect(compareReflowNativePages(before,{...after,glyphs:[...after.glyphs.slice(0,2),glyph('C',1,3)]},edit,grown)).toMatchObject({maxOriginDriftPt:0,changedPixelsOutsideBox:0});
 });
+test('pixels inside the union bound but outside every glyph mask are rejected',()=>{
+ const mask=[{x:1,y:4,w:1.5,h:2},{x:3,y:4,w:1,h:2}];
+ const pixels=Buffer.from(after.pixels);pixels[(9*20+5)*4]=0; // (2.75, 5.25), in the hole
+ expect(()=>compareReflowNativePages(before,{...after,pixels},edit,{...manifest,region:{...manifest.region,mask}})).toThrow('outside');
+ pixels[(9*20+5)*4]=255;pixels[(9*20+4)*4]=0; // inside the first rectangle
+ expect(compareReflowNativePages(before,{...after,pixels},edit,{...manifest,region:{...manifest.region,mask}})).toMatchObject({changedPixels:1,changedPixelsOutsideMask:0});
+});

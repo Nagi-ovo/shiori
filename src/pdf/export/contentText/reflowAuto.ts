@@ -13,6 +13,7 @@ import {ReflowTraceError} from './reflowTrace';
 import {RunCompileError} from '../contentStreamEdit/runRefusal';
 import {tokenizeContentStream} from '../contentStreamEdit/tokenizer';
 import {walkTextPlacements} from '../contentStreamEdit/textState';
+import {proveGlyphRegion} from './regionProof/glyphRegion';
 const normalize=(s:string)=>s.replace(/\r\n?/g,'\n');
 /** Boolean/default-on producer. Source lines, widths, ownership and first-show
  * origins are read back from the immutable stream. UI newlines grant no scene
@@ -117,8 +118,9 @@ export function planProvedStreamReflow(e:StreamReflowEvidence,fonts:readonly Res
   const rejoin=e.trace.ends.get(lastOp)!;
   const saved=e.trace.shows.get(`${firstOp}:${proof.owned[0]!.itemIndex}`)!.before;
   const clusters=[...source.slice(0,start),...replacement,...source.slice(end)];
+  const region=proveGlyphRegion(e,proof,clusters,layout.origins,old);if(!region)return null;
   return {sourceHash:proof.sourceHash,allowExistingCodePermutation:true,...environment,edits,
-   reflow:{...(substituted?{substituted:true}:{}),proof,saved,layout,clusters,firstOp,lastOp,rejoin}};
+   reflow:{...(substituted?{substituted:true}:{}),proof:region,saved,layout,clusters,firstOp,lastOp,rejoin}};
  }catch(error){
   if(error instanceof ReflowTraceError||error instanceof RunCompileError||error instanceof Error&&!(error instanceof TypeError||error instanceof ReferenceError))return null;
   throw error;

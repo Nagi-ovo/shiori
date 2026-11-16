@@ -1,5 +1,5 @@
 import { compatible, paragraphMember, anchorForShow, lineAnchors, contains, EPS, intersects, matrixEqual, near, origin,
-  physicalLeading, physicalSize, validRect, validTrace } from './regionProof/geometry';
+  physicalLeading, physicalSize, validRect, validTrace, paragraphFrame,lineStart } from './regionProof/geometry';
 import { proveOperators } from './regionProof/operators';
 import type { LineSlot, ParagraphBlocker, ParagraphIndent, ParagraphInput,
   ParagraphRefusal, ParagraphResult, TextTrace } from './regionProof/types';
@@ -38,9 +38,10 @@ export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextT
     return refuse('semantics', 'Unresolved scope/reading order or inline math/superscript evidence');
   }
   const base = lines[0]!.anchor;
+  const perGlyph=!!input.occupancy,member=perGlyph?paragraphFrame:paragraphMember;
   if (!validTrace(base)) return refuse('state', 'Nonfinite or unsupported horizontal text state');
   for (const line of lines) {
-    if (lineAnchors(line).some(t => !paragraphMember(t, base) || t.safetyHash !== e.scopeProofHash)) {
+    if (lineAnchors(line).some(t => !member(t, base) || t.safetyHash !== e.scopeProofHash)) {
       return refuse('state', 'Line font, physical size, transform, scope or text state differs');
     }
     let end = origin(line.anchor);
@@ -51,12 +52,12 @@ export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextT
       }
       if (unsupportedDirection.test(show.unicode)) return refuse('direction', 'RTL/bidi is outside the paragraph subset');
       const anchor = anchorForShow(line, show.source.opIndex);
-      if (!anchor || !paragraphMember(show.before, base) || !compatible(show.after, show.before) ||
+      if (!anchor || !member(show.before, base) || !compatible(show.after, show.before) ||
         !matrixEqual(show.before.tlm, anchor.tlm) || !matrixEqual(show.after.tlm, anchor.tlm)) {
         return refuse('state', 'Show snapshots differ in font/style/state or saved Tlm');
       }
       const a = origin(show.before), b = origin(show.after);
-      if (!near(a[1], end[1], 0.01) || !near(b[1], end[1], 0.01) ||
+      if ((!perGlyph&&(!near(a[1], end[1], 0.01) || !near(b[1], end[1], 0.01))) ||
         b[0] <= a[0] || a[0] <= previousStart) {
         return refuse('state', 'Nonmonotonic, overlapping or superscripted show origins');
       }
@@ -67,7 +68,7 @@ export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextT
   if ('blocker' in operators) return refuse(operators.blocker, operators.detail);
   // Leading TJ displacement may encode an indent after a flush Tm. Capacity
   // begins at the actual first show, never the pre-kern anchor.
-  const starts = lines.map(l => origin(l.shows[0]?.before ?? l.anchor));
+  const starts = lines.map(l => lineStart(l,perGlyph));
   const ends = operators.endpoints;
   const advances = starts.slice(1).map((p, i) => starts[i]![1] - p[1]);
   const explicit = physicalLeading(base);
@@ -118,12 +119,12 @@ export function detectParagraphRegion(input: ParagraphInput, beforeFirst?: TextT
   const bottom = Math.min(...inks.map(r => r.y)) - guard;
   const top = Math.max(...inks.map(r => r.y + r.h)) + guard;
   const box = { x: left, y: bottom, w: right - left, h: top - bottom };
-  if (!contains(e.crop, box) || !contains(e.clip, box) ||
+  if ((!perGlyph&&(!contains(e.crop, box) || !contains(e.clip, box))) ||
     inks.some(r => r.x + r.w > right + EPS || !contains(box, r)) ||
     inks.slice(1).some((r, i) => r.y + r.h > inks[i]!.y + EPS)) {
     return refuse('bounds', 'Original ink overlaps a row or exceeds the matched box/crop/clip');
   }
-  if (!e.completeScene || !e.obstacleProofHash || e.obstacles.some(o => {
+  if (!e.completeScene || !e.obstacleProofHash || input.occupancy?.pageBlocked || !perGlyph&&e.obstacles.some(o => {
     if (!o.box || !validRect(o.box)) return true;
     if (!intersects(box, o.box)) return false;
     return o.kind !== 'stationary-backdrop' || !o.proofHash || !contains(o.box, box);

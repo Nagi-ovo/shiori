@@ -4,7 +4,7 @@ import type {ReflowRecipe} from './reflowTypes';
 import type {Rect} from './regionProof';
 export type ManifestGlyph={unicode:string;origin:readonly number[];oldOrigin?:readonly number[];fontHash?:string};
 export type AppliedReflowManifest={sourceHash:string;dependencyHash:string;strategy:ReflowRecipe['layout']['strategy'];
- region:{box:Rect};source:readonly ManifestGlyph[];output:readonly ManifestGlyph[]};
+ region:{box:Rect;mask?:readonly Rect[];occupancyHash?:string};source:readonly ManifestGlyph[];output:readonly ManifestGlyph[]};
 /** Serializable saved-PDF oracle evidence. Original source windows and every
  * output destination are recorded; the native oracle independently matches
  * those windows, font programs, outlines, unowned origins and changed pixels. */

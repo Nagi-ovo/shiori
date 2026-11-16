@@ -81,11 +81,11 @@ test('horizontal Type3 glyph-space scaling retains dictionary advances for subst
  font.set(PDFName.of('Subtype'),PDFName.of('Type3'));font.set(PDFName.of('FontMatrix'),f.doc.context.obj([.002,0,0,.002,0,0]));font.set(PDFName.of('FontBBox'),f.doc.context.obj([0,-200,600,800]));
  const r=await applyContentTextEdits(f.page,[overlay({text:'AX',coverRects:[{x:49,y:95,w:62,h:24}]})],{loadFont});expect(r.outcomes[0]?.mode).toBe('substituted');
 });
-test('a width-only source with declared ink bounds can reflow into a newly embedded substitute',async()=>{
+test('a non-embedded width-only source cannot authorize a reflow ink mask',async()=>{
  const f=await fixture('BT /F1 10 Tf 14 TL 50 100 Td (ABCDE) Tj ET'),font=f.page.node.Resources()!.lookup(PDFName.of('Font'),PDFDict).lookup(PDFName.of('F1'),PDFDict);
  font.delete(PDFName.of('ToUnicode'));font.set(PDFName.of('FontDescriptor'),f.doc.context.obj({FontBBox:[0,-200,600,800],Ascent:800,Descent:-200}));
- const r=await applyContentTextEdits(f.page,[overlay({text:'W W W W W W W W',coverRects:[{x:49,y:97,w:32,h:14}]})],{loadFont});
- expect(r.outcomes[0]).toMatchObject({mode:'substituted',reflow:{strategy:'wrap'}});
+ const before=inspectRunPage(f.page),r=await applyContentTextEdits(f.page,[overlay({text:'W W W W W W W W',coverRects:[{x:49,y:97,w:32,h:14}]})],{loadFont});
+ expect(r.outcomes[0]).toMatchObject({mode:'overlay',reason:'overflow'});expect(inspectRunPage(f.page)).toEqual(before);
 });
 test('invisible OCR text cannot be accepted as a visible substitution',async()=>{
  const f=await fixture('BT /F1 10 Tf 3 Tr 50 100 Td (ABCDE) Tj ET');

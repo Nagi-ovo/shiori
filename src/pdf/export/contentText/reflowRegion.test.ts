@@ -112,10 +112,14 @@ test.each(['甲乙丙丁戊己庚辛','日本語文書編集機能'])('CID full-
  const f=await cffReflowPage(new Uint8Array(await Bun.file('src/assets/fonts/NotoSansSC-Regular.otf').arrayBuffer()),text);
  const s=inspectRunPage(f.page);if(!s.ok)throw Error(s.reason);
  // Preserve the embedded CID program/codes and put each observed line in its own BT.
- const stream=new TextDecoder().decode(s.bytes).replaceAll(' Tj 1 0 0 1',' Tj ET BT /F1 10 Tf 14 TL 1 0 0 1');
+ const stream=new TextDecoder().decode(s.bytes).replaceAll(' Tj 1 0 0 1',` Tj ET BT /F1 10 Tf ${f.pitch} TL 1 0 0 1`);
  f.page.node.set(PDFName.of('Contents'),f.doc.context.register(f.doc.context.flateStream(stream)));
  const {s:source,fonts,p}=plan(f.page,overlay(f.edit));expect(p?.reflow?.proof.owned).toHaveLength(3);
  if(!p)throw Error(`missing CID plan ${text}`);expect(compileReflowPlan(source.bytes,fonts,p).ok).toBe(true);
+});
+test('CJK wrap refuses the original overlapping extraction/guard geometry',async()=>{
+ const f=await cffReflowPage(new Uint8Array(await Bun.file('src/assets/fonts/NotoSansSC-Regular.otf').arrayBuffer()),undefined,false);
+ expect(plan(f.page,overlay(f.edit)).p).toBeNull();
 });
 for(const bridge of [' /X Do ',' 0 0 1 1 re f ',' 0 0 m 1 1 l S ',' 0 0 1 1 re W n ',' /Shade sh '])test(`interleaved paint/clip refuses: ${bridge}`,async()=>{
  const f=await spacingPage(multi(false,bridge));expect(plan(f.page).p).toBeNull();

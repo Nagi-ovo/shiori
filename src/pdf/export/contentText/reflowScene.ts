@@ -2,6 +2,7 @@ import {PDFArray,PDFDict,PDFName,PDFNumber,PDFRawStream,type PDFPage} from 'pdf-
 import type {ContentOp} from '../contentStreamEdit/tokenizer';
 import type {Rect} from './regionProof';
 import {intersects} from './regionProof/geometry';
+import type {OccupantKind} from './regionProof/occupancy';
 type Matrix=number[];
 const identity=()=>[1,0,0,1,0,0];
 const multiply=(a:Matrix,b:Matrix)=>[a[0]!*b[0]!+a[2]!*b[1]!,a[1]!*b[0]!+a[3]!*b[1]!,a[0]!*b[2]!+a[2]!*b[3]!,a[1]!*b[2]!+a[3]!*b[3]!,a[0]!*b[4]!+a[2]!*b[5]!+a[4]!,a[1]!*b[4]!+a[3]!*b[5]!+a[5]!];
@@ -16,14 +17,16 @@ const transformedBox=(m:Matrix,b:number[])=>fromPoints([[b[0]!,b[1]!],[b[2]!,b[1
  * their mandatory BBox/Matrix without recursing into their opaque contents.
  * Unknown paint uses the current clip (the page when no local clip is known).
  */
-export function reflowScene(page:PDFPage,ops:readonly ContentOp[],media:Rect):Rect[]{
+export function reflowScene(page:PDFPage,ops:readonly ContentOp[],media:Rect,record?:(box:Rect,kind:OccupantKind,op:number)=>void,guardPt=.5):Rect[]{
  const obstacles:Rect[]=[],resources=page.node.Resources(),xobjects=resources?.lookupMaybe(PDFName.of('XObject'),PDFDict);
  let state={ctm:identity(),clip:media,width:1,miter:10,strokeUnknown:false},path:Rect|undefined,clipPending=false;
  const stack:typeof state[]=[];
- const add=(box:Rect)=>{const b=intersection(expand(box,.5),state.clip);if(b.w>0&&b.h>0)obstacles.push(b);};
+ let paintOp=-1;
+ const add=(box:Rect,kind:OccupantKind='paint')=>{const b=intersection(expand(box,guardPt),state.clip);if(b.w>0&&b.h>0){obstacles.push(b);record?.(b,kind,paintOp);}};
  const clear=()=>{if(clipPending)state={...state,clip:intersection(state.clip,path??state.clip)};path=undefined;clipPending=false;};
  const inert=new Set(['BT','ET','Tf','Tm','Td','TD','T*','Tc','Tw','Tz','TL','Ts','Tr','Tj','TJ',"'",'"','rg','RG','g','G','k','K','cs','CS','sc','SC','scn','SCN','J','j','d','ri','i','BMC','BDC','EMC','MP','DP','BX','EX']);
  for(const op of ops){
+  paintOp++;
   const n=op.operands.map(v=>v.kind==='number'?v.value:NaN);
   switch(op.operator){
    case 'q':stack.push({...state,ctm:[...state.ctm]});break;
@@ -60,20 +63,21 @@ export function reflowScene(page:PDFPage,ops:readonly ContentOp[],media:Rect):Re
     const name=op.operands[0];
     const raw=name?.kind==='name'?xobjects?.lookup(PDFName.of(name.value)):undefined;
     const d=raw instanceof PDFRawStream?raw.dict:undefined,subtype=d?.lookupMaybe(PDFName.of('Subtype'),PDFName)?.decodeText();
-    if(subtype==='Image')add(transformedBox(state.ctm,[0,0,1,1]));
+    if(subtype==='Image')add(transformedBox(state.ctm,[0,0,1,1]),'image');
     else if(subtype==='Form'&&d){const b=numericArray(d,'BBox'),m=numericArray(d,'Matrix')??identity();
-     if(b?.length===4&&m.length===6&&[...b,...m].every(Number.isFinite))add(transformedBox(multiply(state.ctm,m),b));else add(state.clip);
-    }else add(state.clip);
+     if(b?.length===4&&m.length===6&&[...b,...m].every(Number.isFinite))add(transformedBox(multiply(state.ctm,m),b),'form');else add(state.clip,'unknown');
+    }else add(state.clip,'unknown');
     break;
    }
-   case 'BI':add(transformedBox(state.ctm,[0,0,1,1]));break;
-   default:if(!inert.has(op.operator))add(state.clip);
+   case 'BI':add(transformedBox(state.ctm,[0,0,1,1]),'image');break;
+   default:if(!inert.has(op.operator))add(state.clip,'unknown');
   }
  }
  const annotations=page.node.Annots();
  for(let i=0;i<(annotations?.size()??0);i++){
   const d=annotations!.lookup(i),a=d instanceof PDFDict?numericArray(d,'Rect'):undefined;
-  obstacles.push(a?.length===4&&a.every(Number.isFinite)?expand({x:Math.min(a[0]!,a[2]!),y:Math.min(a[1]!,a[3]!),w:Math.abs(a[2]!-a[0]!),h:Math.abs(a[3]!-a[1]!)},.5):media);
+  const box=a?.length===4&&a.every(Number.isFinite)?expand({x:Math.min(a[0]!,a[2]!),y:Math.min(a[1]!,a[3]!),w:Math.abs(a[2]!-a[0]!),h:Math.abs(a[3]!-a[1]!)},guardPt):media;
+  obstacles.push(box);record?.(box,'annot',ops.length+i);
  }
  return obstacles.filter(b=>intersects(b,media));
 }
