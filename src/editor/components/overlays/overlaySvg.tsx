@@ -162,42 +162,9 @@ function renderOverlaySvg(
       collapsedRect,
     );
   }
-  if (overlay.type === "contentText") {
-    // Cover rects rotate with the text box about its center. They are
-    // positioned in the box's local (unrotated) display frame via the same
-    // center-anchored placement as the rect itself, then the whole group
-    // is rotated. (coverRects share the rect's geometry; reuse the rect
-    // placement to derive the local frame offset.)
-    const box = boxSvgPlacement(
-      overlay.rect,
-      overlay.angle ?? 0,
-      page,
-      scale,
-    );
-    return (
-      <g key={overlay.id} transform={box.transform}>
-        {overlay.coverRects.map((rect, index) => {
-          // Local frame: where this cover sits relative to the box's
-          // unrotated top-left (box.x/box.y), in display px.
-          const lx = box.x + (rect.x - overlay.rect.x) * scale;
-          // PDF y grows up; display y grows down. Offset from the box's
-          // PDF top edge (rect.y + rect.h) downward.
-          const ly =
-            box.y + (overlay.rect.y + overlay.rect.h - (rect.y + rect.h)) * scale;
-          return (
-            <rect
-              key={index}
-              x={lx}
-              y={ly}
-              width={rect.w * scale}
-              height={rect.h * scale}
-              fill={overlay.backgroundColor}
-            />
-          );
-        })}
-      </g>
-    );
-  }
+  // Source-text edits paint no shape: the preview frame excludes their
+  // glyphs (ContentTextPreviewSurface) and the DOM paints the text.
+  if (overlay.type === "contentText") return null;
   if (overlay.type === "rect") {
     const box = boxSvgPlacement(
       overlay.rect,

@@ -1,7 +1,6 @@
 # AGENTS.md
 
-Project instructions for coding agents working in this repo (Claude Code reads
-this file when no CLAUDE.md exists; Codex reads it directly).
+Project instructions for coding agents working in this repository.
 
 ## Communication
 
@@ -217,15 +216,12 @@ say "change" or "bookmark").
   with `--no-verify` or raise the baseline. Rules and exclusions:
   `scripts/file-size/policy.ts`.
 - Tags and releases go through the `shiori-release` skill.
-- Project skills live in `.agents/skills/` (Codex reads them there);
-  `.claude/skills/` is gitignored and holds symlinks into it, so re-create
-  them in a fresh workspace.
+- Project skills live in `.agents/skills/`.
 
 ## Commit messages
 
 English, imperative, explaining the why; subject ≤ 72 chars. Prefer new
-commits over `git commit --amend` or force-pushes. Codex adds the trailer
-`Co-authored-by: codex <codex@users.noreply.github.com>`.
+commits over `git commit --amend` or force-pushes.
 
 ## Where knowledge lives
 

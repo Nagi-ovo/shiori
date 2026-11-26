@@ -3,10 +3,11 @@ import { createFontCoverage } from './coverage';
 import { parseCMap } from './cmap';
 import { readProgram } from './program';
 import { format4Table, format12Table, tinyCff, tinyTtf, sfnt, format4Points } from './fixtures/programs';
+import { namedTtf } from './symbolicCmap.test-support';
 
 const symbolic = (entries: [number,number][]) => createFontCoverage({
   subtype:'TrueType',flags:4,
-  program:tinyTtf({maps:[{platform:3,encoding:0,entries:[],subtable:format4Points(entries)}]}),
+  program:namedTtf({maps:[{platform:3,encoding:0,entries:[],subtable:format4Points(entries)}]}),
   toUnicode:'2 beginbfchar <41> <0041> <53> <0053> endbfchar',
 });
 
@@ -25,9 +26,15 @@ test('symbolic high-byte aliases to the same GID remain encodable',()=>{
 });
 test('ambiguous symbolic code is rejected without clearing unrelated coverage',()=>{
   const f=symbolic([[65,7],[0xf041,2],[83,1]]);
-  expect(f.canEncode('A')).toMatchObject({ok:false,reason:'ambiguous symbolic TrueType cmap'});
+  expect(f.canEncode('A')).toMatchObject({ok:false,reason:expect.stringContaining('symbolic-cmap-ambiguous')});
   expect(f.canEncode('S')).toMatchObject({ok:true,bytes:Uint8Array.of(83)});
-  expect(f.missing).toContainEqual({code:'41',cluster:'A',reason:'ambiguous symbolic TrueType cmap'});
+  expect(f.missing).toContainEqual({code:'41',cluster:'A',reason:expect.stringContaining('symbolic-cmap-ambiguous')});
+});
+// Explicit .notdef must not be conflated with a hole at another candidate base.
+for(const zero of [0,0xf000,0xf100,0xf200])test(`explicit GID0 at base ${zero} vetoes a nonzero alias`,()=>{
+  const nonzero=zero===0?0xf000:0;
+  expect(symbolic([[zero+65,0],[nonzero+65,7],[83,1]]).canEncode('A'))
+    .toMatchObject({ok:false,reason:expect.stringContaining('symbolic-cmap-ambiguous')});
 });
 for(const [platform,encoding] of [[3,1],[1,0]])test(`both flags with standard Encoding keep nonsymbolic (${platform},${encoding}) selection`,()=>{
   const f=createFontCoverage({subtype:'TrueType',flags:36,encoding:{base:'WinAnsiEncoding',differences:{65:'S'}},

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { PageModel } from "../../pdf/model/types";
+import type { ContentTextOverlay, PageModel } from "../../pdf/model/types";
 import { isBlankPage } from "../../pdf/model/types";
-import { appPdfEngine } from "../../pdf/engine/appEngine";
+import {readEditedPageText} from "../textSelection/editedPageText";
 import type { PdfDocument } from "../../pdf/engine/types";
 import { T } from "../../design/tokens";
 import { Ic } from "./icons";
@@ -34,6 +34,10 @@ const MAX_FIND_INDEXED_TEXT_CHARACTERS = 10_000_000;
 
 export function FindPanel({ doc, pages, open, onClose }: Props) {
   const { t } = useTranslation();
+  const sourceBytes=useEditorStore(s=>s.opened?.bytes);
+  const allOverlays=useEditorStore(s=>s.model.overlays);
+  const contentEdits=useMemo(()=>allOverlays.filter((o):o is ContentTextOverlay=>o.type==="contentText"),[allOverlays]);
+  const textRevision=JSON.stringify(contentEdits);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const goToPage = useEditorStore((s) => s.goToPage);
   const setSearchMatchHighlight = useEditorStore((s) => s.setSearchMatchHighlight);
@@ -61,13 +65,14 @@ export function FindPanel({ doc, pages, open, onClose }: Props) {
   const indexedForRef = useRef<{
     doc: PdfDocument;
     pages: PageModel[];
+    textRevision:string;
   } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     if (
       indexedForRef.current?.doc === doc &&
-      indexedForRef.current?.pages === pages
+      indexedForRef.current?.pages === pages && indexedForRef.current?.textRevision===textRevision
     ) {
       return;
     }
@@ -94,7 +99,7 @@ export function FindPanel({ doc, pages, open, onClose }: Props) {
           setLoadedCount(i + 1);
           continue;
         }
-        const { content } = await appPdfEngine.pageText(doc, page.sourceIndex, {
+        const { content } = await readEditedPageText(doc,page,sourceBytes,contentEdits.filter(o=>o.pageId===page.id),{
           textOnly: true,
           checkAbort: () => {
             if (cancelled) throw new Error("Find indexing was cancelled");
@@ -122,7 +127,7 @@ export function FindPanel({ doc, pages, open, onClose }: Props) {
       }
       setIndexedPages(next);
       setStatus("ready");
-      indexedForRef.current = { doc, pages };
+      indexedForRef.current = { doc, pages,textRevision };
     })().catch((err) => {
       if (cancelled) return;
       console.error("find index failed", err);
@@ -132,7 +137,7 @@ export function FindPanel({ doc, pages, open, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [doc, open, pages]);
+  }, [doc, open, pages,contentEdits,sourceBytes,textRevision]);
 
   const searchIndexResult = useMemo(() => {
     try {

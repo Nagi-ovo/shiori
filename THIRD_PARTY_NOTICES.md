@@ -169,10 +169,20 @@ BoldItalic, OFL-1.1), embedding independent `+ShioriFallback` subsets.
 The app bundles these fonts. All except the Nerd Fonts symbols are licensed
 under the SIL Open Font License 1.1, whose full text follows this list.
 
-- Noto Sans SC and Noto Sans JP (`src/assets/fonts/NotoSans*-Regular.otf`,
-  the noto-cjk SubsetOTF builds, version 2.004): © 2014-2021 Adobe
+- Noto Sans SC, Noto Sans JP and Noto Sans KR (Regular and Bold for each
+  region, `src/assets/fonts/NotoSans{SC,JP,KR}-{Regular,Bold}.otf`,
+  noto-cjk SubsetOTF builds, version 2.004): © 2014-2021 Adobe
   (http://www.adobe.com/). Used for PDF export and as PDFium's fallback on
   the web and mobile builds.
+- Noto Sans Math 3.000 and Noto Sans Symbols 2 2.008
+  (`src/assets/fonts/NotoSansMath-Regular.ttf`, `NotoSansSymbols2-Regular.ttf`):
+  Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math,
+  https://github.com/notofonts/symbols) in the shipped OFL texts. The Math
+  binary also records “Copyright 2022 Google LLC. All Rights Reserved.”
+  in OpenType name ID 0 and SIL OFL 1.1 in name ID 13. Both fonts are used
+  for PDF retypeset fallback.
+  The unmodified upstream OFLs for these and Noto CJK are shipped in
+  `licenses/fonts/`; pinned sources and sizes are in `src/assets/fonts/README.md`.
 - Klee One Regular and SemiBold (`src/assets/fonts/ui/KleeOne-*-brand-subset.woff2`,
   subsets of version 1.100 made by `scripts/subset-brand-fonts.ts`):
   Copyright 2020 The Klee Project Authors

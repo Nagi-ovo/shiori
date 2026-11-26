@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<office:document
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+ xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+ xmlns:dc="http://purl.org/dc/elements/1.1/"
+ xmlns:meta="urn:oasis:names:tc:opendocument:xmlns:meta:1.0"
+ office:mimetype="application/vnd.oasis.opendocument.text"
+ office:version="1.3">
+ <office:meta>
+  <dc:title>羅生門</dc:title>
+  <meta:generator>Shiori corpus vertical fixtures</meta:generator>
+ </office:meta>
+ <office:font-face-decls>
+  <style:font-face style:name="BodyFont" svg:font-family="&apos;Noto Serif CJK JP&apos;" style:font-family-generic="roman" style:font-pitch="variable"/>
+  <style:font-face style:name="LatinFont" svg:font-family="&apos;DejaVu Serif&apos;" style:font-family-generic="roman" style:font-pitch="variable"/>
+ </office:font-face-decls>
+ <office:styles>
+  <style:default-style style:family="paragraph">
+   <style:paragraph-properties style:writing-mode="tb-rl"/>
+   <style:text-properties style:font-name="BodyFont" fo:font-size="12pt" style:font-name-asian="BodyFont" style:font-size-asian="12pt"/>
+  </style:default-style>
+  <style:style style:name="Standard" style:family="paragraph" style:class="text">
+   <style:paragraph-properties style:writing-mode="tb-rl" fo:line-height="165%" fo:margin-bottom="0.12cm"/>
+   <style:text-properties style:font-name="BodyFont" fo:font-size="12pt" style:font-name-asian="BodyFont" style:font-size-asian="12pt"/>
+  </style:style>
+  <style:style style:name="Title" style:family="paragraph" style:parent-style-name="Standard">
+   <style:paragraph-properties fo:margin-bottom="0.5cm"/>
+   <style:text-properties fo:font-size="18pt" style:font-size-asian="18pt" fo:font-weight="bold" style:font-weight-asian="bold"/>
+  </style:style>
+  <style:style style:name="Author" style:family="paragraph" style:parent-style-name="Standard">
+   <style:paragraph-properties fo:margin-bottom="0.4cm"/>
+   <style:text-properties fo:font-size="12pt" style:font-size-asian="12pt"/>
+  </style:style>
+  <style:style style:name="Tcy" style:family="text">
+   <style:text-properties style:text-combine="lines" style:font-name="LatinFont" fo:font-size="10pt" style:font-name-asian="LatinFont" style:font-size-asian="10pt"/>
+  </style:style>
+ </office:styles>
+ <office:automatic-styles>
+  <style:page-layout style:name="pm1">
+   <style:page-layout-properties fo:page-width="21.0cm" fo:page-height="29.7cm" style:num-format="1" style:print-orientation="portrait" fo:margin-top="2cm" fo:margin-bottom="2cm" fo:margin-left="2cm" fo:margin-right="2cm" style:writing-mode="tb-rl">
+    <style:footnote-sep/>
+   </style:page-layout-properties>
+  </style:page-layout>
+  <style:page-layout style:name="pm2col">
+   <style:page-layout-properties fo:page-width="21.0cm" fo:page-height="29.7cm" style:num-format="1" style:print-orientation="portrait" fo:margin-top="1.8cm" fo:margin-bottom="1.8cm" fo:margin-left="1.8cm" fo:margin-right="1.8cm" style:writing-mode="tb-rl">
+    <style:footnote-sep/>
+   </style:page-layout-properties>
+  </style:page-layout>
+ </office:automatic-styles>
+ <office:master-styles>
+  <style:master-page style:name="Standard" style:page-layout-name="pm1"/>
+ </office:master-styles>
+ <office:body>
+  <office:text>
+   <text:p text:style-name="Title">羅生門</text:p>
+   <text:p text:style-name="Author">芥川龍之介</text:p>
+   <text:p text:style-name="Standard">ある日の暮方の事である。一人の下人が、羅生門の下で雨やみを待っていた。</text:p>
+   <text:p text:style-name="Standard">広い門の下には、この男のほかに誰もいない。ただ、所々丹塗の剥げた、大きな円柱に、蟋蟀が一匹とまっている。羅生門が、朱雀大路にある以上は、この男のほかにも、雨やみをする市女笠や揉烏帽子が、もう二三人はありそうなものである。それが、この男のほかには誰もいない。</text:p>
+   <text:p text:style-name="Standard">何故かと云うと、この二三年、京都には、地震とか辻風とか火事とか饑饉とか云う災がつづいて起った。そこで洛中のさびれ方は一通りではない。旧記によると、仏像や仏具を打砕いて、その丹がついたり、金銀の箔がついたりした木を、路ばたにつみ重ねて、薪の料に売っていたと云う事である。洛中がその始末であるから、羅生門の修理などは、元より誰も捨てて顧る者がなかった。するとその荒れ果てたのをよい事にして、狐狸が棲む。盗人が棲む。とうとうしまいには、引取り手のない死人を、この門へ持って来て、棄てて行くと云う習慣さえ出来た。そこで、日の目が見えなくなると、誰でも気味を悪るがって、この門の近所へは足ぶみをしない事になってしまったのである。</text:p>
+   <text:p text:style-name="Standard">その代りまた鴉がどこからか、たくさん集って来た。昼間見ると、その鴉が何羽となく輪を描いて、高い鴟尾のまわりを啼きながら、飛びまわっている。ことに門の上の空が、夕焼けであかくなる時には、それが胡麻をまいたようにはっきり見えた。鴉は、勿論、門の上にある死人の肉を、啄みに来るのである。――もっとも今日は、刻限が遅いせいか、一羽も見えない。ただ、所々、崩れかかった、そうしてその崩れ目に長い草のはえた石段の上に、鴉の糞が、点々と白くこびりついているのが見える。下人は七段ある石段の一番上の段に、洗いざらした紺の襖の尻を据えて、右の頬に出来た、大きな面皰を気にしながら、ぼんやり、雨のふるのを眺めていた。</text:p>
+   <text:p text:style-name="Standard">作者はさっき、「下人が雨やみを待っていた」と書いた。しかし、下人は雨がやんでも、格別どうしようと云う当てはない。ふだんなら、勿論、主人の家へ帰る可き筈である。所がその主人からは、四五日前に暇を出された。前にも書いたように、当時京都の町は一通りならず衰微していた。今この下人が、永年、使われていた主人から、暇を出されたのも、実はこの衰微の小さな余波にほかならない。だから「下人が雨やみを待っていた」と云うよりも「雨にふりこめられた下人が、行き所がなくて、途方にくれていた」と云う方が、適当である。その上、今日の空模様も少からず、この平安朝の下人の Sentimentalisme に影響した。申の刻下りからふり出した雨は、いまだに上るけしきがない。そこで、下人は、何をおいても差当り明日の暮しをどうにかしようとして――云わばどうにもならない事を、どうにかしようとして、とりとめもない考えをたどりながら、さっきから朱雀大路にふる雨の音を、聞くともなく聞いていたのである。</text:p>
+   <text:p text:style-name="Standard">雨は、羅生門をつつんで、遠くから、ざあっと云う音をあつめて来る。夕闇は次第に空を低くして、見上げると、門の屋根が、斜につき出した甍の先に、重たくうす暗い雲を支えている。</text:p>
+   <text:p text:style-name="Standard">どうにもならない事を、どうにかするためには、手段を選んでいる遑はない。選んでいれば、築土の下か、道ばたの土の上で、饑死をするばかりである。そうして、この門の上へ持って来て、犬のように棄てられてしまうばかりである。選ばないとすれば――下人の考えは、何度も同じ道を低徊した揚句に、やっとこの局所へ逢着した。しかしこの「すれば」は、いつまでたっても、結局「すれば」であった。下人は、手段を選ばないという事を肯定しながらも、この「すれば」のかたをつけるために、当然、その後に来る可き「盗人になるよりほかに仕方がない」と云う事を、積極的に肯定するだけの、勇気が出ずにいたのである。</text:p>
+   <text:p text:style-name="Standard">下人は、大きな嚔をして、それから、大儀そうに立上った。夕冷えのする京都は、もう火桶が欲しいほどの寒さである。風は門の柱と柱との間を、夕闇と共に遠慮なく、吹きぬける。丹塗の柱にとまっていた蟋蟀も、もうどこかへ行ってしまった。</text:p>
+   <text:p text:style-name="Standard">下人は、頸をちぢめながら、山吹の汗袗に重ねた、紺の襖の肩を高くして門のまわりを見まわした。雨風の患のない、人目にかかる惧のない、一晩楽にねられそうな所があれば、そこでともかくも、夜を明かそうと思ったからである。すると、幸い門の上の楼へ上る、幅の広い、これも丹を塗った梯子が眼についた。上なら、人がいたにしても、どうせ死人ばかりである。下人はそこで、腰にさげた聖柄の太刀が鞘走らないように気をつけながら、藁草履をはいた足を、その梯子の一番下の段へふみかけた。</text:p>
+   <text:p text:style-name="Standard">それから、何分かの後である。羅生門の楼の上へ出る、幅の広い梯子の中段に、一人の男が、猫のように身をちぢめて、息を殺しながら、上の容子を窺っていた。楼の上からさす火の光が、かすかに、その男の右の頬をぬらしている。短い鬚の中に、赤く膿を持った面皰のある頬である。下人は、始めから、この上にいる者は、死人ばかりだと高を括っていた。それが、梯子を二三段上って見ると、上では誰か火をとぼして、しかもその火をそこここと動かしているらしい。これは、その濁った、黄いろい光が、隅々に蜘蛛の巣をかけた天井裏に、揺れながら映ったので、すぐにそれと知れたのである。この雨の夜に、この羅生門の上で、火をともしているからは、どうせただの者ではない。</text:p>
+   <text:p text:style-name="Standard">下人は、守宮のように足音をぬすんで、やっと急な梯子を、一番上の段まで這うようにして上りつめた。そうして体を出来るだけ、平にしながら、頸を出来るだけ、前へ出して、恐る恐る、楼の内を覗いて見た。</text:p>
+   <text:p text:style-name="Standard">見ると、楼の内には、噂に聞いた通り、幾つかの死骸が、無造作に棄ててあるが、火の光の及ぶ範囲が、思ったより狭いので、数は幾つともわからない。ただ、おぼろげながら、知れるのは、その中に裸の死骸と、着物を着た死骸とがあるという事である。勿論、中には女も男もまじっているらしい。そうして、その死骸は皆、それが、かつて、生きていた人間だと云う事実さえ疑われるほど、土を捏ねて造った人形のように、口を開いたり手を延ばしたりして、ごろごろ床の上にころがっていた。しかも、肩とか胸とかの高くなっている部分に、ぼんやりした火の光をうけて、低くなっている部分の影を一層暗くしながら、永久に唖の如く黙っていた。</text:p>
+   <text:p text:style-name="Standard">下人は、それらの死骸の腐爛した臭気に思わず、鼻を掩った。しかし、その手は、次の瞬間には、もう鼻を掩う事を忘れていた。ある強い感情が、ほとんどことごとくこの男の嗅覚を奪ってしまったからだ。</text:p>
+   <text:p text:style-name="Standard">（以下、青空文庫本文の抄録）</text:p>
+   <text:p text:style-name="Standard">本文は著作権保護期間の満了した作品である。青空文庫の本文を利用した。字体はオープンフォントライセンスの源ノ明朝系書体による。本PDFの組版はクリエイティブ・コモンズ表示四・〇で提供する。</text:p>
+  </office:text>
+ </office:body>
+</office:document>

@@ -241,7 +241,7 @@ describe("reply links between rebuilt and kept annotations", () => {
     expect(circle!.dict.get(PDFName.of("Shio"))).toBeUndefined();
   });
 
-  // Acrobat's Replace Text: a StrikeOut, and a Caret grouped to it by /IRT.
+  // Replace-text markup groups a Caret with a StrikeOut through /IRT.
   const replaceText = () =>
     sourcePdf((doc) => {
       const strike = annot(doc, "StrikeOut", [100, 600, 200, 614], {

@@ -26,7 +26,7 @@ web / mobile 的可行路径（CLI 离线写 spec → 打开时加载）是降�
 
 ### 方向：不是"Shiori 接入 agent"，是"Shiori 被 agent 接入"
 
-做「接入」要给 Codex、Claude Code、Cursor 各写适配器，永远追不完。
+为每个命令行工具单独编写适配器会增加维护成本。
 做「被接入」只维护一个稳定的本地能力面。这个能力面已在
 `src/live/liveApiBridge.ts`：读侧 `buildLiveApiContext` / `createLiveContextPublisher`，
 写侧 `applyLiveAnnotationRequest`。
@@ -118,7 +118,7 @@ anchor——by construction"）；持久化的 `CalloutOverlay`
 `/IRT` 回复链机制已存在：import 把 `/IRT` 拷入 `sourceInReplyToId`
 （`import/annotations.ts:588`），export 重连 `/IRT`
 （`export/annotations.ts:225-263`），Shiori 私有 dict（SHIO）也已在写。
-**线程 = 根 callout + `/IRT` 回复链，Acrobat 原生渲染为评论线程。**
+**线程 = 根 callout + `/IRT` 回复链，兼容阅读器显示为评论线程。**
 
 剩余工作：
 
@@ -251,7 +251,7 @@ pull 解决不了——agent 不可能轮询「有人回我了吗」。
 
 ### 审查发现：MCP push 唤不醒空闲 agent
 
-MCP 通知不会让 Claude Code / Codex 发起新的一轮——agent 只在自己的 turn 内
+MCP 通知不会让命令行工具发起新的一轮——agent 只在自己的 turn 内
 拉取工具结果，协议本身没有「发起 turn」的能力。
 **单靠 MCP server 做不成这个功能。**
 
@@ -304,7 +304,7 @@ Shiori 已内嵌终端托管 agent 会话。把追问作为文本注入该终端
    遍。截断时置 `annotationsTruncated`——一份看起来完整的残缺列表比没有列表
    更糟。
 
-赛道调研与其余缺口见 `docs/RESEARCH-AGENT-NATIVE-READERS-2026-07.md`。
+
 
 ## 待解决的问题（还没答案）
 

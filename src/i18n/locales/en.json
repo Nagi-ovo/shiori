@@ -1,4 +1,19 @@
 {
+  "sourceImage": {
+    "selected": "Selected PDF image",
+    "moveHandle": "Move image",
+    "resizeHandle": "Resize image",
+    "rotateHandle": "Rotate image",
+    "cropHandle": "Adjust crop corner",
+    "cropStartHandle": "Adjust opposite crop corner",
+    "crop": "Crop",
+    "done": "Done",
+    "restoreCrop": "Restore full image",
+    "replace": "Replace…",
+    "delete": "Delete",
+    "invalidReplacement": "Choose a valid PNG or JPEG image.",
+    "previewUnavailable": "An image edit could not be previewed."
+  },
   "app": {
     "brand": "Shiori",
     "subtitle": "しおり"
@@ -496,7 +511,7 @@
       "rect": "Drag to draw · release to commit",
       "note": "Select to place · double-click or double-tap to edit",
       "callout": "Select text or drag an area · then write the comment",
-      "select": "Select an annotation to edit · Shift-select to add · Drag to move · ⌘+drag to duplicate"
+      "select": "Click an annotation or page image to edit · Shift-click to select annotations · ⌘+drag an annotation to duplicate it"
     },
     "align": {
       "label": "Alignment",
@@ -675,7 +690,7 @@
     },
     "annot": {
       "editable": "Editable annotations",
-      "editableHint": "Highlights, notes, shapes, ink, and text stay as real PDF annotations. Reopen and edit in external PDF editors such as Acrobat, Foxit, or PDF Expert.",
+      "editableHint": "Highlights, notes, shapes, ink, and text stay as real PDF annotations. Reopen and edit in external PDF editors.",
       "flatten": "Flatten into page",
       "flattenHint": "Burn overlays into the page content. They can't be removed or re-edited — useful for signing or stamping.",
       "none": "Original only",
@@ -709,13 +724,23 @@
     "lostCharsConfirmBody_other": "{{count}} characters cannot be encoded and will be replaced with “?” in the exported PDF.",
     "lostCharsConfirmCancel": "Go back",
     "lostCharsConfirmAction": "Export with replacements",
-    "unexcisedConfirmTitle": "The original text stays in the file",
-    "unexcisedConfirmBody_one": "{{count}} edit could not remove the original text. It is hidden under the new text but still in the PDF, so search and copy can find it.",
-    "unexcisedConfirmBody_other": "{{count}} edits could not remove the original text. It is hidden under the new text but still in the PDF, so search and copy can find it.",
+    "unexcisedConfirmTitle": "Some text edits are unsupported",
+    "unexcisedConfirmBody_one": "{{count}} text edit could not be applied. Its original text remains unchanged in the exported PDF.",
+    "unexcisedConfirmBody_other": "{{count}} text edits could not be applied. Their original text remains unchanged in the exported PDF.",
     "unexcisedConfirmAction": "Export anyway",
     "clippedConfirmTitle": "Some text does not fit its box",
     "clippedConfirmBody_one": "{{count}} character runs past the edge of its box and will be cut off in the flattened PDF. Go back and enlarge the text box, callout or note to keep it.",
     "clippedConfirmBody_other": "{{count}} characters run past the edges of their boxes and will be cut off in the flattened PDF. Go back and enlarge the text boxes, callouts or notes to keep them.",
+    "review": {
+      "new-collision": "New overlap",
+      "overflow-envelope": "Overflow may overlap nearby content",
+      "uncertain-contact": "Overlap could not be verified",
+      "stripped-equivalent": "Alternate text removed",
+      "page": "Output page {{page, number}}",
+      "region": "Region in points from the bottom left · x {{x, number}}, y {{y, number}}, width {{w, number}}, height {{h, number}}",
+      "count_one": "{{count}} occurrence",
+      "count_other": "{{count}} occurrences"
+    },
     "clippedPrintConfirm_one": "{{count}} character runs past the edge of its box and will be cut off in the printed document. Print anyway?",
     "clippedPrintConfirm_other": "{{count}} characters run past the edges of their boxes and will be cut off in the printed document. Print anyway?",
     "lostCharsPrintConfirm_one": "{{count}} character cannot be encoded and will be replaced with “?” in the printed document. Print with the replacement?",
@@ -1139,5 +1164,70 @@
     "viewerLabel": "Word document",
     "loadFailed": "This Word document could not be displayed.",
     "retry": "Reload and try again"
+  },
+  "contentText": {
+    "draftOffPage": "The original text stays on the page. You can edit your draft here.",
+    "modes": {
+      "substituted": "Substitute font",
+      "reflowed": "Reflowed",
+      "in-place": "In place",
+      "fallback-font": "Embedded fallback font",
+      "retypeset": "Retypeset",
+      "unsupported": "Unsupported"
+    },
+    "notices": {
+      "substituted": "This text was rewritten in a substitute font.",
+      "reflowed": "This text was reflowed to fit the edited paragraph.",
+      "retypeset": "Layout may change.",
+      "retypesetOverflow": "Text may overlap nearby content.",
+      "newCollision": "The edit overlaps nearby content in the highlighted area.",
+      "preExistingContact": "Nearby content already touched the original text.",
+      "uncertainContact": "Overlap could not be verified for this edit.",
+      "strippedEquivalent": "This edit removes alternate text associated with the original.",
+      "sourceSpacingAdjusted": "Letter spacing was reduced to fit the original line.",
+      "substitutedFace": "Rewritten in the substitute font {{face}}.",
+      "fallbackFont": "Missing characters use a bundled font.",
+      "fallbackFace": "Missing characters use the bundled font {{face}}.",
+      "retypesetFace": "Set in the substitute font {{face}}.",
+      "sourceFontKept": "Original font kept.",
+      "standardFontMetrics": "Original standard font kept. Appearance depends on the PDF viewer.",
+      "frameOverflow": "Text extends past its original frame.",
+      "previewPending": "Updating preview…"
+    },
+    "reasons": {
+      "source-mismatch": "The selected text does not match the PDF source.",
+      "ambiguous-match": "The source text selection is ambiguous.",
+      "glyph-boundary": "This change splits a source glyph or inferred space.",
+      "cross-item": "This change crosses separate PDF text runs.",
+      "reflow-required": "This edit requires line reflow.",
+      "form-xobject": "Text inside a Form XObject cannot be edited in place.",
+      "unsupported-matrix": "This text transform is not supported for in-place editing.",
+      "unsupported-state": "The PDF text state cannot be edited safely.",
+      "graphics-effect-unsupported": "Stroked PDF text cannot be edited safely.",
+      "font-unavailable": "The source font or Unicode mapping could not be resolved.",
+      "font-coverage": "Source or fallback glyph coverage could not be verified.",
+      "font-permission": "The font licence does not allow editable embedding.",
+      "overflow": "The replacement exceeds the original text space.",
+      "style-change": "This formatting change needs retypesetting.",
+      "stale-source": "The source page changed; the edit needs to be retried.",
+      "preview-unavailable": "The edited PDF preview is unavailable.",
+      "missing-source-style": "The original formatting snapshot is missing.",
+      "shared-text-object": "A neighbouring edit requires paragraph retypesetting.",
+      "annotation-anchor": "The edit would move content away from a source annotation.",
+      "acceptance-strict": "Strict export kept the original text.",
+      "unsupported-no-text-layer": "This page has no editable text layer. Add a note or open a text-based PDF to edit the text.",
+      "unsupported-artwork-contact": "The original text was kept to protect nearby artwork.",
+      "flow-ambiguous-frame": "The linked frames overlap, are not in one column, or one of them holds no text.",
+      "flow-cross-page-unsupported": "Linked frames on different pages are not supported yet.",
+      "semantic-dependency": "This edit would change the PDF’s marked text or structure references.",
+      "flow-unsupported-text": "Text in a linked frame is rotated, vertical, hidden or cannot be written in its own font.",
+      "flow-destination-obstacle": "Something drawn inside the next frame would be covered by the flowed text.",
+      "flow-chain-exhausted": "The text does not fit in the linked frames at its original size.",
+      "unsupported-unverified-text": "This text is readable, but its font or spacing could not be verified. To correct it, edit the source document and export a new PDF, or add a note here.",
+      "unsupported-image-text": "This text belongs to a scanned image. Add a note to record a correction.",
+      "unsupported-form-xobject": "Text inside a Form XObject cannot be edited yet.",
+      "unsupported-unwritable": "This text could not be rewritten safely.",
+      "unsupported-vertical-writing": "Editing vertical text is not supported yet."
+    }
   }
 }

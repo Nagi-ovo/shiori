@@ -29,7 +29,8 @@ type CompactRasterPdfOptions = {
  * A raster copy of the document for the compact quality: each page drawn by
  * the app's engine at about 120 dpi, Shiori's overlays painted on top, and
  * saved as JPEG. "none" keeps the page content alone, without the source's
- * annotations or form fields.
+ * annotations or form fields. Pending source-text edits require the vector
+ * writer to rewrite the source page streams.
  */
 export async function exportCompactRasterPdf(
   doc: PdfDocument,
@@ -37,11 +38,18 @@ export async function exportCompactRasterPdf(
   options: CompactRasterPdfOptions,
   engine: Pick<PdfEngine, "renderRegion"> = appPdfEngine,
 ): Promise<Uint8Array> {
-  const out = await PDFDocument.create();
   const includeOverlays = options.mode !== "none";
   if (includeOverlays) {
+    const pageIds = new Set(model.pages.map((page) => page.id));
+    if (model.overlays.some((overlay) => overlay.type === "contentText" && pageIds.has(overlay.pageId))) {
+      throw new Error("Compact raster export requires source-text edits to be written first.");
+    }
+    if (model.overlays.some((overlay) => overlay.type === "sourceImageEdit" && pageIds.has(overlay.pageId))) {
+      throw new Error("Compact raster export requires source-image edits to be written first.");
+    }
     await loadThumbnailOverlayFonts(model.overlays);
   }
+  const out = await PDFDocument.create();
 
   for (const pageModel of model.pages) {
     const size = rotatedSize(

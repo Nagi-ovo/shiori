@@ -8,7 +8,7 @@ import type { Overlay, PageModel, PdfRect } from "../model/types";
 // stays turned in the editable export, which has no rotation of its own for
 // a Square or FreeText: the appearance carries the turn in its /Matrix and
 // /Rect covers the turned box. A quarter turn also writes the FreeText
-// /Rotate Acrobat uses for text. Reopening the file gives the turn back.
+// /Rotate for text editing. Reopening the file gives the turn back.
 
 const page: PageModel = { id: "p1", sourceIndex: 0, rotation: 0, widthPt: 612, heightPt: 792 };
 const RECT: PdfRect = { x: 100, y: 100, w: 200, h: 50 };

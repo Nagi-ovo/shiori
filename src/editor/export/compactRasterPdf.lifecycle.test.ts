@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { PDFDocument } from "pdf-lib";
 import type { PdfDocument, PdfEngine } from "../../pdf/engine/types";
 import type { DocumentModel } from "../../pdf/model/types";
+import { overlay } from "../../pdf/export/contentText/fixtures.test-support";
 
 const { exportCompactRasterPdf } = await import("./compactRasterPdf");
 
@@ -87,6 +88,29 @@ describe("compact raster export canvas lifecycle", () => {
     ]);
   });
 
+  test.each(["annotations", "flatten"] as const)(
+    "refuses to rasterize a pending source-text edit in %s mode",
+    async (mode) => {
+      const fake = engine();
+      const model = modelForPage({ sourceIndex: 0 });
+      model.overlays = [overlay({ pageId: "page-1" })];
+      await expect(exportCompactRasterPdf(doc, model, { mode }, fake.engine))
+        .rejects.toThrow("Compact raster export requires source-text edits to be written first.");
+      expect(fake.requests).toHaveLength(0);
+    },
+  );
+
+  test("rasterizes original-only pages and ignores edits outside the selected pages", async () => {
+    const fake = engine();
+    const model = modelForPage({ sourceIndex: 0 });
+    model.overlays = [overlay({ pageId: "page-1" })];
+    await exportCompactRasterPdf(doc, model, { mode: "none" }, fake.engine);
+    model.overlays = [overlay({ pageId: "outside-selection" })];
+    await exportCompactRasterPdf(doc, model, { mode: "annotations" }, fake.engine);
+    expect(fake.requests.map((request) => request.annotations)).toEqual([false, true]);
+    expect(drawCalls.filter(({ name }) => name === "fillRect")).toHaveLength(2);
+  });
+
   // A placed signature is an image overlay; the raster usually wins on size,
   // so a signature missing here is missing from the exported file.
   test("paints image overlays, signatures included, where they sit on the page", async () => {
@@ -152,7 +176,9 @@ function modelForPage(
 }
 
 function makeCanvas(): HTMLCanvasElement {
-  const state: Record<string | symbol, unknown> = {};
+  const state: Record<string | symbol, unknown> = {
+    measureText: (text: string) => ({ width: text.length * 6 }),
+  };
   // Properties are kept, every method call is recorded.
   const context = new Proxy(state, {
     get: (target, key) =>

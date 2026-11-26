@@ -220,7 +220,7 @@ WebView 上验一次，而不是照搬 iOS 的经验；本机没有 JDK / SDK，
 
 **修法。** 给扁平化高亮、callout 目标矩形和 callout 的局部外观 graphics state 明确设置 Multiply。保持 graphics state 的 q/Q 作用域，批注标签、连接线和普通图形不受影响。
 
-**验证。** 三条导出路径的回归在旧实现中均失败，修复后通过。用用户两份 PDF 中实际拖选生成的批注做扁平导出，再用 PyMuPDF 独立渲染，确认文字恢复原有深色，边界不变。
+**验证。** 三条导出路径的回归在旧实现中均失败，修复后通过。用用户两份 PDF 中实际拖选生成的批注做扁平导出，再独立渲染，确认文字恢复原有深色，边界不变。
 
 **更早暴露的方法。** 同一份有黑字的 PDF 同时导出可编辑与扁平版本，比较实际渲染，而不只检查 QuadPoints 和透明度数值。
 
@@ -235,7 +235,7 @@ WebView 上验一次，而不是照搬 iOS 的经验；本机没有 JDK / SDK，
 
 **修法。** 从已有 PDF.js operator list 读取字形 advance、Tc/Tw/TJ 和矩阵，按原始文字及位置严格对应 TextContent 的 UTF-16 偏移。兼容连字、插入空格、RTL 顺序和跨字体资源合并的链接；无法对应时保留逐 span 的原生选区回退。文本层语言与测量画布一致。鼠标命中、实时预览、工具拖选和浮动工具栏共用字形边界，保留原生 Selection 供复制、触摸和键盘使用。只合并上下边界一致的批注，不再扩大不同文字的色块。
 
-**验证。** 恢复旧组件后，7 个浏览器边界回归全部失败；恢复修复后在 100%/200% 全通过。两份真实 PDF 共 67 页，1413 个非空文本段全部对应；用 PyMuPDF 独立核对 38,899 个非空白字形，最大基线/advance 端点差 <0.001pt。英文第 1/2 页、vocabulary.pdf 第 59 页实际正反拖选、跨行、浮动高亮与撤销，及导出后独立渲染均已检查。
+**验证。** 恢复旧组件后，7 个浏览器边界回归全部失败；恢复修复后在 100%/200% 全通过。两份真实 PDF 共 67 页，1413 个非空文本段全部对应；独立核对 38,899 个非空白字形，最大基线/advance 端点差 <0.001pt。英文第 1/2 页、vocabulary.pdf 第 59 页实际正反拖选、跨行、浮动高亮与撤销，及导出后独立渲染均已检查。
 
 **更早暴露的方法。** 用 PDF 写入引擎的明确字宽作 oracle，选择同一文本段的局部字符，并检查实时选区、存储和导出三处。只测整段框、只用默认语言或只在一个 PDF 引擎内部自证，都抓不到这个问题。
 
@@ -565,7 +565,7 @@ grapheme、60 KB，所以"按 grapheme 截"本身不构成任何字节保证。
 
 ## 2026-08-02 · 一轮修复里出现了三种"绿着的假测试"
 
-**症状。** 26.7.31 审计后的修复链，每一轮都由独立复审（Codex）过一遍。四轮里
+**症状。** 26.7.31 审计后的修复链，每一轮都由独立复审过一遍。四轮里
 有三轮的主要发现不是"修错了"，而是**"测试根本没测到修的东西"**——测试是绿的，
 把修复整个撤掉它还是绿的。
 
@@ -1131,7 +1131,7 @@ aarch64-linux-android` 跑完它们就全冒进了工作副本。必须 gitignor
 ## 2026-06-14 · 退出清理：只挂 ExitRequested，drain 释放 master 才能解阻塞 reader，收割要整棵进程树
 
 **症状。** 退出 Shiori 后（尤其 Windows 任务管理器里）用户在内置终端跑的 shell
-及其前台子进程（claude / codex / node / 构建）残留、随开关/退出循环不断累积；
+及其前台子进程（终端命令与构建进程）残留、随开关/退出循环不断累积；
 macOS/Linux 同样产生孤儿。`.run()` 闭包只处理 `RunEvent::Opened`，其余事件一律
 丢弃（`let _ = (app, event);`），没有任何退出清理；终端 reader 线程阻塞在
 `reader.read()`，PTY master 与子进程都没人收。
@@ -1224,7 +1224,7 @@ failed to bundle project error running bundle_dmg.sh
 `Shiori_0.1.15_aarch64.dmg`。
 
 **根因。** Tauri 的 DMG bundler 使用 `create-dmg` 脚本，默认会跑 AppleScript 美化 Finder
-窗口布局。Codex/CI/非完整 Finder 会话里这一步容易失败；Tauri 的 `output_ok()` 又会把
+窗口布局。CI 或非完整 Finder 会话里这一步容易失败；Tauri 的 `output_ok()` 又会把
 脚本细节折叠成一个泛泛的 `failed to run bundle_dmg.sh`。这次不是 Rust 编译、app signing、
 `hdiutil` 缺失、残留挂载卷或磁盘空间问题。
 
@@ -1411,7 +1411,7 @@ Changelog: 本次提交（嵌入式 Browser 面板 + 终端 `open` 路由）。
 **症状。** 给 Shiori 右侧 rail 加“终端”入口时，第一版方案走偏了几次：
 
 - 先打开 Ghostty / Terminal.app，只是拉起了外部 app，并没有把终端嵌进 Shiori。
-- UI 还让用户先选终端应用、Shell / Claude Code / Codex、颜色配置，入口显得像设置页，
+- UI 还让用户先选终端应用、Shell / 命令行工具、颜色配置，入口显得像设置页，
   而不是“点一下就有 shell”。
 - 真正嵌入 PTY 后，zsh autosuggestion 的第一个字符变绿、后面发白；一些 ANSI 颜色
   看起来也像全被刷成白色。
@@ -1430,7 +1430,7 @@ Changelog: 本次提交（嵌入式 Browser 面板 + 终端 `open` 路由）。
    多字节字符、zsh 插件的样式序列；Rust 侧如果每个 chunk 都
    `String::from_utf8_lossy()`，跨 chunk 的多字节字符会被替换，样式序列也更容易被拆坏。
 3. **Tauri event 的 `Vec<u8>` 会变成 JSON number array。** 这能保真，但大输出时会把
-   IPC payload 放大得很厉害；构建日志、`cat` 大文件、Claude / Codex 输出都会放大主线程
+   IPC payload 放大得很厉害；构建日志、`cat` 大文件、命令行工具输出都会放大主线程
    解析压力。
 4. **React 组件生命周期不是终端生命周期。** `RightRail` 内部 tab handler 能设置
    `terminalMounted=true`，但顶部 toolbar 直接 `setRailTab("terminal")` 会绕过这个 handler。
@@ -1445,8 +1445,7 @@ Changelog: 本次提交（嵌入式 Browser 面板 + 终端 `open` 路由）。
 - 终端能力拆成窄平台抽象：前端只调用 `spawnEmbeddedTerminal` /
   `writeEmbeddedTerminal` / `resizeEmbeddedTerminal` / `killEmbeddedTerminal`；
   Rust 侧用 `portable-pty` 真正创建 PTY，xterm.js 只负责渲染和输入。
-- 默认就是打开用户 shell，不给首次入口加 Ghostty / Kitty / Terminal.app / Claude Code /
-  Codex 选择。用户需要跑 agent，就在 shell 里自己输入 `claude` / `codex`。
+- 默认就是打开用户 shell，不给首次入口加 Ghostty / Kitty / Terminal.app 的选择。用户可在 shell 里直接启动命令行工具。
 - Rust PTY 输出用 base64 chunk 过 Tauri event；前端 `atob` 成 `Uint8Array` 后用
   `TextDecoder.decode(..., { stream: true })` 喂给 xterm。这样保留 ANSI 颜色，也避免
   UTF-8 分片损坏，同时比 JSON number array 轻。
@@ -2163,16 +2162,16 @@ pdfjsLib.getDocument({
   `getDocument` 的 options，再查 font fallback。
 - 代码审读无法发现这类问题。见下一条。
 
-## 2026-04-23 · Codex 代码审读漏掉 runtime-only bug
+## 2026-04-23 · 静态审查遗漏了运行时问题
 
-**症状。** 第一轮让 codex 对 "Shiori 显示 LaTeX PDF 是否完整" 做代码审读，
+**症状。** 最初只检查了 LaTeX PDF 渲染路径的源代码，
 它的结论表里 **Visual rendering: Works**，证据引到
 `src/pdf/render/pdfjs.ts:66`、`Canvas.tsx:446`，说 "pdf.js 用 `getDocument`
 + `page.render` 走标准路径，Type 3 / CIDFont / 嵌入字体都没被绕过"。
 但用户实际打开中文 LaTeX PDF，**所有 CJK 字符全丢**（见上条复盘）。
 也就是说审结论明确错了。
 
-**根因。** Codex 只读了代码、核对 API 调用形状，**没有用一份真实文档
+**根因。** 审查只读了代码、核对 API 调用形状，**没有用一份真实文档
 在 runtime 里验证过**。`getDocument` 的调用写法规范、没有可疑的 bypass，
 但缺一个 options 就触发了静默失败。这类 bug 在源码里看不出来——你得真
 把一份 CJK PDF 喂进去才会表现。
@@ -2181,13 +2180,13 @@ pdfjsLib.getDocument({
 
 **教训 / 预防。**
 
-- 对以下类别的问题，Codex 纯代码审读的结论**必须**由用户或自动化测试
+- 对以下类别的问题，静态审查的结论**必须**由用户或自动化测试
   在真实场景里验证一次，才允许打勾：
   - 外部资源加载（字体、CMap、worker、wasm、远端 asset）
   - 平台依赖 API 行为（Tauri plugin / BrowserKit / WebKit 差异）
   - 第三方库的 "未传参数时的默认行为"——尤其是没有编译期报错的配置坑
   - 与真实文档格式的兼容性（PDF 的数千种边角、字体嵌入方式等）
-- 在派 codex 审读时写进 prompt：`对于涉及外部资源 / 平台依赖 / 第三方
+- 复核时检查运行时依赖：`对于涉及外部资源 / 平台依赖 / 第三方
   默认配置的条目，结论里要明确标注 "needs runtime verification"，不要
   直接判通过`。
 - 更广义的规则：**"API 调用形状正确" ≠ "功能正确"**。配置参数不足、默认行为
@@ -2364,7 +2363,7 @@ function sameLineRange(y1, y2, band) {
 
 - **DA-only FreeText 不是真正的外观。** 只写 `/FreeText` 的 `/Contents` 和
   `/DA`，没有 `/AP /N` appearance stream 时，各个 viewer 会自行生成外观。
-  Chrome、Preview、Acrobat/PDF Expert 的行为都不完全一致。stamp 用 Zapf
+  各类阅读器对此的处理不同。stamp 用 Zapf
   glyph 走 FreeText 尤其不稳定，Chrome 会只画出注释框/背景。
 
 - **CJK 字体路径有两个相反的坑。** 早先为了绕开

@@ -450,7 +450,7 @@ function buildPage1(
     indent: 1,
   });
 
-  // Side annotation: vertical "Page 01" rotated label, mimics arxiv.
+  // Side annotation: vertical "Page 01" rotated label.
   drawText(page, "[ shiori-paper, p. 01 ]", MARGIN_X, 60, {
     font: fonts.mono,
     size: 7,
@@ -559,7 +559,7 @@ function buildPage3(
   drawCheckmark(page, MARGIN_X - 28, PAGE_H - 116, 14);
 
   // Concluding paragraph wrapped inside a thin accent rectangle —
-  // mimics a real PDF "rectangle" annotation around an important point.
+  // draws a frame around an important point.
   cursor -= 20;
   const boxX = MARGIN_X - 6;
   const boxW = COL_W + 12;

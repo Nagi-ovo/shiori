@@ -250,7 +250,7 @@ describe("shiori-core in wasm", () => {
   }, 30_000);
 
   test("rebuilds embedded fonts a browser refuses so they draw as PDFium draws them", async () => {
-    // Bare CFF (as XeTeX and InDesign embed) and pdf-lib's TrueType subset,
+    // Bare CFF and a TrueType subset,
     // rebuilt from PDFium's glyphs, then set at the runs' own positions in a
     // new PDF and drawn by the same PDFium: what can differ is the outlines,
     // advances and metrics of the rebuilt font, not the rasteriser.

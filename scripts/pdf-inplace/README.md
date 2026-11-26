@@ -54,7 +54,7 @@ The four compact seed PDFs (10.7–21.5 kB each) remain unchanged copies from
 the native PDFium edit spike's
 `artifacts/spike/fixtures/{happy,kerning,background,subset}.pdf`.
 
-The first three already embed the **full** Foxit Serif CFF program; there is
+The first three already embed the full test CFF program; there is
 no need to download or embed a wider font. Its original source is
 `crates/shiori-core/tests/fixtures/fonts/FoxitSerif.pfb` (the extension says
 PFB but its contents are raw CFF). Source SHA-256:
@@ -65,13 +65,13 @@ Redistribution is permitted under the PDFium BSD terms in the adjacent
 Type1C descriptor, WinAnsi encoding and Times-Roman dictionary widths.
 
 The spike omitted ToUnicode. On each run, `addFixtureAsciiMappings` adds
-explicit ASCII bfchar entries to these known FoxitSerif/WinAnsi fonts before
+explicit ASCII bfchar entries to these WinAnsi fonts with the matching embedded program before
 saving each `.before.pdf`. This is extraction metadata; `canEncode` separately
 checks each code's actual CFF glyph. It enables the original intents
 `Hello World` → `World Hello Again` and
 `Tracked words here` → `Tracked words gone`: g was never shown on those pages
 but exists in the embedded program. Both before and after share this metadata.
-The tagged case wraps the same happy page in Word-style MCID marked content;
+The tagged case wraps the same happy page in MCID marked content;
 the suffix-relative case installs its declared Tc/Tw/Tz/TJ stream at runtime.
 The command above reproduces every augmented fixture in the artifact directory.
 
@@ -89,7 +89,7 @@ glyf slot, and an unsupported raw Type1 program. Original text is `San`; an
 attempt to write `Sand` refuses with the missing cluster/offset. Synthetic
 outlines are generated in code and need no third-party font. Stream identity,
 context object count, saved bytes and re-parsed content all remain unchanged;
-native PDFium and Poppler reopen/extract the refused PDFs and qpdf checks them.
+the native reader and `pdftotext` extract text from the refused PDFs and `qpdf` checks them.
 
 ## Independent native checks
 
@@ -143,7 +143,7 @@ validator tests on every platform.
 
 Raster comparison uses exact BGRA channels at 144dpi, flags=0, no tolerance
 and edit boxes declared before rendering. Zero changed pixels are allowed
-outside the box; identity cases require zero inside too. PDFium and Poppler
+outside the box; identity cases require zero inside too. The native reader and `pdftotext`
 must both extract replacement text and omit the old phrase. qpdf must be clean.
 Overflow defaults to atomic refusal with measured available/needed points.
 The harness explicitly opts in for its deliberately long compensation fixtures. This is active extraction, not
@@ -165,7 +165,7 @@ shorter/longer runs, café/em-dash/CJK mixed fallback, overflow, cross-item, quo
 and restricted-fsType refusal. Fallback cases require pdffonts to report an
 embedded subset with Unicode mapping, in addition to native path/.notdef/ink
 checks and qpdf. Expected code/font/Unicode sequences are checked exactly;
-PDFium and Poppler extracted full text is compared after collapsing inferred
+Full text from the native reader and `pdftotext` is compared after collapsing inferred
 layout whitespace. Raw extraction remains in JSON/text artifacts. Edit boxes
 are declared independently of rendering.
 

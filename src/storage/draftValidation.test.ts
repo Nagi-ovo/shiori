@@ -51,3 +51,34 @@ describe("persisted undo history", () => {
     expect(restored?.history).toHaveLength(2);
   });
 });
+
+// Validation is tested without Dexie: the IndexedDB-backed suites above lose
+// their database in the full run, and sanitizeHistory is what guards Undo.
+describe("linked text frames in persisted history", () => {
+  const chain = { id: "c1", frames: [
+    { id: "f0", pageId: "p1", rect: { x: 10, y: 60, w: 80, h: 30 } },
+    { id: "f1", pageId: "p1", rect: { x: 10, y: 10, w: 80, h: 40 } },
+  ] };
+  const edit: Overlay = {
+    type: "contentText", id: "e1", pageId: "p1", rect: { x: 10, y: 60, w: 80, h: 30 }, coverRects: [{ x: 10, y: 60, w: 80, h: 30 }],
+    originalText: "old", text: "new", fontSize: 10, color: "#000000", bold: false, align: "left", fontFamily: "sans", backgroundColor: "#ffffff", flowChainId: "c1",
+  };
+
+  test("keeps a snapshot with a chain and a legacy snapshot without one", async () => {
+    const { sanitizeHistory } = await import("./draftValidation");
+    const chained: DocumentModel = { ...modelWith([edit]), flowChains: [chain] };
+    const restored = sanitizeHistory([modelWith([]), chained]);
+    expect(restored).toHaveLength(2);
+    expect((restored[0] as DocumentModel).flowChains).toBeUndefined();
+    expect((restored[1] as DocumentModel).flowChains).toEqual([chain]);
+  });
+
+  test.each([
+    ["a frame on a page the model does not have", { ...chain, frames: [chain.frames[0], { ...chain.frames[1], pageId: "gone" }] }],
+    ["a chain with one frame", { ...chain, frames: [chain.frames[0]] }],
+    ["a frame with no area", { ...chain, frames: [chain.frames[0], { ...chain.frames[1], rect: { x: 0, y: 0, w: 0, h: 5 } }] }],
+  ])("drops a snapshot whose chain has %s before it can reach Undo", async (_label, bad) => {
+    const { sanitizeHistory } = await import("./draftValidation");
+    expect(sanitizeHistory([modelWith([]), { ...modelWith([]), flowChains: [bad] }])).toHaveLength(1);
+  });
+});

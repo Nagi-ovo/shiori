@@ -19,7 +19,7 @@ export function copySelectedOverlays(
   if (selectedIds.length === 0) return [];
   const selected = new Set(selectedIds);
   return overlays
-    .filter((o) => selected.has(o.id) && o.type !== "contentText")
+    .filter((o) => selected.has(o.id) && o.type !== "contentText" && o.type !== "sourceImageEdit")
     .map(cloneOverlay);
 }
 
@@ -30,7 +30,7 @@ export function pasteOverlays(
   now: number = Date.now(),
 ): Overlay[] {
   return clipboard
-    .filter((source) => source.type !== "contentText")
+    .filter((source) => source.type !== "contentText" && source.type !== "sourceImageEdit")
     .map((source) => {
     const copy = cloneOverlayWithId(source, makeId());
     const translated = {

@@ -11,8 +11,8 @@
 // - A kept annotation that a removed one replied to (a Text reply on a
 //   Circle) is marked with its own source id, so the rebuilt reply can find
 //   it on the copy.
-// - A kept annotation that replies to a removed one (Acrobat's Replace Text:
-//   a Caret grouped to a StrikeOut) loses /IRT and /RT at once, since the
+// - A kept annotation that replies to a removed one, such as a Caret grouped
+//   with a StrikeOut as replace-text markup, loses /IRT and /RT, since the
 //   object they name is deleted, and the mark remembers them so attach can
 //   point them at the rebuilt annotation.
 //
@@ -48,7 +48,7 @@ export type RemovedAnnotation = {
 };
 
 /** The overlay id the importer gives the annotation at `ref` (importedAnnotationOverlayId). */
-function overlayIdOf(sourceIndex: number, ref: PDFRef): string {
+export function overlayIdOf(sourceIndex: number, ref: PDFRef): string {
   return `pdf-annotation-${sourceIndex}-${pdfjsRefId(ref)}`;
 }
 

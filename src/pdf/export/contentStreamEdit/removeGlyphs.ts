@@ -37,20 +37,14 @@ export type RectFontAttribution =
   | { kind: "mixed" }
   | { kind: "font"; name: string };
 
-export type GlyphRemovalResult =
-  | {
-      changed: false;
-      removedCount: number;
-      cleanRects: boolean[];
-      rectFonts: RectFontAttribution[];
-    }
-  | {
-      changed: true;
-      bytes: Uint8Array;
-      removedCount: number;
-      cleanRects: boolean[];
-      rectFonts: RectFontAttribution[];
-    };
+type IdentifiedGlyphRemoval =
+  | { changed: false; removedCount: number }
+  | { changed: true; bytes: Uint8Array; removedCount: number; strippedEquivalentOps: readonly number[] };
+
+export type GlyphRemovalResult = IdentifiedGlyphRemoval & {
+  cleanRects: boolean[];
+  rectFonts: RectFontAttribution[];
+};
 
 const HIT_EPSILON = 0.01;
 
@@ -251,7 +245,7 @@ function byBaseline(hugged: GlyphPlacement[]): GlyphPlacement[][] {
 // rect, so a cover over a much larger glyph (a heading, a watermark) keeps
 // it, as it keeps a taller glyph overlapping the run, glyphs on other lines
 // and, when two lines span it, both.
-function removalsByRect(
+export function removalsByRect(
   glyphs: GlyphPlacement[],
   coverRects: PdfRect[],
 ): Set<GlyphPlacement>[] {
@@ -341,6 +335,8 @@ type TjPiece =
 
 class TjBuilder {
   private pieces: TjPiece[] = [];
+  private number: (value:number)=>string;
+  constructor(number=formatNumber){this.number=number;}
 
   keepBytes(source: Uint8Array, start: number, end: number): void {
     if (end <= start) return;
@@ -365,7 +361,7 @@ class TjBuilder {
       .map((piece) =>
         piece.kind === "bytes"
           ? formatHexString(new Uint8Array(piece.bytes))
-          : formatNumber(piece.value),
+          : this.number(piece.value),
       )
       .filter((item) => item !== "0");
     return `[${items.join(" ")}] TJ`;
@@ -389,9 +385,9 @@ function rebuildStringItem(
 // Rebuilds one show op (Tj / TJ / ' / ") with its removed glyphs excised.
 // The quote operators carry side effects (line advance, " sets Tw/Tc), which
 // are re-emitted as explicit operators before the TJ.
-function rebuildShowOp(op: ContentOp, removed: GlyphPlacement[]): string {
+function rebuildShowOp(op: ContentOp, removed: GlyphPlacement[], number=formatNumber): string {
   const byOffset = [...removed].sort((a, b) => a.byteOffset - b.byteOffset);
-  const builder = new TjBuilder();
+  const builder = new TjBuilder(number);
 
   if (op.operator === "TJ") {
     const array = op.operands[0]!;
@@ -426,7 +422,7 @@ function rebuildShowOp(op: ContentOp, removed: GlyphPlacement[]): string {
       if (aw.kind !== "number" || ac.kind !== "number") {
         throw new Error('malformed " operands');
       }
-      return `${formatNumber(aw.value)} Tw ${formatNumber(ac.value)} Tc T* ${builder.serialize()}`;
+      return `${number(aw.value)} Tw ${number(ac.value)} Tc T* ${builder.serialize()}`;
     }
     default:
       throw new Error(`not a show op: ${op.operator}`);
@@ -513,8 +509,21 @@ export function removeCoveredGlyphs(
     glyphs,
     coverRects,
   );
+  const rewritten = removeIdentifiedGlyphs(source, ops, hits, renameProperties);
+  return {...rewritten, cleanRects, rectFonts};
+}
+
+/** Exact immutable glyph addresses, independent of any rectangle. Reuses
+ * the compensation/partial-TJ rewrite so untargeted codes do not move. */
+export function removeIdentifiedGlyphs(
+  source: Uint8Array, ops: ContentOp[], hits: readonly GlyphPlacement[],
+  renameProperties?: RenameProperties,
+  // Approximate retypesetting needs sub-micro-point compensation identity.
+  number?: (value:number)=>string,
+  keepProperties?: ReadonlySet<number>,
+): IdentifiedGlyphRemoval {
   if (hits.length === 0) {
-    return { changed: false, removedCount: 0, cleanRects, rectFonts };
+    return { changed: false, removedCount: 0 };
   }
 
   const byOp = new Map<number, GlyphPlacement[]>();
@@ -529,12 +538,19 @@ export function removeCoveredGlyphs(
   for (const [opIndex, removed] of byOp) {
     replacements.set(
       opIndex,
-      encoder.encode(rebuildShowOp(ops[opIndex]!, removed)),
+      encoder.encode(rebuildShowOp(ops[opIndex]!, removed, number)),
     );
   }
+  // Indices refer to the original stream's BDC occurrences. A shared named
+  // property dictionary can still be in use at other occurrences.
+  const strippedEquivalentOps: number[] = [];
   for (const opIndex of new Set(hits.flatMap((hit) => hit.markedContent))) {
+    if (keepProperties?.has(opIndex)) continue;
     const stripped = stripAltText(source, ops[opIndex]!, renameProperties);
-    if (stripped) replacements.set(opIndex, stripped);
+    if (stripped) {
+      replacements.set(opIndex, stripped);
+      strippedEquivalentOps.push(opIndex);
+    }
   }
 
   const chunks: Uint8Array[] = [];
@@ -553,7 +569,6 @@ export function removeCoveredGlyphs(
     changed: true,
     bytes: concatBytes(chunks),
     removedCount: hits.length,
-    cleanRects,
-    rectFonts,
+    strippedEquivalentOps,
   };
 }

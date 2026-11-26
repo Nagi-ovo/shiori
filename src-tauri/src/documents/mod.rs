@@ -141,8 +141,7 @@ pub(crate) async fn open_pdf_dialog<R: Runtime>(
     enforce_main_webview(&caller)?;
     enforce_runtime_guard()?;
     // Page insertion is intentionally single-source. A PDF-only native panel
-    // prevents a Word/Markdown selection from reaching the merge boundary and
-    // matches Preview/PDF Expert's "pages from file" interaction.
+    // passes one PDF to the page selection flow.
     let picked = app
         .dialog()
         .file()

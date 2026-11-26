@@ -26,7 +26,7 @@
 
 ### Annotation import and export
 
-- **Comments on annotations from Zotero, Preview and Acrobat are no longer wiped on export.** Comments on highlights, underlines, strikeouts, rectangles and ink all survive.
+- **Comments on imported annotations are no longer wiped on export.** Comments on highlights, underlines, strikeouts, rectangles and ink all survive.
 - **Hidden, locked and non-printing annotations stay that way after export.** Hidden annotations no longer become visible, and sticky notes keep their icon, open state, review state and rotation.
 - **Text boxes and translucent marks from other apps look the way they did there.** Text boxes keep their fill, border and opacity on screen and in exports, and translucent ink, rectangles, underlines and strikeouts no longer turn opaque.
 - **Annotation authors and replies come through export intact.** Chinese, Japanese and other non-Latin author names no longer turn into garbage, and replies stay attached to the annotation they answer.
@@ -412,7 +412,7 @@
 ## 0.1.25 · 2026-07-07
 
 ### New
-- **Whole-paragraph text editing.** With the text tool, click a paragraph and the whole block becomes an edit box (original line spacing and line starts preserved) — edit it directly, PDF Expert style. Figures and math paragraphs are skipped automatically with a short note, and drag-selecting a smaller range still works.
+- **Whole-paragraph text editing.** With the text tool, click a paragraph and the whole block becomes an edit box (original line spacing and line starts preserved) and can be edited directly. Figures and math paragraphs are skipped automatically with a short note, and drag-selecting a smaller range still works.
 - **Undo history survives across sessions.** Drafts now save the last 50 edit steps too, so you can close the app, reopen the same PDF, and still step back through your earlier edits.
 
 ### Improved

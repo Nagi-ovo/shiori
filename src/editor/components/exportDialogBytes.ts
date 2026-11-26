@@ -1,6 +1,11 @@
+import { createContentTextRenderer } from '../../pdf/engine/contentTextRaster';
+import { evaluateAcceptance, type AcceptancePolicy } from "../../pdf/export/acceptance";
+import { exportCandidateKeyFromSourceKey } from "../../pdf/export/candidateKey";
+import { snapshotKeyFromBytes } from "../../shared/snapshotKey";
 import type {
   DocumentFilesPolicy,
   ExportMode,
+  ExportOptions,
   ExportResult,
 } from "../../pdf/export/exportPdf";
 import type { QualityV } from "./exportPrefs";
@@ -8,6 +13,7 @@ import {
   cjkJpExportFontUrl,
   cjkScExportFontUrl,
 } from "../../pdf/export/fontAssets";
+import { appPdfEngine } from "../../pdf/engine/appEngine";
 import type { PdfDocument } from "../../pdf/engine/types";
 import { exportCompactRasterPdf } from "../export/compactRasterPdfAdapter";
 import type { ExportSourceEncryption } from "../../pdf/export/encryptedSource";
@@ -19,6 +25,18 @@ import { deniedEdits } from "../../pdf/security/permissions";
 type ExportPdfModule = typeof import("../../pdf/export/exportPdf");
 type ExportPdfFunction = ExportPdfModule["exportPdf"];
 
+const renderContentText = createContentTextRenderer(appPdfEngine);
+const glyphReaders = new WeakMap<PdfDocument, NonNullable<ExportOptions["readSourceGlyphs"]>>();
+
+function sourceGlyphReader(doc: PdfDocument): NonNullable<ExportOptions["readSourceGlyphs"]> {
+  let read = glyphReaders.get(doc);
+  if (!read) {
+    read = async (index) => (await appPdfEngine.pageText(doc, index)).glyphs;
+    glyphReaders.set(doc, read);
+  }
+  return read;
+}
+
 export type ExportPreviewRequest = {
   doc: PdfDocument;
   originalBytes: Uint8Array;
@@ -29,13 +47,44 @@ export type ExportPreviewRequest = {
   mode: ExportMode;
   documentFiles: Exclude<DocumentFilesPolicy, "auto">;
   unicodeFontErrorMessage: string;
+  acceptance?: AcceptancePolicy;
 };
+
+type ExportCandidateRequest = ExportPreviewRequest & { quality: QualityV };
+
+// Reopening an encrypted source creates new callbacks every time. The opened
+// reader and its credentials identify that source across those wrappers.
+const sourceSessions = new WeakMap<PdfDocument, Map<string, number>>();
+let nextSession = 0;
+
+function sourceSession({ doc, password = "" }: ExportPreviewRequest): number {
+  let sessions = sourceSessions.get(doc);
+  if (!sessions) {
+    sessions = new Map();
+    sourceSessions.set(doc, sessions);
+  }
+  const existing = sessions.get(password);
+  if (existing !== undefined) return existing;
+  const id = ++nextSession;
+  sessions.set(password, id);
+  return id;
+}
+
+export function exportDialogCandidateKey(request: ExportCandidateRequest): string {
+  const sourceKey = snapshotKeyFromBytes(request.originalBytes);
+  return exportCandidateKeyFromSourceKey(
+    `${sourceKey}:${sourceSession(request)}`,
+    request.model,
+    exportOptions(request),
+    request.quality === "compact" ? request.doc : undefined,
+  );
+}
 
 async function exportCompactPdf(
   doc: PdfDocument,
   originalBytes: Uint8Array,
   model: Parameters<ExportPdfFunction>[1],
-  options: Parameters<ExportPdfFunction>[2] & { mode: ExportMode },
+  options: ExportOptions & { mode: ExportMode; quality: "compact" },
 ): Promise<ExportResult> {
   const {
     assertExportIntegrity,
@@ -66,6 +115,9 @@ async function exportCompactPdf(
     sourceEncryption: capturing,
     quality: "standard",
   });
+  // Keep the validated vector result with rewritten source paints and any
+  // refusals. Compact rasterization draws from the open source pages.
+  if (vector.contentTextOutcomes?.length || vector.sourceImageOutcomes?.length) return vector;
   // A raster copy replaces every page's content and its annotations.
   if (
     encryption &&
@@ -110,6 +162,7 @@ async function exportCompactPdf(
   }
   // Both sides compared as they would be saved: encryption adds a little.
   if (rasterBytes.byteLength >= vector.bytes.byteLength) return vector;
+  let bytes: Uint8Array;
   try {
     // The raster path builds its own PDF outside exportPdf(), so it never ran
     // the round-trip guard. Validate it here and fall back to the (already
@@ -118,54 +171,56 @@ async function exportCompactPdf(
     // Rasterized pages carry text as pixels — nothing is lost to font
     // fallback on this path. An encrypted source's raster leaves encrypted
     // like the source, or not at all.
-    const bytes = encryption
+    bytes = encryption
       ? await encryption.encrypt(rasterBytes, model.pages.length)
       : rasterBytes;
-    return { bytes, lostChars: 0 };
   } catch (err) {
     console.warn("Compact raster integrity check failed; using standard PDF.", err);
     return vector;
   }
+  const candidate = { bytes, lostChars: 0 };
+  return {
+    ...candidate,
+    ...(vector.sourceImageOutcomes && { sourceImageOutcomes: vector.sourceImageOutcomes }),
+    acceptance: evaluateAcceptance(candidate, options.acceptance ?? "review"),
+  };
 }
 
-export async function exportBytesForQuality({
-  doc,
-  originalBytes,
-  password,
-  model,
-  mode,
-  documentFiles,
-  quality,
-  unicodeFontErrorMessage,
-}: ExportPreviewRequest & { quality: QualityV }): Promise<ExportResult> {
-  return withExportEncryption(
+export async function exportBytesForQuality(
+  request: ExportCandidateRequest,
+  key = exportDialogCandidateKey(request),
+): Promise<ExportResult> {
+  const { doc, originalBytes, password, model, quality } = request;
+  const result = await withExportEncryption(
     { doc, bytes: originalBytes, password },
     async (sourceEncryption) => {
-      const options = {
-        ...exportOptions(mode, documentFiles, unicodeFontErrorMessage),
-        sourceEncryption,
-      };
+      const options = { ...exportOptions(request), sourceEncryption };
       if (quality === "compact") {
-        return exportCompactPdf(doc, originalBytes, model, options);
+        return exportCompactPdf(doc, originalBytes, model, { ...options, quality });
       }
       const { exportPdf } = await loadExportPdfModule();
-      return exportPdf(originalBytes, model, { ...options, quality });
+      return exportPdf(originalBytes, model, options);
     },
   );
+  // Both compact paths and the vector writer report on their selected bytes.
+  // Bind the verdict to the dialog request that produced those bytes.
+  return { ...result, acceptance: { ...result.acceptance, key } };
 }
 
-function exportOptions(
-  mode: ExportMode,
-  documentFiles: Exclude<DocumentFilesPolicy, "auto">,
-  unicodeFontErrorMessage: string,
-): Parameters<ExportPdfFunction>[2] & { mode: ExportMode } {
+function exportOptions({
+  acceptance, doc, mode, quality, documentFiles, unicodeFontErrorMessage,
+}: ExportCandidateRequest): ExportOptions & { mode: ExportMode } {
   return {
+    acceptance,
     mode,
+    quality,
     documentFiles,
     unicodeFontUrl: cjkScExportFontUrl,
     unicodeJpFontUrl: cjkJpExportFontUrl,
     requireUnicodeFont: true,
     unicodeFontErrorMessage,
+    renderContentText,
+    readSourceGlyphs: sourceGlyphReader(doc),
   };
 }
 

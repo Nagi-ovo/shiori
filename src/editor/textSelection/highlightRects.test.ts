@@ -322,10 +322,10 @@ describe("text selection highlight rect helpers", () => {
       },
       page,
       2,
-      new Map([["g_d0_f2", "FUSIJU+NimbusRomNo9L-Regu"]]),
+      new Map([["g_d0_f2", "FUSIJU+SampleText-Regu"]]),
     );
 
-    expect(runs[0]?.fontName).toBe("FUSIJU+NimbusRomNo9L-Regu");
+    expect(runs[0]?.fontName).toBe("FUSIJU+SampleText-Regu");
     expect(runs[0]?.fontFamily).toBe("sans-serif");
   });
 

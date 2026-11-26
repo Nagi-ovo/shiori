@@ -44,7 +44,7 @@ async function roundTrip(annots: Record<string, unknown>[]) {
   return { overlays, exported };
 }
 
-// An Acrobat callout: its label, the leader to what it points at.
+// A callout with a label and a leader to its target.
 const callout = {
   Subtype: "FreeText", IT: "FreeTextCallout", Rect: [60, 120, 260, 220], RD: [100, 30, 10, 20],
   CL: [90, 145, 130, 165, 160, 165], LE: "OpenArrow", Contents: PDFString.of("Callout text"),

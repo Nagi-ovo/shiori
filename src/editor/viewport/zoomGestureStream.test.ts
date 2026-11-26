@@ -378,7 +378,7 @@ describe("zoomGestureStream: double tap", () => {
   });
 });
 
-describe("zoomGestureStream: teardown", () => {
+describe("zoomGestureStream: cleanup", () => {
   test("dispose mid-gesture cancels the preview and nothing commits afterwards", () => {
     const h = harness();
     h.stream.handle({ type: "gestureStart", point: at, inside: true });

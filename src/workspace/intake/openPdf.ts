@@ -26,7 +26,7 @@ import type {
   WorkspaceRuntimeTab,
 } from "../types";
 import { finalizePdfOpen } from "./finalizePdfOpen";
-import { chooseDraftRecovery } from "./recovery";
+import { chooseDraftRecovery, restoredDraftModel } from "./recovery";
 import { abandonOpen, findExistingTab, openClaim } from "./shared";
 import type { IntakePorts, PdfOpenInput, PdfOpenOptions } from "./types";
 
@@ -283,6 +283,7 @@ async function runPdfOpen(
         lastTouched: recovery.lastTouched,
         draftModelOverlays: recovery.overlays,
         draftModelPages: recovery.pages,
+        ...(recovery.flowChains ? { draftModelFlowChains: recovery.flowChains } : null),
         draftHistory: recovery.history,
         completedLiveOperationIds: recovery.completedLiveOperationIds,
       };
@@ -292,7 +293,7 @@ async function runPdfOpen(
       // aside without deleting it.
       const originalModel = targetStore.getState().model;
       targetStore.getState().commitRestoredDraft(
-        { pages: recoveryDraft.draftModelPages, overlays: recoveryDraft.draftModelOverlays },
+        restoredDraftModel(recoveryDraft),
         recoveryDraft.draftHistory,
         recoveryDraft.completedLiveOperationIds,
       );

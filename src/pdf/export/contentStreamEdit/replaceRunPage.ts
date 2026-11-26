@@ -1,13 +1,16 @@
 // Thin pdf-lib boundary. Decode inherited page content/resources, compile
 // completely, then install a NEW stream on this page only. Never mutate fonts
 // or shared content objects; refusal does not allocate any indirect objects.
-import { decodePDFRawStream, PDFArray, PDFDict, PDFName, PDFRawStream, PDFRef, type PDFPage } from 'pdf-lib';
+import { decodePDFRawStream, PDFArray, PDFDict, PDFName, PDFNumber, PDFRawStream, PDFRef, type PDFPage } from 'pdf-lib';
+import type {RunEnvironment} from './textSafety';
 import { coalesceContentStreams } from './tokenizer';
 import { contentFontInfo } from './glyphWidths';
-import { fontCoverageFromDict } from '../fontCoverage/pdfLibAdapter';
-import type { FontCoverage } from '../fontCoverage/types';
+import { fontCoverageFromDict, fontInputFromDict } from '../fontCoverage/pdfLibAdapter';
+import { stage5Type1, type Type1Options } from '../fontCoverage/type1Support';
+import { assertType1Source, surgicalType1Encoder } from '../fontCoverage/type1Surgical';
 import { pageRunPlan, type PageRunPlan } from './pageRunPlan';
 import { runToUnicode } from './runToUnicode';
+import { recoverRunUnicode } from './runFontUnicode';
 import { replaceRuns, sourceFingerprint, type Refusal, type ResolvedRunFont, type Overflow } from './replaceRun';
 
 export type PageRunResult = ({ ok: true; bytes: Uint8Array } | (Refusal & { bytes?: Uint8Array })) & { overflow?: Overflow };
@@ -18,39 +21,58 @@ function decoded(raw: unknown): Uint8Array {
 }
 export function inspectRunPage(page: PDFPage):
   | { ok: true; bytes: Uint8Array; sourceHash: string }
-  | { ok: false; reason: string } {
+  | { ok: false; code:'unsupported-state'; reason: string } {
   try {
     const raw = page.node.Contents();
     const parts = raw instanceof PDFArray
       ? Array.from({ length: raw.size() }, (_, i) => decoded(raw.lookup(i))) : raw ? [decoded(raw)] : [];
     const bytes = parts.length ? coalesceContentStreams(parts) : new Uint8Array();
     return { ok: true, bytes, sourceHash: sourceFingerprint(bytes) };
-  } catch (e) { return { ok: false, reason: String(e) }; }
+  } catch(e){if(e instanceof TypeError || e instanceof ReferenceError)throw e;return{ok:false,code:'unsupported-state',reason:String(e)};}
 }
-export function resolveRunFonts(page: PDFPage): ResolvedRunFont[] {
+export function resolveRunFonts(page: PDFPage, options: Type1Options = {}): ResolvedRunFont[] {
   const dict = page.node.Resources()?.lookupMaybe(PDFName.of('Font'), PDFDict);
   if (!dict) return [];
-  const coverageByObject = new Map<PDFDict, FontCoverage>();
+  const encodingByObject = new Map<PDFDict, Pick<ResolvedRunFont, 'canEncode' | 'assertSource' | 'unicodeByCode' | 'substituteOnly'>>();
   return dict.entries().flatMap(([name, ref]) => {
     if (!(ref instanceof PDFRef)) return [];
     const font = dict.context.lookup(ref);
     if (!(font instanceof PDFDict)) return [];
-    const info = contentFontInfo(font);
+    const checked = contentFontInfo(font, options);
+    // Type1 proof failures only govern edits. Keep explicit PDF widths for
+    // placement, including untargeted fonts before the addressed show.
+    const info = checked.ok ? checked : contentFontInfo(font,{sourceReuse:false,standard14Afm:options.standard14Afm});
     if (!info.ok) return [];
     const raw = font.lookup(PDFName.of('ToUnicode'));
-    if (!(raw instanceof PDFRawStream)) return [];
-    const mapping = runToUnicode(new TextDecoder('latin1').decode(decoded(raw)), info.bytesPerCode);
-    if (!mapping) return [];
-    let coverage = coverageByObject.get(font);
-    if (!coverage) {
-      coverage = fontCoverageFromDict(font);
-      if (coverage.verification === 'unverified') {
+    // Source labels may be recovered independently of replacement coverage.
+    // Rewritten text still requires the original font's ToUnicode proof.
+    const mapping = raw instanceof PDFRawStream
+      ? runToUnicode(new TextDecoder('latin1').decode(decoded(raw)), info.bytesPerCode)
+      : new Map<number, string>();
+
+    let encoding = encodingByObject.get(font);
+    if (!encoding) {
+      const coverage = fontCoverageFromDict(font, options);
+      // Global parser failures have no source proof. Keep their legacy
+      // unverified encoder so opting in cannot block bundled-font fallback.
+      // Parsed per-code failures still guard identity/metrics before reuse.
+      const type1Reuse = (options.sourceReuse ?? stage5Type1.sourceReuse) && coverage.subtype === 'Type1'
+        && coverage.mappings !== undefined && !coverage.failures?.some(d => !d.hex);
+      const sourceEncoding: Pick<ResolvedRunFont, 'canEncode' | 'assertSource'> = type1Reuse ? {
+        canEncode: surgicalType1Encoder(coverage),
+        assertSource: codes => assertType1Source(coverage, codes),
+      } : { canEncode: coverage.canEncode };
+      if (!type1Reuse && coverage.verification === 'unverified') {
         const reason = coverage.missing.find(m => !m.code)?.reason ?? 'source font coverage unverified';
-        coverage.canEncode = text => ({ ok: false, reason, firstMissing: new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)[Symbol.iterator]().next().value?.segment ?? '', offset: 0 });
+        sourceEncoding.canEncode = text => ({ ok: false, reason, firstMissing: new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)[Symbol.iterator]().next().value?.segment ?? '', offset: 0 });
       }
-      coverageByObject.set(font, coverage);
+      encoding = {
+        ...recoverRunUnicode(fontInputFromDict(font), info.bytesPerCode, mapping, sourceEncoding, options),
+        ...(coverage.failures?.some(failure => failure.code === 'font-program-missing') ? { substituteOnly: true } : {}),
+      };
+      encodingByObject.set(font, encoding);
     }
-    return [{ ...info, resourceName: name.decodeText(), objectId: ref.toString(), unicodeByCode: mapping, canEncode: coverage.canEncode }];
+    return [{ ...info, resourceName: name.decodeText(), objectId: ref.toString(), ...encoding }];
   });
 }
 export function markedContentProperties(page: PDFPage): Map<string, readonly string[] | null> {
@@ -66,15 +88,32 @@ export function markedContentProperties(page: PDFPage): Map<string, readonly str
   } catch { /* An unresolvable /Properties dictionary leaves named spans unsafe. */ }
   return resolved;
 }
-export function replaceRunPage(page: PDFPage, plan: PageRunPlan): PageRunResult {
+export function runPageEnvironment(page:PDFPage):RunEnvironment {
+  const markedContentMcids=new Map<string,number>();
+  try{
+    const properties=page.node.Resources()?.lookupMaybe(PDFName.of('Properties'),PDFDict);
+    for(const[name,raw]of properties?.entries()??[]){
+      try{
+        const dict=properties!.context.lookup(raw),id=dict instanceof PDFDict?dict.lookupMaybe(PDFName.of('MCID'),PDFNumber)?.asNumber():undefined;
+        if(id!==undefined&&Number.isSafeInteger(id)&&id>=0)markedContentMcids.set(name.decodeText(),id);
+      }catch{ /* Unresolved MCIDs cannot authorize a tagged rewrite. */ }
+    }
+  }catch{ /* Unrelated plain text must survive malformed /Properties. */ }
+  const extGStates=new Map<string,{setsFont:boolean;safe:boolean}>();
+  const allowed=new Set(['Type','Font','LW','LC','LJ','ML','D','RI','OP','op','OPM','CA','ca','AIS','TK','BM','SA','SM','TR','TR2','BG','BG2','UCR','UCR2','HT','FL','SMask']);
+  const states=page.node.Resources()?.lookupMaybe(PDFName.of('ExtGState'),PDFDict);
+  for(const[name,raw]of states?.entries()??[]){const dict=states!.context.lookup(raw);if(dict instanceof PDFDict)extGStates.set(name.decodeText(),{setsFont:dict.has(PDFName.of('Font')),safe:dict.keys().every(k=>allowed.has(k.decodeText()))});}
+  return {markedContentProperties:markedContentProperties(page),markedContentMcids,extGStates};
+}
+export function replaceRunPage(page: PDFPage, plan: PageRunPlan, options: Type1Options = {}): PageRunResult {
   const source = inspectRunPage(page);
   if (!source.ok) return source;
   try {
-    const result = replaceRuns(source.bytes, resolveRunFonts(page), { ...pageRunPlan(plan), markedContentProperties: markedContentProperties(page) });
+    const result = replaceRuns(source.bytes, resolveRunFonts(page, options), { ...pageRunPlan(plan), ...runPageEnvironment(page) });
     if (result.ok && result.bytes !== source.bytes) {
       const stream = page.doc.context.flateStream(result.bytes);
       page.node.set(PDFName.of('Contents'), page.doc.context.register(stream));
     }
     return result;
-  } catch (e) { return { ok: false as const, bytes: source.bytes, reason: String(e) }; }
+  } catch (e) { if(e instanceof TypeError || e instanceof ReferenceError)throw e;return {ok:false,code:"unsupported-state",bytes:source.bytes,reason:String(e)}; }
 }

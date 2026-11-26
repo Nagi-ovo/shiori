@@ -126,6 +126,15 @@ export class ShioriTextLayer {
     container.style.setProperty("--min-font-size", String(ShioriTextLayer.#minFontSize));
   }
 
+  // DOM tests replace canvas and layout methods on a shared document.
+  static resetMeasurementsForTest(): void {
+    for (const context of this.#contexts.values()) context?.canvas?.remove();
+    this.#contexts.clear();
+    this.#contextFonts = new WeakMap();
+    this.#ascentCache.clear();
+    this.#minFontSize = null;
+  }
+
   get textDivs(): HTMLElement[] {
     return this.#textDivs;
   }

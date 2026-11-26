@@ -23,6 +23,8 @@ export function exportSnapshotKey(model: DocumentModel): string {
     JSON.stringify({
       pages: model.pages,
       overlays: model.overlays,
+      // Only when present, so snapshots taken before chains keep their key.
+      ...(model.flowChains?.length ? { flowChains: model.flowChains } : null),
     }),
   );
 }

@@ -4,6 +4,7 @@ import {
   filterExistingCollapsedNoteIds,
 } from "../editor/overlays/notePresentation";
 import type { DocumentModel } from "../pdf/model/types";
+import { restoredDraftModel } from "./intake/recovery";
 import type { PendingRestore, WorkspaceRuntimeTab } from "./types";
 import type { WorkspaceStore } from "./workspaceStore";
 
@@ -62,7 +63,7 @@ export function restoreDraft({ store, editor }: DraftDecisionPorts): void {
   if (!draft) return;
   const target = editor();
   target.getState().commitRestoredDraft(
-    { pages: draft.draftModelPages, overlays: draft.draftModelOverlays },
+    restoredDraftModel(draft),
     draft.draftHistory,
     draft.completedLiveOperationIds,
   );

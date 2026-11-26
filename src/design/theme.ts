@@ -106,9 +106,7 @@ export const LIGHT_PALETTE: ThemePalette = createPalette({
 }, "#3388bb");
 
 // Cool-dark palette. The PDF canvas itself stays whatever the engine renders
-// (usually white) — only the app chrome goes dark. That creates some
-// contrast shock at the page edges, which is the same compromise Acrobat
-// Dark Mode ships with; inverting the page render is out of scope for v1.
+// (usually white). The dark palette changes the controls around the page.
 // Accent brightens slightly for legibility on a dark surface.
 export const DARK_PALETTE: ThemePalette = createPalette({
   paper: "#111418",

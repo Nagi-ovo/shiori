@@ -40,11 +40,10 @@ export function selectedOverlayActions(
     duplicateSelected: () => {
       const { selectedIds, model } = get();
       if (selectedIds.length === 0) return;
-      // contentText edits are excluded: they are pinned to the source glyphs
-      // their covers redact, so a duplicate offset by (+12,−12) would excise
-      // the wrong text and paint its replacement over unrelated content.
+      // Source edits belong to the specific glyphs or image paint they edit.
+      // A duplicate would address the same source from a different location.
       const selected = model.overlays.filter(
-        (o) => selectedIds.includes(o.id) && o.type !== "contentText",
+        (o) => selectedIds.includes(o.id) && o.type !== "contentText" && o.type !== "sourceImageEdit",
       );
       if (selected.length === 0) return;
       // The same offset the clipboard paste applies (overlays/clipboard.ts),
@@ -92,7 +91,7 @@ export function selectedOverlayActions(
       if (selectedIds.length === 0) return;
       set({
         model: {
-          pages: model.pages,
+          ...model,
           overlays: nudgeOverlays(
             model.overlays,
             selectedIds,

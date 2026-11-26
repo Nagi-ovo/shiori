@@ -276,8 +276,8 @@ function importFreeText(
 ): StampOverlay | TextOverlay | null {
   const rect = rectFromAnnot(annot);
   if (!rect) return null;
-  // A FreeText's own /Rotate (Acrobat writes the page's, so the text reads
-  // upright on a rotated page) turns its content within /Rect. Shiori keeps
+  // A FreeText's /Rotate turns its content within /Rect. A matching page
+  // rotation keeps the box's text upright on the rotated page. Shiori keeps
   // the box unrotated and turns it by `angle` (clockwise, the opposite sense)
   // about its centre, so a quarter turn swaps the box's sides there.
   // Without one, a turn its appearance's /Matrix gives it (Shiori's export).
@@ -330,7 +330,7 @@ function importFreeText(
 }
 
 // A text box's fill (/C, its background on FreeText), frame (/BS width; the
-// frame takes the text colour, as Acrobat draws it) and /CA. Text colour
+// frame takes the text colour) and /CA. Text colour
 // comes from the appearance or /DA, so a fill never doubles as it.
 function freeTextBox(annot: PdfjsAnnotation): Partial<TextOverlay> {
   const box: Partial<TextOverlay> = {};

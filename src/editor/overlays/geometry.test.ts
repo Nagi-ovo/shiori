@@ -60,7 +60,7 @@ describe("overlay geometry helpers", () => {
       ...sampleOverlays()[1]!,
       origin: "imported" as const,
       importedAt: 1_700_000_000_000,
-      sourceAuthor: "Acrobat reviewer",
+      sourceAuthor: "Source reviewer",
       sourceCreatedAt: 1_600_000_000_000,
       sourceModifiedAt: 1_650_000_000_000,
       sourceInReplyToId: "pdf-annotation-0-42",
@@ -77,7 +77,7 @@ describe("overlay geometry helpers", () => {
     expect(copy.sourceInReplyToId).toBeUndefined();
     expect(copy.sourceReplyType).toBeUndefined();
     // The original is untouched.
-    expect(source.sourceAuthor).toBe("Acrobat reviewer");
+    expect(source.sourceAuthor).toBe("Source reviewer");
   });
 
   test("rotates drag deltas from display space into PDF space", () => {

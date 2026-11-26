@@ -1,6 +1,5 @@
 import type {
   CalloutOverlay,
-  ContentTextOverlay,
   HighlightOverlay,
   ImageOverlay,
   InkOverlay,
@@ -159,13 +158,9 @@ export function drawThumbnailOverlays(
     ctx.beginPath();
     ctx.rect(0, 0, viewport.width, viewport.height);
     ctx.clip();
+    // An edit of the page's own text is never painted here: thumbnailPaint
+    // renders the shared writer's page for it, so no box covers the artwork.
     for (const overlay of overlays) {
-      if (overlay.type === "contentText") {
-        drawContentText(ctx, page, overlay, viewport.scale);
-      }
-    }
-    for (const overlay of overlays) {
-      if (overlay.type === "contentText") continue;
       if (overlay.type === "highlight") drawHighlight(ctx, page, overlay, viewport.scale);
       else if (overlay.type === "underline") drawUnderline(ctx, page, overlay, viewport.scale);
       else if (overlay.type === "strikethrough") drawStrikeOut(ctx, page, overlay, viewport.scale);
@@ -365,28 +360,6 @@ function withRotatedBox(
   ctx.restore();
 }
 
-function drawContentText(
-  ctx: CanvasRenderingContext2D,
-  page: PageModel,
-  overlay: ContentTextOverlay,
-  scale: number,
-): void {
-  ctx.save();
-  ctx.fillStyle = overlay.backgroundColor;
-  for (const rect of overlay.coverRects) {
-    const d = pdfRectToDisplay(
-      rect,
-      page.widthPt,
-      page.heightPt,
-      page.rotation,
-      scale,
-    );
-    ctx.fillRect(d.x, d.y, d.w, d.h);
-  }
-  ctx.restore();
-  drawText(ctx, page, overlay, scale);
-}
-
 function drawCallout(
   ctx: CanvasRenderingContext2D,
   page: PageModel,
@@ -492,30 +465,25 @@ function drawCallout(
 function drawText(
   ctx: CanvasRenderingContext2D,
   page: PageModel,
-  overlay: TextOverlay | ContentTextOverlay | CalloutOverlay,
+  overlay: TextOverlay,
   scale: number,
 ): void {
   if (!overlay.text) return;
-  // An edit of the page's own text stays square to the glyphs it covers,
-  // as in export (overlayDraw.ts), whatever angle it carries.
-  const angle = overlay.type === "text" ? overlay.angle : 0;
-  withRotatedBox(ctx, page, overlay.rect, angle, scale, (d) => {
+  withRotatedBox(ctx, page, overlay.rect, overlay.angle, scale, (d) => {
     drawTextInDisplayRect(ctx, overlay, d, scale);
   });
 }
 
 function drawTextInDisplayRect(
   ctx: CanvasRenderingContext2D,
-  overlay: TextOverlay | ContentTextOverlay | CalloutOverlay,
+  overlay: TextOverlay | CalloutOverlay,
   d: PdfRect,
   scale: number,
   includeDefaultPadding = true,
 ): void {
   const fontSize = Math.max(5.5, overlay.fontSize * scale);
-  const isContentEdit = overlay.type === "contentText";
-  const lineHeight = fontSize * (isContentEdit ? 1.2 : 1.25);
-  const padding =
-    isContentEdit || !includeDefaultPadding ? 0 : Math.max(1, 3 * scale);
+  const lineHeight = fontSize * 1.25;
+  const padding = includeDefaultPadding ? Math.max(1, 3 * scale) : 0;
   const maxLines = Math.max(1, Math.floor((d.h - padding * 2) / lineHeight));
 
   ctx.save();

@@ -229,3 +229,18 @@ function drawnPoints(page: PageModel, overlay: Overlay, only?: string): Point[] 
   drawThumbnailOverlays(ctx, page, [overlay], viewport);
   return points;
 }
+
+// An edit of the page's own text is drawn by the shared writer into the page
+// raster; the compositor must not paint a box or text of its own for it.
+describe("thumbnail compositor and page text edits", () => {
+  test("paints no cover and no text for a contentText overlay", () => {
+    const page: PageModel = { ...blankPage, widthPt: 300, heightPt: 200 };
+    const edit: Overlay = {
+      type: "contentText", id: "e", pageId: "blank", rect: { x: 49, y: 98, w: 32, h: 13 },
+      coverRects: [{ x: 49, y: 98, w: 32, h: 13 }], originalText: "ABCDE", text: "AXCDE",
+      fontSize: 10, color: "#000000", bold: false, align: "left", fontFamily: "mono", backgroundColor: "#e63333",
+    };
+    expect(drawnPoints(page, edit, "fillRect")).toEqual([]);
+    expect(drawnPoints(page, edit, "fillText")).toEqual([]);
+  });
+});

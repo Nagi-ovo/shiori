@@ -80,7 +80,7 @@ export function assertSavedGlyphs(expected: readonly OracleGlyph[], actual: read
 }
 
 // The spike deliberately has no ToUnicode. For these known WinAnsi/ASCII
-// FoxitSerif fixtures only: the embedded program is FULL, with ASCII glyphs.
+// Embedded CFF fixtures only: the embedded program is FULL, with ASCII glyphs.
 // Advertise ASCII extraction metadata; canEncode independently checks presence.
 export function addFixtureAsciiMappings(page: PDFPage) {
   const content = inspectRunPage(page);

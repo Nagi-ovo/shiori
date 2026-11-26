@@ -265,7 +265,7 @@ function HtmlDocumentFrame({
       doc.removeEventListener("pointercancel", handleFramePointerEnd, true);
       doc.documentElement.style.touchAction = previousTouchAction;
       // Deliberately no endGesture() here. gestureend/pointerup/pointercancel
-      // already clear the baseline, and clearing it on teardown was the bug:
+      // already clear the baseline, and clearing it on cleanup was the bug:
       // this effect re-runs whenever the frame is rebuilt, and a baseline
       // dropped mid-pinch makes the next scale multiply against the zoom it
       // has already applied, compounding away to the clamp in a few frames.

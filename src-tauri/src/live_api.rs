@@ -1103,7 +1103,7 @@ enum Route {
 
 // Request handlers only need a non-owning view of the managed state's shared
 // inner data. Keeping the runtime mutex out of worker threads prevents a slow
-// frontend completion from ever blocking shutdown's listener teardown.
+// frontend completion from ever blocking shutdown's listener cleanup.
 struct LiveApiStateView {
     inner: Arc<LiveApiInner>,
 }

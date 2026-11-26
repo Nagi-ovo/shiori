@@ -26,11 +26,7 @@ import { copyDocumentCatalogEntries } from "./catalogEntries";
 import { preserveAcroForm } from "./acroForm";
 
 export type PreserveCatalogOptions = {
-  // True when the export keeps every source page, once, in source order.
-  // Structures that address pages positionally (/PageLabels) or that mirror
-  // the page tree (/StructTreeRoot) are only meaningful then; carrying them
-  // across a reordered or partial export would mislabel pages and leave the
-  // structure tree pointing at pages that are no longer there.
+  // Positional catalog entries such as /PageLabels require the original layout.
   pagesUnchanged: boolean;
   // Document-level attachments are independent of page geometry. Full
   // document exports preserve them; page/range exports omit them so sharing a

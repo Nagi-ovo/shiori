@@ -16,6 +16,15 @@ export function cloneOverlay(o: Overlay): Overlay {
       paths: o.paths.map((path) => path.map((p) => ({ ...p }))),
     };
   }
+  if (o.type === "sourceImageEdit") {
+    return {
+      ...o,
+      target: { ...o.target, formPath: [...o.target.formPath] },
+      ...(o.rect && { rect: { ...o.rect } }),
+      ...(o.crop && { crop: { ...o.crop } }),
+      ...(o.replace && { replace: { ...o.replace } }),
+    };
+  }
   if (o.type === "contentText") {
     return {
       ...o,
@@ -78,6 +87,9 @@ export function translateOverlay(
         path.map((p) => ({ x: p.x + dx, y: p.y + dy })),
       ),
     } as Partial<Overlay>;
+  }
+  if (o.type === "sourceImageEdit") {
+    return o.rect ? { rect: { ...o.rect, x: o.rect.x + dx, y: o.rect.y + dy } } : {};
   }
   if (o.type === "contentText") {
     return {

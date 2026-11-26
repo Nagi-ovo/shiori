@@ -1,6 +1,6 @@
 import type { ExportedSnapshot } from "../editor/export/exportStatus";
 import type { HistoryEntry } from "../editor/store/store";
-import type { DocumentModel, Overlay, PageModel } from "../pdf/model/types";
+import type { DocumentModel, Overlay, PageModel, TextFlowChain } from "../pdf/model/types";
 import type { WorkspaceTabMeta } from "../storage/workspace";
 
 export type PendingRestore = {
@@ -13,6 +13,8 @@ export type PendingRestore = {
   lastTouched: number;
   draftModelOverlays: Overlay[];
   draftModelPages: PageModel[];
+  /** Linked text frames of the draft model; absent in drafts that had none. */
+  draftModelFlowChains?: TextFlowChain[];
   // Persisted undo history groups (oldest first) restored beneath the draft model
   // so undo keeps working past the restore point across sessions.
   draftHistory: HistoryEntry[];

@@ -18,7 +18,7 @@ type NativeDropTarget = {
  *
  * Tauri's `onDragDropEvent()` convenience API installs four listeners and
  * returns a synchronous composite disposer. That disposer discards the four
- * async unlisten promises, so a webview reload or HMR teardown can turn an
+ * async unlisten promises, so a webview reload or HMR cleanup can turn an
  * already-cleared listener into an unhandled rejection. Keeping the raw
  * `listen()` disposer visible lets `safeUnlisten` observe that promise.
  *
@@ -64,7 +64,7 @@ export async function listenNativeDocumentDrops(
 /**
  * Listen for an event the Rust side emits (menus, file-open handoffs).
  * Tauri only; callers gate with platform capability. The returned disposer
- * is Tauri's raw unlisten, so pass it to `safeUnlisten` on teardown.
+ * is Tauri's raw unlisten, so pass it to `safeUnlisten` on cleanup.
  */
 export async function listenNativeEvent<T>(
   channel: string,

@@ -24,7 +24,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore, useEditorStore } from "../store/store";
-import { isBlankPage, type Overlay, type PageModel } from "../../pdf/model/types";
+import { isBlankPage, type Overlay, type PageModel, type TextFlowChain } from "../../pdf/model/types";
 import type { PdfDocument as PDFDocumentProxy } from "../../pdf/engine/types";
 import { releaseCanvasBackingStore } from "../../pdf/render/canvasMemory";
 import { rotatedSize } from "../../pdf/geometry/coords";
@@ -42,12 +42,8 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import { toast } from "../toast";
 import { pdfPaperColor } from "../../design/pdfPaperTone";
 import { useEscapeClose } from "./useEscapeClose";
-import {
-  placePageMenu,
-  type PageMenuPlacement,
-  type PageMenuSafeInsets,
-  type PageMenuViewport,
-} from "./pageMenuPlacement";
+import { placePageMenu, type PageMenuPlacement } from "./pageMenuPlacement";
+import { pageMenuSafeInsets, pageMenuViewport } from "./pageMenuViewport";
 
 type Props = {
   doc: PDFDocumentProxy;
@@ -81,46 +77,6 @@ const VISUALLY_HIDDEN_STYLE: React.CSSProperties = {
   whiteSpace: "nowrap",
   border: 0,
 };
-
-function pageMenuViewport(): PageMenuViewport {
-  const viewport = window.visualViewport;
-  return {
-    left: viewport?.offsetLeft ?? 0,
-    top: viewport?.offsetTop ?? 0,
-    width: viewport?.width ?? window.innerWidth,
-    height: viewport?.height ?? window.innerHeight,
-  };
-}
-
-/** Resolve env(safe-area-inset-*) through a real CSS property. Reading the
- * custom property directly can return the unevaluated `env(...)` token. */
-function pageMenuSafeInsets(): PageMenuSafeInsets {
-  const probe = document.createElement("div");
-  probe.style.cssText = [
-    "position:fixed",
-    "visibility:hidden",
-    "pointer-events:none",
-    "padding-top:var(--shiori-safe-top, 0px)",
-    "padding-right:var(--shiori-safe-right, 0px)",
-    "padding-bottom:var(--shiori-safe-bottom, 0px)",
-    "padding-left:var(--shiori-safe-left, 0px)",
-  ].join(";");
-  document.body.append(probe);
-  const style = window.getComputedStyle(probe);
-  const insets = {
-    top: nonNegativeCssPixel(style.paddingTop),
-    right: nonNegativeCssPixel(style.paddingRight),
-    bottom: nonNegativeCssPixel(style.paddingBottom),
-    left: nonNegativeCssPixel(style.paddingLeft),
-  };
-  probe.remove();
-  return insets;
-}
-
-function nonNegativeCssPixel(value: string): number {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
-}
 
 export function Thumbnails({
   doc,
@@ -176,16 +132,15 @@ export function Thumbnails({
   // capture phase and stops the event dead.
   useEscapeClose(menu != null, () => setMenu(null));
 
-  // Smoothly track the canvas's active page in the rail, the way
-  // macOS Preview / Acrobat keep the bookmark sidebar coherent with
-  // the document scroll. Three guard rails make the motion feel
-  // gentle rather than yanking:
+  // Smoothly track the canvas's active page in the rail, keeping the
+  // page sidebar coherent with the document scroll. Three guard rails
+  // make the motion feel gentle rather than yanking:
   //
   //   1. Comfort zone. We only scroll when the active thumbnail
   //      drifts outside the central 60 % of the rail's visible band.
   //      So long as the highlighted tile is comfortably mid-rail, we
-  //      leave the user's manual scroll alone — Acrobat's "don't
-  //      fight me" behavior.
+  //      leave the user's manual scroll alone: the rail does not
+  //      fight the user.
   //   2. Center on move. When we do scroll, we aim to center the
   //      active thumbnail rather than dropping it on the edge — that
   //      gives surrounding context (page n−1, n+1) the same airtime
@@ -881,14 +836,16 @@ function Thumb({
   const overlays = useEditorStore(
     useShallow((s) => s.model.overlays.filter((o) => o.pageId === page.id)),
   );
+  const sourceBytes = useEditorStore((s) => s.opened?.bytes ?? null);
+  const flowChains = useEditorStore((s) => s.model.flowChains);
   const lastRenderedRef = useRef<{
     page: PageModel;
     overlays: Overlay[];
+    flowChains?: TextFlowChain[];
     paperColor: string | null;
   } | null>(null);
-  // When pre-render is on, every thumbnail rasterises on mount. When off,
-  // we defer each thumb's render until it scrolls near the viewport — saves
-  // CPU/memory on long documents.
+  // Pre-render rasterises every thumb on mount; otherwise a thumb waits
+  // until it nears the viewport, saving CPU/memory on long documents.
   const [intersected, setIntersected] = useState(false);
   const shouldRender = preRender || intersected;
 
@@ -918,6 +875,7 @@ function Thumb({
     const dirty =
       lastRendered?.page !== page ||
       lastRendered?.overlays !== overlays ||
+      lastRendered?.flowChains !== flowChains ||
       lastRendered?.paperColor !== paperColor;
     if (!dirty) return;
     let cancelled = false;
@@ -926,8 +884,10 @@ function Thumb({
       paintThumbnail({
         canvas: () => canvasRef.current,
         doc,
+        sourceBytes,
         page,
         overlays,
+        flowChains,
         paperColor,
         cancelled: () => cancelled,
         onBackdrop: (started) => {
@@ -936,7 +896,7 @@ function Thumb({
       }).then((painted) => {
         if (painted && !cancelled) {
           setReady(true);
-          lastRenderedRef.current = { page, overlays, paperColor };
+          lastRenderedRef.current = { page, overlays, flowChains, paperColor };
         }
       }).catch((err) => {
         if (!cancelled) console.warn("Thumbnail render failed:", err);
@@ -947,15 +907,14 @@ function Thumb({
       window.clearTimeout(timer);
       handle?.cancel();
     };
-  }, [doc, overlays, page, paperColor, shouldRender]);
+  }, [doc, sourceBytes, overlays, flowChains, page, paperColor, shouldRender]);
 
-  // Virtuoso recycles thumbnails as they leave its overscan window. Release
-  // their bitmap at that lifecycle boundary instead of waiting for WebKit's
-  // graphics GC, especially when pre-rendering a short document mounted all
-  // of its thumbnails at once.
+  // Virtuoso recycles thumbs as they leave its overscan window. Release the
+  // bitmap then rather than waiting for WebKit's graphics GC, especially
+  // when pre-render mounted every thumb of a short document at once.
   useEffect(() => {
-    // React clears object refs before passive-effect cleanup. Capture the node
-    // while mounted so the returned callback can still release its bitmap.
+    // React clears refs before passive-effect cleanup: capture the node now
+    // so the cleanup can still release its bitmap.
     const canvas = canvasRef.current;
     return () => releaseCanvasBackingStore(canvas);
   }, []);

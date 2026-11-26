@@ -80,8 +80,8 @@ export function buildStampFreeText(
   return ctx.register(dict);
 }
 
-// Acrobat turns a FreeText's content by its /Rotate, so a quarter turn is
-// written there too and reads upright when the box is edited there.
+// Record a quarter turn in the FreeText /Rotate entry for readers that use
+// it when opening the annotation for editing.
 function setFreeTextRotate(dict: PDFDict, turn: FreeRotation | null): void {
   if (turn?.rotate) dict.set(PDFName.of("Rotate"), PDFNumber.of(turn.rotate));
 }
@@ -145,10 +145,8 @@ export function buildFreeText(
   }
   const opacity = freeTextOpacity(o);
   if (opacity !== undefined) dict.set(PDFName.of("CA"), PDFNumber.of(opacity));
-  // Viewers that honor DS (rich-text default style) use it for bold
-  // and family hints. Optional — Adobe ignores it when DA is present,
-  // but Foxit and PDF Expert use it to recover family + weight when
-  // re-opening the annotation for editing.
+  // Preserve family and weight in the rich-text style for readers that
+  // use it when opening the annotation for editing.
   const cssFamily = freeTextCssFamily(picked.family);
   // /Q remains the alignment source for conventional PDF viewers. pdf.js
   // does not expose /Q on FreeText annotations, so mirror the full requested

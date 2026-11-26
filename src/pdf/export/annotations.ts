@@ -1,6 +1,6 @@
 // Builds real PDF /Annot dictionaries for our overlay model and attaches
-// them to pages, so exported documents remain editable in Acrobat, Foxit,
-// PDF Expert, and our own reader. Parallel path to the flatten-into-page
+// them to pages, so exported documents remain editable in readers that
+// support PDF annotations. Parallel path to the flatten-into-page
 // code in exportPdf.ts — both live side-by-side because some export
 // workflows (stamping, signing) intentionally want flattened content.
 
@@ -34,6 +34,7 @@ import { buildCallout, buildCalloutReply } from "./calloutAnnotations";
 import { buildFreeText, buildStampFreeText } from "./freeTextAnnotations";
 import {
   markKeptAnnotationLinks,
+  overlayIdOf,
   relinkKeptReplies,
   removedAnnotation,
   takeKeptAnnotationLinks,
@@ -73,16 +74,35 @@ export function stripAllAnnotationsFromPages(pages: PDFPage[]): boolean {
 }
 
 // `pages` is the source document's page list, so an index is a sourceIndex.
-export function stripReplaceableAnnotationsFromPages(pages: PDFPage[]): boolean {
+export function stripReplaceableAnnotationsFromPages(pages: PDFPage[], protectedObjects?: { has(dict: PDFDict): boolean }): boolean {
   let removedAny = false;
   const removed = new Map<string, RemovedAnnotation>();
   pages.forEach((page, sourceIndex) => {
-    removedAny = stripReplaceableAnnotationsFromPage(page, sourceIndex, removed) || removedAny;
+    removedAny = stripReplaceableAnnotationsFromPage(page, sourceIndex, removed, protectedObjects) || removedAny;
   });
   // After every page, since a link may cross pages; and on every page, since
   // marking also clears stale marks.
   pages.forEach((page, sourceIndex) => markKeptAnnotationLinks(page, sourceIndex, removed));
   return removedAny;
+}
+
+// Source and copied /Annots still have the same ordering when this is read.
+export function retainedAnnotationRefs(
+  source: PDFPage, copy: PDFPage, sourceIndex: number, protectedObjects: { has(dict: PDFDict): boolean },
+): Map<string, PDFRef> {
+  const retained = new Map<string, PDFRef>();
+  const original = source.node.Annots(), copied = copy.node.Annots();
+  if (!original || !copied) return retained;
+  for (let i = 0; i < original.size(); i++) {
+    const ref = original.get(i), copiedRef = copied.get(i), dict = original.lookupMaybe(i, PDFDict);
+    if (ref instanceof PDFRef && copiedRef instanceof PDFRef && dict &&
+        protectedObjects.has(dict) && isReplaceableAnnotation(dict)) {
+      retained.set(overlayIdOf(sourceIndex, ref), copiedRef);
+      const turn = removedAnnotation(dict, sourceIndex).threadKey;
+      if (turn) retained.set(turn, copiedRef);
+    }
+  }
+  return retained;
 }
 
 // Main entry: build annotation refs for the overlays on `page` and attach
@@ -94,6 +114,7 @@ export function attachAnnotationsToPage(
   model: PageModel,
   overlays: Overlay[],
   fonts: AnnotationFonts,
+  retained?: ReadonlyMap<string, PDFRef>,
 ): void {
   // Before the early return: strip's marks must leave every copied page.
   const kept = takeKeptAnnotationLinks(page);
@@ -143,13 +164,16 @@ export function attachAnnotationsToPage(
     return freeTextFontNames;
   };
 
-  const refsByOverlayId = new Map<string, PDFRef>();
+  const refsByOverlayId = new Map(retained);
   for (const o of pageOverlays) {
+    const original = retained?.get(o.id);
+    if (original && o.localActivityAt === undefined) continue;
     const ref = buildAnnotRef(page, o, ensureFontNames);
     if (!ref) continue;
-    page.node.addAnnot(ref);
-    refsByOverlayId.set(o.id, ref);
-    applySourceProvenance(page, o, ref);
+    if (original) updateRetainedAnnotation(page, o, original, ref);
+    else page.node.addAnnot(ref);
+    refsByOverlayId.set(o.id, original ?? ref);
+    applySourceProvenance(page, o, original ?? ref);
   }
   // /IRT has to wait until every annotation on the page has a ref, because a
   // reply may be built before the comment it answers. Threads that span pages
@@ -162,13 +186,29 @@ export function attachAnnotationsToPage(
     const parentRef = refsByOverlayId.get(o.id);
     if (!parentRef) continue;
     for (const entry of o.thread) {
+      const key = threadReplyKey(o.id, entry.id);
+      if (retained?.has(key)) continue;
       const ref = buildCalloutReply(page, o, entry, parentRef);
       page.node.addAnnot(ref);
-      refsByOverlayId.set(threadReplyKey(o.id, entry.id), ref);
+      refsByOverlayId.set(key, ref);
     }
   }
   // After the turns, since a kept annotation may reply to one of them.
   relinkKeptReplies(kept.replies, refsByOverlayId);
+}
+
+function updateRetainedAnnotation(page: PDFPage, overlay: Overlay, original: PDFRef, replacement: PDFRef) {
+  const ctx = page.doc.context;
+  const target = ctx.lookup(original, PDFDict);
+  const written = ctx.lookup(replacement, PDFDict);
+  const annotationName = PDFName.of("NM");
+  // Replace the overlay fields on the existing object, keeping its identity,
+  // structure parent, name, and references to other annotations.
+  for (const [key, value] of written.entries()) {
+    if (key !== annotationName) target.set(key, value);
+  }
+  if (overlay.type === "rect" && !overlay.fill) target.delete(PDFName.of("IC"));
+  ctx.delete(replacement);
 }
 
 // Writes back the review metadata captured at import (see OverlayCommon's
@@ -259,6 +299,7 @@ function stripReplaceableAnnotationsFromPage(
   page: PDFPage,
   sourceIndex: number,
   removed: Map<string, RemovedAnnotation>,
+  protectedObjects?: { has(dict: PDFDict): boolean },
 ): boolean {
   const annots = page.node.Annots();
   if (!annots) return false;
@@ -269,7 +310,7 @@ function stripReplaceableAnnotationsFromPage(
     const raw = annots.get(i);
     const dict = annots.lookupMaybe(i, PDFDict);
     if (!dict) continue;
-    if (!isReplaceableAnnotation(dict)) continue;
+    if (protectedObjects?.has(dict) || !isReplaceableAnnotation(dict)) continue;
     annots.remove(i);
     removedAny = true;
     if (raw instanceof PDFRef) {
@@ -282,7 +323,7 @@ function stripReplaceableAnnotationsFromPage(
   // /Parent. Popups are not in REPLACED_SOURCE_SUBTYPES, so removing a Text or
   // Highlight used to leave its popup behind holding a reference to an object
   // that no longer exists.
-  if (removedAny) removeOrphanedPopups(page, annots, removedRefs);
+  if (removedAny) removeOrphanedPopups(page, annots, removedRefs, protectedObjects);
   if (removedAny) stripShioriFontResources(page);
   return removedAny;
 }
@@ -291,11 +332,12 @@ function removeOrphanedPopups(
   page: PDFPage,
   annots: PDFArray,
   removedRefs: Set<string>,
+  protectedObjects?: { has(dict: PDFDict): boolean },
 ): void {
   for (let i = annots.size() - 1; i >= 0; i--) {
     const raw = annots.get(i);
     const dict = annots.lookupMaybe(i, PDFDict);
-    if (!dict) continue;
+    if (!dict || protectedObjects?.has(dict)) continue;
     const subtype = dict.lookupMaybe(PDFName.of("Subtype"), PDFName)?.decodeText();
     if (subtype !== "Popup") continue;
     const parent = dict.get(PDFName.of("Parent"));

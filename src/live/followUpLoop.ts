@@ -191,7 +191,7 @@ export function sendCalloutFollowUp(
       if (!activeSessions.includes(sessionId)) return;
       await write(sessionId, "\r");
     } catch {
-      // The turn already lives on the callout. Terminal teardown and transport
+      // The turn already lives on the callout. Terminal cleanup and transport
       // errors must not turn a persisted user reply into an unhandled rejection.
     }
   })();

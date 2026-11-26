@@ -1,4 +1,4 @@
-import type { Overlay, PageModel, PdfPoint, PdfRect } from "./types";
+import type { ContentTextOverlay, Overlay, PageModel, PdfPoint, PdfRect } from "./types";
 
 export function pageOrigin(page: PageModel): PdfPoint {
   return {
@@ -22,13 +22,15 @@ export function pdfRectToPageLocal(page: PageModel, rect: PdfRect): PdfRect {
   return { ...rect, x: rect.x - origin.x, y: rect.y - origin.y };
 }
 
+export function overlayToPdfPageSpace(page: PageModel, overlay: ContentTextOverlay): ContentTextOverlay;
+export function overlayToPdfPageSpace(page: PageModel, overlay: Overlay): Overlay;
 export function overlayToPdfPageSpace(page: PageModel, overlay: Overlay): Overlay {
   const origin = pageOrigin(page);
-  if (origin.x === 0 && origin.y === 0) return overlay;
+  if (overlay.type === "sourceImageEdit" || (origin.x === 0 && origin.y === 0)) return overlay;
   return translateOverlay(overlay, origin.x, origin.y);
 }
 
-function translateOverlay(overlay: Overlay, dx: number, dy: number): Overlay {
+function translateOverlay(overlay: Exclude<Overlay, { type: "sourceImageEdit" }>, dx: number, dy: number): Overlay {
   if (
     overlay.type === "highlight" ||
     overlay.type === "underline" ||
@@ -53,6 +55,7 @@ function translateOverlay(overlay: Overlay, dx: number, dy: number): Overlay {
       rect: translateRect(overlay.rect, dx, dy),
       coverRects: overlay.coverRects.map((rect) => translateRect(rect, dx, dy)),
       sourceBaselinesPt: overlay.sourceBaselinesPt?.map((y) => y + dy),
+      sourceGlyphs: overlay.sourceGlyphs?.map(g => ({ ...g, x: g.x + dx, y: g.y + dy })),
     };
   }
   if (overlay.type === "callout") {

@@ -49,8 +49,8 @@ Primary user:
 
 - Technical readers with local files: researchers, students, engineers,
   writers, archivists.
-- People already moving between terminal, Obsidian, Zotero, Raycast, Codex,
-  Claude Code, and Finder/Explorer.
+- People already moving between terminal, Obsidian, Zotero, a launcher, coding assistants,
+  and the file manager.
 - Users who care that a highlighted PDF remains a real PDF, not a database row
   inside one app.
 

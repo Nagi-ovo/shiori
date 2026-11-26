@@ -962,7 +962,7 @@ impl EventLoopWaker {
   fn new(rl: CFRunLoopRef) -> EventLoopWaker {
     extern "C" fn wakeup_main_loop(_timer: CFRunLoopTimerRef, _info: *mut c_void) {}
     unsafe {
-      // Create a timer with a 0.1µs interval (1ns does not work) to mimic polling.
+      // Create a timer with a 0.1µs interval (1ns does not work) to poll for events.
       // It is initially setup with a first fire time really far into the
       // future, but that gets changed to fire immediately in did_finish_launching
       let timer = CFRunLoopTimerCreate(

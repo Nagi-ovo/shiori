@@ -1,4 +1,19 @@
 {
+  "sourceImage": {
+    "selected": "所选 PDF 图像",
+    "moveHandle": "移动图像",
+    "resizeHandle": "调整图像大小",
+    "rotateHandle": "旋转图像",
+    "cropHandle": "调整裁剪角",
+    "cropStartHandle": "调整对侧裁剪角",
+    "crop": "裁剪",
+    "done": "完成",
+    "restoreCrop": "恢复完整图像",
+    "replace": "替换…",
+    "delete": "删除",
+    "invalidReplacement": "请选择有效的 PNG 或 JPEG 图像。",
+    "previewUnavailable": "有一项图像编辑无法预览。"
+  },
   "app": {
     "brand": "Shiori",
     "subtitle": "栞"
@@ -490,7 +505,7 @@
       "rect": "拖拽绘制 · 松开提交",
       "note": "点击放置 · 双击编辑",
       "callout": "选择文字或拖出区域，再写下批注",
-      "select": "点击注释编辑 · Shift 点击多选 · 拖动移动 · ⌘ 拖动复制"
+      "select": "点击注释或页面图像进行编辑 · Shift 点击多选注释 · ⌘ 拖动复制注释"
     },
     "align": {
       "label": "对齐",
@@ -669,7 +684,7 @@
     },
     "annot": {
       "editable": "可编辑注释",
-      "editableHint": "高亮、便签、形状、画笔、文字都作为真正的 PDF 注释保留。可在 Acrobat、Foxit、PDF Expert 等外部 PDF 编辑器中重新打开编辑。",
+      "editableHint": "高亮、便签、形状、画笔、文字都作为真正的 PDF 注释保留。可在外部 PDF 编辑器中重新打开编辑。",
       "flatten": "展平到页面",
       "flattenHint": "将注释烧入页面内容，不可再删除或编辑 — 适合签署、盖章等场景。",
       "none": "仅原文档",
@@ -701,11 +716,20 @@
     "lostCharsConfirmBody_other": "{{count}} 个字符无法编码，导出的 PDF 会用「?」替换。",
     "lostCharsConfirmCancel": "返回检查",
     "lostCharsConfirmAction": "替换后导出",
-    "unexcisedConfirmTitle": "原文仍留在文件里",
-    "unexcisedConfirmBody_other": "有 {{count}} 处修改没能删掉原文。原文被新文字盖住了，但仍在 PDF 里，搜索和复制都能找到。",
+    "unexcisedConfirmTitle": "部分文字修改暂不支持",
+    "unexcisedConfirmBody_other": "有 {{count}} 处文字修改未能应用。导出的 PDF 中将保留这些位置的原文。",
     "unexcisedConfirmAction": "仍然导出",
     "clippedConfirmTitle": "部分文字超出了框",
     "clippedConfirmBody_other": "有 {{count}} 个字符超出了所在框的边界，在展平后的 PDF 里会被截掉。返回并把文本框、标注或便签拉大即可保留。",
+    "review": {
+      "new-collision": "出现新的重叠",
+      "overflow-envelope": "溢出的文字可能与附近内容重叠",
+      "uncertain-contact": "无法确认是否存在重叠",
+      "stripped-equivalent": "替代文本已移除",
+      "page": "导出文件第 {{page, number}} 页",
+      "region": "以左下角为原点的区域（单位：点）· x {{x, number}}，y {{y, number}}，宽 {{w, number}}，高 {{h, number}}",
+      "count_other": "{{count}} 处"
+    },
     "clippedPrintConfirm_other": "有 {{count}} 个字符超出了所在框的边界，打印出来会被截掉。仍要打印吗？",
     "lostCharsPrintConfirm_other": "{{count}} 个字符无法编码，打印内容会用「?」替换。要继续打印吗？",
     "cjkAnnotationsHint": "annotations 模式下中文字符会以矢量轮廓绘制，外部 PDF 编辑器打开时文字样式无法再编辑（但文本内容仍可恢复）。需要完整可编辑的文字样式请选 flatten。",
@@ -1125,5 +1149,70 @@
     "viewerLabel": "Word 文档",
     "loadFailed": "无法显示这个 Word 文档。",
     "retry": "重新加载并重试"
+  },
+  "contentText": {
+    "draftOffPage": "原文仍保留在页面上。你可以在此修改草稿。",
+    "modes": {
+      "substituted": "替代字体",
+      "reflowed": "已重排",
+      "in-place": "原位编辑",
+      "fallback-font": "已嵌入后备字体",
+      "retypeset": "重新排版",
+      "unsupported": "暂不支持"
+    },
+    "notices": {
+      "substituted": "这段文字已用替代字体重写。",
+      "reflowed": "这段文字已重新排版以适应编辑后的段落。",
+      "retypeset": "排版可能变化。",
+      "retypesetOverflow": "文字可能与附近内容重叠。",
+      "newCollision": "编辑后的文字在标示区域与周围内容重叠。",
+      "strippedEquivalent": "此编辑会移除与原文关联的替代文本。",
+      "preExistingContact": "周围内容原先就和原文接触。",
+      "uncertainContact": "无法确认此次编辑是否造成重叠。",
+      "sourceSpacingAdjusted": "已缩小字距以适应原行。",
+      "substitutedFace": "已改用替代字体 {{face}} 重写。",
+      "fallbackFont": "缺失的字符使用内置字体。",
+      "fallbackFace": "缺失的字符使用内置字体 {{face}}。",
+      "retypesetFace": "使用替代字体 {{face}} 排版。",
+      "sourceFontKept": "保留原字体。",
+      "standardFontMetrics": "已保留原有的标准字体，外观取决于 PDF 阅读器。",
+      "frameOverflow": "文字超出原有文本框。",
+      "previewPending": "预览更新中…"
+    },
+    "reasons": {
+      "source-mismatch": "所选文字与 PDF 原文不一致。",
+      "ambiguous-match": "无法唯一确定原文字形。",
+      "glyph-boundary": "此修改切分了原文字形或推断空格。",
+      "cross-item": "此修改跨越了独立的 PDF 文字片段。",
+      "reflow-required": "此修改需要重新排版。",
+      "form-xobject": "暂不支持原位编辑 Form XObject 中的文字。",
+      "unsupported-matrix": "暂不支持原位编辑此文字变换。",
+      "unsupported-state": "无法安全修改此 PDF 文字状态。",
+      "graphics-effect-unsupported": "无法安全修改带描边的 PDF 文字。",
+      "font-unavailable": "无法解析原文字体或 Unicode 映射。",
+      "font-coverage": "无法验证原文或后备字体的字形覆盖。",
+      "font-permission": "字体许可不允许可编辑嵌入。",
+      "overflow": "替换文字超出了原文可用空间。",
+      "style-change": "此格式更改需要重新排版。",
+      "stale-source": "原始页面已变化，请重试修改。",
+      "preview-unavailable": "无法预览编辑后的 PDF。",
+      "missing-source-style": "缺少原始格式快照。",
+      "shared-text-object": "相邻的文字修改需要段落重新排版。",
+      "annotation-anchor": "这项编辑会移动原有批注所指向的内容。",
+      "acceptance-strict": "严格导出保留了原文。",
+      "unsupported-no-text-layer": "此页没有可编辑的文字层。可添加批注，或打开含文字的 PDF 进行编辑。",
+      "unsupported-artwork-contact": "为保护邻近的图像内容，已保留原文。",
+      "flow-ambiguous-frame": "链接的文本框相互重叠、不在同一栏，或其中一个没有文字。",
+      "flow-cross-page-unsupported": "暂不支持跨页链接文本框。",
+      "semantic-dependency": "此编辑会改变 PDF 的标记文本或结构引用。",
+      "flow-unsupported-text": "链接文本框中的文字是旋转、竖排或隐藏的，或无法用原字体写出。",
+      "flow-destination-obstacle": "下一个文本框内的图形会被续排的文字遮挡。",
+      "flow-chain-exhausted": "按原字号，文字放不进链接的文本框。",
+      "unsupported-unverified-text": "可以读取这段文字，但无法验证其字体或间距。若要更正，请修改源文档并重新导出 PDF，或在此添加批注。",
+      "unsupported-image-text": "这段文字属于扫描图像。可添加批注来记录更正。",
+      "unsupported-form-xobject": "暂不支持编辑 Form XObject 中的文字。",
+      "unsupported-unwritable": "无法安全地改写此处文字。",
+      "unsupported-vertical-writing": "暂不支持编辑竖排文字。"
+    }
   }
 }

@@ -15,6 +15,7 @@ import {
   seedObjectMapping,
   type CloneState,
 } from "./pdfObjectClone";
+import { copyStructureTree } from "./structureCopy";
 
 // Export rebuilds the catalog from scratch (PDFDocument.create), so anything
 // not copied here is silently dropped from the user's file. These are the
@@ -43,14 +44,9 @@ export function copyDocumentCatalogEntries(
       .lookupMaybe(PDFName.of("ViewerPreferences"), PDFDict)
       ?.delete(PDFName.of("PrintPageRange"));
   }
-  if (pagesUnchanged) {
-    copyCatalogEntry(source, dest, state, "PageLabels");
-    // /MarkInfo without /StructTreeRoot advertises a tagged PDF that has no
-    // tags, which is worse for assistive tech than an untagged file, so the
-    // two move together.
-    if (copyCatalogEntry(source, dest, state, "StructTreeRoot")) {
-      copyCatalogEntry(source, dest, state, "MarkInfo");
-    }
+  if (pagesUnchanged) copyCatalogEntry(source, dest, state, "PageLabels");
+  if (copyStructureTree(source, dest, state)) {
+    copyCatalogEntry(source, dest, state, "MarkInfo");
   }
 }
 

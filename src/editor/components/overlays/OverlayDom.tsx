@@ -1,3 +1,5 @@
+import { contentTextGlyphsShown, useContentTextPreview } from "../contentTextPreviewContext";
+import { ContentTextWarning } from "./ContentTextWarning";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent, ReactNode, RefObject } from "react";
 import { useTranslation } from "react-i18next";
@@ -505,6 +507,7 @@ function TextOverlayDom({
       : undefined,
   );
   const { t } = useTranslation();
+  const textPreview = useContentTextPreview();
   // On the drag path: a pointermove re-renders the whole overlay layer, so
   // recompute this only when the overlay itself changes.
   const a11yLabel = useMemo(() => describeOverlay(overlay, t), [overlay, t]);
@@ -567,6 +570,9 @@ function TextOverlayDom({
     setCalloutCollapsed(overlay.id, true);
   };
   const isContentEdit = overlay.type === "contentText";
+  // The page frame already shows these glyphs unless it excluded them.
+  const glyphsHidden =
+    overlay.type === "contentText" && !contentTextGlyphsShown(textPreview, overlay);
   const contentEditing = isContentEdit && editing;
   const contentFontSize = overlay.fontSize * scale;
   // contentText: line pitch must match the SOURCE lines, not the font size —
@@ -787,6 +793,7 @@ function TextOverlayDom({
       <div
         dir="auto"
         style={{
+          visibility: glyphsHidden && !editing ? "hidden" : undefined,
           position: "absolute",
           // Pinned to the EXPANDED size: letting the text reflow while the card
           // shrinks would rewrap it line by line through the whole transition.
@@ -820,14 +827,11 @@ function TextOverlayDom({
           font: fontShorthand,
           color: surface.color,
           textAlign: overlay.align,
-          // Mid-line selection start: CSS text-indent applies to the first
-          // formatted line only — exactly the line that starts right of the
-          // box edge in the source. COMMITTED render only: while editing,
-          // the textarea is an inline-level child sitting on this div's
-          // first line, so the indent would displace the WHOLE control
-          // sideways (every line shifted, the bug behind "multi-line edits
-          // jump right while typing"). The textarea keeps all lines flush
-          // left; the indent applies again on commit and on export.
+          // Mid-line selection start: text-indent moves only the first line,
+          // the one that starts right of the box edge in the source.
+          // Committed render only: on the editing div it would shift the
+          // whole inline textarea, every line ("multi-line edits jump right
+          // while typing"); commit and export apply it again.
           textIndent:
             isContentEdit &&
             overlay.type === "contentText" &&
@@ -848,6 +852,7 @@ function TextOverlayDom({
             onDraftTextChange={onDraftTextChange}
             onCommitEdit={onCommitEdit}
             onMaybeSuppressEditDragBlur={onMaybeSuppressEditDragBlur}
+            glyphsHidden={glyphsHidden}
           />
         ) : overlay.text ? (
           <LiveRevealText
@@ -913,38 +918,8 @@ function TextOverlayDom({
           rotateLabel={rotateLabel}
         />
       ) : null}
-      {contentEditing && (editWarnings.overflow || editWarnings.missing > 0) ? (
-        <div
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            marginTop: 5,
-            padding: "2px 8px",
-            fontSize: 11,
-            lineHeight: "16px",
-            background: "rgba(146, 96, 12, 0.95)",
-            color: "#fff",
-            borderRadius: 4,
-            whiteSpace: "nowrap",
-            pointerEvents: "none",
-            zIndex: 11,
-          }}
-        >
-          {[
-            editWarnings.overflow
-              ? t("overlays.contentTextOverflow")
-              : null,
-            editWarnings.missing > 0
-              ? t("overlays.contentTextMissingGlyphs", {
-                  count: editWarnings.missing,
-                })
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </div>
-      ) : null}
+      {isContentEdit ? <ContentTextWarning id={overlay.id} editing={contentEditing}
+        overflow={editWarnings.overflow} missing={editWarnings.missing} /> : null}
     </div>
       {/* The card clips at its own bounds (overflow hidden drives the seal
           morph), so the conversation hangs below it as a sibling that copies

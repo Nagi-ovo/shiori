@@ -10,7 +10,7 @@ function scrollParent(node: HTMLElement): HTMLElement | null {
 /**
  * Highlights the code blocks under `root` as they come within a screen of the
  * viewport they scroll in, each once. The highlighter (and each language)
- * loads on the first block that needs it. Returns the teardown.
+ * loads on the first block that needs it. Returns the cleanup.
  *
  * The scroll container is found from the DOM rather than passed in: the
  * viewer's shared scroller ref is re-pointed by the editor as it unmounts,

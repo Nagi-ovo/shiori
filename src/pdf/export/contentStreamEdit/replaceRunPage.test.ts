@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { PDFDocument, PDFName, PDFArray, PDFDict } from 'pdf-lib';
-import { inspectRunPage, replaceRunPage } from './replaceRunPage';
+import { inspectRunPage, replaceRunPage, runPageEnvironment } from './replaceRunPage';
 import { tinyTtf } from '../fontCoverage/fixtures/programs';
 
 const bytes = (s: string) => new TextEncoder().encode(s);
@@ -82,6 +82,12 @@ for (const keys of [['MCID'], ['ActualText'], ['Alt'], ['E'], null]) {
     if (!result.ok) expect(page.node.get(PDFName.of('Contents'))).toBe(original);
   });
 }
+test('an unrelated malformed Properties dictionary does not block plain text edits',async()=>{
+ const {page,doc,info,edit}=await fixture();
+ page.node.Resources()!.set(PDFName.of('Properties'),doc.context.obj(42));
+ expect(()=>runPageEnvironment(page)).not.toThrow();
+ expect(replaceRunPage(page,{sourceHash:info.sourceHash,edits:[edit]}).ok).toBe(true);
+});
 test('adapter refuses a mapped replacement code absent from shown source codes', async () => {
   const { page, info, edit } = await fixture();
   const original = page.node.get(PDFName.of('Contents'));

@@ -164,6 +164,22 @@ function isOverlay(value: unknown): value is Overlay {
       (value.source === undefined || value.source === "signature")
     );
   }
+  if (value.type === "sourceImageEdit") {
+    const { target, crop, replace } = value;
+    return (
+      isRecord(target) && isNonNegativeSafeInteger(target.pageIndex) &&
+      isNonNegativeSafeInteger(target.occurrence) && isSha256Hex(target.fingerprint) &&
+      Array.isArray(target.formPath) && target.formPath.every(name => typeof name === "string") &&
+      (target.kind === "inline" ? target.name === undefined : target.kind === "xobject" && typeof target.name === "string") &&
+      (value.rect === undefined || isPdfRect(value.rect)) && hasValidAngle(value) &&
+      (crop === undefined || (isPdfRect(crop) && crop.x >= 0 && crop.y >= 0 &&
+        crop.x + crop.w <= 1 && crop.y + crop.h <= 1)) &&
+      (replace === undefined || (isRecord(replace) &&
+        (replace.mimeType === "image/png" || replace.mimeType === "image/jpeg") &&
+        typeof replace.dataUrl === "string" && replace.dataUrl.startsWith(`data:${replace.mimeType};base64,`))) &&
+      (value.delete === undefined || typeof value.delete === "boolean")
+    );
+  }
   if (value.type === "image") {
     return (
       isPdfRect(value.rect) &&
@@ -233,7 +249,12 @@ function isOverlay(value: unknown): value is Overlay {
       (value.sourceBaselinesPt === undefined ||
         (Array.isArray(value.sourceBaselinesPt) &&
           value.sourceBaselinesPt.every(isFiniteNumber))) &&
+      (value.sourceGlyphs === undefined ||
+        (Array.isArray(value.sourceGlyphs) && value.sourceGlyphs.length <= 512 &&
+          value.sourceGlyphs.every(g => isRecord(g) && typeof g.text === "string" &&
+            isFiniteNumber(g.x) && isFiniteNumber(g.y) && isFiniteNumber(g.advance)))) &&
       isOptionalFiniteNumber(value.firstLineIndentPt) &&
+      (value.flowChainId === undefined || typeof value.flowChainId === "string") &&
       typeof value.originalText === "string" &&
       hasValidTextStyle(value) &&
       (value.renderedFont === undefined || typeof value.renderedFont === "string") &&
@@ -260,7 +281,17 @@ function isDocumentModel(value: unknown): value is DocumentModel {
   }
   if (!hasUniqueIds(value.overlays)) return false;
   const pageIds = new Set(value.pages.map((page) => page.id));
+  if (value.flowChains !== undefined && !isFlowChains(value.flowChains, pageIds)) return false;
   return value.overlays.every((overlay) => pageIds.has(overlay.pageId));
+}
+
+function isFlowChains(value: unknown, pageIds: ReadonlySet<string>): boolean {
+  if (!Array.isArray(value) || !hasUniqueIds(value.filter(isRecord) as { id: string }[])) return false;
+  return value.every((chain) => isRecord(chain) && typeof chain.id === "string" &&
+    (chain.allowCrossPage === undefined || typeof chain.allowCrossPage === "boolean") &&
+    Array.isArray(chain.frames) && chain.frames.length >= 2 &&
+    chain.frames.every((frame) => isRecord(frame) && typeof frame.id === "string" &&
+      typeof frame.pageId === "string" && pageIds.has(frame.pageId) && isPdfRect(frame.rect) && (frame.rect as PdfRect).w > 0 && (frame.rect as PdfRect).h > 0));
 }
 
 const LIVE_BATCH_OVERLAY_TYPES = new Set([

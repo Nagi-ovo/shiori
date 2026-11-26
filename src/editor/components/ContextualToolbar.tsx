@@ -1,3 +1,4 @@
+import { isDiscardableTextDraft } from "../store/textDraft";
 import {
   useCallback,
   useEffect,
@@ -274,7 +275,7 @@ export function ContextualToolbar() {
   const removeOverlay = useEditorStore((s) => s.removeOverlay);
   const updateOverlayNoHistory = useEditorStore((s) => s.updateOverlayNoHistory);
   const beginHistoryStep = useEditorStore((s) => s.beginHistoryStep);
-  const setEditingOverlayId = useEditorStore((s) => s.setEditingOverlayId);
+  const finishEditingOverlay = useEditorStore((s) => s.finishEditingOverlay);
   const [toolbarTextHistoryId, setToolbarTextHistoryId] = useState<string | null>(
     null,
   );
@@ -297,10 +298,7 @@ export function ContextualToolbar() {
     overlay: TextOverlay | ContentTextOverlay | CalloutOverlay,
   ) => {
     if (toolbarTextHistoryId === overlay.id) return;
-    const isFreshText =
-      overlay.type === "text" || overlay.type === "callout"
-        ? overlay.text.trim() === ""
-        : overlay.text === overlay.originalText;
+    const isFreshText = isDiscardableTextDraft(overlay);
     const liveEditingId = editorStore.getState().editingOverlayId;
     if (!(liveEditingId === overlay.id && isFreshText)) {
       beginHistoryStep();
@@ -315,29 +313,15 @@ export function ContextualToolbar() {
     startToolbarTextHistory(overlay);
     updateOverlayNoHistory(overlay.id, { text } as never);
   };
-  const finishTextContentEdit = (
-    overlay: TextOverlay | ContentTextOverlay | CalloutOverlay,
-    liveText?: string,
-  ) => {
+  const finishTextEdit = (overlay: Overlay) => {
     setToolbarTextHistoryId(null);
-    const state = editorStore.getState();
-    if (state.editingOverlayId === overlay.id) {
-      setEditingOverlayId(null);
+    const { editingOverlayId, model } = editorStore.getState();
+    if (overlay.type === "contentText" || editingOverlayId === overlay.id) {
+      finishEditingOverlay(overlay.id);
       return;
     }
-    const latest = state.model.overlays.find(
-      (o): o is TextOverlay | ContentTextOverlay | CalloutOverlay =>
-        o.id === overlay.id &&
-        (o.type === "text" ||
-          o.type === "contentText" ||
-          o.type === "callout"),
-    );
-    const current = latest ?? { ...overlay, text: liveText ?? overlay.text };
-    const empty =
-      current.type === "text" || current.type === "callout"
-        ? current.text.trim() === ""
-        : current.text.trim() === "" || current.text === current.originalText;
-    if (empty) removeOverlay(current.id);
+    const current = model.overlays.find((o) => o.id === overlay.id);
+    if (current && isDiscardableTextDraft(current)) removeOverlay(current.id);
   };
 
   const toolSegment = (
@@ -466,11 +450,15 @@ export function ContextualToolbar() {
       ? t("types.signature")
       : t(`types.${selection.type}`);
     inspector = (
-      <InspectorRow label={t("inspector.selectionPrefix", { type: typeLabel })}>
+      <InspectorRow
+        label={t("inspector.selectionPrefix", { type: typeLabel })}
+        source={selection.type === "contentText" ? selection : undefined}
+        onFinish={finishTextEdit}
+      >
         <SelectionControls
           selection={selection}
           onTextChange={updateTextContent}
-          onTextFinish={finishTextContentEdit}
+          onTextFinish={finishTextEdit}
         />
       </InspectorRow>
     );
@@ -1168,13 +1156,22 @@ export function SelectInspector() {
 export function InspectorRow({
   label,
   children,
+  source,
+  onFinish,
 }: {
   label: string;
   children?: ReactNode;
+  source?: ContentTextOverlay;
+  onFinish?: (overlay: ContentTextOverlay) => void;
 }) {
   const isMobile = useIsMobile();
   return (
     <div
+      data-source-text-edit={source?.id}
+      onBlur={source && (({ currentTarget, relatedTarget }) => {
+        if (!currentTarget.contains(relatedTarget) &&
+            relatedTarget?.getAttribute("data-overlay-id") !== source.id) onFinish?.(source);
+      })}
       style={{
         // Clear the tallest single-row control (the NumField weight
         // stepper, ~38 px) plus row padding, so the inspector height stays

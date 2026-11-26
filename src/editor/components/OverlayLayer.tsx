@@ -1,3 +1,4 @@
+import { isDiscardableTextDraft } from "../store/textDraft";
 import {
   memo,
   useCallback,
@@ -85,6 +86,7 @@ type Props = {
   page: PageModel;
   scale: number;
   overlays: Overlay[];
+  onPageTap?: (point: { x: number; y: number }) => void;
 };
 
 type MovePresentation = {
@@ -341,7 +343,7 @@ function useStableEvent<Args extends unknown[], Result>(
   return useCallback((...args: Args) => handlerRef.current(...args), []);
 }
 
-function OverlayLayerImpl({ page, scale, overlays }: Props) {
+function OverlayLayerImpl({ page, scale, overlays, onPageTap }: Props) {
   const editorStore = useEditorStoreApi();
   const tool = useEditorStore((s) => s.tool);
   const addOverlay = useEditorStore((s) => s.addOverlay);
@@ -382,10 +384,7 @@ function OverlayLayerImpl({ page, scale, overlays }: Props) {
   const displayH = size.height * scale;
   const textToolUsesPdfTextLayer = tool === "text" && !isBlankPage(page);
 
-  // Virtuoso only mounts nearby pages. Consume reveal intents in a layout
-  // effect so the matching absolute timeline starts immediately before the
-  // first paint, never while the page is still offscreen. The store removes
-  // each id atomically, so remounting a visited page does not replay it.
+  // Consume reveal intents before the first paint of a mounted page.
   useLayoutEffect(() => {
     const pendingIds = overlays
       .filter((overlay) => pendingOverlayReveals.has(overlay.id))
@@ -503,10 +502,7 @@ function OverlayLayerImpl({ page, scale, overlays }: Props) {
     overlay: TextOverlay | ContentTextOverlay | CalloutOverlay,
   ) => {
     if (draftTextHistoryRef.current === overlay.id) return;
-    const isFreshText =
-      overlay.type === "text" || overlay.type === "callout"
-        ? overlay.text.trim() === ""
-        : overlay.text === overlay.originalText;
+    const isFreshText = isDiscardableTextDraft(overlay);
     if (!(editingId === overlay.id && isFreshText)) {
       beginHistoryStep();
     }
@@ -882,11 +878,7 @@ function OverlayLayerImpl({ page, scale, overlays }: Props) {
           180) /
         Math.PI;
       let next = drag.startAngle + (curDeg - drag.startPointerDeg);
-      // Free by default, Shift snaps to 15°. This used to be the other way
-      // round, which every other tool a user arrives with — Figma,
-      // Illustrator, Keynote, PowerPoint — has backwards: dragging is
-      // continuous and the modifier constrains it. Snapping by default read
-      // as the rotation being broken rather than as a feature.
+      // Apply the pointer’s angle delta around the center. Shift snaps to 15° increments.
       if (e.shiftKey)
         next = Math.round(next / ROTATE_SNAP_DEG) * ROTATE_SNAP_DEG;
       // Normalize to [0, 360).
@@ -995,9 +987,6 @@ function OverlayLayerImpl({ page, scale, overlays }: Props) {
         }
       }
     } else if (drag.kind === "pan") {
-      // A pan that never moved is a plain click on empty area → preserve
-      // the old empty-click behavior and clear the selection. A pan that
-      // moved already scrolled the canvas; nothing to finalize.
       if (!drag.moved) selectOnly(null);
     } else if (drag.kind === "move") {
       const presentation = movePresentationRef.current;
@@ -1137,7 +1126,12 @@ function OverlayLayerImpl({ page, scale, overlays }: Props) {
       }
       return;
     }
+    const pan = liveDragRef.current;
     finalizeDrag(e.timeStamp);
+    if (onPageTap && e.type === "pointerup" && pan.kind === "pan" && !pan.moved &&
+        pan.pointerId === e.pointerId && e.button === 0 && !e.altKey && !e.ctrlKey && !e.metaKey &&
+        Math.hypot(e.clientX - pan.startX, e.clientY - pan.startY) < 4 &&
+        !isSelectablePdfTextAtPoint(e.clientX, e.clientY, rootRef.current)) onPageTap(getLocalXY(e));
   };
 
   const onOverlayPointerDown = (e: React.PointerEvent, o: Overlay) => {
@@ -1354,13 +1348,9 @@ function OverlayLayerImpl({ page, scale, overlays }: Props) {
         draftTextHistoryRef.current = null;
       };
       if (
-        (isEditableTextOverlay(o) || o.type === "note") &&
+        (o.type === "text" || o.type === "callout" || o.type === "note") &&
         nextText.trim() === ""
       ) {
-        clearOrRemoveEmptyEdit();
-        return;
-      }
-      if (o.type === "contentText" && nextText === o.originalText) {
         clearOrRemoveEmptyEdit();
         return;
       }
@@ -1575,18 +1565,6 @@ function OverlayLayerImpl({ page, scale, overlays }: Props) {
         }}
       >
         {overlays
-          .filter((o) => o.type === "contentText")
-          .map((o) => (
-            <OverlaySvg
-              key={o.id}
-              overlay={o}
-              page={page}
-              scale={scale}
-              selected={selectedIds.includes(o.id)}
-              liveReveals={liveOverlayReveals}
-            />
-          ))}
-        {overlays
           .filter((o) => o.type !== "contentText")
           .map((o) => (
             <OverlaySvg
@@ -1663,9 +1641,5 @@ function OverlayLayerImpl({ page, scale, overlays }: Props) {
   );
 }
 
-// Memoized: with a stable `overlays` reference per page, this whole layer (and
-// its ~18 store selectors) skips re-rendering on the parent's scroll-driven and
-// other-page churn. Pages with no overlays get the shared EMPTY_OVERLAYS
-// constant from the parent, so they stay skipped even while an overlay on a
-// different page is being dragged.
+// Stable page overlay lists keep unrelated pages out of the render path.
 export const OverlayLayer = memo(OverlayLayerImpl);

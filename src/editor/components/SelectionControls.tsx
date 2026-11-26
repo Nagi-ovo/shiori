@@ -81,7 +81,7 @@ export function SelectionControls({
   // properties as fields — which a screen reader can also read back, unlike
   // a handle that only ever reports a position.
   const sizable =
-    "rect" in selection && selection.rect ? selection : null;
+    selection.type !== "sourceImageEdit" && "rect" in selection ? selection : null;
   const nudgeRect = (dw: number, dh: number) => {
     if (!sizable) return;
     updateOverlay(selection.id, {
@@ -293,6 +293,9 @@ export function SelectionControls({
                 } satisfies Partial<ContentTextOverlay>)
               : (patch as Partial<Overlay>);
           write(selection.id, overlayPatch as Partial<Overlay>);
+          if (selection.type === "contentText" && write === updateOverlay) {
+            onTextFinish(selection, selection.text);
+          }
           if (selection.type === "callout") {
             if (patch.color) setAnnot({ calloutColor: patch.color });
           } else {
@@ -475,11 +478,12 @@ function TextContentEditor({
         if (e.key !== "Escape") return;
         e.preventDefault();
         e.stopPropagation();
-        e.currentTarget.dataset.escapeCommitted = "true";
+        if (overlay.type !== "contentText") e.currentTarget.dataset.escapeCommitted = "true";
         onFinish(e.currentTarget.value);
         e.currentTarget.blur();
       }}
       onBlur={(e) => {
+        if (overlay.type === "contentText") return;
         if (e.currentTarget.dataset.escapeCommitted === "true") {
           delete e.currentTarget.dataset.escapeCommitted;
           return;

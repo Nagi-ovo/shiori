@@ -1,22 +1,19 @@
 import { useTranslation } from "react-i18next";
 import { T } from "../../design/tokens";
 
-// The two notices the export dialog shows above its buttons: the warning that
-// asks the user to confirm a lossy export, and the export failure with its
-// copyable diagnostic code.
+import type { AcceptanceFinding, AcceptanceFindingKind } from "../../pdf/export/acceptance";
 
-export function LossyExportNotice({
-  lostChars,
-  unexcisedEdits = 0,
-  clippedChars = 0,
-}: {
-  lostChars: number;
-  // Original-text edits painted over without removing the old glyphs: the
-  // file still answers search and copy with the text the user replaced.
-  unexcisedEdits?: number;
-  // Characters on lines a flattened box clipped: left out of the page.
-  clippedChars?: number;
-}) {
+const findingLabels: Record<AcceptanceFindingKind, { title: string; count?: string }> = {
+  "lost-text": { title: "export.lostCharsConfirmTitle", count: "export.lostCharsConfirmBody" },
+  "unexcised-edit": { title: "export.unexcisedConfirmTitle", count: "export.unexcisedConfirmBody" },
+  "clipped-text": { title: "export.clippedConfirmTitle", count: "export.clippedConfirmBody" },
+  "new-collision": { title: "export.review.new-collision" },
+  "overflow-envelope": { title: "export.review.overflow-envelope" },
+  "uncertain-contact": { title: "export.review.uncertain-contact" },
+  "stripped-equivalent": { title: "export.review.stripped-equivalent" },
+};
+
+export function ExportReviewNotice({ findings }: { findings: readonly AcceptanceFinding[] }) {
   const { t } = useTranslation();
   return (
     <div
@@ -33,32 +30,21 @@ export function LossyExportNotice({
         marginBottom: 10,
       }}
     >
-      {lostChars > 0 ? (
-        <div>
-          <strong>{t("export.lostCharsConfirmTitle")}</strong>
-          <div style={{ marginTop: 4 }}>
-            {t("export.lostCharsConfirmBody", {
-              count: lostChars,
-            })}
-          </div>
-        </div>
-      ) : null}
-      {unexcisedEdits > 0 ? (
-        <div style={{ marginTop: lostChars > 0 ? 8 : 0 }}>
-          <strong>{t("export.unexcisedConfirmTitle")}</strong>
-          <div style={{ marginTop: 4 }}>
-            {t("export.unexcisedConfirmBody", { count: unexcisedEdits })}
-          </div>
-        </div>
-      ) : null}
-      {clippedChars > 0 ? (
-        <div style={{ marginTop: lostChars > 0 || unexcisedEdits > 0 ? 8 : 0 }}>
-          <strong>{t("export.clippedConfirmTitle")}</strong>
-          <div style={{ marginTop: 4 }}>
-            {t("export.clippedConfirmBody", { count: clippedChars })}
-          </div>
-        </div>
-      ) : null}
+      <ul style={{ margin: 0, paddingInlineStart: 18, display: "grid", gap: 8 }}>
+        {findings.map(({ kind, pageIndex, region, count }, index) => {
+          const labels = findingLabels[kind];
+          return (
+            <li key={index}>
+              <strong>{t(labels.title)}</strong>
+              {pageIndex !== undefined && <div>{t("export.review.page", { page: pageIndex + 1 })}</div>}
+              {region && <div>{t("export.review.region", region)}</div>}
+              {count !== undefined && (
+                <div>{t(labels.count ?? "export.review.count", { count })}</div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

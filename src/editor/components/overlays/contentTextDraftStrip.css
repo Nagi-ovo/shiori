@@ -1,0 +1,56 @@
+.shioriCanvas {
+  padding-top: var(--shiori-content-text-draft-inset, 0px);
+}
+
+.shioriContentTextDraft {
+  display: contents;
+}
+
+.shioriContentTextDraft.is-refused {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 6px 12px 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  border: 0;
+  border-bottom: 1px solid var(--opx-rule);
+  background: var(--opx-paper);
+  color: var(--opx-ink);
+  font: 500 13px/1.3 var(--opx-font-sans);
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  pointer-events: auto;
+}
+
+/* Engines without the top layer can still place the field against the
+   viewport once the source box stops establishing a containing block. */
+.shioriOverlayLayer div:has(> .shioriContentTextDraft.is-refused:not([popover])),
+.shioriOverlayLayer div:has(> div > .shioriContentTextDraft.is-refused:not([popover])) {
+  transform: none !important;
+}
+
+.shioriOverlayLayer [role="group"]:has(.shioriContentTextDraft.is-refused) {
+  background-color: transparent !important;
+  outline: none !important;
+}
+
+.shioriContentTextDraft.is-refused > textarea {
+  max-width: 48rem;
+  height: 3.25em;
+  padding: 4px 8px;
+  border: 1px solid var(--opx-rule);
+  border-radius: 4px;
+  background: var(--opx-surface);
+  color: var(--opx-ink);
+  font: 400 16px/1.3 var(--opx-font-sans);
+  text-align: start;
+  white-space: pre-wrap;
+  overflow: auto;
+}
+
+.shioriContentTextDraft.is-refused > textarea:focus-visible {
+  outline: 1px solid var(--opx-accent);
+}

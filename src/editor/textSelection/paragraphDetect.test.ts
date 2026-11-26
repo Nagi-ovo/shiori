@@ -136,7 +136,7 @@ describe("paragraph detection", () => {
   test("ordinary text fonts do not trip the math refusal", () => {
     const runs = bodyParagraph().map((r) => ({
       ...r,
-      fontName: "ABCDEF+NimbusRomNo9L-Regu",
+      fontName: "ABCDEF+SampleSerif-Regular",
     }));
     const blocks = detectParagraphs(runs, 1);
     expect(blocks[0]!.confidence).toBe("high");
@@ -150,7 +150,7 @@ describe("paragraph detection", () => {
     expect(isMathFontName("LatinModernMath-Regular")).toBe(true);
     expect(isMathFontName("SymbolMT")).toBe(true);
     expect(isMathFontName("KAXVBH+CMR10")).toBe(false);
-    expect(isMathFontName("NimbusRomNo9L-ReguItal")).toBe(false);
+    expect(isMathFontName("SampleSerif-RegularItal")).toBe(false);
     // An embedded font, as the reading layer keys it by its program.
     expect(isMathFontName(fontKey("CMMI10", "afa7e7fb38a5d77b"))).toBe(true);
     expect(isMathFontName(fontKey("CMR10", "afa7e7fb38a5d77b"))).toBe(false);

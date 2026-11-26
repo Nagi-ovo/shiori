@@ -19,7 +19,7 @@ function hashOf(data: Uint8Array): string {
  * Loads a document's embedded font as a browser face and resolves to its CSS
  * family, or null when the browser cannot use it. Only TrueType and OpenType
  * programs whose own cmap draws the font's text as the PDF does can load as
- * they are; the rest (bare CFF and Type 1, common in TeX and InDesign output,
+ * they are; the rest (bare CFF and Type 1,
  * programs a dictionary remaps or a subset that lost its cmap) and the ones
  * the browser refuses are rebuilt from their glyphs by `addOutlineFontFace`.
  */

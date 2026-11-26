@@ -276,8 +276,10 @@ describe("PDF page column", () => {
     // puts it in, relative to the scroller's top edge.
     const rect = (top: number, height: number) =>
       ({ x: 0, y: top, left: 0, top, width: 612, height, right: 612, bottom: top + height }) as DOMRect;
-    const boundingRect = HTMLElement.prototype.getBoundingClientRect;
-    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    const htmlProto = HTMLElement.prototype;
+    const boundingDescriptor = Object.getOwnPropertyDescriptor(htmlProto, "getBoundingClientRect");
+    const boundingRect = htmlProto.getBoundingClientRect;
+    htmlProto.getBoundingClientRect = function (this: HTMLElement) {
       const scroller = document.querySelector<HTMLElement>("[data-shiori-pdf-scroller]");
       if (this === scroller) return rect(0, 900);
       const id = this.dataset.shioriPageId;
@@ -307,7 +309,10 @@ describe("PDF page column", () => {
       expect(store.getState().activePageId).toBe("page-0");
     } finally {
       window.requestAnimationFrame = requestFrame;
-      HTMLElement.prototype.getBoundingClientRect = boundingRect;
+      // The native method is inherited in happy-dom. Remove the mock's own
+      // property so later overrides on Element.prototype can take effect.
+      if (boundingDescriptor) Object.defineProperty(htmlProto, "getBoundingClientRect", boundingDescriptor);
+      else Reflect.deleteProperty(htmlProto, "getBoundingClientRect");
     }
   });
 

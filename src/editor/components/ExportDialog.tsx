@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ContentTextOutcomes } from "./ContentTextOutcomes";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { exportModelForPages } from "../export/exportModel";
 import { useTranslation } from "react-i18next";
 import { T } from "../../design/tokens";
 import { Ic } from "./icons";
@@ -9,10 +11,11 @@ import {
   Section,
   type RadioOption,
 } from "./ui";
-import { ExportErrorNotice, LossyExportNotice } from "./ExportNotices";
+import { ExportErrorNotice, ExportReviewNotice } from "./ExportNotices";
 import { ExportPagesSection } from "./ExportPagesSection";
-import { useEditorStore } from "../store/store";
-import type { ExportMode } from "../../pdf/export/exportPdf";
+import { useEditorStore, useEditorStoreApi, type OpenedPdf } from "../store/store";
+import type { DocumentModel } from "../../pdf/model/types";
+import type { ExportMode, ExportResult } from "../../pdf/export/exportPdf";
 import { selectPagesForExport, type ExportRange } from "../../pdf/export/pageRanges";
 import { hasNonAscii } from "../../pdf/export/textScripts";
 import {
@@ -30,21 +33,13 @@ import {
 import { formatEditList } from "../permissionEdits";
 import { exportSnapshotKey } from "../export/exportStatus";
 import {
-  exportBytesForQuality,
+  exportDialogCandidateKey,
   loadExportPdfModule,
   type ExportPreviewRequest,
 } from "./exportDialogBytes";
 import { readExportPrefs, writeExportPrefs, type QualityV } from "./exportPrefs";
-import {
-  PREVIEW_DEBOUNCE_MS,
-  deferredSizePreviews,
-  generateSizePreview,
-  qualityHint,
-  selectSizePreview,
-  unavailableSizePreviews,
-  type ExportBytesCache,
-  type SizePreviewState,
-} from "./exportSizePreview";
+import { getExportCandidate, qualityHint } from "./exportSizePreview";
+import { useExportSizePreview } from "./useExportSizePreview";
 
 type RangeV = ExportRange;
 
@@ -68,17 +63,54 @@ type ExportErrorState = {
   diagnosticReport: string;
 };
 
-type PendingLossyExport = {
-  bytes: Uint8Array;
-  lostChars: number;
-  unexcisedEdits: number;
-  clippedChars: number;
+type PreparedExport = {
+  candidate: ExportResult;
   completeDocument: boolean;
   snapshotKey: string;
   suggestedName: string;
-  diagnosticContext: DiagnosticContext;
 };
 
+type CurrentExport = {
+  request: ExportPreviewRequest | null;
+  diagnosticContext: DiagnosticContext;
+  completeDocument: boolean;
+  suggestedName: string;
+  quality: QualityV;
+  save: (prepared: PreparedExport) => Promise<void>;
+};
+
+function hasNonAsciiText(model: DocumentModel): boolean {
+  return model.overlays.some(
+    (overlay) =>
+      (overlay.type === "text" ||
+        overlay.type === "contentText" ||
+        overlay.type === "callout") &&
+      hasNonAscii(overlay.text),
+  );
+}
+
+function pageNumber(model: DocumentModel, activePageId: string | null): number {
+  return Math.max(0, model.pages.findIndex((page) => page.id === activePageId)) + 1;
+}
+
+function makePreviewRequest(
+  opened: OpenedPdf,
+  model: DocumentModel,
+  mode: ExportMode,
+  documentFiles: ExportPreviewRequest["documentFiles"],
+  unicodeFontErrorMessage: string,
+): ExportPreviewRequest | null {
+  if (!model.pages.length) return null;
+  return {
+    doc: opened.doc,
+    originalBytes: opened.bytes,
+    password: opened.password,
+    model,
+    mode,
+    documentFiles,
+    unicodeFontErrorMessage,
+  };
+}
 
 export function ExportDialog({
   open,
@@ -87,6 +119,7 @@ export function ExportDialog({
   onOpenExported,
 }: Props) {
   const { t, i18n } = useTranslation();
+  const editorStore = useEditorStoreApi();
   const opened = useEditorStore((s) => s.opened);
   const model = useEditorStore((s) => s.model);
   const activePageId = useEditorStore((s) => s.activePageId);
@@ -101,19 +134,13 @@ export function ExportDialog({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ExportErrorState | null>(null);
-  const [pendingLossyExport, setPendingLossyExport] =
-    useState<PendingLossyExport | null>(null);
+  const [reviewedExport, setReviewedExport] = useState<PreparedExport | null>(null);
+  const currentExportRef = useRef<(() => CurrentExport | null) | null>(null);
+  const exportingRef = useRef(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
     "idle",
   );
   const copyResetTimerRef = useRef<number | null>(null);
-  const previewCacheRef = useRef<ExportBytesCache | null>(null);
-  const previewQueueRef = useRef<Promise<void>>(Promise.resolve());
-  const [sizePreviewState, setSizePreviewState] =
-    useState<SizePreviewState>(() => ({
-      request: null,
-      previews: deferredSizePreviews(quality),
-    }));
 
   // Persist the mode + quality whenever they change so the next export starts
   // where the last one left off.
@@ -141,118 +168,40 @@ export function ExportDialog({
     }, 1800);
   };
 
-  const hasCjkText = model.overlays.some(
-    (overlay) =>
-      (overlay.type === "text" ||
-        overlay.type === "contentText" ||
-        overlay.type === "callout") &&
-      hasNonAscii(overlay.text),
-  );
+  const hasCjkText = hasNonAsciiText(model);
   const pageCount = model.pages.length;
-  const currentIdx =
-    Math.max(0, model.pages.findIndex((p) => p.id === activePageId)) + 1;
+  const currentIdx = pageNumber(model, activePageId);
   const documentFiles = range === "all" ? "preserve" : "omit";
   const pagesForExport = useMemo(
     () => selectPagesForExport(range, model.pages, currentIdx, customRange),
     [customRange, currentIdx, model.pages, range],
   );
   const exportModel = useMemo(
-    () => ({ pages: pagesForExport, overlays: model.overlays }),
-    [model.overlays, pagesForExport],
+    () => exportModelForPages(model, pagesForExport),
+    [model, pagesForExport],
   );
   const unicodeFontErrorMessage = t("export.fontError");
-  const previewRequest = useMemo<ExportPreviewRequest | null>(() => {
-    if (!open || !opened || pagesForExport.length === 0) return null;
-    return {
-      doc: opened.doc,
-      originalBytes: opened.bytes,
-      password: opened.password,
-      model: exportModel,
-      mode: annotMode,
-      documentFiles,
-      unicodeFontErrorMessage,
-    };
-  }, [
-    annotMode,
-    exportModel,
-    open,
-    opened,
-    pagesForExport.length,
-    documentFiles,
-    unicodeFontErrorMessage,
-  ]);
+  const previewRequest = useMemo(
+    () => open && opened
+      ? makePreviewRequest(opened, exportModel, annotMode, documentFiles, unicodeFontErrorMessage)
+      : null,
+    [annotMode, documentFiles, exportModel, open, opened, unicodeFontErrorMessage],
+  );
+  const { previews: sizePreviews, cacheRef: previewCacheRef } = useExportSizePreview(previewRequest, quality);
+  const review = useMemo(() => {
+    if (!reviewedExport || !previewRequest) return null;
+    const key = exportDialogCandidateKey({ ...previewRequest, quality });
+    return reviewedExport.candidate.acceptance.key === key ? reviewedExport : null;
+  }, [previewRequest, quality, reviewedExport]);
 
   useEffect(() => {
-    // A confirmation is tied to the exact bytes/options it previewed.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPendingLossyExport(null);
-  }, [previewRequest, quality]);
-
-  useEffect(() => {
-    if (!previewRequest) {
-      previewCacheRef.current = null;
-      return;
+    if (reviewedExport && !review) {
+      // A review belongs to the request that produced the displayed findings.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setReviewedExport((current) => current === reviewedExport ? null : current);
     }
+  }, [review, reviewedExport]);
 
-    let cancelled = false;
-    let cache = previewCacheRef.current;
-    if (!cache || cache.request !== previewRequest) {
-      cache = { request: previewRequest, results: {}, pending: {} };
-      previewCacheRef.current = cache;
-      setSizePreviewState({
-        request: previewRequest,
-        previews: deferredSizePreviews(quality),
-      });
-    } else {
-      const cached = cache.results[quality];
-      setSizePreviewState((current) => ({
-        request: previewRequest,
-        previews: selectSizePreview(
-          current.request === previewRequest
-            ? current.previews
-            : deferredSizePreviews(quality),
-          quality,
-          cached,
-        ),
-      }));
-      if (cached) return;
-    }
-
-    const timer = window.setTimeout(() => {
-      const work = previewQueueRef.current.then(async () => {
-        if (cancelled || previewCacheRef.current !== cache) return;
-        await generateSizePreview(previewRequest, quality, cache, (preview) => {
-          if (cancelled || previewCacheRef.current !== cache) return;
-          setSizePreviewState((current) => ({
-            request: previewRequest,
-            previews: {
-              ...(current.request === previewRequest
-                ? current.previews
-                : deferredSizePreviews(quality)),
-              [quality]: preview,
-            },
-          }));
-        });
-      });
-      previewQueueRef.current = work.then(
-        () => undefined,
-        () => undefined,
-      );
-    }, PREVIEW_DEBOUNCE_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [previewRequest, quality]);
-
-  if (!open || !opened) return null;
-
-  const sizePreviews = !previewRequest
-    ? unavailableSizePreviews()
-    : sizePreviewState.request === previewRequest
-      ? sizePreviewState.previews
-      : deferredSizePreviews(quality);
   const annotOpts: RadioOption<ExportMode>[] = [
     {
       v: "annotations",
@@ -356,12 +305,13 @@ export function ExportDialog({
     });
   };
 
-  const savePreparedExport = async (prepared: PendingLossyExport) => {
-    const result = await saveBytes(prepared.bytes, {
+  const savePreparedExport = async (prepared: PreparedExport) => {
+    const result = await saveBytes(prepared.candidate.bytes, {
       suggestedName: prepared.suggestedName,
       mime: "application/pdf",
     });
     if (result.status === "saved") {
+      setReviewedExport(null);
       console.info("Export saved:", result.platform, result.path);
       onExportSaved?.({
         path: result.path,
@@ -410,95 +360,97 @@ export function ExportDialog({
     console.info("Export cancelled by user");
   };
 
-  const onExport = async () => {
-    if (!opened) return;
+  useLayoutEffect(() => {
+    currentExportRef.current = () => {
+      // Store edits can land before React commits the corresponding render.
+      const live = editorStore.getState();
+      if (!open || !live.opened) return null;
+      const sameSelection = live.opened === opened && live.model === model && live.activePageId === activePageId;
+      const selectedPages = sameSelection ? pagesForExport : selectPagesForExport(
+        range, live.model.pages, pageNumber(live.model, live.activePageId), customRange,
+      );
+      const request = sameSelection ? previewRequest : makePreviewRequest(
+        live.opened, { pages: selectedPages, overlays: live.model.overlays },
+        annotMode, documentFiles, unicodeFontErrorMessage,
+      );
+      return {
+        request,
+        quality,
+        completeDocument: range === "all" && selectedPages.length === live.model.pages.length && annotMode !== "none",
+        suggestedName: `${live.opened.fileName.replace(/\.pdf$/i, "")}-edited.pdf`,
+        diagnosticContext: {
+          pageCount: live.model.pages.length,
+          overlayCount: live.model.overlays.length,
+          selectedPages: selectedPages.length,
+          fileSizeBytes: live.opened.fileSize,
+          range,
+          customRange: range === "range" ? customRange : null,
+          mode: annotMode,
+          quality,
+          hasCjkText: sameSelection ? hasCjkText : hasNonAsciiText(live.model),
+        },
+        save: savePreparedExport,
+      };
+    };
+    return () => {
+      currentExportRef.current = null;
+    };
+  });
+
+  const onExport = async (approved?: PreparedExport) => {
+    if (exportingRef.current) return;
+    let current = currentExportRef.current?.();
+    if (!current) return;
+    exportingRef.current = true;
     setBusy(true);
     setError(null);
-    setPendingLossyExport(null);
     setCopyState("idle");
-    let diagnosticContext: DiagnosticContext = {
-      pageCount,
-      overlayCount: model.overlays.length,
-      fileSizeBytes: opened.fileSize,
-      range,
-      customRange: range === "range" ? customRange : null,
-      mode: annotMode,
-      quality,
-      hasCjkText,
-    };
+    let diagnosticContext = current.diagnosticContext;
     try {
-      const selectedPages = selectPagesForExport(
-        range,
-        model.pages,
-        currentIdx,
-        customRange,
-      );
-      diagnosticContext = {
-        ...diagnosticContext,
-        selectedPages: selectedPages.length,
-      };
-      if (selectedPages.length === 0) {
-        throw new Error(t("export.emptyError"));
-      }
-      const completeDocument =
-        range === "all" &&
-        selectedPages.length === model.pages.length &&
-        annotMode !== "none";
-      const cached =
-        previewCacheRef.current?.request === previewRequest
-          ? previewCacheRef.current.results[quality]
-          : undefined;
-      const pending =
-        previewCacheRef.current?.request === previewRequest
-          ? previewCacheRef.current.pending[quality]
-          : undefined;
-      const exportResult =
-        cached ??
-        (pending
-          ? await pending
-          : await exportBytesForQuality({
-              doc: opened.doc,
-              originalBytes: opened.bytes,
-              password: opened.password,
-              model: exportModel,
-              mode: annotMode,
-              documentFiles,
-              quality,
-              unicodeFontErrorMessage,
-            }));
-      const stem = opened.fileName.replace(/\.pdf$/i, "");
-      const prepared: PendingLossyExport = {
-        bytes: exportResult.bytes,
-        lostChars: exportResult.lostChars,
-        unexcisedEdits: exportResult.unexcisedEdits ?? 0,
-        clippedChars: exportResult.clippedChars ?? 0,
-        completeDocument,
-        snapshotKey: exportSnapshotKey(exportModel),
-        suggestedName: `${stem}-edited.pdf`,
-        diagnosticContext,
-      };
-      if (prepared.lostChars + prepared.unexcisedEdits + prepared.clippedChars > 0) {
-        setPendingLossyExport(prepared);
+      while (current) {
+        diagnosticContext = current.diagnosticContext;
+        const { request, quality } = current;
+        if (!request) throw new Error(t("export.emptyError"));
+        const key = exportDialogCandidateKey({ ...request, quality });
+        if (approved?.candidate.acceptance.key === key) {
+          await current.save(approved);
+          return;
+        }
+
+        approved = undefined;
+        setReviewedExport(null);
+        const result = await getExportCandidate(request, quality, key, previewCacheRef.current).then(
+          (candidate) => ({ candidate }),
+          (error: unknown) => ({ error }),
+        );
+        current = currentExportRef.current?.();
+        if (!current) return;
+        // A cache hit and an in-flight export both cross an async boundary.
+        // Restart with the latest request if anything affecting the bytes changed.
+        const evaluatedKey = "candidate" in result ? result.candidate.acceptance.key : key;
+        if (!current.request || exportDialogCandidateKey({ ...current.request, quality: current.quality }) !== evaluatedKey) {
+          continue;
+        }
+        diagnosticContext = current.diagnosticContext;
+        if ("error" in result) throw result.error;
+        const { candidate } = result;
+        const prepared: PreparedExport = {
+          candidate,
+          completeDocument: current.completeDocument,
+          snapshotKey: exportSnapshotKey(request.model),
+          suggestedName: current.suggestedName,
+        };
+        if (candidate.acceptance.status !== "accepted") {
+          setReviewedExport(prepared);
+          return;
+        }
+        await current.save(prepared);
         return;
       }
-      await savePreparedExport(prepared);
     } catch (err) {
       await reportExportError(err, diagnosticContext);
     } finally {
-      setBusy(false);
-    }
-  };
-
-  const onConfirmLossyExport = async () => {
-    const pending = pendingLossyExport;
-    if (!pending) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await savePreparedExport(pending);
-    } catch (err) {
-      await reportExportError(err, pending.diagnosticContext);
-    } finally {
+      exportingRef.current = false;
       setBusy(false);
     }
   };
@@ -512,6 +464,8 @@ export function ExportDialog({
       showCopyState("error");
     }
   };
+
+  if (!open || !opened) return null;
 
   return (
     <Modal
@@ -573,13 +527,8 @@ export function ExportDialog({
         ) : null}
       </Section>
 
-      {pendingLossyExport ? (
-        <LossyExportNotice
-          lostChars={pendingLossyExport.lostChars}
-          unexcisedEdits={pendingLossyExport.unexcisedEdits}
-          clippedChars={pendingLossyExport.clippedChars}
-        />
-      ) : null}
+      <ContentTextOutcomes outcomes={sizePreviews[quality].outcomes} />
+      {review && <ExportReviewNotice findings={review.candidate.acceptance.findings} />}
 
       {error ? (
         <ExportErrorNotice
@@ -609,10 +558,10 @@ export function ExportDialog({
         >
           {t("export.footer")}
         </div>
-        {pendingLossyExport ? (
+        {review ? (
           <>
             <IconBtn
-              onClick={() => setPendingLossyExport(null)}
+              onClick={() => setReviewedExport(null)}
               tone="outline"
               disabled={busy}
             >
@@ -620,16 +569,16 @@ export function ExportDialog({
             </IconBtn>
             <IconBtn
               tone="primary"
-              onClick={onConfirmLossyExport}
+              onClick={() => void onExport(review)}
               disabled={busy}
             >
               <Ic.download />
               <span>
                 {busy
                   ? t("export.busy")
-                  : pendingLossyExport.unexcisedEdits + pendingLossyExport.clippedChars > 0
-                    ? t("export.unexcisedConfirmAction")
-                    : t("export.lostCharsConfirmAction")}
+                  : review.candidate.acceptance.findings.every(({ kind }) => kind === "lost-text")
+                    ? t("export.lostCharsConfirmAction")
+                    : t("export.unexcisedConfirmAction")}
               </span>
             </IconBtn>
           </>
@@ -638,7 +587,7 @@ export function ExportDialog({
             <IconBtn onClick={onClose} tone="outline" disabled={busy}>
               {t("export.cancel")}
             </IconBtn>
-            <IconBtn tone="primary" onClick={onExport} disabled={busy}>
+            <IconBtn tone="primary" onClick={() => void onExport()} disabled={busy}>
               <Ic.download />
               <span>{busy ? t("export.busy") : t("export.action")}</span>
             </IconBtn>

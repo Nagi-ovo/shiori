@@ -10,16 +10,14 @@ content stream 里**——搜索、复制、屏幕阅读器读到的还是旧文
 (A) 导出时删除被覆盖的字形绘制（= redaction 的文本移除半边）；(B) 条件性原地真替换。
 结论：**A 立项、分期做；B 只作为 A 之上的严格条件优化；全面真替换不做**。
 
-调研来源：网络调研（qpdf/pikepdf、PDFBox、MuPDF、pdfcpu、HexaPDF、iText
-pdfSweep、pdf-lib/pdfjs 生态、Adobe 文档）+ 本仓 pdf-lib 能力勘察。
+规范依据为 ISO 32000-1 的内容流、文字状态与字体章节。
 
 ## 为什么不做全面真替换
 
 1. **字体子集缺字是硬墙。** 内嵌字体几乎都是子集，只含文档用过的字形；写新字符
    要求它在 font program、Encoding/CMap、ToUnicode、宽度表里全部可表示，缺任何
    一环都写不出。给现有 subset 补字形 = 重写字体程序，不做。
-2. **PDF 不回流。** 邻近文字绝对定位，替换变长/变短一样露馅；Acrobat 也靠字体
-   替代 + 拉伸压缩硬扛（Adobe 文档确认）。
+2. **PDF 不回流。** 邻近文字绝对定位，替换变长/变短一样露馅。
 3. TS 生态没有成熟的 content-stream 重写库（pdf-lib 无算子级 parser，pdfjs 的
    operator list 不保留原始 token 映射，npm 提取类包都不做重写）——必须自建，
    所以范围要窄。
@@ -30,7 +28,7 @@ pdfSweep、pdf-lib/pdfjs 生态、Adobe 文档）+ 本仓 pdf-lib 能力勘察�
 只见新文字。**明确非目标**：不是合规脱敏（metadata、附件、结构树、隐藏层不管），
 不承诺"安全 redaction"。
 
-**架构**（PDFBox `RemoveAllText` + MuPDF redact filter 为蓝本）：
+**架构**
 
 1. **工具链用 pdf-lib 现成零件**（已勘察，均公开导出）：`decodePDFRawStream`
    解码、`PDFObjectParser` 解析操作数、`PDFOperator` + `PDFContentStream`
@@ -39,7 +37,7 @@ pdfSweep、pdf-lib/pdfjs 生态、Adobe 文档）+ 本仓 pdf-lib 能力勘察�
      字符串/数组/字典/注释/inline image。注意 qpdf 坑：`/Contents` 为数组时
      流可能在 token 中间断开，**必须先 coalesce 再解析**。
    - **文字状态机**：`q/Q/cm/BT/ET/Tf/Tm/Td/TD/T*/Tc/Tw/Tz/TL/Ts/Tr/Tj/TJ/'/"`，
-     glyph bbox 经 TRM×CTM 变换后与 cover rect 相交判定（MuPDF 做法；零宽
+     glyph bbox 经 TRM×CTM 变换后与 cover rect 相交判定（零宽
      diacritic 用 valid-rect 兜底）。
 2. **逐字形删，不是删整条 Tj/TJ**：命中的 glyph 从 show 串里去掉，但**推进量
    必须保留**——转成等效 TJ numeric adjustment，否则同一 text object 后面的

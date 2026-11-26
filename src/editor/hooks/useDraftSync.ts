@@ -406,7 +406,7 @@ export function useDraftSync(
       }
     } else {
       // Undo back to the original deletes the saved draft (or an older log),
-      // which teardown can cut short too. A newer clean log outranks both.
+      // which cleanup can cut short too. A newer clean log outranks both.
       const { draftId: logId, model: logModel, opened: logOpened } =
         latestRef.current;
       if (

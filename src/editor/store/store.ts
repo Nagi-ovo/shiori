@@ -6,12 +6,12 @@ import {
   type UseBoundStore,
 } from "zustand";
 import { nanoid } from "nanoid";
+import { isDiscardableTextDraft, modelsEqual } from "./textDraft";
 import type {
   DocumentModel,
   FontFamily,
   Overlay,
   PageModel,
-  Rotation,
   ToolId,
 } from "../../pdf/model/types";
 import type { PdfDocument } from "../../pdf/engine/types";
@@ -25,7 +25,6 @@ import {
   MAX_COLLAPSED_NOTE_IDS,
   normalizeCollapsedNoteIds,
 } from "../overlays/notePresentation";
-import { pageOrigin } from "../../pdf/model/pageSpace";
 import { NOTE_DEFAULT_COLOR } from "../../pdf/model/note";
 import { CALLOUT_DEFAULT_COLOR } from "../../pdf/model/callout";
 import type { SavedSignature } from "../../storage/signatures";
@@ -51,6 +50,8 @@ import { LIVE_OPERATION_RECEIPT_MAX } from "../../live/liveReceiptPolicy";
 import { selectedOverlayActions } from "./selectedOverlayActions";
 import { pdfFontRegistry } from "./pdfFontRegistry";
 import { openDocumentActions } from "./openDocument";
+import { cloneModel, mergeModel } from "./modelClone";
+import { pageActions, type FlowChainActions } from "./pageActions";
 
 export type OpenedPdf = {
   fileName: string;
@@ -361,6 +362,7 @@ type Actions = {
   toggleSelected: (id: string) => void;
   setSelected: (ids: string[]) => void;
   setEditingOverlayId: (id: string | null) => void;
+  finishEditingOverlay: (id: string) => void;
   setNoteCollapsed: (id: string, collapsed: boolean) => void;
   setCollapsedNoteIds: (ids: string[]) => void;
   toggleNoteCollapsed: (id: string) => void;
@@ -464,7 +466,7 @@ type AppActions = {
   setError: (info: ErrorInfo | null) => void;
 };
 
-export type Store = State & Actions;
+export type Store = State & Actions & FlowChainActions;
 export type AppStore = AppState & AppActions;
 export type PdfEditorStoreApi = UseBoundStore<StoreApi<Store>>;
 export type AppStoreApi = UseBoundStore<StoreApi<AppStore>>;
@@ -489,20 +491,6 @@ export type PdfEditorSessionState = {
   showThumbs: boolean;
   readerMode: boolean;
 };
-
-function isEmptyEditingOverlay(overlay: Overlay): boolean {
-  if (
-    overlay.type === "text" ||
-    overlay.type === "note" ||
-    overlay.type === "callout"
-  ) {
-    return overlay.text.trim() === "";
-  }
-  if (overlay.type === "contentText") {
-    return overlay.text.trim() === "" || overlay.text === overlay.originalText;
-  }
-  return false;
-}
 
 function isOverlayBatchHistoryEntry(
   entry: HistoryEntry,
@@ -653,43 +641,13 @@ function scheduleLiveRevealCleanup(
   globalThis.setTimeout(() => remove(reveal.id), delayMs);
 }
 
-function modelsEqual(a: DocumentModel, b: DocumentModel): boolean {
-  if (a.pages.length !== b.pages.length || a.overlays.length !== b.overlays.length) {
-    return false;
-  }
-  for (let i = 0; i < a.pages.length; i += 1) {
-    const left = a.pages[i]!;
-    const right = b.pages[i]!;
-    if (
-      left.id !== right.id ||
-      left.sourceIndex !== right.sourceIndex ||
-      left.rotation !== right.rotation ||
-      pageOrigin(left).x !== pageOrigin(right).x ||
-      pageOrigin(left).y !== pageOrigin(right).y ||
-      left.widthPt !== right.widthPt ||
-      left.heightPt !== right.heightPt ||
-      left.blank !== right.blank
-    ) {
-      return false;
-    }
-  }
-  for (let i = 0; i < a.overlays.length; i += 1) {
-    if (JSON.stringify(a.overlays[i]) !== JSON.stringify(b.overlays[i])) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function clearEditingOverlay(state: Store): Partial<State> {
-  const editingId = state.editingOverlayId;
+function clearEditingOverlay(state: Store, editingId = state.editingOverlayId): Partial<State> {
   if (!editingId) return { editingOverlayId: null };
   const editingOverlay = state.model.overlays.find((o) => o.id === editingId);
-  if (!editingOverlay || !isEmptyEditingOverlay(editingOverlay)) {
-    return { editingOverlayId: null };
-  }
+  const editingOverlayId = state.editingOverlayId === editingId ? null : state.editingOverlayId;
+  if (!editingOverlay || !isDiscardableTextDraft(editingOverlay)) return { editingOverlayId };
   const nextModel = {
-    pages: state.model.pages,
+    ...state.model,
     overlays: state.model.overlays.filter((o) => o.id !== editingId),
   };
   const undoTop = state.undoStack[state.undoStack.length - 1];
@@ -700,7 +658,7 @@ function clearEditingOverlay(state: Store): Partial<State> {
   return {
     model: nextModel,
     selectedIds: state.selectedIds.filter((id) => id !== editingId),
-    editingOverlayId: null,
+    editingOverlayId,
     undoStack,
   };
 }
@@ -1031,37 +989,6 @@ const APP_INIT_STATE: AppState = {
   errorInfo: null,
 };
 
-function cloneModel(m: DocumentModel): DocumentModel {
-  return {
-    pages: m.pages, // immutable; shared
-    overlays: m.overlays.map((o) => ({
-      ...o,
-      ...("rect" in o ? { rect: { ...o.rect } } : null),
-      ...("rects" in o ? { rects: o.rects.map((r) => ({ ...r })) } : null),
-      ...("targetRects" in o
-        ? { targetRects: o.targetRects.map((r) => ({ ...r })) }
-        : null),
-      ...("leader" in o && o.leader
-        ? { leader: o.leader.map((point) => ({ ...point })) }
-        : null),
-      ...("coverRects" in o
-        ? { coverRects: o.coverRects.map((r) => ({ ...r })) }
-        : null),
-      ...("paths" in o
-        ? { paths: o.paths.map((path) => path.map((pt) => ({ ...pt }))) }
-        : null),
-      ...("thread" in o && o.thread
-        ? { thread: o.thread.map((entry) => ({ ...entry })) }
-        : null),
-    })) as Overlay[],
-  };
-}
-
-function normalizeRotation(r: number): Rotation {
-  const mod = ((r % 360) + 360) % 360;
-  return mod as Rotation;
-}
-
 /**
  * Apply a patch and record that the reader touched this annotation.
  *
@@ -1081,6 +1008,7 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
     ...EDITOR_INIT_STATE,
 
   ...openDocumentActions(set, get, cloneModel),
+  ...pageActions(set, get),
 
   activatePendingOverlayReveals: (overlayIds) => {
     if (overlayIds.length === 0) return;
@@ -1176,9 +1104,7 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
     }
   },
   setSelected: (ids) => {
-    // De-dup while preserving the provided order — callers typically
-    // pass the result of a hit-test and want the first element to be
-    // the "primary" selection for subsequent single-target operations.
+    // Keep the first hit as the primary selection.
     const seen = new Set<string>();
     const unique: string[] = [];
     for (const id of ids) {
@@ -1197,6 +1123,7 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
         editingOverlayId: id,
       };
     }),
+  finishEditingOverlay: (id) => set((state) => clearEditingOverlay(state, id)),
   setNoteCollapsed: (id, collapsed) =>
     set((state) => {
       const hasId = state.collapsedNoteIds.includes(id);
@@ -1267,7 +1194,7 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
       return;
     }
     const ids = get()
-      .model.overlays.filter((o) => o.pageId === pageId)
+      .model.overlays.filter(o => o.pageId === pageId && o.type !== "sourceImageEdit")
       .map((o) => o.id);
     set({ selectedIds: ids });
   },
@@ -1276,10 +1203,7 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
     const state = get();
     const prev = state.model;
     const snapshot = cloneModel(prev);
-    const merged: DocumentModel = {
-      pages: next.pages ?? prev.pages,
-      overlays: next.overlays ?? prev.overlays,
-    };
+    const merged = mergeModel(prev, next);
     set({
       model: merged,
       activePageId: activePageIdAfterPageReplacement(
@@ -1299,10 +1223,7 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
       expectedModel: state.model,
       expectedUndoStack: state.undoStack,
       expectedRedoStack: state.redoStack,
-      model: {
-        pages: next.pages ?? state.model.pages,
-        overlays: next.overlays ?? state.model.overlays,
-      },
+      model: mergeModel(state.model, next),
       undoStack: [...state.undoStack, snapshot].slice(-100),
     };
   },
@@ -1369,7 +1290,7 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
       expectedRedoStack: state.redoStack,
       expectedCompletedLiveOperationIds: state.completedLiveOperationIds,
       model: {
-        pages: state.model.pages,
+        ...state.model,
         overlays: [...state.model.overlays, ...overlays],
       },
       undoStack: [...state.undoStack, historyEntry].slice(-100),
@@ -1414,10 +1335,7 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
     const state = get();
     const prev = state.model;
     const snapshot = cloneModel(prev);
-    const merged: DocumentModel = {
-      pages: next.pages ?? prev.pages,
-      overlays: next.overlays ?? prev.overlays,
-    };
+    const merged = mergeModel(prev, next);
     const shouldRevealRestoredCallouts =
       useAppStore.getState().prefs.annotationAnimations &&
       !prefersReducedLiveOverlayMotion();
@@ -1490,7 +1408,7 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
       const nextCursor = prev.cursor - 1;
       const removed = prev.overlays[nextCursor]!;
       const nextModel = {
-        pages: model.pages,
+        ...model,
         overlays: model.overlays.filter((overlay) => overlay.id !== removed.id),
       };
       const nextEntry = { ...prev, cursor: nextCursor };
@@ -1541,7 +1459,7 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
       const nextCursor = next.cursor + 1;
       const nextEntry = { ...next, cursor: nextCursor };
       const nextModel = {
-        pages: model.pages,
+        ...model,
         overlays: [...model.overlays, cloneOverlays([restored])[0]!],
       };
       const undoTop = undoStack[undoStack.length - 1];
@@ -1596,11 +1514,17 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
 
   addOverlayNoHistory: (o) => {
     const m = get().model;
-    set({ model: { pages: m.pages, overlays: [...m.overlays, o] } });
+    set({ model: { ...m, overlays: [...m.overlays, o] } });
   },
 
   updateOverlay: (id, patch) => {
-    const m = get().model;
+    const { model: m, editingOverlayId } = get();
+    if (id === editingOverlayId && m.overlays.some(
+      (o) => o.id === id && o.type === "contentText" && isDiscardableTextDraft(o),
+    )) {
+      get().updateOverlayNoHistory(id, patch);
+      return;
+    }
     get().commit({
       overlays: m.overlays.map((o) =>
         o.id === id ? withLocalActivity(o, patch) : o,
@@ -1612,7 +1536,7 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
     const m = get().model;
     set({
       model: {
-        pages: m.pages,
+        ...m,
         overlays: m.overlays.map((o) =>
           o.id === id ? withLocalActivity(o, patch) : o,
         ),
@@ -1646,69 +1570,6 @@ export function createPdfEditorStore(): PdfEditorStoreApi {
     const pasted = pasteOverlays(overlayClipboard, pageId, nanoid);
     get().commit({ overlays: [...model.overlays, ...pasted] });
     set({ selectedIds: pasted.map((o) => o.id) });
-  },
-
-  movePage: (from, to) => {
-    const m = get().model;
-    if (from === to || from < 0 || to < 0 || from >= m.pages.length) return;
-    const pages = [...m.pages];
-    const [moved] = pages.splice(from, 1);
-    if (!moved) return;
-    pages.splice(to, 0, moved);
-    get().commit({ pages });
-  },
-
-  deletePage: (id) => {
-    const m = get().model;
-    if (m.pages.length <= 1) return;
-    const pages = m.pages.filter((p) => p.id !== id);
-    const overlays = m.overlays.filter((o) => o.pageId !== id);
-    get().commit({ pages, overlays });
-    if (get().activePageId === id) {
-      set({ activePageId: pages[0]?.id ?? null });
-    }
-  },
-
-  rotatePage: (id, delta) => {
-    const m = get().model;
-    const pages = m.pages.map((p) =>
-      p.id === id
-        ? { ...p, rotation: normalizeRotation(p.rotation + delta) }
-        : p,
-    );
-    get().commit({ pages });
-  },
-
-  duplicatePage: (id) => {
-    const m = get().model;
-    const idx = m.pages.findIndex((p) => p.id === id);
-    if (idx < 0) return;
-    const src = m.pages[idx]!;
-    const newPage: PageModel = { ...src, id: nanoid() };
-    const pages = [...m.pages];
-    pages.splice(idx + 1, 0, newPage);
-    get().commit({ pages });
-  },
-
-  insertBlankPage: (afterPageId) => {
-    const m = get().model;
-    const reference =
-      m.pages.find((p) => p.id === afterPageId) ?? m.pages.at(-1);
-    const blank: PageModel = {
-      id: nanoid(),
-      sourceIndex: -1,
-      rotation: 0,
-      widthPt: reference?.widthPt ?? 612,
-      heightPt: reference?.heightPt ?? 792,
-      blank: true,
-    };
-    const pages = [...m.pages];
-    const idx = afterPageId
-      ? pages.findIndex((p) => p.id === afterPageId)
-      : pages.length - 1;
-    pages.splice(idx >= 0 ? idx + 1 : pages.length, 0, blank);
-    get().commit({ pages });
-    set({ activePageId: blank.id });
   },
 
   setTextDefaults: (patch) =>

@@ -100,7 +100,7 @@ export const T = {
     "'Klee One', 'Shippori Mincho', 'Noto Serif JP', 'Hiragino Mincho ProN', serif",
   // Legacy alias — retained so existing consumers keep compiling.
   // User-facing Text overlay body. Lead with Times because arXiv/LaTeX
-  // papers commonly embed Nimbus Roman / Times-compatible faces, and
+  // papers commonly embed Times-compatible faces, and
   // macOS' Times is closer to that PDF look than Times New Roman.
   // Export still uses PDF StandardFonts TimesRoman / TimesRomanBold.
   bodySerif:

@@ -599,8 +599,8 @@ fn path_shape(path: &str) -> (String, [f32; 4]) {
 
 #[test]
 fn rebuilds_a_bare_cff_font_from_the_glyphs_the_page_sets() {
-    // "Top compact" in Foxit Serif: bare CFF with no /ToUnicode, as XeTeX and
-    // InDesign embed their fonts. A browser cannot load it; PDFium draws it.
+    // "Top compact" uses bare CFF without /ToUnicode. The native reader
+    // draws the embedded program directly.
     let doc = core().open(fixture("embedded-fonts.pdf"), None).unwrap();
     let fonts = doc.font_outlines(0, &["FoxitSerif".to_string()]).unwrap();
     assert_eq!(fonts.len(), 1, "only the fonts asked for");

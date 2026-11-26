@@ -14,8 +14,8 @@ describe("sourceFontName", () => {
     expect(normalizeBaseFontName("KAXVBH+EBGaramond-Regular")).toBe(
       "EBGaramond-Regular",
     );
-    expect(normalizeBaseFontName("NimbusRomNo9L-Regu")).toBe(
-      "NimbusRomNo9L-Regu",
+    expect(normalizeBaseFontName("SampleSerif-Regular")).toBe(
+      "SampleSerif-Regular",
     );
     // Only the exact 6-uppercase-letter tag form is a subset prefix.
     expect(normalizeBaseFontName("ABC+Font")).toBe("ABC+Font");

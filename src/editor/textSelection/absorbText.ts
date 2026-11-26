@@ -21,15 +21,58 @@ export function substituteAbsorbedText(
   originalText: string | undefined,
   replacement: string,
 ): string {
+  const span = absorbedSpan(initialText, originalText);
+  if (!span) return initialText;
+  return initialText.slice(0, span.start) + replacement + initialText.slice(span.end);
+}
+
+/** Where `originalText` sits in `text`, whitespace-tolerantly; null if absent. */
+function absorbedSpan(
+  text: string,
+  originalText: string | undefined,
+): { start: number; end: number } | null {
   // A blank originalText would match at position 0 and inject the
   // replacement out of nowhere — treat it as "nothing to substitute".
-  if (!originalText || originalText.trim() === "") return initialText;
+  if (!originalText || originalText.trim() === "") return null;
   const pattern = new RegExp(escapeRegExp(originalText).replace(/\s+/g, "\\s+"));
-  const match = pattern.exec(initialText);
-  if (!match) return initialText;
-  return (
-    initialText.slice(0, match.index) +
-    replacement +
-    initialText.slice(match.index + match[0].length)
-  );
+  const match = pattern.exec(text);
+  return match ? { start: match.index, end: match.index + match[0].length } : null;
+}
+
+/** One splice: [start, end) of the text before it became `length` units. */
+export type AbsorbStep = { start: number; end: number; length: number } | null;
+
+/** Splice each absorbed edit's text in turn, recording where it went. */
+export function absorbEdits(
+  text: string,
+  absorbed: readonly { originalText?: string; text: string }[],
+): { text: string; steps: AbsorbStep[] } {
+  const steps: AbsorbStep[] = [];
+  for (const old of absorbed) {
+    const span = absorbedSpan(text, old.originalText);
+    steps.push(span && { ...span, length: old.text.length });
+    if (span) text = text.slice(0, span.start) + old.text + text.slice(span.end);
+  }
+  return { text, steps };
+}
+
+/**
+ * An offset in the opened text for a hit at `offset` of the source text
+ * (step null) or of absorbed edit `step`'s text. A source hit inside a span
+ * that an edit replaced takes the nearer edge of that edit.
+ */
+export function mapAbsorbedOffset(
+  absorption: { steps: readonly AbsorbStep[] },
+  hit: { step: number | null; offset: number },
+): number {
+  const first = hit.step === null ? 0 : hit.step + 1;
+  const own = hit.step === null ? null : absorption.steps[hit.step];
+  if (hit.step !== null && !own) return hit.offset;
+  let offset = own ? own.start + Math.min(hit.offset, own.length) : hit.offset;
+  for (const step of absorption.steps.slice(first)) {
+    if (!step || offset <= step.start) continue;
+    if (offset >= step.end) offset += step.length - (step.end - step.start);
+    else offset = offset - step.start <= step.end - offset ? step.start : step.start + step.length;
+  }
+  return offset;
 }

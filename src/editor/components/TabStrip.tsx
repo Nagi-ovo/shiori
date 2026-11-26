@@ -1038,7 +1038,7 @@ function SortableTab({
       style={{
         height: TAB_HEIGHT,
         // A tab is as wide as its title, no wider. Growing to a shared basis
-        // padded "codex-fix.html" out to the same width as a truncated
+        // padded "notes-fix.html" out to the same width as a truncated
         // 40-character title, which made the strip look like fixed slots the
         // titles happened to sit in. Shrinking still happens when the row is
         // full; below the fold threshold planTabStrip folds tabs into the

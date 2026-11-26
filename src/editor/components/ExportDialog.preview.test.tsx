@@ -1,193 +1,28 @@
-import "../../test/setupDom";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-  within,
-} from "@testing-library/react";
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
+import { describe, expect, test } from "bun:test";
+import { overlay } from "../../pdf/export/contentText/fixtures.test-support";
 import { PDFDocument } from "pdf-lib";
 import i18n from "../../i18n";
-import type { PageModel } from "../../pdf/model/types";
-import type { ExportResult } from "../../pdf/export/exportPdf";
-import type { ExportSourceEncryption } from "../../pdf/export/encryptedSource";
-import { useEditorStore } from "../store/store";
-import type { ExportDialog as ExportDialogComponent } from "./ExportDialog";
+import {
+  ExportDialog,
+  editorStore,
+  render,
+  MockExportPermissionError,
+  documentFilePolicies,
+  encryptionPasswords,
+  exportCalls,
+  fakeEncrypt,
+  fixture,
+  page,
+  preservedDocumentFileSources,
+  preservedInfoSources,
+  saveCalls,
+  setupExportDialogTests,
+  type VectorCandidate,
+} from "../../test/exportDialog";
 
-const exportCalls: string[] = [];
-const saveCalls: Uint8Array[] = [];
-const documentFilePolicies: string[] = [];
-const preservedDocumentFileSources: Uint8Array[] = [];
-const preservedInfoSources: Uint8Array[] = [];
-/** The Info bridge; tests that check the saved file swap in the real one. */
-let runInfoBridge: (source: Uint8Array, output: Uint8Array) => Promise<Uint8Array> =
-  async (_source, output) => output;
-let runExport: () => Promise<ExportResult> = async () => ({
-  bytes: new Uint8Array(1024),
-  lostChars: 0,
-});
-let runCompactRaster: () => Promise<Uint8Array> = async () =>
-  new Uint8Array(256);
-
-let compactRasterCalls = 0;
-/** Whether the export module finds an /Encrypt no handler covers. */
-let unhandledEncryption = false;
-// The handler of the open document when it is encrypted, as
-// src/pdf/export/encryptedSource.ts hands it over; undefined when it is not.
-let sourceEncryption: ExportSourceEncryption | undefined;
-const encryptionPasswords: (string | undefined)[] = [];
-/** What the fake handler makes of a plaintext: a tagged copy. */
-const ENCRYPTED_TAG = 0xe0;
-const fakeEncrypt = async (plain: Uint8Array) => Uint8Array.of(ENCRYPTED_TAG, ...plain);
-
-class MockExportIntegrityError extends Error {}
-class MockExportEncryptedSourceError extends Error {}
-class MockExportSignedSourceError extends Error {}
-class MockExportPermissionError extends Error {
-  constructor(readonly denied: string[]) {
-    super("denied");
-  }
-}
-class MockExportEncryptionUnsupportedError extends Error {}
-class MockExportEncryptionVerifyError extends Error {}
-
-mock.module("../export/exportPdfAdapter", () => ({
-  withExportEncryption: async (
-    opened: { password?: string },
-    run: (encryption: ExportSourceEncryption | undefined) => Promise<unknown>,
-  ) => {
-    encryptionPasswords.push(opened.password);
-    return run(sourceEncryption);
-  },
-  loadExportPdfModule: async () => ({
-    exportPdf: async (
-      _bytes: Uint8Array,
-      _model: unknown,
-      options: {
-        quality?: string;
-        documentFiles?: string;
-        sourceEncryption?: ExportSourceEncryption;
-      } = {},
-    ) => {
-      exportCalls.push(options.quality ?? "original");
-      documentFilePolicies.push(options.documentFiles ?? "auto");
-      const result = await runExport();
-      if (!options.sourceEncryption) return result;
-      return {
-        ...result,
-        bytes: await options.sourceEncryption.encrypt(result.bytes, 1),
-      };
-    },
-    assertExportIntegrity: async () => undefined,
-    refuseUnhandledEncryption: async () => {
-      if (unhandledEncryption) throw new MockExportEncryptedSourceError();
-    },
-    preserveDocumentFilesInPdf: async (
-      sourceBytes: Uint8Array,
-      outputBytes: Uint8Array,
-    ) => {
-      preservedDocumentFileSources.push(sourceBytes);
-      return outputBytes;
-    },
-    preserveDocumentInfoInPdf: (sourceBytes: Uint8Array, outputBytes: Uint8Array) => {
-      preservedInfoSources.push(sourceBytes);
-      return runInfoBridge(sourceBytes, outputBytes);
-    },
-    ExportIntegrityError: MockExportIntegrityError,
-    ExportEncryptedSourceError: MockExportEncryptedSourceError,
-    ExportSignedSourceError: MockExportSignedSourceError,
-    ExportPermissionError: MockExportPermissionError,
-    ExportEncryptionUnsupportedError: MockExportEncryptionUnsupportedError,
-    ExportEncryptionVerifyError: MockExportEncryptionVerifyError,
-  }),
-}));
-
-mock.module("../export/compactRasterPdfAdapter", () => ({
-  exportCompactRasterPdf: async () => {
-    compactRasterCalls += 1;
-    return runCompactRaster();
-  },
-}));
-
-mock.module("../export/exportPlatformAdapter", () => ({
-  saveBytes: async (bytes: Uint8Array) => {
-    saveCalls.push(bytes);
-    return {
-      status: "saved",
-      path: "paper-edited.pdf",
-      platform: "web",
-    };
-  },
-  openExportedFile: async () => undefined,
-  revealExportedFile: async () => undefined,
-}));
-
-const initialStore = useEditorStore.getState();
-const page: PageModel = {
-  id: "page-1",
-  sourceIndex: 0,
-  rotation: 0,
-  widthPt: 612,
-  heightPt: 792,
-};
-let ExportDialog: typeof ExportDialogComponent;
-
-describe("ExportDialog preview scheduling", () => {
-  beforeAll(async () => {
-    ExportDialog = (await import("./ExportDialog")).ExportDialog;
-    await i18n.changeLanguage("en");
-  });
-
-  beforeEach(() => {
-    cleanup();
-    document.body.replaceChildren();
-    localStorage.clear();
-    exportCalls.length = 0;
-    saveCalls.length = 0;
-    documentFilePolicies.length = 0;
-    preservedDocumentFileSources.length = 0;
-    preservedInfoSources.length = 0;
-    runInfoBridge = async (_source, output) => output;
-    compactRasterCalls = 0;
-    unhandledEncryption = false;
-    sourceEncryption = undefined;
-    encryptionPasswords.length = 0;
-    runExport = async () => ({ bytes: new Uint8Array(1024), lostChars: 0 });
-    runCompactRaster = async () => new Uint8Array(256);
-    useEditorStore.setState(initialStore, true);
-    useEditorStore.setState({
-      opened: {
-        fileName: "paper.pdf",
-        fileSize: 128,
-        doc: {} as never,
-        bytes: new Uint8Array(128),
-        sourcePages: [page],
-      },
-      model: { pages: [page], overlays: [] },
-      activePageId: page.id,
-    });
-  });
-
-  afterEach(() => {
-    cleanup();
-    document.body.replaceChildren();
-    useEditorStore.setState(initialStore, true);
-  });
-
-  afterAll(() => {
-    mock.restore();
-  });
+describe("ExportDialog preview scheduling and compact output", () => {
+  setupExportDialogTests();
 
   test("calculates only the selected quality", async () => {
     const view = render(<ExportDialog open onClose={() => undefined} />);
@@ -211,8 +46,8 @@ describe("ExportDialog preview scheduling", () => {
   });
 
   test("reuses an in-flight preview when Export is clicked", async () => {
-    let resolveExport!: (result: ExportResult) => void;
-    runExport = () =>
+    let resolveExport!: (result: VectorCandidate) => void;
+    fixture.runExport = () =>
       new Promise((resolve) => {
         resolveExport = resolve;
       });
@@ -229,105 +64,6 @@ describe("ExportDialog preview scheduling", () => {
       resolveExport({ bytes: new Uint8Array(1024), lostChars: 0 });
       await Promise.resolve();
     });
-  });
-
-  test("requires confirmation before saving substituted characters", async () => {
-    runExport = async () => ({
-      bytes: new Uint8Array(1024),
-      lostChars: 2,
-    });
-    const view = render(<ExportDialog open onClose={() => undefined} />);
-    await waitFor(() => expect(exportCalls).toEqual(["original"]), {
-      timeout: 3_000,
-    });
-
-    fireEvent.click(view.getByRole("button", { name: "Export PDF" }));
-    await waitFor(() =>
-      expect(
-        view.getByText(
-          "2 characters cannot be encoded and will be replaced with “?” in the exported PDF.",
-        ),
-      ).toBeDefined(),
-    );
-    expect(saveCalls).toHaveLength(0);
-
-    fireEvent.click(
-      view.getByRole("button", { name: "Export with replacements" }),
-    );
-    await waitFor(() => expect(saveCalls).toHaveLength(1));
-  });
-
-  // An original-text edit whose glyphs could not be cut from the page is only
-  // painted over: the PDF looks edited, but search and copy still return the
-  // old text. Saving that without a word let a "redacted" name leave the app.
-  test("requires confirmation before saving edits that leave the original text in the file", async () => {
-    runExport = async () => ({
-      bytes: new Uint8Array(1024),
-      lostChars: 0,
-      unexcisedEdits: 2,
-    });
-    const view = render(<ExportDialog open onClose={() => undefined} />);
-    await waitFor(() => expect(exportCalls).toEqual(["original"]), {
-      timeout: 3_000,
-    });
-
-    fireEvent.click(view.getByRole("button", { name: "Export PDF" }));
-    await waitFor(() =>
-      expect(view.getByRole("alert").textContent).toContain(
-        "2 edits could not remove the original text.",
-      ),
-    );
-    expect(saveCalls).toHaveLength(0);
-
-    fireEvent.click(view.getByRole("button", { name: "Export anyway" }));
-    await waitFor(() => expect(saveCalls).toHaveLength(1));
-  });
-
-  test("names both problems when an export substitutes characters and keeps original text", async () => {
-    runExport = async () => ({
-      bytes: new Uint8Array(1024),
-      lostChars: 1,
-      unexcisedEdits: 1,
-    });
-    const view = render(<ExportDialog open onClose={() => undefined} />);
-    await waitFor(() => expect(exportCalls).toEqual(["original"]), {
-      timeout: 3_000,
-    });
-
-    fireEvent.click(view.getByRole("button", { name: "Export PDF" }));
-    await waitFor(() => expect(view.getByRole("alert")).toBeDefined());
-    const alert = view.getByRole("alert").textContent ?? "";
-    expect(alert).toContain(
-      "1 character cannot be encoded and will be replaced with “?” in the exported PDF.",
-    );
-    expect(alert).toContain("1 edit could not remove the original text.");
-    expect(saveCalls).toHaveLength(0);
-  });
-
-  // A flattened text box or note that is too small clips its later lines, as
-  // the editor does; the export used to drop them with no word, so the saved
-  // PDF silently lacked text the user had typed.
-  test("requires confirmation before saving text that does not fit its box", async () => {
-    runExport = async () => ({
-      bytes: new Uint8Array(1024),
-      lostChars: 0,
-      clippedChars: 9,
-    });
-    const view = render(<ExportDialog open onClose={() => undefined} />);
-    await waitFor(() => expect(exportCalls).toEqual(["original"]), {
-      timeout: 3_000,
-    });
-
-    fireEvent.click(view.getByRole("button", { name: "Export PDF" }));
-    await waitFor(() =>
-      expect(view.getByRole("alert").textContent).toContain(
-        "9 characters run past the edges of their boxes and will be cut off in the flattened PDF.",
-      ),
-    );
-    expect(saveCalls).toHaveLength(0);
-
-    fireEvent.click(view.getByRole("button", { name: "Export anyway" }));
-    await waitFor(() => expect(saveCalls).toHaveLength(1));
   });
 
   test("omits document files for selected pages and explains the privacy boundary", async () => {
@@ -354,7 +90,7 @@ describe("ExportDialog preview scheduling", () => {
 
   test("uses the projected vector PDF as compact attachment source", async () => {
     const vectorBytes = new Uint8Array([86, 69, 67, 84, 79, 82]);
-    runExport = async () => ({ bytes: vectorBytes, lostChars: 0 });
+    fixture.runExport = async () => ({ bytes: vectorBytes, lostChars: 0 });
     localStorage.setItem(
       "shiori:exportPrefs:v1",
       JSON.stringify({ mode: "annotations", quality: "compact" }),
@@ -368,21 +104,46 @@ describe("ExportDialog preview scheduling", () => {
     );
   });
 
+  test("compact export classifies the selected bytes and keys the requested quality", async () => {
+    const { exportBytesForQuality } = await import("./exportDialogBytes");
+    const { opened, model } = editorStore.getState();
+    const request = {
+      doc: opened!.doc, originalBytes: opened!.bytes, password: undefined,
+      model, mode: "flatten", documentFiles: "omit", unicodeFontErrorMessage: "Font unavailable",
+    } as const;
+    const vector = { bytes: new Uint8Array(1024), lostChars: 2 };
+    fixture.runExport = async () => vector;
+    const standard = await exportBytesForQuality({ ...request, quality: "standard" });
+    const raster = await exportBytesForQuality({ ...request, quality: "compact" });
+    expect(raster.bytes.byteLength).toBe(256);
+    expect(raster.acceptance).toMatchObject({ status: "accepted", findings: [] });
+    const repeat = await exportBytesForQuality({ ...request, quality: "compact" });
+    expect(repeat.acceptance.key).toBe(raster.acceptance.key);
+
+    fixture.runCompactRaster = async () => new Uint8Array(2048);
+    const fallback = await exportBytesForQuality({ ...request, quality: "compact" });
+    expect(fallback.bytes).toBe(vector.bytes);
+    expect(fallback.acceptance).toMatchObject({ status: "needs-review", findings: [{ kind: "lost-text", count: 2 }] });
+    expect(fallback.acceptance.key).not.toBe(standard.acceptance.key);
+    expect(fallback.acceptance.key).toBe(raster.acceptance.key);
+    const fallbackAgain = await exportBytesForQuality({ ...request, quality: "compact" });
+    expect(fallbackAgain.acceptance.key).toBe(fallback.acceptance.key);
+  });
+
   // The raster is a new PDF drawn page by page. When it won on size, the saved
-  // file had no Title or Author, so Zotero, Calibre and Finder listed it as
-  // untitled; the vector path has carried them since copySourceDocumentInfo.
+  // file had no Title or Author, so it appeared untitled in document lists.
   test("a compact raster keeps the source's title and author, attachments or not", async () => {
-    runInfoBridge = (await import("../../pdf/export/documentInfo")).preserveDocumentInfoInPdf;
+    fixture.runInfoBridge = (await import("../../pdf/export/documentInfo")).preserveDocumentInfoInPdf;
     const vector = await PDFDocument.create();
     vector.setTitle("Attention Is All You Need");
     vector.setAuthor("A. Vaswani");
     for (let i = 0; i < 40; i++) vector.addPage([612, 792]);
     const vectorBytes = await vector.save();
-    runExport = async () => ({ bytes: vectorBytes, lostChars: 0 });
+    fixture.runExport = async () => ({ bytes: vectorBytes, lostChars: 0 });
     const raster = await PDFDocument.create();
     raster.addPage([612, 792]);
     const rasterBytes = await raster.save();
-    runCompactRaster = async () => rasterBytes;
+    fixture.runCompactRaster = async () => rasterBytes;
     localStorage.setItem(
       "shiori:exportPrefs:v1",
       JSON.stringify({ mode: "annotations", quality: "compact" }),
@@ -398,12 +159,42 @@ describe("ExportDialog preview scheduling", () => {
 
     fireEvent.click(view.getByRole("button", { name: "Export PDF" }));
     await waitFor(() => expect(saveCalls).toHaveLength(1), { timeout: 3_000 });
-    expect(compactRasterCalls).toBeGreaterThan(0);
+    expect(fixture.compactRasterCalls).toBeGreaterThan(0);
     const saved = await PDFDocument.load(saveCalls[0]!);
     expect(saved.getPageCount()).toBe(1);
     expect(saved.getTitle()).toBe("Attention Is All You Need");
     expect(saved.getAuthor()).toBe("A. Vaswani");
   });
+
+  test.each(["in-place", "unsupported"] as const)(
+    "Small file saves the source-text writer's result (%s)",
+    async (mode) => {
+      const edit = overlay({ pageId: page.id });
+      editorStore.setState({ model: { pages: [page], overlays: [edit] } });
+      const vector = new Uint8Array(1024).fill(86);
+      fixture.runExport = async () => ({
+        bytes: vector,
+        lostChars: 0,
+        unexcisedEdits: mode === "unsupported" ? 1 : 0,
+        contentTextOutcomes: [{ overlayId: edit.id, mode }],
+      });
+      localStorage.setItem(
+        "shiori:exportPrefs:v1",
+        JSON.stringify({ mode: "annotations", quality: "compact" }),
+      );
+      const view = render(<ExportDialog open onClose={() => undefined} />);
+      fireEvent.click(view.getByRole("button", { name: "Export PDF" }));
+
+      if (mode === "unsupported") {
+        const confirm = await view.findByRole("button", { name: "Export anyway" });
+        expect(saveCalls).toHaveLength(0);
+        fireEvent.click(confirm);
+      }
+      await waitFor(() => expect(saveCalls).toEqual([vector]), { timeout: 3_000 });
+      expect(saveCalls[0]).toBe(vector);
+      expect(exportCalls).toEqual(["standard"]);
+    },
+  );
 
   describe("an encrypted source", () => {
     const MODIFY = 1 << 3;
@@ -413,20 +204,20 @@ describe("ExportDialog preview scheduling", () => {
     const rasterPlain = new Uint8Array(256).fill(82);
 
     function openEncrypted(permissions: number) {
-      useEditorStore.setState({
+      editorStore.setState({
         opened: {
-          ...useEditorStore.getState().opened!,
+          ...editorStore.getState().opened!,
           password: "user-pw",
           encrypted: true,
         },
       });
-      sourceEncryption = {
+      fixture.sourceEncryption = {
         security: { revision: 6, permissions, userPermissions: permissions },
         plaintext: async () => new Uint8Array(128),
         encrypt: fakeEncrypt,
       };
-      runExport = async () => ({ bytes: vectorPlain, lostChars: 0 });
-      runCompactRaster = async () => rasterPlain;
+      fixture.runExport = async () => ({ bytes: vectorPlain, lostChars: 0 });
+      fixture.runCompactRaster = async () => rasterPlain;
       localStorage.setItem(
         "shiori:exportPrefs:v1",
         JSON.stringify({ mode: "annotations", quality: "compact" }),
@@ -454,13 +245,34 @@ describe("ExportDialog preview scheduling", () => {
       fireEvent.click(view.getByRole("button", { name: "Export PDF" }));
       await waitFor(() => expect(saveCalls).toHaveLength(1), { timeout: 3_000 });
       expect(Array.from(saveCalls[0]!)).toEqual(Array.from(await fakeEncrypt(vectorPlain)));
-      expect(compactRasterCalls).toBe(0);
+      expect(fixture.compactRasterCalls).toBe(0);
     });
+
+    test.each(["original", "compact"] as const)(
+      "confirms the reviewed ciphertext exactly once at %s quality",
+      async (quality) => {
+        openEncrypted(NONE | ANNOTATE);
+        localStorage.setItem("shiori:exportPrefs:v1", JSON.stringify({ mode: "annotations", quality }));
+        const ciphertext = Uint8Array.of(224, 7, 2);
+        fixture.sourceEncryption!.encrypt = async () => ciphertext;
+        fixture.runExport = async () => ({ bytes: vectorPlain, lostChars: 1 });
+        const view = render(<ExportDialog open onClose={() => undefined} />);
+        await view.findByText(/3 B ·/);
+        fireEvent.click(view.getByRole("button", { name: "Export PDF" }));
+        const confirm = await view.findByRole("button", { name: "Export with replacements" });
+        expect(saveCalls).toHaveLength(0);
+        fireEvent.click(confirm);
+        await waitFor(() => expect(saveCalls).toHaveLength(1));
+        expect(saveCalls[0]).toBe(ciphertext);
+        expect(encryptionPasswords).toEqual(["user-pw"]);
+        expect(exportCalls).toEqual([quality === "compact" ? "standard" : quality]);
+      },
+    );
 
     test("never rasterizes an encrypted source it has no handler for", async () => {
       openEncrypted(NONE | MODIFY | ANNOTATE);
-      sourceEncryption = undefined;
-      unhandledEncryption = true;
+      fixture.sourceEncryption = undefined;
+      fixture.unhandledEncryption = true;
       const view = render(<ExportDialog open onClose={() => undefined} />);
 
       fireEvent.click(view.getByRole("button", { name: "Export PDF" }));
@@ -469,12 +281,12 @@ describe("ExportDialog preview scheduling", () => {
         { timeout: 3_000 },
       );
       expect(saveCalls).toHaveLength(0);
-      expect(compactRasterCalls).toBe(0);
+      expect(fixture.compactRasterCalls).toBe(0);
     });
 
     test("explains which edits the permissions refuse", async () => {
       openEncrypted(NONE);
-      runExport = async () => {
+      fixture.runExport = async () => {
         throw new MockExportPermissionError(["annotations", "pages"]);
       };
       localStorage.setItem(

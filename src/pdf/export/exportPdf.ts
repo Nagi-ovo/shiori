@@ -1,6 +1,9 @@
 import { PDFDocument } from "pdf-lib";
 import type { DocumentModel } from "../model/types";
+import type { SourceGlyph } from "../model/sourceGlyphs";
 import { deniedEdits } from "../security/permissions";
+import { evaluateAcceptance, type AcceptancePolicy, type AcceptanceVerdict } from "./acceptance";
+import { exportCandidateKey } from "./candidateKey";
 import {
   ExportEncryptedSourceError,
   ExportPermissionError,
@@ -32,7 +35,7 @@ export {
 export { preserveDocumentInfoInPdf } from "./documentInfo";
 
 // "annotations" writes real /Annot objects so highlights, notes, shapes,
-// ink, and text remain editable in Acrobat / Foxit / PDF Expert. "flatten"
+// ink, and text remain editable in external PDF editors. "flatten"
 // burns them into the page content stream — useful for signing, stamping,
 // or protecting annotations from removal. "none" skips overlays entirely
 // and just exports the original pages in the selected range.
@@ -41,6 +44,20 @@ export type ExportQuality = "original" | "standard" | "compact";
 export type DocumentFilesPolicy = "auto" | "preserve" | "omit";
 
 export type ExportOptions = {
+  acceptance?: AcceptancePolicy;
+  /** Rewrite an otherwise refused run in a bundled subset font; default on. */
+  stage5Substitute?: boolean;
+  /** Verified Type1 source reuse defaults on; Standard-14 AFM stays off. */
+  stage5Type1?: import("./fontCoverage/type1Support").Type1Options;
+  /** Measured reflow defaults on; false retains fixed-slot overflow refusal. */
+  stage5Reflow?: boolean;
+  reflowRequests?: ReadonlyMap<string,import("./contentText/reflowTypes").ReflowRequest>;
+  /** PDF renderer for validating tracked corrections and measuring contact. */
+  renderContentText?: import("./contentText/contentTextRaster").ContactRenderer;
+  /** Fresh placements from the caller's reader of these source bytes, by source page index. */
+  readSourceGlyphs?: (sourceIndex: number) => Promise<readonly SourceGlyph[] | null>;
+  /** Font byte loader for non-Vite callers (CLI/corpus); same verified writer. */
+  inPlaceFallback?: import("./contentStreamEdit/fallbackFont").FallbackOptions;
   mode?: ExportMode;
   quality?: ExportQuality;
   // Document-level EmbeddedFiles are not page annotations. The default
@@ -76,12 +93,14 @@ export type ExportOptions = {
 };
 
 export type ExportResult = {
+  acceptance: AcceptanceVerdict;
+  sourceImageOutcomes?: import("./sourceImages/apply").SourceImageOutcome[];
+  semanticChanges?: import('./semanticGate').SemanticChange[];
+  contentTextOutcomes?: import('./contentText/outcomes').ContentTextOutcome[];
   bytes: Uint8Array;
   lostChars: number;
-  // Original-text edits whose source glyphs could not all be removed from
-  // the page content: the old text is painted over but still in the file,
-  // so search and copy return it. Absent means none (a rasterized page
-  // carries no source text).
+  // Unsupported source edits left unchanged in the exported PDF.
+  // Absent means none (a rasterized page carries no source text).
   unexcisedEdits?: number;
   // Characters on lines that did not fit a flattened box (free text, callout
   // label, note) and were left out of the page, as the editor clips them.
@@ -142,39 +161,38 @@ export async function exportPdf(
   options: ExportOptions = {},
 ): Promise<ExportResult> {
   const encryption = options.sourceEncryption;
-  if (!encryption) {
-    const { bytes, lostChars, unexcisedEdits, clippedChars } = await rebuildPdf(
-      originalBytes,
-      model,
-      options,
-    );
-    return { bytes, lostChars, unexcisedEdits, clippedChars };
-  }
   // Every rebuild of an encrypted source starts from its plaintext, so the
   // permissions are checked before any work and the plaintext export goes
   // nowhere but into the source's own handler.
   const rebuilt = await rebuildPdf(
-    await encryption.plaintext(),
+    encryption ? await encryption.plaintext() : originalBytes,
     model,
     options,
-    (edits) => {
+    encryption && ((edits) => {
       const denied = deniedEdits(encryption.security, edits);
       if (denied.length > 0) throw new ExportPermissionError(denied);
-    },
+    }),
   );
-  if (rebuilt.unchanged) {
-    return {
+  const candidate = encryption && rebuilt.unchanged
+    ? {
       bytes: new Uint8Array(originalBytes),
-      lostChars: 0,
-      unexcisedEdits: 0,
-      clippedChars: 0,
+      lostChars: rebuilt.lostChars,
+      unexcisedEdits: rebuilt.unexcisedEdits,
+      clippedChars: rebuilt.clippedChars,
+      ...(rebuilt.contentTextOutcomes && { contentTextOutcomes: rebuilt.contentTextOutcomes }),
+    }
+    : {
+      bytes: encryption ? await encryption.encrypt(rebuilt.bytes, rebuilt.pageCount) : rebuilt.bytes,
+      lostChars: rebuilt.lostChars,
+      unexcisedEdits: rebuilt.unexcisedEdits,
+      contentTextOutcomes: rebuilt.contentTextOutcomes,
+      clippedChars: rebuilt.clippedChars,
     };
-  }
   return {
-    bytes: await encryption.encrypt(rebuilt.bytes, rebuilt.pageCount),
-    lostChars: rebuilt.lostChars,
-    unexcisedEdits: rebuilt.unexcisedEdits,
-    clippedChars: rebuilt.clippedChars,
+    ...candidate,
+    ...(rebuilt.sourceImageOutcomes && { sourceImageOutcomes: rebuilt.sourceImageOutcomes }),
+    ...(rebuilt.semanticChanges?.length && { semanticChanges: rebuilt.semanticChanges }),
+    acceptance: evaluateAcceptance(candidate, options.acceptance ?? "review", exportCandidateKey(originalBytes, model, options)),
   };
 }
 

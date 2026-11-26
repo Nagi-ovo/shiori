@@ -4,7 +4,7 @@ import {
   cachePreviewResult,
   type PreviewResultCache,
 } from "../export/exportPreviewCache";
-import { exportBytesForQuality, type ExportPreviewRequest } from "./exportDialogBytes";
+import { exportBytesForQuality, exportDialogCandidateKey, type ExportPreviewRequest } from "./exportDialogBytes";
 import { EXPORT_QUALITIES, type QualityV } from "./exportPrefs";
 
 // The export dialog's per-quality size hints and the cache of bytes behind
@@ -13,6 +13,7 @@ import { EXPORT_QUALITIES, type QualityV } from "./exportPrefs";
 export type SizePreview = {
   status: "deferred" | "calculating" | "ready" | "unavailable";
   size?: number;
+  outcomes?: ExportResult["contentTextOutcomes"];
 };
 
 export type SizePreviewMap = Record<QualityV, SizePreview>;
@@ -25,10 +26,34 @@ export type SizePreviewState = {
 export type ExportBytesCache = {
   request: ExportPreviewRequest;
   results: PreviewResultCache;
-  pending: Partial<Record<QualityV, Promise<ExportResult>>>;
+  pending: Partial<Record<QualityV, { key: string; result: Promise<ExportResult> }>>;
 };
 
 export const PREVIEW_DEBOUNCE_MS = 220;
+
+export async function getExportCandidate(
+  request: ExportPreviewRequest,
+  quality: QualityV,
+  key: string,
+  cache: ExportBytesCache | null,
+): Promise<ExportResult> {
+  const input = { ...request, quality };
+  if (cache?.request !== request) return exportBytesForQuality(input, key);
+  const cached = cache.results[quality];
+  if (cached?.acceptance.key === key) return cached;
+  const existing = cache.pending[quality];
+  if (existing?.key === key) return existing.result;
+
+  const pending = { key, result: exportBytesForQuality(input, key) };
+  cache.pending[quality] = pending;
+  try {
+    const result = await pending.result;
+    if (cache.pending[quality] === pending) cachePreviewResult(cache.results, quality, result);
+    return result;
+  } finally {
+    if (cache.pending[quality] === pending) delete cache.pending[quality];
+  }
+}
 
 export async function generateSizePreview(
   request: ExportPreviewRequest,
@@ -36,18 +61,13 @@ export async function generateSizePreview(
   cache: ExportBytesCache,
   publish: (preview: SizePreview) => void,
 ): Promise<void> {
-  const existing = cache.pending[quality];
-  const pending = existing ?? exportBytesForQuality({ ...request, quality });
-  cache.pending[quality] = pending;
+  const key = exportDialogCandidateKey({ ...request, quality });
   try {
-    const result = await pending;
-    cachePreviewResult(cache.results, quality, result);
-    publish({ status: "ready", size: result.bytes.byteLength });
+    const result = await getExportCandidate(request, quality, key, cache);
+    publish({ status: "ready", size: result.bytes.byteLength, outcomes: result.contentTextOutcomes });
   } catch (err) {
     console.warn(`Unable to calculate ${quality} export size.`, err);
     publish({ status: "unavailable" });
-  } finally {
-    if (cache.pending[quality] === pending) delete cache.pending[quality];
   }
 }
 
@@ -77,7 +97,7 @@ export function selectSizePreview(
     }
   }
   next[selectedQuality] = cached
-    ? { status: "ready", size: cached.bytes.byteLength }
+    ? { status: "ready", size: cached.bytes.byteLength, outcomes: cached.contentTextOutcomes }
     : { status: "calculating" };
   return next;
 }

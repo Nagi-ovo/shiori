@@ -281,6 +281,8 @@ export function createPageMerges(ports: PageMergePorts) {
       const mergedModel: DocumentModel = {
         pages: mergedPages,
         overlays: [...targetModel.overlays, ...importedOverlays],
+        // Target pages keep their ids, so their linked frames stay valid.
+        ...(targetModel.flowChains ? { flowChains: targetModel.flowChains } : null),
       };
       const historyBaseline = targetModel;
       // Identity metadata only: a synthetic File would copy the merged PDF

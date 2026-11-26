@@ -1,4 +1,5 @@
 import { codeHex, hexBytes } from './types';
+import { codeInCodespace } from './codespace';
 export type ParsedCMap = {
   unicode: Map<string,string>;
   cids: Map<string,number>;
@@ -49,8 +50,9 @@ export function parseCMap(source: string): ParsedCMap {
       else if(op==='begincidchar') {result.cids.set(low,number(i++));total++;}
       else {
         const high=code(i++), lo=parseInt(low,16),hi=parseInt(high,16),span=hi-lo+1;
-        if(low.length!==high.length || span<1 || span>LIMIT)throw new Error('invalid CMap range');
+        if(low.length!==high.length || span<1)throw new Error('invalid CMap range');
         if(op==='begincodespacerange') {result.codeSpaces.push({low,high});continue;}
+        if(span>LIMIT)throw new Error('invalid CMap range');
         if(total+span>LIMIT*4)throw new Error('CMap mapping limit');
         if(op==='begincidrange') {
           const base=number(i++);if(base+span-1>65535)throw new Error('invalid CID range');
@@ -77,7 +79,7 @@ export function parseCMap(source: string): ParsedCMap {
     if(t[i]!==end)throw new Error(`unterminated or malformed ${op}`);
   }
   for(const key of [...result.unicode.keys(),...result.cids.keys()]) {
-    if(result.codeSpaces.length && !result.codeSpaces.some(s=>s.low.length===key.length && key>=s.low && key<=s.high))throw new Error('code outside codespace');
+    if(result.codeSpaces.length && !result.codeSpaces.some(s=>codeInCodespace(key,s.low,s.high)))throw new Error('code outside codespace');
   }
   return result;
 }

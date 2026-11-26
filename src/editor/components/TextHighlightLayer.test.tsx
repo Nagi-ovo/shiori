@@ -136,6 +136,7 @@ describe("TextHighlightLayer zoom", () => {
       canvasProto,
       "getContext",
     );
+    ShioriTextLayer.resetMeasurementsForTest();
     ShioriTextLayer.prototype.update = function (params) {
       updates.push(params.viewport.scale);
       return originalUpdate.call(this, params);
@@ -192,6 +193,7 @@ describe("TextHighlightLayer zoom", () => {
       expect(spansAfter).toEqual(spansBefore);
       expect(layer().style.getPropertyValue("--total-scale-factor")).toBe("1.5");
     } finally {
+      ShioriTextLayer.resetMeasurementsForTest();
       ShioriTextLayer.prototype.update = originalUpdate;
       if (originalGetContext) {
         Object.defineProperty(canvasProto, "getContext", originalGetContext);

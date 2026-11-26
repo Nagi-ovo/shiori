@@ -163,17 +163,16 @@ function sanitizeHistory(value: unknown): HistoryEntry[] {
 
 ### F4 · Agent CLI 的门槛比实际机制更严
 
-- `src-tauri/src/agent_clis.rs:13-16` 写死了 `{ claude_code: bool, codex: bool }`。
-- `:30-33` 只探测 `"claude"` 和 `"codex"`。
-- `src/platform/agentCli.ts:31-33` 的判断是
-  `return availability.claudeCode || availability.codex;`。
+- `src-tauri/src/agent_clis.rs:13-16` 为两个命令各定义一个布尔字段。
+- `:30-33` 只探测这两个命令。
+- `src/platform/agentCli.ts:31-33` 检查两者是否至少有一个可用。
 - 这个结果决定 `CalloutThreadPanel.tsx:358` 显示不显示追问控件。
 
 而 `src/live/followUpLoop.ts:165` 的 `sendCalloutFollowUp` 只是往最近的终端会话的
 stdin 写一段提示词，然后单独写一次回车。它跟具体是哪个 agent 无关，只要求这个
 agent 能跑 shell。
 
-- **场景**：用户只装了 `gemini`，看不到 callout 的追问控件，尽管注入对它是可用的。
+- **场景**：用户只装了名单之外的兼容 CLI，看不到 callout 的追问控件，尽管注入对它是可用的。
 - **修法**：P1a 把名单做成数据（见下文）。
 
 ### F5 · Windows 上沙箱 frame 的 IPC 隔离只剩一把没验证过的锁（从源码推断，未实测）
@@ -723,7 +722,7 @@ gate。
 **P1a · Agent CLI 名单（修 F4）**
 
 - Rust：
-  - `AgentCliAvailability { claude_code, codex }` 换成一张 const 表
+  - `AgentCliAvailability` 换成一张 const 表
     `KNOWN_AGENT_CLIS: &[(&str /*id*/, &str /*exe*/)]`；
   - `installed_agent_clis()` 返回 `Vec<String>`；
   - 要一起改的地方：`agent_clis.rs:11-34`，`host_tools.rs:32` 和 `:80` 的两个
@@ -734,9 +733,9 @@ gate。
   - `hasAgentCli(ids) = ids.length > 0`；
   - `normalizeAgentCliAvailability`（`agentCli.ts:15`）只认新形状就够了。前端和 Rust
     在同一个 bundle 里发布，不会出现新旧版本混搭。
-- 先红：写一条 Rust 测试，断言目录里只有 `gemini` 时能检测到它，确认它在旧代码上
+- 先红：写一条 Rust 测试，断言目录里只有新加入的可执行文件时能检测到它，确认它在旧代码上
   失败。
-- E2E：用桌面 bundle，PATH 上只放一个假的 `gemini`，打开 callout，截图证明追问控件
+- E2E：用桌面 bundle，PATH 上只放一个测试用的兼容 CLI，打开 callout，截图证明追问控件
   出现了。产物放在 `test-artifacts/plugins-p1a-agent-cli/`。
 - Gate：`bun run verify` 加 `bun run tauri build`；动命令之前先读 `docs/TAURI-RULES.md`。
 - 名单里加哪些 agent 是用户看得见的行为变化（拍板 7）。
@@ -1063,8 +1062,7 @@ SIGNATURE               minisign 签名，签的是 manifest.json（里面含全
    内置插件不受影响，永远三份齐全。
 6. **`document.text` 的授权粒度。** 一次授权对所有文档有效，还是按文档（或按「本次
    会话」）授权？后者更符合 local-first，但打断用户更多。
-7. **P1a 的 agent CLI 名单。** 除了 `claude`、`codex`，要加 `gemini`、`grok`，还是
-   别的？加进去之后，只装了这些 CLI 的用户会看到追问控件，这是用户可见的行为变化，
+7. **P1a 的 agent CLI 名单。** 应再支持哪些命令？加进去之后，只装了这些 CLI 的用户会看到追问控件，这是用户可见的行为变化，
    而且每加一个都要过一次真实终端的 E2E。
 8. **T3 要不要分 token。** 现在 Live API 一把 token 拿全部权限。外部插件多起来以后，
    要不要每个客户端单独配对、单独限定路由（仍然不引入 MCP）？

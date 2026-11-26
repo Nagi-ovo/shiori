@@ -4,7 +4,7 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import i18n from "../../i18n";
 import { contrastRatio } from "../../design/color";
 import { THEME_PALETTE_SETS, type ThemePalette } from "../../design/theme";
-import { LossyExportNotice } from "./ExportNotices";
+import { ExportReviewNotice } from "./ExportNotices";
 
 beforeAll(async () => {
   await i18n.changeLanguage("en");
@@ -20,12 +20,12 @@ function resolve(value: string, palette: ThemePalette): string {
   return palette[token[1] as keyof ThemePalette];
 }
 
-describe("LossyExportNotice", () => {
+describe("ExportReviewNotice", () => {
   // The warning sits on a fixed pale-yellow box but took the theme's ink for
   // its text: in Dark mode that was near-white on yellow (about 1.05:1), so
   // the question the user had to answer before a lossy export was invisible.
   test("its text is readable on its background in every theme", () => {
-    const view = render(<LossyExportNotice lostChars={3} />);
+    const view = render(<ExportReviewNotice findings={[{ kind: "lost-text", count: 3 }]} />);
     const alert = view.getByRole("alert");
     expect(alert.textContent).toContain(i18n.t("export.lostCharsConfirmTitle"));
     for (const [theme, set] of Object.entries(THEME_PALETTE_SETS)) {

@@ -41,8 +41,6 @@ Modal 代码里**绝对不要 import** 根目录的 `CHANGELOG.md`；只 import 
    `notes/<version>.json`。
 3. 下一条未发布的变动落地时，再在顶部新建 `[未发布]` 节；不要留空节。
 
-## Claude 使用提示
-
-一个 session 里只读一份语言版本，避免把三份都拉进 context 浪费 token：
+## 查阅版本记录
 - 默认读 `/CHANGELOG.md`（维护者版，中文）
 - 查用户向措辞 / 翻译一致性时读对应的 `docs/changelog/{zh,en,ja}.md`

@@ -273,7 +273,7 @@ export const CAPABILITIES = {
   loading:true; onPageFinished / doUpdateVisitedHistory → url + canGoBack/Forward;
   onReceivedError → error }`. Emit `web-panel-nav` via the plugin channel.
 - Lifecycle: pause/resume the WebView with the Activity; ensure it's destroyed on
-  app teardown so it doesn't leak (mirror the desktop teardown the stability
+  app cleanup so it doesn't leak (mirror the desktop cleanup the stability
   effort is adding).
 
 ### 8c. Coordinate-system gotcha (do not skip)
@@ -327,7 +327,7 @@ device's CSS viewport.
   under every modal (Settings/Export/shortcuts/find/print/go-to-page), survives
   tab switches without reload, address bar + back/forward/reload + loading work,
   narrow-rail layout (iPhone UA) fits without horizontal scroll, no touch-eating
-  over the document, clean teardown on app exit (no leaked WebView / black view).
+  over the document, clean cleanup on app exit (no leaked WebView / black view).
 
 ---
 
@@ -371,7 +371,7 @@ device's CSS viewport.
 4. Narrow-rail layout fits (iPhone UA); no horizontal overflow; no touch-eating.
 5. Terminal remains desktop-only; phones get neither feature.
 6. Remote pages have zero Shiori command access (ACL verified).
-7. Clean teardown on app exit — no leaked native web view / black surface.
+7. Clean cleanup on app exit — no leaked native web view / black surface.
 8. `bun run build` + `bun run lint` green; desktop + mobile Tauri builds compile.
 9. Detection unit test passes; POSTMORTEM added if a notable pitfall surfaced.
 

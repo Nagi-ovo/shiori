@@ -281,9 +281,8 @@ console.log(out);
 // Sans embedded as TrueType, "日本" in Noto Sans JP embedded from its
 // OpenType (CFF) program — a subset PDFium's FreeType does not load, so it
 // draws a substitute — "Helvetica" in the standard font, not embedded, and
-// "Top compact" in Foxit Serif embedded as bare CFF the way XeTeX and
-// InDesign files embed theirs: /FontFile3 /Type1C, WinAnsiEncoding, no
-// /ToUnicode.
+// "Top compact" in a bare CFF program with /FontFile3 /Type1C,
+// WinAnsiEncoding and no /ToUnicode.
 const fonts = await PDFDocument.create();
 fonts.registerFontkit(fontkit);
 const liberation = await fonts.embedFont(

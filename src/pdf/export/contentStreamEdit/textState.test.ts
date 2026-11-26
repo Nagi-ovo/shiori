@@ -133,14 +133,13 @@ describe("text state walk", () => {
   test("gs taints the font unless the ExtGState is known font-free", () => {
     const source = "BT /F1 12 Tf /G0 gs (A) Tj ET";
     const tainted = walk(source);
-    expect(tainted.ok).toBe(false);
-    if (!tainted.ok) expect(tainted.reason).toContain("ExtGState");
+    expect(expectOk(tainted)).toMatchObject({glyphs:[],unplacedText:true});
 
     const cleared = walk(source, { extGStateSetsFont: () => false });
     expect(cleared.ok).toBe(true);
 
     const setsFont = walk(source, { extGStateSetsFont: () => true });
-    expect(setsFont.ok).toBe(false);
+    expect(expectOk(setsFont)).toMatchObject({glyphs:[],unplacedText:true});
   });
 
   test("fails closed on unmodelable constructs", () => {
@@ -195,4 +194,16 @@ describe("text state walk", () => {
     expect(unknown.ok).toBe(false);
     if (!unknown.ok) expect(unknown.reason).toContain("unresolvable");
   });
+});
+
+test('stroke and fill+stroke stay unplaced, fill remains supported, clipping stays precise',()=>{
+  for(const tr of [1,2])expect(walk(`BT /F1 12 Tf ${tr} Tr (A) Tj ET`)).toMatchObject({ok:true,glyphs:[],unplacedText:true});
+  expect(walk('BT /F1 12 Tf 0 Tr (A) Tj ET').ok).toBe(true);
+  for(const tr of [4,5,6,7])expect(walk(`BT /F1 12 Tf ${tr} Tr (A) Tj ET`)).toMatchObject({ok:false,reason:expect.stringContaining('clipping')});
+});
+for(const tr of [1,2])test(`Tr ${tr} measures the stroke advance before relative fill shows`,()=>{
+  const result=expectOk(walk(`BT /F1 12 Tf ${tr} Tr (A) Tj 0 Tr (B) Tj ET BT /F1 12 Tf (C) Tj ET`));
+  expect(result.unplacedText).toBe(true);
+  expect(result.glyphs.map(g=>g.code)).toEqual([66,67]);
+  expect(result.glyphs[0]!.coreQuad[0].x).toBeCloseTo(6);
 });

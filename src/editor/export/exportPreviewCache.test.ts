@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { evaluateAcceptance } from "../../pdf/export/acceptance";
 import type { ExportResult } from "../../pdf/export/exportPdf";
 import {
   cachePreviewResult,
   type PreviewResultCache,
 } from "./exportPreviewCache";
 
-function result(size: number): ExportResult {
-  return { bytes: new Uint8Array(size), lostChars: 0 };
+function result(bytesOrSize: Uint8Array | number): ExportResult {
+  const bytes = typeof bytesOrSize === "number" ? new Uint8Array(bytesOrSize) : bytesOrSize;
+  return { bytes, lostChars: 0, acceptance: evaluateAcceptance({ lostChars: 0 }, "review") };
 }
 
 describe("export preview cache", () => {
@@ -39,7 +41,7 @@ describe("export preview cache", () => {
     const view = new Uint8Array(new ArrayBuffer(100), 0, 10);
 
     expect(
-      cachePreviewResult(cache, "original", { bytes: view, lostChars: 0 }, 50),
+      cachePreviewResult(cache, "original", result(view), 50),
     ).toBe(false);
   });
 });

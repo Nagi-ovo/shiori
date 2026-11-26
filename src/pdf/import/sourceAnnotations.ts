@@ -165,7 +165,7 @@ function readAnnotation(
       break;
     // pdf.js reads /CA only for Ink and Highlight, where its `|| 1` turns 0
     // into 1. Shiori draws the others with it too, and keeps it as written,
-    // 0 included, as PDFium and Acrobat draw it.
+    // Zero opacity is valid.
     case "Underline":
     case "StrikeOut":
       data.opacity = opacityAsWritten(dict);

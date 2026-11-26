@@ -382,7 +382,7 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
 - **Web 与桌面构建附带所有打包进去的 npm 包的许可文本（`b9965f4` 拆分，`33a693c` `1539558`）。**
   包括 fontkit 1.1.1 vendored 的文本与其中内联的 Brotli / Apache 代码（审计 B119）。
 
-#### 复审补修（2026-10-21，astra 审全部修复、sol 审漏审部分）
+#### 复审补修（2026-10-21）
 
 - **CLI npm 安装（`0253697` `81306e9` `720dea9` `e010c7f`）。** 每次运行都按包清单核对安装是否完整；
   被打断的安装改为逐个文件原子补齐，不再整目录挪走，去掉了会被暂停进程误判的替换锁（审计 B014）。
@@ -415,26 +415,25 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
 - **被拒绝保存的窗口可以放弃修改再离开（`61b2e37` 拆分，`aecfacf` `a1c84e8` `c61da1b`）。** 关标签、
   切标签、回主页、打开别的文档、关窗、退出被这份没存下的副本拦住时，弹出应用内对话框：继续编辑、导出
   副本、放弃并关闭。放弃不写入任何东西，另一个窗口的草稿和崩溃日志都不动；放弃时还在写的那次保存
-  不会把副本写回去（astra 复审发现）。桌面关窗和退出遇到这种情况，不再提示「释放设备存储空间」。
+  不会把副本写回去。桌面关窗和退出遇到这种情况，不再提示「释放设备存储空间」。
   网页版在 Chrome 两个页面里走过主要路径（`test-artifacts/b034-discard/`），桌面关窗和退出只有单元
-  测试（审计 B034，Opus 实现）。
+  测试（审计 B034）。
 - **运行模式的守卫不再借用文档能改写的 DOM 读取（`79cdd8b` `05a7cc3`）。** 守卫在文档脚本之前存下
   原生的 MutationRecord、NodeList 读取方法，观察选项不再从原型链上取值；新增按需运行的 Chromium
-  测试（`SHIORI_BROWSER_TEST=1`），直接看每个子框架的第一段脚本能否用 WebRTC（审计 B027；Codex
-  gpt-6-astra 实现）。
+  测试（`SHIORI_BROWSER_TEST=1`），直接看每个子框架的第一段脚本能否用 WebRTC（审计 B027）。
 - **运行模式不再由解析器建 shadow root（`4f64c0a`，按 Jesse 的选择）。** 解析器建出的 shadow root
   不经过 `attachShadow`，守卫看不到。现在 `buildRunnableHtml` 去掉所有 template 上的 `shadowroot*`
   属性，守卫在 `setHTML[Unsafe]`、各个位置型 HTML 方法、`Document.parseHTML[Unsafe]`、
   `document.write` 里按写入位置的上下文去掉它们，流式 HTML 方法直接拒绝。没选在各 WebView 关掉
   WebRTC：这样一处代码覆盖网页版和所有引擎。代价：声明式 shadow DOM 的内容在运行模式里不显示；
   每次 `document.write` 被补成完整片段，跨几次调用才写完的标签会提前闭合；限制性的 Trusted Types
-  策略可能挡住 HTML 插入。Chromium 测试 72/72，WebKit 没跑（审计 B027，Codex gpt-6-astra 实现）。
+  策略可能挡住 HTML 插入。Chromium 测试 72/72，WebKit 没跑（审计 B027）。
 - **网页版关标签或刷新时，先替被拒绝保存的副本问一句（`3ac9d05`，按 Jesse 的选择）。** 之前 `pagehide`
   只走非严格保存、`beforeunload` 只管文本源，副本不提示就丢了。现在副本还没导出时，浏览器会弹自带的
   「确定离开吗？」；导出、放弃或之后保存成功就撤掉。网页 E2E 见
-  `test-artifacts/from-worktrees/web-leave-prompt/`，导出那条只有 hook 测试（Opus 实现）。
+  `test-artifacts/from-worktrees/web-leave-prompt/`，导出那条只有 hook 测试。
 - **守卫不再把 SVG 改坏（`4fa4238`）。** 守卫找 srcdoc 时改为按写入位置的上下文解析，SVG、MathML、
-  表格、`<script>`/`<style>` 文本保持原样（审计 B027，Codex gpt-6-astra 实现）。
+  表格、`<script>`/`<style>` 文本保持原样（审计 B027）。
 
 ### 改动
 
@@ -534,7 +533,7 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
     `SHIORI_REQUIRE_QPDF`）；导入测试以构造参数为期望值（`okqqqltt`）；render 以 fixture
     推出的参考图比对，字体重建由同一 PDFium 画出比较（`tywwqnnt`）；页面插入的命名目标经
     核心 `links()` 读落点（`mtonwyvy`）；core extract 测试按 fixture 的字形位置放高亮并要求
-    引文恰为 "Shi"（`yvrslmyn`）。Foxit Serif 随 fixtures 入库，fixture 可脱离 pdf.js 重生成
+    引文恰为 "Shi"（`yvrslmyn`）。测试用 CFF 字体已入库，fixture 可脱离 pdf.js 重生成
     （`xsxmtrlw`）。
   - 删除只为 pdf.js 存在的代码：`scripts/pdfium/compare-*` 与 `pdfjs-reference/`、
     `scripts/import/compare-annotation-readers.ts`、`annotationReader: "pdfjs"`（`tpkzoxzz`
@@ -543,7 +542,7 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
     pdf.js 在读、画、解密的地方改成引擎（`mxqprkso`）。
   - 已知缺口：竖排与 tagged 文本既无 fixture 也无对照读取者（pdf-lib 写不出 Identity-V）。
     THIRD_PARTY_NOTICES 保留移植自 pdf.js 的代码（文字层、批注列表）的署名。
-  - Codex review 之后的修复：`/Info` 字符串中间的 NUL 不再截断（`svokyzzp`）；插件存在但
+  - 复审后的修复：`/Info` 字符串中间的 NUL 不再截断（`svokyzzp`）；插件存在但
     加载失败也报 `ERR_PDF_ENGINE_UNAVAILABLE`（`nxsrmyrl`）；`extract` 用 strict 导入，
     `/Annots` 不是数组或 pdf-lib 页树缺页时报 `ERR_ANNOTATIONS_UNAVAILABLE`，App 仍宽松
     （`rquopxzt`）；删除永远匹配不到的 `isPdfJsInternalFontName`（`ysllqyrl`）。
@@ -767,7 +766,7 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
     的 toast，把原来那行常驻按钮持有的回头路原样接住。桌面不动。`3d511b87` `86e6f2c7`
   - **安全区改由文档行自己留。** 状态栏原本替 PDF 挡着系统导航条，它一走内容就会
     压到导航条下面——正是 26.9.8 挨骂的那个坑。`pdfDocumentRowStyle` 抽成可测
-    seam（App.tsx 无 harness，按 CLAUDE.md 第 11 条）。净收益因此是 28px 不是
+    seam（App.tsx 无 harness，按 AGENTS.md 第 11 条）。净收益因此是 28px 不是
     52px。`5650d89e`
   - **文件名行与标签栏互斥。** `documentIdentityRow` 返回枚举而非两个布尔，所以
     「两条都渲染」和「两条都不渲染」在类型层面不可达——手机上顶栏没有内联标题，
@@ -1114,7 +1113,7 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
 ### 交互
 
 - **HTML 文档的触控板缩放会失控冲到上限。** 监听器 effect 依赖 `zoom`，而它
-  正是产生 zoom 变化的那个——每一步都自我拆装，teardown 清掉手势基准，下一次
+  正是产生 zoom 变化的那个——每一步都自我拆装，cleanup 清掉手势基准，下一次
   缩放就以已放大的值为基准累乘。触屏路径则是指针表被清空后一步冻结。
   复审补两次：iframe 重载会留下失效 pointer；`loadTick`（慢资源的迟到 load）
   会在 pinch 中途清基准。`6b050e8d` `f3591b15` `435ab630`
@@ -1198,7 +1197,7 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
   `CalloutOverlay.thread?: CalloutThreadEntry[]`（`{id, role: user|agent,
   author?, text, at?}`），根 callout 的 `text` 仍是第一条消息（兼容不变）。
   导出：每个 turn 展开为标准 `/IRT` Text 回复（`/RT R`，同页，挂在根 callout
-  ref 上）——Acrobat 原生渲染为评论线程，pdf.js 把 R 回复并进父 popup 不另画
+  ref 上）——兼容阅读器显示为评论线程，pdf.js 把 R 回复并进父 popup 不另画
   图标；角色进 SHIO `{V:1, Kind:"Reply", Role, ReplyId}`；agent turn 写 /T
   （author），user turn 不写 /T（沿用「不替用户发明作者」原则）；`at` →
   CreationDate/M。导入：raw pass 认出自家 Reply 元数据，pdf.js 侧的对应
@@ -1356,7 +1355,7 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
 
 - **文件夹菜单的 Escape 只作用于菜单自己（`d717b3a`）。** 切换器的页码补上
   本地化，带数量的字符串补上复数形式（`0832523`）。一次 unlisten 失败不再让
-  整个 teardown 的其余部分半途而废（`d90c18d`）。文本 tab 存回后刷新内容
+  整个 cleanup 的其余部分半途而废（`d90c18d`）。文本 tab 存回后刷新内容
   哈希（`ea0c397`，P1d 的前置）。
 
 ---
@@ -1554,10 +1553,7 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
 
 ### 新增（整段编辑，2026-07-07 凌晨）
 
-- **整段原文编辑 v1 落地（点击即编辑段落）。** 方案与调研：
-  `docs/PLAN-PARAGRAPH-CONTENT-TEXT-2026-07.md` +
-  `docs/RESEARCH-PARAGRAPH-EDIT-2026-07.md`（Codex web 调研，PDFBox/
-  pdfminer/MuPDF 真实参数）。段落检测器
+- **整段原文编辑 v1 落地（点击即编辑段落）。** 设计见 `docs/PLAN-PARAGRAPH-CONTENT-TEXT-2026-07.md`。段落检测器
   `src/editor/textSelection/paragraphDetect.ts`：runs→lines→blocks，信号=
   基线容差/pitch 连续带/硬断/x 重叠/字号连续/标题独立，MAD 对齐检测
   （justify 末行校验），异常块标 low-confidence 记原因、**拒绝编辑不猜**；
@@ -1645,7 +1641,7 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
   编辑框本就压平成单一样式，导出与屏上从此一致。集成测试坑：pdf-lib 每次
   `drawText` 给同一字体生成新的页资源名（票会被摊平成 1-1-1），真实 PDF
   writer 会复用资源名——夹具改用单次多行 drawText。
-- **真删干净的 cover rect 不再盖白，编辑处完全无痕。** glyph removal 的顺手收尾：`redactCoveredTextOnPage` 从返回删除计数升级为 per-rect 报告（`{ removedCount, cleanRects }`），导出时"干净"的矩形跳过背景色盖板——有底色/纹理的页面上编辑不再留补丁。"干净"判定保守（全部满足才算）：walk 成功、与矩形相交的字形全部 fully-inside 且已删、无 XObject 压住矩形（Form 用 BBox×Matrix×CTM、Image 用单位方×CTM 求包围盒，算不出包围盒或其他 subtype 一律按脏处理——v1 不遍历 XObject 内容，扫描件的可见文字在图里，保留盖板正确）。任何失败路径 cleanRects 全 false，行为退回今日的盖白+重绘。Codex 实现，含 per-rect 单测 + 真字体集成测试（删净页无旧字形也无盖板填充算子、脏矩形仍有）。
+- **真删干净的 cover rect 不再盖白，编辑处完全无痕。** glyph removal 的顺手收尾：`redactCoveredTextOnPage` 从返回删除计数升级为 per-rect 报告（`{ removedCount, cleanRects }`），导出时"干净"的矩形跳过背景色盖板——有底色/纹理的页面上编辑不再留补丁。"干净"判定保守（全部满足才算）：walk 成功、与矩形相交的字形全部 fully-inside 且已删、无 XObject 压住矩形（Form 用 BBox×Matrix×CTM、Image 用单位方×CTM 求包围盒，算不出包围盒或其他 subtype 一律按脏处理——v1 不遍历 XObject 内容，扫描件的可见文字在图里，保留盖板正确）。任何失败路径 cleanRects 全 false，行为退回今日的盖白+重绘。含 per-rect 单测 + 真字体集成测试（删净页无旧字形也无盖板填充算子、脏矩形仍有）。
 - **发布前审计低危项清账（×4）。** ① 桌面拖入不支持类型 → 补
   `error.unsupportedDocument` toast（与 web picker 对齐）；② 移动端打开
   前先 `plugin-fs stat` 查 200MB 上限（fail-open：content:// 不支持
@@ -1757,7 +1753,7 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
 ### 修复
 
 - **Windows 内嵌浏览器卡死 / 崩溃 + 显存飙升。** `web_panel_set_bounds` 每帧 `apply_web_panel_bounds` 后都调 `webview.show()`，而前端在每次 scroll/resize/RAF 都报 bounds。Windows WebView2 每次 `Show()` 强制 visibility/occlusion 重算（macOS WKWebView 廉价合并，故只有 Windows 卡）。在 `WebPanelInner` 跟踪 `visible`，仅在 hidden→visible 跳变 `show()`。据此回退 Windows 浏览器禁用 stopgap（`embeddedBrowserPanel && !IS_WINDOWS`），重新启用。需真 Windows + WebView2 验证。(`b27136e6`、`114e3fe9`)
-- **退出残留进程树 / 黑屏。** `.run()` 闭包只处理 `RunEvent::Opened`，退出时不回收内嵌终端 → 用户 shell 及其前台子进程（claude/codex/node/builds）成孤儿（Windows 任务管理器可见），分离的 PTY reader 线程永久阻塞在 `read()`。新增 `shutdown_cleanup`（仅 `RunEvent::ExitRequested`，绝不在 macOS 非退出窗口关闭的 CloseRequested/Destroyed 触发）drain session map（释放 PTY master Arc 让 reader 解阻塞退出）+ `kill_session_tree`（Unix `killpg` SIGHUP→SIGKILL；Windows `taskkill /T /F`，带 bounded try_wait）。显式声明 `libc`。需 Windows on-device 验证。详见 POSTMORTEMS。(`dfa918c3`)
+- **退出残留进程树 / 黑屏。** `.run()` 闭包只处理 `RunEvent::Opened`，退出时不回收内嵌终端 → 用户 shell 及其前台子进程（终端命令和构建进程）成孤儿（Windows 任务管理器可见），分离的 PTY reader 线程永久阻塞在 `read()`。新增 `shutdown_cleanup`（仅 `RunEvent::ExitRequested`，绝不在 macOS 非退出窗口关闭的 CloseRequested/Destroyed 触发）drain session map（释放 PTY master Arc 让 reader 解阻塞退出）+ `kill_session_tree`（Unix `killpg` SIGHUP→SIGKILL；Windows `taskkill /T /F`，带 bounded try_wait）。显式声明 `libc`。需 Windows on-device 验证。详见 POSTMORTEMS。(`dfa918c3`)
 - **合并 PDF 孤儿文档。** `appendIncomingPdf` 仅在 catch 路径销毁合并前文档，每次 append/merge 泄漏旧文档的 worker、字节缓冲、解码页缓存。try 顶部捕获 `previousDoc`，仅成功且非 merged doc / 未被其他 tab session 引用时销毁。(`a1d1f476`)
 - **阅读栏标签 clamp。** 持久化的右栏 tab 若失效会被纠正到有效值，不再卡在无效标签。(`f0395f3a`)
 - **（平板）拒绝内嵌浏览器页内非 web 导航。** 桌面 `on_navigation`（`parse_web_url`：仅 http/https）的等价物在 iOS/Android 原生侧缺失，页内链接/脚本跳转 `file:`/`intent:`/`tel:` 会无校验进 webview（本地文件泄露 + deep-link 逃逸面）。补 `decidePolicyFor`（WKWebView）/ `shouldOverrideUrlLoading`（Android）：http(s)/内容 scheme 放行，通讯 scheme 交系统 opener，其余拒绝。(`9d0bcc62`)
@@ -1799,7 +1795,7 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
 - **Shiori CLI 原型。** 新增 CLI 方向文档和 Bun 原型，支持 inspect、文本提取、
   搜索、agent JSON 输出和机器可读 help。暂作为内部 / agent-facing 能力，不放入
   用户 changelog。(`42f9643`、`1b3aef0`)
-- **跨平台 review 规则。** CLAUDE.md 明确要求涉及打开、保存、recents、storage、
+- **跨平台 review 规则。** AGENTS.md 明确要求涉及打开、保存、recents、storage、
   IPC、拖拽、文件关联、分享等路径时同时追踪 web / desktop / mobile。(`b859528`)
 - **Android build postmortem。** 记录 Android base64 依赖 gating 的构建问题。
   (`38a9dcf`)
@@ -1829,7 +1825,7 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
   共享同一 pending-open 队列。Android 分享与 `#[cfg(mobile)]` 臂不被桌面 / web 测试
   覆盖——需真机。(`0183a77`)
 - **Android 直装更新安装器 bridge。** 直装 APK 构建可在应用内下载最新 APK、校验
-  release 元数据并交系统包安装器；Play 构建仍走商店更新。(codex, `4ba9f2e`)
+  release 元数据并交系统包安装器；Play 构建仍走商店更新。(`4ba9f2e`)
 - **Markdown / HTML 文档进入最近列表 + 页面预览。** 打开过的 Markdown / HTML 记入
   recents，主页「最近」按 PDF 同样方式展示；HTML 渲染为缩放页面预览而非源码文本；回
   主页时已打开的文本标签回填进 recents。(`2e84f3f`、`64a55d2`、`8c80138`、`d2359c4`)
@@ -1921,15 +1917,15 @@ Android、iOS、Windows、Linux 的原生改动都只做过编译或代码核对
   localStorage/cookie 抛 SecurityError；real API 抛错时安装 per-frame 内存 shim；cookie
   shim 支持 Max-Age=0 / 过期删除；记录 shim 故意的方法影子化偏差。(`582548a`、`dad8226`、`3b8f805`)
 - **死代码清理。** 移除从未消费的导出密码管线。(`4efaf4d`)
-- **嵌入式终端光标对齐。** 分离测量主机与视觉帧 padding，滚动 / fit 后刷新视口。(codex, `d2cbbc1`)
+- **嵌入式终端光标对齐。** 分离测量主机与视觉帧 padding，滚动 / fit 后刷新视口。(`d2cbbc1`)
 - **bridge nonce 测试助手定位修复。** lazy `[\s\S]*?` 会跨 script 边界靠巧合变绿，改为锚定到
   run-frame marker 间。(`b58ae0e`)
 - **文本查看器 flex 行内向右偏移。** 文本查看器在 flex-row 父容器里被挤向右侧，已修正。(`bbc6204`)
 
 ### 文档 / 内部
 
-- **jj colocated 工作流文档化** 与 seal-as-you-go 提交纪律写入 CLAUDE.md。(`978eed3`、`70da9e7`)
-- **PM/UX 研究文档**（`docs/PM-UX-RESEARCH-2026-06.md`）并修正过时的体积声明（~16 MB dmg /
+- **jj colocated 工作流文档化** 与 seal-as-you-go 提交纪律写入 AGENTS.md。(`978eed3`、`70da9e7`)
+- **修正过时的体积声明**（~16 MB dmg /
   ~18 MB app）。(`2c175a1`、`645f7d8`)
 - **HANDOFF 刷新** 至 2026-06-10 硬化批次状态。(`a94ae9e`)
 
@@ -2616,7 +2612,7 @@ v0.1.4 的签名 + notarize 后第一次正式 ship。(`3a6456a`)
   CMap 与 standard font assets 打进 bundle。(`89b3a26` / `c3c37c1` /
   `da1f8f9` / `f504fc1` / `69af1ce`)
 - **导出 PDF 的阅读器兼容性拓宽。** 调整了注释字典结构和字体引用写法，
-  现在在 Preview / Acrobat / 三方 Reader 上都能无警告打开。(`be156cb`)
+  现在在 各类 PDF 阅读器 上都能无警告打开。(`be156cb`)
 - **编辑为空时跳过 PDF rewrite。** 只是打开浏览而没做任何改动时不再走一次
   pdf-lib 的 save 路径，避免原文件被无理由重写（时间戳、结构都会变）。
   (`53d9ae8`)
@@ -2666,7 +2662,7 @@ v0.1.4 的签名 + notarize 后第一次正式 ship。(`3a6456a`)
 
 ## [0.1.0] — 2026-04-21
 
-Beta。从 "Open PDF Expert" 改名为 Shiori（`fun.nagi.shiori`）。构建带
+Beta。改名为 Shiori（`fun.nagi.shiori`）。构建带
 7 天有效期（从编译时间起算）；发布工作流仅 Windows，产物发送到
 `shiori-releases`；去掉了运行时拉取 Google Fonts，改用内置字体。
 （此之前的 commit 未记入本 changelog，参见 `git log 919ff30..`。）

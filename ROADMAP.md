@@ -59,7 +59,7 @@ signal fires, migrate that specific module. No trigger, no migration.
 
 | Module | Current impl | Trigger to move | Target stack |
 |---|---|---|---|
-| PDF rendering and reading | PDFium via `crates/shiori-core` (**shipped 2026-09**; `docs/PLAN-RUST-PDF-CORE-2026-09.md`) | Done | `pdfium-render` (MuPDF ruled out: AGPL) |
+| PDF rendering and reading | PDFium via `crates/shiori-core` (**shipped 2026-09**; `docs/PLAN-RUST-PDF-CORE-2026-09.md`) | Done | `pdfium-render` |
 | PDF export | `pdf-lib` + `@pdf-lib/fontkit` | Font or encryption bugs surface, or export of >200 MB PDFs takes >3 s at P95 | `lopdf` or `pdf-writer` (Rust) |
 | Font subsetting | `@pdf-lib/fontkit` | Chinese exports routinely exceed 5 MB; or we need OpenType variable font support | Same Rust library chosen for export |
 | Hash of PDF bytes | Web Crypto `SHA-256` | Never — platform primitive is already optimal | — |
@@ -143,7 +143,6 @@ trigger fires. Numbers snapshotted 2026-04-21.
 | [**lopdf**](https://github.com/J-F-Liu/lopdf) | Pure-Rust PDF toolkit (2.1k★, last release v0.39.0 · 2026-01, MIT) | Read/write PDFs, manipulate content streams, merge/split, extract text | Lower-level than pdf-lib — you work with content-stream operators directly. **The strongest current candidate for true text editing** because it exposes what the higher-level crates abstract away. Expect to build your own layout helpers on top. |
 | [**pdf-writer**](https://github.com/typst/pdf-writer) | Typst's write-only PDF library | Producing fresh PDFs from scratch | Faster and cleaner than lopdf for export-only flows; not an option if we need to mutate existing PDFs. |
 | [**pdfium-render**](https://github.com/ajrcarey/pdfium-render) | Rust bindings over Google's PDFium (the Chrome PDF engine) | Rendering fidelity, battle-tested parser | Requires shipping the PDFium binary (~8 MB). Best candidate if the trigger is a rendering bug rather than an editing need. |
-| [**mupdf-rs**](https://github.com/messense/mupdf-rs) | Rust bindings over MuPDF | Rendering + limited editing | Industry-grade parser. Licensing is AGPL, which is incompatible with shipping Shiori under MIT; ruled out. |
 | [**pdf-rs / pdf**](https://github.com/pdf-rs/pdf) | Pure-Rust reader-leaning crate | Parsing, extraction | Less focus on authoring than lopdf. Worth a look when search/indexing lands. |
 
 **Working hypothesis.** When the "real text editing" row in Layer 2 moves

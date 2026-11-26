@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createFontCoverage } from './coverage';
 import { tinyCff, tinyTtf } from './fixtures/programs';
+import { namedTtf } from './symbolicCmap.test-support';
 const cmap = (pairs: string) => `begincmap 1 begincodespacerange <00> <ff> endcodespacerange ${pairs} endcmap`;
 const simple = (extra = {}) => createFontCoverage({ subtype:'TrueType', baseFont:'ABCDEF+Sans', flags:32,
   encoding:'WinAnsiEncoding', program:tinyTtf(), toUnicode:cmap('4 beginbfchar <53> <0053> <61> <0061> <6e> <006e> <64> <0064> endbfchar'), ...extra });
@@ -57,12 +58,12 @@ describe('font program coverage', () => {
     expect(bytes(f.canEncode('S'))).toEqual([83]);
   });
   for (const high of [0,0xf000,0xf100,0xf200]) test(`symbolic (3,0) cmap selects high byte ${high}`, () => {
-    const f = simple({flags:4, program:tinyTtf({maps:[{platform:3,encoding:0,entries:[[high+65,7]]},{platform:3,encoding:1,entries:[[65,0]]}]}),
+    const f = simple({flags:4, program:namedTtf({maps:[{platform:3,encoding:0,entries:[[high+65,7]]},{platform:3,encoding:1,entries:[[65,0]]}]}),
       toUnicode:cmap('1 beginbfchar <41> <0041> endbfchar')});
     expect(bytes(f.canEncode('A'))).toEqual([65]);
   });
   test('symbolic Mac cmap ignores Differences', () => {
-    const f = simple({flags:4,toUnicode:undefined,encoding:{differences:{83:'d'}},program:tinyTtf({maps:[{platform:1,encoding:0,entries:[[83,1]]}]})});
+    const f = simple({flags:4,toUnicode:cmap('1 beginbfchar <53> <0053> endbfchar'),encoding:{differences:{83:'d'}},program:tinyTtf({maps:[{platform:1,encoding:0,entries:[[83,1]]}]})});
     expect(bytes(f.canEncode('S'))).toEqual([83]);
     expect(f.canEncode('d').ok).toBe(false);
   });

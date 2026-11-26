@@ -1,0 +1,132 @@
+import {PDFDocument,PDFDict,PDFName,PDFObjectCopier,type PDFPage} from 'pdf-lib';
+import type {ContentTextOverlay} from '../../model/types';
+import {compilerReason,type ContentTextOutcome} from '../contentText/outcomes';
+import {prepareFallback,type FallbackOptions} from './fallbackFont';
+import {inspectRunPage,runPageEnvironment} from './replaceRunPage';
+import {replaceRuns} from './replaceRun';
+import {substitutionStamp} from './substituteSnapshot';
+import {RunCompileError} from './runRefusal';
+import {substituteSourceFonts} from './substituteSource';
+import {planSubstitution,type SubstituteLine} from './substitutePlan';
+import {inkCovered,substituteInk} from './substituteInk';
+import {explainStreamReflow} from '../contentText/reflowAuto';
+import {compileReflowPlan} from '../contentText/reflowCompile';
+import {reflowAffectedBoxes,reflowManifest} from '../contentText/reflowManifest';
+import {reflowEnabled} from '../contentText/reflowTypes';
+import type {AppliedReflowManifest} from '../contentText/reflowManifest';
+import type {Type1Options} from '../fontCoverage/type1Support';
+import {tokenizeContentStream} from './tokenizer';
+import {walkTextPlacements} from './textState';
+import {intersects} from '../contentText/regionProof/geometry';
+import {fallbackClusters as clusters} from './fallbackClusters';
+import {resolveFont, withCachedLocalFonts} from '../fonts/fontService';
+import {fontChoiceKey} from '../fonts/localFonts';
+import {sourceFontReader} from '../fonts/sourceFontContext';
+import {annotationAnchorRefusal,type AnchoredAnnotation,type AnnotationAnchorRefusal} from '../sourceAnnotationAnchors';
+
+export type SubstituteOptions=FallbackOptions&{stage5Substitute?:boolean;stage5Reflow?:boolean;stage5Type1?:Type1Options};
+function checkSlot(line:SubstituteLine,{resolved:font,parsed}:Awaited<ReturnType<typeof prepareFallback>>,overlay:ContentTextOverlay){
+ const scale=line.state.advanceVector.x,size=line.state.fontSize;
+ let advance=0;
+ for(const cluster of clusters(line.text)){
+  const encoded=font.canEncode!(cluster);if(!encoded.ok)throw new RunCompileError('substitute cluster unavailable','font-coverage');
+  const code=encoded.bytes[0]!*256+encoded.bytes[1]!,glyph=parsed.layout(cluster).glyphs[0]!,box=glyph.path.bbox;
+  if(!/^\s+$/u.test(cluster)){
+   const unit=size/parsed.unitsPerEm,x=line.origin.x+advance*size*scale/1000,y=line.origin.y,vertical=(line.state.fontSizePt??size)/parsed.unitsPerEm;
+   const left=x+box.minX*unit*scale,right=x+box.maxX*unit*scale,bottom=y+box.minY*vertical,top=y+box.maxY*vertical;
+   // Half a point reserves raster antialiasing beyond the outline bounds.
+   if(!overlay.coverRects.some(r=>left>=r.x+.5&&right<=r.x+r.w-.5&&bottom>=r.y+.5&&top<=r.y+r.h-.5))throw new RunCompileError('substitute ink exceeds original cover','overflow');
+  }
+  advance+=font.widthOf(code)+1000*line.state.charSpacing/size;
+ }
+ const neededPt=advance*size*scale/1000;
+ if(!Number.isFinite(neededPt)||neededPt<0||neededPt>line.availablePt+1e-7)throw new RunCompileError('substitute run overflows original slot','overflow');
+}
+async function substitute(page:PDFPage,overlay:ContentTextOverlay,options:SubstituteOptions,siblings:readonly ContentTextOverlay[],anchors:readonly AnchoredAnnotation[]):Promise<ContentTextOutcome>{
+ const source=inspectRunPage(page);
+ // Diagnostic only: the substitute-font reflow gate, kept when the retry fails.
+ let substituteGate:string|undefined;
+ const refusal=(reason:NonNullable<ContentTextOutcome['reason']>,detail:string):ContentTextOutcome=>({overlayId:overlay.id,mode:'unsupported',reason,detail,...(substituteGate?{substituteGate}:{})});
+ if(!source.ok)return refusal(source.code,source.reason);
+ const originalResources=page.node.Resources(),originalContents=page.node.get(PDFName.of('Contents')),stamp=substitutionStamp(page);
+ try{
+  const fonts=substituteSourceFonts(page),environment=runPageEnvironment(page),plan=planSubstitution(source.bytes,fonts,overlay,environment,substituteInk(page,fonts),reflowEnabled(options.stage5Reflow));
+  const readSourceFont=sourceFontReader(page,plan.ops);
+  const choices=plan.lines.map(line=>{
+   const first=line.glyphs[0]!;
+   return resolveFont({...readSourceFont(first.fontName,first.opIndex),purpose:'run-substitute',text:line.text},options);
+  });
+  const choice=choices[0]!,faceKey=fontChoiceKey(choice);
+  if(choices.some(face=>fontChoiceKey(face)!==faceKey))throw new RunCompileError('mixed substitute faces require paragraph style planning','unsupported-state');
+  const fontDict=originalResources?.lookupMaybe(PDFName.of('Font'),PDFDict);
+  let index=1;while(fontDict?.has(PDFName.of(`ShioriSub${index}`)))index++;
+  const resource=`ShioriSub${index}`,scratch=await PDFDocument.create();
+  const prepared=await prepareFallback(scratch,resource,choice,plan.lines.flatMap(l=>clusters(l.text)),options);
+  let overflow=plan.uncoveredInk.length?new RunCompileError('source ink exceeds safe cover','overflow'):undefined;
+  try{for(const line of plan.lines)checkSlot(line,prepared,overlay);}catch(error){
+   if(!(error instanceof RunCompileError)||error.code!=='overflow')throw error;
+   overflow??=error;
+  }
+  // Capacity is checked over each owned line above. Later owned items are
+  // blanked; the span compiler restores every item's original endpoint.
+  let manifest:AppliedReflowManifest|undefined,anchor:AnnotationAnchorRefusal|undefined;
+  let compiled;
+  if(overflow){
+   if(!reflowEnabled(options.stage5Reflow))throw overflow;
+   // The complete source/resource scene and NEW font coexist only on this
+   // scratch page. Planning/compilation never mutates the destination page.
+   const copy=PDFObjectCopier.for(page.doc.context,scratch.context),candidate=scratch.addPage([page.getWidth(),page.getHeight()]);
+   for(const key of ['Resources','Contents','Annots'] as const){
+    const value=key==='Resources'?originalResources:page.node.get(PDFName.of(key));if(value)candidate.node.set(PDFName.of(key),copy.copy(value));
+   }
+   const media=page.getMediaBox(),crop=page.getCropBox();candidate.setMediaBox(media.x,media.y,media.width,media.height);candidate.setCropBox(crop.x,crop.y,crop.width,crop.height);
+   const resources=candidate.node.Resources()??scratch.context.obj({}),dict=resources.lookupMaybe(PDFName.of('Font'),PDFDict)??scratch.context.obj({});
+   dict.set(PDFName.of(resource),prepared.ref);resources.set(PDFName.of('Font'),dict);candidate.node.set(PDFName.of('Resources'),resources);
+   const measured=[...substituteSourceFonts(candidate).filter(f=>f.resourceName!==resource),prepared.resolved],env=runPageEnvironment(candidate);
+   const explained=explainStreamReflow(candidate,source.bytes,measured,overlay,{...env,stage5Reflow:true},options.stage5Type1,prepared.resolved);
+   if(!explained.ok)substituteGate=explained.gate;
+   const recipe=explained.ok?explained.plan:null;
+   if(!recipe?.reflow)throw overflow;
+   // A larger blanking region is authorized only by this actual recipe.
+   // The source bounds still come from proved outlines/declared envelopes;
+   // neither the UI rect nor replacement metrics can supply missing ink.
+   if(plan.uncoveredInk.some(ink=>!inkCovered(ink,[recipe.reflow!.proof.box]))){substituteGate='source-ink-outside-recipe';throw overflow;}
+   if(siblings.some(o=>o.id!==overlay.id&&o.coverRects.some(r=>intersects(r,recipe.reflow!.proof.box))))return refusal('shared-text-object','substitute reflow intersects another overlay');
+   compiled=compileReflowPlan(source.bytes,measured,recipe);
+   if(compiled.ok){
+    const walk=walkTextPlacements(tokenizeContentStream(source.bytes),{resolveFont:name=>{const f=measured.find(f=>f.resourceName===name);return f?{...f,ok:true,appliesWordSpacing:f.bytesPerCode===1}:{ok:false,reason:'unmeasurable source font'};},extGStateSetsFont:name=>env.extGStates?.get(name)?.setsFont??null});
+    if(!walk.ok)throw overflow;
+    manifest=reflowManifest(recipe.reflow,walk.glyphs,measured);
+    if(anchors.length)anchor=annotationAnchorRefusal(anchors,reflowAffectedBoxes(recipe.reflow,walk.glyphs));
+   }
+  }else compiled=replaceRuns(source.bytes,fonts,{sourceHash:source.sourceHash,...environment,edits:plan.edits,allowOverflow:true,fallbackFonts:[prepared.resolved]});
+  if(!compiled.ok)return refusal(compilerReason(compiled),compiled.reason);
+  const current=inspectRunPage(page);
+  if(!current.ok||current.sourceHash!==source.sourceHash||page.node.Resources()!==originalResources||page.node.get(PDFName.of('Contents'))!==originalContents||substitutionStamp(page)!==stamp)return refusal('stale-source','page changed during substitution preparation');
+  if(anchor)return {overlayId:overlay.id,mode:'unsupported',...anchor};
+  const resources=originalResources?.clone()??page.doc.context.obj({}),patchedFonts=fontDict?.clone()??page.doc.context.obj({});
+  const copier=PDFObjectCopier.for(scratch.context,page.doc.context);
+  patchedFonts.set(PDFName.of(resource),copier.copy(prepared.ref));resources.set(PDFName.of('Font'),patchedFonts);
+  const stream=page.doc.context.register(page.doc.context.flateStream(compiled.bytes));
+  page.node.set(PDFName.of('Resources'),resources);page.node.set(PDFName.of('Contents'),stream);
+  return {overlayId:overlay.id,mode:'substituted',fidelity:'exact',faces:[choice.name],...(manifest?{reflow:manifest}:{})};
+ }catch(error){
+  if(!(error instanceof RunCompileError))throw error;
+  return refusal(error.code,error.message);
+ }
+}
+/** Post-refusal only; the existing transactional reflow batch runs first. */
+export async function applyFontSubstitutions(page:PDFPage,edits:readonly ContentTextOverlay[],outcomes:Map<string,ContentTextOutcome>,accepted:Set<string>,options:SubstituteOptions,deferred:ReadonlySet<string>=new Set(),anchors:readonly AnchoredAnnotation[]=[]){
+ if(options.stage5Substitute===false)return;
+ options=withCachedLocalFonts(options);
+ for(const overlay of edits){
+  if(deferred.has(overlay.id))continue;
+  const outcome=outcomes.get(overlay.id);
+  if(outcome?.mode!=='unsupported'||!['font-unavailable','font-coverage','overflow'].includes(outcome.reason??''))continue;
+  const result=await substitute(page,overlay,options,edits,anchors);
+  // Width retries are speculative; retain the original refusal if they fail.
+  if(outcome.reason!=='overflow'||result.mode==='substituted'||result.reason==='annotation-anchor')outcomes.set(overlay.id,result);
+  else if(result.substituteGate)outcomes.set(overlay.id,{...outcome,substituteGate:result.substituteGate});
+  if(result.mode==='substituted')accepted.add(overlay.id);
+ }
+}

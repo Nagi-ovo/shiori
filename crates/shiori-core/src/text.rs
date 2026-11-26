@@ -14,6 +14,8 @@ use crate::{
 /// into its letters ("ﬁ" → "f", "i") comes back whole, as the reader sees it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextChar {
+    /// Unmapped PDFium character indices read as U+FFFD, never CID values
+    /// masquerading as Unicode. Their geometry and original glyph survive.
     pub text: String,
     /// Where the glyph's baseline starts.
     pub origin: (f32, f32),
@@ -135,6 +137,15 @@ fn raw_char(
         };
         lib.FPDFText_GetMatrix(tp, i, &mut m);
         let unicode = lib.FPDFText_GetUnicode(tp, i);
+        let hyphen = lib.FPDFText_IsHyphen(tp, i) == 1;
+        let map_error = lib.FPDFText_HasUnicodeMapError(tp, i) == 1;
+        // kNotUnicode may return the CID itself from GetUnicode. It is an
+        // unknown scalar, not a character label or a Unicode width lookup.
+        let unicode = if map_error && !(hyphen && unicode == 2) {
+            char::REPLACEMENT_CHARACTER as u32
+        } else {
+            unicode
+        };
         // The font's advance for this character, in text space, carried onto
         // the page by the character's matrix.
         let mut width_end = None;
@@ -167,7 +178,8 @@ fn raw_char(
                     .clone();
             }
             let (mut size, mut width) = (0.0f32, 0.0f32);
-            if !font.is_null()
+            if !map_error
+                && !font.is_null()
                 && lib.FPDFTextObj_GetFontSize(object, &mut size) != 0
                 && lib.FPDFFont_GetGlyphWidth(font, unicode, size, &mut width) != 0
             {
@@ -193,7 +205,7 @@ fn raw_char(
                 .rem_euclid(std::f32::consts::TAU),
             font_size: lib.FPDFText_GetFontSize(tp, i) as f32 * m.c.hypot(m.d),
             generated: lib.FPDFText_IsGenerated(tp, i) == 1,
-            hyphen: lib.FPDFText_IsHyphen(tp, i) == 1,
+            hyphen,
             width_end,
             font: font_info,
         }

@@ -22,6 +22,7 @@ const TYPE_LABEL: Record<OverlayType, string> = {
   strikethrough: "strikethrough",
   ink: "ink",
   image: "image",
+  sourceImageEdit: "image",
   stamp: "stamp",
   rect: "rectangle",
   note: "note",

@@ -1,3 +1,5 @@
+import {useContentTextSourceGeometry} from '../textSelection/useContentTextSourceGeometry';
+import {useContentTextPageReader} from '../textSelection/useContentTextPageReader';
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -17,7 +19,6 @@ import {
 } from "../../pdf/model/callout";
 import type { PdfDocument as PDFDocumentProxy } from "../../pdf/engine/types";
 import type { PdfPageTextContent } from "../../pdf/engine/text";
-import { appPdfEngine } from "../../pdf/engine/appEngine";
 import { ShioriTextLayer } from "../../pdf/render/textLayer";
 import { pdfRectToDisplay, rotatedSize } from "../../pdf/geometry/coords";
 import { T } from "../../design/tokens";
@@ -38,7 +39,7 @@ import {
   snapDisplayRectsToTextRuns,
   textContentToDisplayTextRuns,
 } from "../textSelection/highlightRects";
-import { substituteAbsorbedText } from "../textSelection/absorbText";
+import { absorbEdits } from "../textSelection/absorbText";
 import {
   dominantSourceFontName,
   normalizeBaseFontName,
@@ -46,9 +47,11 @@ import {
 import {
   detectParagraphs,
   lineDisplayRect,
-  paragraphLineText,
   type DetectedParagraph,
 } from "../textSelection/paragraphDetect";
+import { paragraphBlockText } from "../textSelection/contentTextCaret";
+import { openedEditCaret } from "../textSelection/contentTextDomCaret";
+import { requestEditCaret } from "./overlays/editCaret";
 import { buildSemanticTextLayerModel } from "../textSelection/semanticText";
 import {
   recordTextEditDebug,
@@ -78,11 +81,9 @@ import {
   type SemanticCopyLayerModel,
   type TextGesture,
   type TextMarkupType,
-  type TextRunGeometryLayerModel,
   buildSemanticClipboardText,
   contentTextEditRect,
   contentTextFirstLineIndentPt,
-  displayRectsFromSelectedRunTexts,
   dominantCssFontFamily,
   expandPdfRectSides,
   filterSelectedRunTexts,
@@ -101,8 +102,6 @@ import {
   selectedRunRectsWithEdges,
   selectedTextFromRunTexts,
   selectedTextFromSelection,
-  selectedTextRunsForDisplayRects,
-  selectedTextRunsForRange,
   sourceBaselinesFromRuns,
   summarizeClientRect,
   summarizeContentTextOverlay,
@@ -174,7 +173,6 @@ function TextHighlightLayerImpl({
   const editorStore = useEditorStoreApi();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const semanticCopyRef = useRef<SemanticCopyLayerModel | null>(null);
-  const textRunGeometryRef = useRef<TextRunGeometryLayerModel | null>(null);
   const markupGeometryRef = useRef<MarkupTextGeometry | null>(null);
   const glyphDragRef = useRef<(GlyphCaret & { point: Point }) | null>(null);
   const glyphDragFrameRef = useRef<number | null>(null);
@@ -192,8 +190,6 @@ function TextHighlightLayerImpl({
   // Last "paragraph edit refused" toast, to keep repeated clicks on the
   // same refused block from stacking identical toasts.
   const refusalToastAtRef = useRef(0);
-  const [contentSelectionPreviewRects, setContentSelectionPreviewRects] =
-    useState<DisplayRect[]>([]);
   const [textSelectionActive, setTextSelectionActive] = useState(false);
   const [hasTextRuns, setHasTextRuns] = useState(false);
   const [searchMatchRects, setSearchMatchRects] = useState<DisplayRect[]>([]);
@@ -223,6 +219,8 @@ function TextHighlightLayerImpl({
       ? tool
       : null;
   const contentTextEditEnabled = tool === "text";
+  const readPageText=useContentTextPageReader(doc,page,false);
+  const sourceGeometry=useContentTextSourceGeometry(doc,page,contentTextEditEnabled,scale);
   const calloutEnabled = tool === "callout";
   const selectionEnabled =
     tool === "select" ||
@@ -290,7 +288,6 @@ function TextHighlightLayerImpl({
       );
       const textDivs = build.textLayer.textDivs;
       if (textRuns.length === textDivs.length) {
-        textRunGeometryRef.current = { textDivs, textRuns };
         markupGeometryRef.current = {
           textDivs,
           textRuns,
@@ -298,7 +295,6 @@ function TextHighlightLayerImpl({
           glyphs: build.glyphs,
         };
       } else {
-        textRunGeometryRef.current = null;
         markupGeometryRef.current = null;
       }
       // Paragraph blocks (plan: PLAN-PARAGRAPH-CONTENT-TEXT-2026-07.md):
@@ -333,12 +329,10 @@ function TextHighlightLayerImpl({
     container.replaceChildren();
     buildRef.current = null;
     semanticCopyRef.current = null;
-    textRunGeometryRef.current = null;
     markupGeometryRef.current = null;
     paragraphsRef.current = [];
     setHasTextRuns(false);
-    // The scale this build lays out at; a zoom that commits while the page
-    // is still loading is applied once the build lands.
+    // A zoom during loading is applied when this build lands.
     const builtScale = layerScaleRef.current;
 
     const onCopy = (event: ClipboardEvent) => {
@@ -357,7 +351,7 @@ function TextHighlightLayerImpl({
     document.addEventListener("copy", onCopy);
 
     (async () => {
-      const text = await appPdfEngine.pageText(doc, page.sourceIndex, {
+      const text = await readPageText({
         checkAbort: () => {
           if (cancelled) throw new Error("Text layer rendering was cancelled");
         },
@@ -425,15 +419,13 @@ function TextHighlightLayerImpl({
       textLayer?.cancel();
       buildRef.current = null;
       semanticCopyRef.current = null;
-      textRunGeometryRef.current = null;
       markupGeometryRef.current = null;
       paragraphsRef.current = [];
       document.removeEventListener("copy", onCopy);
       container.replaceChildren();
     };
-  }, [applyLayerScale, deriveDisplayGeometry, doc, editorStore, page]);
+  }, [applyLayerScale, deriveDisplayGeometry, doc, editorStore, page,readPageText]);
 
-  // A zoom commit: same page, new scale. Re-lay the spans where they are.
   useEffect(() => {
     const build = buildRef.current;
     if (build) applyLayerScale(build, layerScale);
@@ -447,7 +439,7 @@ function TextHighlightLayerImpl({
       const geometry = markupGeometryRef.current;
       const selection = window.getSelection();
       const rects: DisplayRect[] = [];
-      if (selectionEnabled && !contentTextEditEnabled && root && geometry && selection && !selection.isCollapsed) {
+      if (selectionEnabled && root && geometry && selection && !selection.isCollapsed) {
         const rootRect = root.getBoundingClientRect();
         for (let i = 0; i < selection.rangeCount; i += 1) {
           rects.push(...markupRectsForRange(selection.getRangeAt(i), geometry, page, scale, rootRect));
@@ -474,7 +466,7 @@ function TextHighlightLayerImpl({
       glyphDragFrameRef.current = null;
       glyphDragRef.current = null;
     };
-  }, [contentTextEditEnabled, hasTextRuns, page, scale, selectionEnabled]);
+  }, [hasTextRuns, page, scale, selectionEnabled]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -722,22 +714,17 @@ function TextHighlightLayerImpl({
     return true;
   };
 
-  // Click-to-edit-paragraph (plan: PLAN-PARAGRAPH-CONTENT-TEXT-2026-07.md):
-  // a plain single click on text inside a HIGH-confidence detected block
-  // turns the whole block into one contentText edit. Low-confidence blocks
-  // are not clickable — refusing beats guessing. Drag/double-click keep the
-  // legacy sub-line selection path.
+  // Click-to-edit-paragraph (PLAN-PARAGRAPH-CONTENT-TEXT-2026-07.md): a
+  // plain click in a HIGH-confidence block opens it as one contentText
+  // edit, caret at the hit; low-confidence blocks refuse. Drags and
+  // double-clicks select sub-line ranges.
   const tryParagraphEditAtPoint = (
     gesture: TextGesture | null,
     end: Point,
-    // The pointerup event's timeStamp — clock source for toast rate
-    // limiting (the render-purity lint bars Date.now() in this closure).
     eventTimeMs: number,
   ): boolean => {
     const trace = (reason: string) => {
-      // Same opt-in flag as the block overlay — rejected clicks are normal
-      // (blank areas, low-confidence blocks), only worth tracing when
-      // debugging detection.
+      // Opt-in like the block overlay: rejected clicks are normal.
       if (window.localStorage?.getItem("shioriDebugParagraphs") === "1") {
         console.debug(`[shiori:paragraph] click rejected: ${reason}`, {
           end,
@@ -759,14 +746,13 @@ function TextHighlightLayerImpl({
       end.x <= candidate.rect.x + candidate.rect.w + 2 &&
       end.y >= candidate.rect.y - 2 &&
       end.y <= candidate.rect.y + candidate.rect.h + 2;
-    const block = paragraphsRef.current.find(
-      (candidate) => candidate.confidence === "high" && pointInBlock(candidate),
-    );
+    const candidates=sourceGeometry?.paragraphs??[];
+    const block = candidates.find(c => c.confidence === "high" && pointInBlock(c))
+      ?? sourceGeometry?.fieldAtPoint(end);
     if (!block) {
-      // Refusing beats guessing, but refusing SILENTLY reads as "broken".
-      // When the click landed on a detected-but-refused block, say why and
-      // point at the path that still works (drag-select a range).
-      const refused = paragraphsRef.current.find(pointInBlock);
+      // Refuse, but not silently: on a refused block say why and point at
+      // the path that still works (drag-select a range).
+      const refused = candidates.find(pointInBlock);
       if (refused) {
         if (eventTimeMs - refusalToastAtRef.current > 2500) {
           refusalToastAtRef.current = eventTimeMs;
@@ -780,21 +766,13 @@ function TextHighlightLayerImpl({
       }
       return trace("no block at point");
     }
-    console.debug("[shiori:paragraph] click hit block", block.rect);
-
     const displayRects: DisplayRect[] = block.lines.map(lineDisplayRect);
     const rects = displayRectsToPdfRects(displayRects, page, scale);
     if (rects.length !== displayRects.length) return false;
-    const text = block.lines
-      .map((line) => paragraphLineText(line, scale))
-      .join("\n");
+    const text = paragraphBlockText(block.lines, scale);
     if (text.trim() === "") return false;
-    addContentTextEdit(
-      rects,
-      text,
-      block.lines.flatMap((line) => line.runs),
-      displayRects,
-    );
+    addContentTextEdit(rects, text, block.lines.flatMap((line) => line.runs), displayRects,
+      undefined, undefined, { lines: block.lines, point: end });
     return true;
   };
 
@@ -805,6 +783,7 @@ function TextHighlightLayerImpl({
     displayRects: DisplayRect[],
     coverEdges?: CoverEdgeSafety[],
     debug?: ContentTextEditDebugDraft,
+    caretHit?: { lines: DetectedParagraph["lines"]; point: Point },
   ) => {
     if (rects.length === 0 || text.trim() === "") return;
     const sampledColors = samplePageColors(rootRef.current, displayRects);
@@ -837,12 +816,7 @@ function TextHighlightLayerImpl({
     const editRect = contentTextEditRect(rects, page);
     const sourceBaselinesPt = sourceBaselinesFromRuns(selectedRuns, page, scale);
     const firstLineIndentPt = contentTextFirstLineIndentPt(rects, editRect);
-    // Absorb earlier contentText edits the new selection overlaps: two
-    // overlapping edits would draw both replacement texts on top of each
-    // other. The old overlay is removed; its replacement is substituted into
-    // the new edit's initial text so the earlier change is not lost.
-    // originalText stays the SOURCE text — that is what the export covers
-    // and excises.
+    // Absorb overlapping edits while originalText retains the source text.
     const absorbed = editorStore
       .getState()
       .model.overlays.filter(
@@ -855,23 +829,15 @@ function TextHighlightLayerImpl({
             ),
           ),
       );
-    let initialText = text;
-    for (const old of absorbed) {
-      // Best effort: an old edit whose source text no longer matches even
-      // whitespace-tolerantly is still removed — the user is re-editing
-      // this region and would otherwise see both texts overlap.
-      initialText = substituteAbsorbedText(
-        initialText,
-        old.originalText,
-        old.text,
-      );
-    }
+    // Old edits go even if their source no longer matches.
+    const absorption = absorbEdits(text, absorbed), initialText = absorption.text;
     const overlay: ContentTextOverlay = {
       type: "contentText",
       id: nanoid(),
       pageId: page.id,
       rect: editRect,
       coverRects,
+      sourceGlyphs: sourceGeometry?.observe(coverRects, inferredStyle.fontSize),
       ...(sourceBaselinesPt ? { sourceBaselinesPt } : {}),
       ...(firstLineIndentPt !== undefined ? { firstLineIndentPt } : {}),
       ...(sourceFontName ? { sourceFontName } : {}),
@@ -889,6 +855,7 @@ function TextHighlightLayerImpl({
       ),
       backgroundColor: sampledColors.backgroundColor ?? "#ffffff",
     };
+    overlay.sourceStyle = { ...inferredStyle, color: overlay.color, align: overlay.align, backgroundColor: overlay.backgroundColor };
     if (debug) {
       recordTextEditDebug({
         capturedAt: new Date().toISOString(),
@@ -922,6 +889,9 @@ function TextHighlightLayerImpl({
       ],
     });
     selectOnly(overlay.id);
+    const caret = caretHit && openedEditCaret({ ...caretHit, page, scale, cellsOf: sourceGeometry?.caretCells,
+      frame: markupGeometryRef.current, absorbed, absorption, root: rootRef.current });
+    if (caret != null) requestEditCaret(overlay.id, caret);
     setEditingOverlayId(overlay.id);
     window.requestAnimationFrame(() => {
       const textarea = document.querySelector<HTMLTextAreaElement>(
@@ -1031,36 +1001,14 @@ function TextHighlightLayerImpl({
     const displayRects: DisplayRect[] = [];
     const selectedRunTexts: SelectedTextRun[] = [];
     const rangeDebugs: unknown[] = [];
-    const textRunGeometry = textRunGeometryRef.current;
+    if(!sourceGeometry)return false;
     for (let i = 0; i < selection.rangeCount; i += 1) {
       const range = selection.getRangeAt(i);
       if (!rangeIntersectsNode(range, root)) continue;
       const clientRects = Array.from(range.getClientRects());
-      const rangeDisplayRects = clientRectsToDisplayRects(
-        clientRects,
-        rootRect,
-        pageWidthPx,
-        pageHeightPx,
-      );
-      const nativeSelectedRunsWithText = selectedTextRunsForRange(
-        range,
-        textRunGeometry,
-        rootRect,
-        pageWidthPx,
-        pageHeightPx,
-        size.width,
-      );
-      const gestureSelectedRunsWithText =
-        contentTextEditEnabled && gesture
-          ? selectedTextRunsForDisplayRects(
-              rangeDisplayRects,
-              textRunGeometry,
-              rootRect,
-              pageWidthPx,
-              pageHeightPx,
-              size.width,
-            )
-          : [];
+      const rangeDisplayRects = clientRectsToDisplayRects(clientRects,rootRect,pageWidthPx,pageHeightPx);
+      const nativeSelectedRunsWithText = sourceGeometry.select(rangeDisplayRects);
+      const gestureSelectedRunsWithText = gesture ? nativeSelectedRunsWithText : [];
       const selectedRunsWithText =
         gestureSelectedRunsWithText.length > 0
           ? gestureSelectedRunsWithText
@@ -1207,78 +1155,6 @@ function TextHighlightLayerImpl({
     return true;
   };
 
-  const updateContentSelectionPreview = (
-    gesture: TextGesture | null,
-    end: Point,
-  ) => {
-    if (!contentTextEditEnabled || !gesture) {
-      setContentSelectionPreviewRects([]);
-      return;
-    }
-    const root = rootRef.current;
-    const selection = window.getSelection();
-    if (!root || !selection || selection.isCollapsed || selection.rangeCount === 0) {
-      setContentSelectionPreviewRects([]);
-      return;
-    }
-
-    const rootRect = root.getBoundingClientRect();
-    const displayRects: DisplayRect[] = [];
-    const selectedRunTexts: SelectedTextRun[] = [];
-    const textRunGeometry = textRunGeometryRef.current;
-    for (let i = 0; i < selection.rangeCount; i += 1) {
-      const range = selection.getRangeAt(i);
-      if (!rangeIntersectsNode(range, root)) continue;
-      const rangeDisplayRects = clientRectsToDisplayRects(
-        Array.from(range.getClientRects()),
-        rootRect,
-        pageWidthPx,
-        pageHeightPx,
-      );
-      const selectedRunsWithText = selectedTextRunsForDisplayRects(
-        rangeDisplayRects,
-        textRunGeometry,
-        rootRect,
-        pageWidthPx,
-        pageHeightPx,
-        size.width,
-      );
-      selectedRunTexts.push(...selectedRunsWithText);
-      const selectedRuns = selectedRunsWithText.map((entry) => entry.run);
-      displayRects.push(
-        ...clipSnappedRectsToGesture(
-          snapDisplayRectsToTextRuns(rangeDisplayRects, selectedRuns),
-          selectedRuns,
-          gesture.start,
-          end,
-        ),
-      );
-    }
-
-    const filteredRects = filterDistantClusters(
-      displayRects,
-      (gesture.start.y + end.y) / 2,
-      {
-        minY: Math.min(gesture.start.y, end.y),
-        maxY: Math.max(gesture.start.y, end.y),
-      },
-    );
-    const filteredRunTexts = filterSelectedRunTexts(
-      selectedRunTexts,
-      filteredRects,
-    );
-    const gestureTrimmedRunTexts = trimSelectedRunTextsToGesture(
-      filteredRunTexts,
-      gesture,
-      end,
-    );
-    setContentSelectionPreviewRects(
-      gestureTrimmedRunTexts.length > 0
-        ? displayRectsFromSelectedRunTexts(gestureTrimmedRunTexts)
-        : filteredRects,
-    );
-  };
-
   const correctGlyphDrag = (end: Point) => {
     const anchor = glyphDragRef.current;
     const geometry = markupGeometryRef.current;
@@ -1314,7 +1190,6 @@ function TextHighlightLayerImpl({
                 clickCount: e.detail,
               };
               textGestureCurrentRef.current = start;
-              setContentSelectionPreviewRects([]);
               dragStartRef.current = null;
               setPreviewDrag(null);
               return;
@@ -1324,7 +1199,6 @@ function TextHighlightLayerImpl({
             window.getSelection()?.removeAllRanges();
             textGestureRef.current = null;
             textGestureCurrentRef.current = null;
-            setContentSelectionPreviewRects([]);
             dragStartRef.current = start;
             setPreviewDrag({ start, current: start });
             return;
@@ -1366,11 +1240,6 @@ function TextHighlightLayerImpl({
           ) {
             const end = localPoint(e);
             textGestureCurrentRef.current = end;
-            window.requestAnimationFrame(() => {
-              if (textGestureRef.current && textGestureCurrentRef.current === end) {
-                updateContentSelectionPreview(textGestureRef.current, end);
-              }
-            });
             return;
           }
           const start = dragStartRef.current;
@@ -1396,7 +1265,6 @@ function TextHighlightLayerImpl({
             setPreviewDrag(null);
             textGestureRef.current = null;
             textGestureCurrentRef.current = null;
-            setContentSelectionPreviewRects([]);
             dragStartRef.current = null;
             return;
           }
@@ -1418,7 +1286,6 @@ function TextHighlightLayerImpl({
               window.getSelection()?.removeAllRanges();
               textGestureRef.current = null;
               textGestureCurrentRef.current = null;
-              setContentSelectionPreviewRects([]);
               dragStartRef.current = null;
               return;
             }
@@ -1427,7 +1294,6 @@ function TextHighlightLayerImpl({
               selectOnly(null);
               textGestureRef.current = null;
               textGestureCurrentRef.current = null;
-              setContentSelectionPreviewRects([]);
               dragStartRef.current = null;
               return;
             }
@@ -1435,7 +1301,6 @@ function TextHighlightLayerImpl({
               window.getSelection()?.removeAllRanges();
               textGestureRef.current = null;
               textGestureCurrentRef.current = null;
-              setContentSelectionPreviewRects([]);
               dragStartRef.current = null;
               return;
             }
@@ -1444,7 +1309,6 @@ function TextHighlightLayerImpl({
             if (!createdHighlight) selectOnly(null);
             textGestureRef.current = null;
             textGestureCurrentRef.current = null;
-            setContentSelectionPreviewRects([]);
             dragStartRef.current = null;
           }, 0);
         }}
@@ -1455,7 +1319,6 @@ function TextHighlightLayerImpl({
           releasePointerCapture(e);
           textGestureRef.current = null;
           textGestureCurrentRef.current = null;
-          setContentSelectionPreviewRects([]);
           dragStartRef.current = null;
           setPreviewDrag(null);
         }}
@@ -1481,13 +1344,6 @@ function TextHighlightLayerImpl({
               ? CALLOUT_TARGET_OPACITY
               : textMarkupDefaults(textMarkupType ?? "highlight", annotDefaults).opacity,
           )}
-      {contentTextEditEnabled
-        ? renderContentSelectionPreview(
-            contentSelectionPreviewRects,
-            pageWidthPx,
-            pageHeightPx,
-          )
-        : null}
       {renderSearchMatchRects(searchMatchRects, pageWidthPx, pageHeightPx)}
       {renderDebugParagraphs(debugParagraphs, pageWidthPx, pageHeightPx)}
       {selectionPopup ? (
@@ -1607,45 +1463,6 @@ function renderDebugParagraphs(
   );
 }
 
-function renderContentSelectionPreview(
-  rects: DisplayRect[],
-  pageWidthPx: number,
-  pageHeightPx: number,
-) {
-  if (rects.length === 0) return null;
-  return (
-    <svg
-      width={pageWidthPx}
-      height={pageHeightPx}
-      style={{
-        position: "absolute",
-        inset: 0,
-        pointerEvents: "none",
-        // Above the overlay layer (zIndex 3): the selection tint must stay
-        // visible while sweeping across an existing contentText edit, whose
-        // opaque cover would otherwise hide it.
-        zIndex: 4,
-      }}
-    >
-      <g>
-        {rects.map((rect, index) => (
-          <rect
-            key={`${rect.x}:${rect.y}:${rect.w}:${rect.h}:${index}`}
-            x={rect.x}
-            y={rect.y}
-            width={rect.w}
-            height={rect.h}
-            fill={T.accent}
-            opacity={0.28}
-            rx={1}
-            ry={1}
-          />
-        ))}
-      </g>
-    </svg>
-  );
-}
-
 function renderFallbackPreview(
   preview: PreviewDrag | null,
   textSelectionActive: boolean,
@@ -1726,7 +1543,7 @@ function renderSearchMatchRects(
         position: "absolute",
         inset: 0,
         pointerEvents: "none",
-        zIndex: 1,
+        zIndex: 4,
       }}
     >
       <g>

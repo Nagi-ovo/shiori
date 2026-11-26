@@ -5,12 +5,13 @@ import {
 } from "../../editor/overlays/notePresentation";
 import { prepareLiveOverlayRevealBatch } from "../../live/overlayReveal";
 import type { PdfDocument } from "../../pdf/engine/types";
-import type { DocumentModel, Overlay, PageModel } from "../../pdf/model/types";
+import type { DocumentModel, Overlay, PageModel, TextFlowChain } from "../../pdf/model/types";
 import type { WorkspacePdfViewState } from "../../storage/workspace";
 
 export type PdfOpenModel = {
   pages: PageModel[];
   overlays: Overlay[];
+  flowChains?: TextFlowChain[];
   /**
    * When the replacement bytes represent a user edit (page insertion), seed
    * Undo with the pre-edit model remapped onto those new bytes.
@@ -118,7 +119,7 @@ export function finalizePdfOpen(open: FinalizePdfOpen): void {
   if (open.modelAsEdit && model) {
     // A normal edit, so Undo takes it back; imported annotations above went
     // in without history.
-    store.getState().commit({ pages: model.pages, overlays: model.overlays });
+    store.getState().commit({ pages: model.pages, overlays: model.overlays, flowChains: model.flowChains ?? [] });
   }
   const overlays = store.getState().model.overlays;
   const noteIds = open.view?.collapsedNoteIds ?? [];

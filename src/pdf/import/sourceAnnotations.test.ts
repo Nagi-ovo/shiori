@@ -200,8 +200,8 @@ describe("what other tools wrote, kept as written", () => {
     expect(overlays).toMatchObject([{ type: "rect", id: "pdf-annotation-0-annot_p0_2", fill: "#0000ff" }]);
   });
 
-  // Acrobat, on a /Rotate 90 page, writes a FreeText with /Rotate 90 and a
-  // tall /Rect so its text reads upright: one 200 pt line, not a 30 pt column.
+  // The FreeText and the page both have /Rotate 90. The tall /Rect
+  // contains one upright 200 pt line.
   test("a FreeText's own /Rotate turns its text box, not just the page", async () => {
     const bytes = await onePage((_pdf, add) => {
       add({ Subtype: "FreeText", Rect: [100, 100, 130, 300], Rotate: 90, DA: PDFString.of("/Helv 12 Tf 0 g"), Contents: PDFString.of("Upright") });

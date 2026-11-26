@@ -87,17 +87,17 @@ describe("Shiori live app client", () => {
     expect(
       resolveLiveAppDescriptorPath({
         platform: "linux",
-        homeDir: "/home/test",
+        homeDir: "/test-user",
         env: { XDG_CACHE_HOME: "/var/cache/test" },
       }),
     ).toBe("/var/cache/test/fun.nagi.shiori/live-api.json");
     expect(
       resolveLiveAppDescriptorPath({
         platform: "linux",
-        homeDir: "/home/test",
+        homeDir: "/test-user",
         env: {},
       }),
-    ).toBe("/home/test/.cache/fun.nagi.shiori/live-api.json");
+    ).toBe("/test-user/.cache/fun.nagi.shiori/live-api.json");
     expect(
       resolveLiveAppDescriptorPath({
         platform: "win32",

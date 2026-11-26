@@ -7,14 +7,19 @@ import { ShioriTextLayer, type TextLayerViewport } from "./textLayer";
 // 10 px per character here, and there is no font ascent, so the style's own
 // ascent (0.8) is used.
 const canvasProto = window.HTMLCanvasElement.prototype as unknown as Record<string, unknown>;
-const originalGetContext = Object.getOwnPropertyDescriptor(canvasProto, "getContext");
+let originalGetContext: PropertyDescriptor | undefined;
 beforeAll(() => {
+  originalGetContext = Object.getOwnPropertyDescriptor(canvasProto, "getContext");
+  ShioriTextLayer.resetMeasurementsForTest();
   Object.defineProperty(canvasProto, "getContext", {
     configurable: true,
-    value: () => ({ font: "", measureText: (s: string) => ({ width: s.length * 10 }) }),
+    value: function (this: HTMLCanvasElement) {
+      return { canvas: this, font: "", measureText: (s: string) => ({ width: s.length * 10 }) };
+    },
   });
 });
 afterAll(() => {
+  ShioriTextLayer.resetMeasurementsForTest();
   if (originalGetContext) Object.defineProperty(canvasProto, "getContext", originalGetContext);
   else delete canvasProto.getContext;
 });

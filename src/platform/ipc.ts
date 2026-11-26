@@ -46,13 +46,13 @@ export function unwrapCommand<T>(result: Result<T, string>): T {
  * situations hit that. In dev, a hot module update re-runs an effect while
  * the previous listener is still being torn down, so the same handle is
  * unlistened twice — every hot update then leaves an unhandled rejection and
- * (worse) a teardown that stopped halfway, so listeners pile up across
+ * (worse) a cleanup that stopped halfway, so listeners pile up across
  * updates until the window stops responding. In production the same happens
- * when the webview reloads out from under a pending teardown.
+ * when the webview reloads out from under a pending cleanup.
  *
  * A cleanup that cannot be completed must still not throw: the caller has
  * already dropped its reference either way. Accepts a sync or async
- * teardown, and swallows both shapes of failure.
+ * cleanup, and swallows both shapes of failure.
  */
 export function safeUnlisten(off: (() => unknown) | null | undefined): void {
   if (!off) return;

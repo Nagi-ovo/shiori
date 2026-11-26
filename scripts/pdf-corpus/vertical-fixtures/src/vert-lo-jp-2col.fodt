@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<office:document
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+ xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+ xmlns:dc="http://purl.org/dc/elements/1.1/"
+ xmlns:meta="urn:oasis:names:tc:opendocument:xmlns:meta:1.0"
+ office:mimetype="application/vnd.oasis.opendocument.text"
+ office:version="1.3">
+ <office:meta>
+  <dc:title>山月記</dc:title>
+  <meta:generator>Shiori corpus vertical fixtures</meta:generator>
+ </office:meta>
+ <office:font-face-decls>
+  <style:font-face style:name="BodyFont" svg:font-family="&apos;Noto Serif CJK JP&apos;" style:font-family-generic="roman" style:font-pitch="variable"/>
+  <style:font-face style:name="LatinFont" svg:font-family="&apos;DejaVu Serif&apos;" style:font-family-generic="roman" style:font-pitch="variable"/>
+ </office:font-face-decls>
+ <office:styles>
+  <style:default-style style:family="paragraph">
+   <style:paragraph-properties style:writing-mode="tb-rl"/>
+   <style:text-properties style:font-name="BodyFont" fo:font-size="12pt" style:font-name-asian="BodyFont" style:font-size-asian="12pt"/>
+  </style:default-style>
+  <style:style style:name="Standard" style:family="paragraph" style:class="text">
+   <style:paragraph-properties style:writing-mode="tb-rl" fo:line-height="165%" fo:margin-bottom="0.12cm"/>
+   <style:text-properties style:font-name="BodyFont" fo:font-size="12pt" style:font-name-asian="BodyFont" style:font-size-asian="12pt"/>
+  </style:style>
+  <style:style style:name="Title" style:family="paragraph" style:parent-style-name="Standard">
+   <style:paragraph-properties fo:margin-bottom="0.5cm"/>
+   <style:text-properties fo:font-size="18pt" style:font-size-asian="18pt" fo:font-weight="bold" style:font-weight-asian="bold"/>
+  </style:style>
+  <style:style style:name="Author" style:family="paragraph" style:parent-style-name="Standard">
+   <style:paragraph-properties fo:margin-bottom="0.4cm"/>
+   <style:text-properties fo:font-size="12pt" style:font-size-asian="12pt"/>
+  </style:style>
+  <style:style style:name="Tcy" style:family="text">
+   <style:text-properties style:text-combine="lines" style:font-name="LatinFont" fo:font-size="10pt" style:font-name-asian="LatinFont" style:font-size-asian="10pt"/>
+  </style:style>
+ </office:styles>
+ <office:automatic-styles>
+  <style:page-layout style:name="pm1">
+   <style:page-layout-properties fo:page-width="21.0cm" fo:page-height="29.7cm" style:num-format="1" style:print-orientation="portrait" fo:margin-top="2cm" fo:margin-bottom="2cm" fo:margin-left="2cm" fo:margin-right="2cm" style:writing-mode="tb-rl">
+    <style:footnote-sep/>
+   </style:page-layout-properties>
+  </style:page-layout>
+  <style:page-layout style:name="pm2col">
+   <style:page-layout-properties fo:page-width="21.0cm" fo:page-height="29.7cm" style:num-format="1" style:print-orientation="portrait" fo:margin-top="1.8cm" fo:margin-bottom="1.8cm" fo:margin-left="1.8cm" fo:margin-right="1.8cm" style:writing-mode="tb-rl">
+    <style:columns fo:column-count="2" fo:column-gap="0.8cm">
+      <style:column style:rel-width="1*" fo:start-indent="0cm" fo:end-indent="0cm"/>
+      <style:column style:rel-width="1*" fo:start-indent="0cm" fo:end-indent="0cm"/>
+    </style:columns>
+    <style:footnote-sep/>
+   </style:page-layout-properties>
+  </style:page-layout>
+ </office:automatic-styles>
+ <office:master-styles>
+  <style:master-page style:name="Standard" style:page-layout-name="pm2col"/>
+ </office:master-styles>
+ <office:body>
+  <office:text>
+   <text:p text:style-name="Title">山月記</text:p>
+   <text:p text:style-name="Author">中島敦</text:p>
+   <text:p text:style-name="Standard">隴西の李徴は博学才穎、天宝の末年、若くして名を虎榜に連ね、ついで江南尉に補せられたが、性、狷介、自ら恃むところ頗る厚く、賤吏に甘んずるを潔しとしなかった。いくばくもなく官を退いた後は、故山、略に帰臥し、人と交を絶って、ひたすら詩作に耽った。下吏となって長く膝を俗悪な大官の前に屈するよりは、詩家としての名を死後百年に遺そうとしたのである。しかし、文名は容易に揚らず、生活は日を逐うて苦しくなる。李徴は漸く焦躁に駆られて来た。この頃からその容貌も峭刻となり、肉落ち骨秀で、眼光のみ徒らに炯々として、曾て進士に登第した頃の豊頬の美少年の俤は、何処に求めようもない。数年の後、貧窮に堪えず、妻子の衣食のために遂に節を屈して、再び東へ赴き、一地方官吏の職を奉ずることになった。一方、これは、己の詩業に半ば絶望したためでもある。曾ての同輩は既に遥か高位に進み、彼が昔、鈍物として歯牙にもかけなかったその連中の下命を拝さねばならぬことが、往年の儁才李徴の自尊心を如何に傷けたかは、想像に難くない。彼は怏々として楽しまず、狂悖の性は愈々抑え難くなった。一年の後、公用で旅に出、汝水のほとりに宿った時、遂に発狂した。或夜半、急に顔色を変えて寝床から起上ると、何か訳の分らぬことを叫びつつそのまま下にとび下りて、闇の中へ駈出した。彼は二度と戻って来なかった。附近の山野を捜索しても、何の手掛りもない。その後李徴がどうなったかを知る者は、誰もなかった。</text:p>
+   <text:p text:style-name="Standard">翌年、監察御史、陳郡の袁という者、勅命を奉じて嶺南に使し、途に商於の地に宿った。次の朝未だ暗い中に出発しようとしたところ、駅吏が言うことに、これから先の道に人喰虎が出る故、旅人は白昼でなければ、通れない。今はまだ朝が早いから、今少し待たれたが宜しいでしょうと。袁は、しかし、供廻りの多勢なのを恃み、駅吏の言葉を斥けて、出発した。残月の光をたよりに林中の草地を通って行った時、果して一匹の猛虎が叢の中から躍り出た。虎は、あわや袁に躍りかかるかと見えたが、忽ち身を飜して、元の叢に隠れた。叢の中から人間の声で「あぶないところだった」と繰返し呟くのが聞えた。その声に袁は聞き憶えがあった。驚懼の中にも、彼は咄嗟に思いあたって、叫んだ。「その声は、我が友、李徴子ではないか？」袁は李徴と同年に進士の第に登り、友人の少かった李徴にとっては、最も親しい友であった。温和な袁の性格が、峻峭な李徴の性情と衝突しなかったためであろう。</text:p>
+   <text:p text:style-name="Standard">叢の中からは、暫く返辞が無かった。しのび泣きかと思われる微かな声が時々洩れるばかりである。ややあって、低い声が答えた。「如何にも自分は隴西の李徴である」と。</text:p>
+   <text:p text:style-name="Standard">袁は恐怖を忘れ、馬から下りて叢に近づき、懐かしげに久闊を叙した。そして、何故叢から出て来ないのかと問うた。李徴の声が答えて言う。自分は今や異類の身となっている。どうして、おめおめと故人の前にあさましい姿をさらせようか。かつ又、自分が姿を現せば、必ず君に畏怖嫌厭の情を起させるに決っているからだ。しかし、今、図らずも故人に遇うことを得て、愧赧の念をも忘れる程に懐かしい。どうか、ほんの暫くでいいから、我が醜悪な今の外形を厭わず、曾て君の友李徴であったこの自分と話を交してくれないだろうか。</text:p>
+   <text:p text:style-name="Standard">後で考えれば不思議だったが、その時、袁は、この超自然の怪異を、実に素直に受容れて、少しも怪もうとしなかった。彼は部下に命じて行列の進行を停め、自分は叢の傍に立って、見えざる声と対談した。都の噂、旧友の消息、袁が現在の地位、それに対する李徴の祝辞。青年時代に親しかった者同志の、あの隔てのない語調で、それ等が語られた後、袁は、李徴がどうして今の身となるに至ったかを訊ねた。草中の声は次のように語った。</text:p>
+   <text:p text:style-name="Standard">（以下、青空文庫本文の抄録）</text:p>
+   <text:p text:style-name="Standard">本文は著作権保護期間の満了した作品である。青空文庫の本文を利用した。字体はオープンフォントライセンスの源ノ明朝系書体による。本PDFの組版はクリエイティブ・コモンズ表示四・〇で提供する。</text:p>
+  </office:text>
+ </office:body>
+</office:document>

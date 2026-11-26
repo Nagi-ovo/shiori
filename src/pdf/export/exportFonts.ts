@@ -96,7 +96,7 @@ export async function loadExportFonts(
   // subset-font content-stream path. The subset font path is structurally
   // valid enough for pdf-lib, but PDFKit/QuickLook replaces those embedded
   // CID fonts with Helvetica and renders tofu/garbage. Path text keeps the
-  // visible output deterministic across Preview, QuickLook, and Poppler.
+  // visible output consistent across readers.
   const unicodeFont: PDFFont | null = null;
   const unicodeBoldFont: PDFFont | null = null;
   let unicodePathFont: FontkitFont | null = null;

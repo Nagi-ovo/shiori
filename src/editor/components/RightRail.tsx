@@ -200,7 +200,7 @@ export const RightRail = memo(function RightRail({
     };
     // Every way a drag can end, funnelled into one finish. Releasing the
     // button outside the window delivers no mouseup here, so a mouseup-only
-    // teardown left the rail following the pointer after the user came back
+    // cleanup left the rail following the pointer after the user came back
     // — with body selection still disabled and the document's resize
     // reactions still suppressed. A move with no button held is that same
     // release, observed one frame later.
@@ -887,7 +887,7 @@ const TerminalPanel = memo(function TerminalPanel({
       // The callout follow-up loop dispatches to the session the reader has
       // selected (see the effect below); registering only says this one is
       // alive. A dead session unregisters via the exit listener above and
-      // the teardown below.
+      // the cleanup below.
       registerFollowUpTerminalSession(sessionId);
       resizeScheduler.markDelivered({
         sessionId,

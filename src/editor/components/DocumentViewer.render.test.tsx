@@ -196,7 +196,7 @@ describe("DocumentViewer rendering", () => {
 
   test("a pinch keeps its baseline when the zoom prop changes mid-gesture", async () => {
     // Regression: the listener effect depended on `zoom`, so every zoom step
-    // it produced tore itself down and reinstalled. Teardown cleared the
+    // it produced tore itself down and reinstalled. cleanup cleared the
     // gesture baseline, so the next scale multiplied against the zoom it had
     // already applied instead of the zoom the pinch started at — trackpad
     // zoom compounded to the clamp within a few frames, and the touch path

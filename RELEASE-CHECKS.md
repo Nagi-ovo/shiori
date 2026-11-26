@@ -324,10 +324,10 @@ macOS 本机再做一遍 smoke：
 ```bash
 CG_PDF_VERBOSE=1 qlmanage -t -s 1200 -o /tmp/shiori-cjk-ql test-artifacts/cjk-regression/flatten.pdf test-artifacts/cjk-regression/annotations.pdf
 pdffonts test-artifacts/cjk-regression/flatten.pdf
-pdftoppm -png -singlefile -r 144 test-artifacts/cjk-regression/flatten.pdf /tmp/shiori-cjk-poppler-flatten
+pdftoppm -png -singlefile -r 144 test-artifacts/cjk-regression/flatten.pdf /tmp/shiori-cjk-raster-flatten
 ```
 
-然后用 macOS Preview、Chrome（PDFium）、Foxit、PDF Expert / Acrobat 打开两份
+然后用各平台原生阅读器和浏览器内置阅读器打开两份
 文件，看简体常用字、二级 + 扩展 B 生僻字、平假名 / 片假名 / 半角片假名、繁体差异字、
 全角标点、跨脚本混排。**Block rule：** 自动 gate 失败，或 flatten 模式任一类别在任一
 viewer 出现 tofu / 空白 / 字形错误，就不能发版。

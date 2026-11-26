@@ -80,7 +80,7 @@ const settle = (ms: number) =>
   });
 
 describe("text view zoom gestures", () => {
-  test("identity cleanup after teardown leaves the next view’s zoom indicator alone", async () => {
+  test("identity cleanup after cleanup leaves the next view’s zoom indicator alone", async () => {
     const { view } = mount();
     view.unmount();
     setLiveZoomIndicator(2);

@@ -4,18 +4,14 @@
 扩展了 `ContentTextOverlay`（`sourceBaselinesPt`、`firstLineIndentPt`、
 `align: left|center|right`），没有 `granularity` 字段，两端对齐（justify）未实现——
 以代码为准。附录第 5 条 fsType 嵌入许可原则只记在这里，仍然有效。
-原状态：已定稿。调研依据：
-`docs/RESEARCH-PARAGRAPH-EDIT-2026-07.md`（2026-07-07，含
-PDFBox/pdfminer/MuPDF 实际参数、商业编辑器行为观察、v1 阈值表）。
+段落检测的几何规则与阈值见 [paragraphDetect.ts](../src/editor/textSelection/paragraphDetect.ts)。
 
 ## 为什么换方案
 
 子行级选区编辑（现 `ContentTextOverlay`）在 2026-07-06/07 连修七个几何
 bug 后仍在出新的：行中起点缩进、混合字体投票失效（LaTeX 数学字体）、
 粗体/正文混排宽度节奏、跨行选择的框对齐、选中着色遮挡……每个修复都在
-给"任意子行矩形集合"这个模型打补丁。根因是模型粒度错了：**PDF 里视觉
-稳定的排版单位是段落块，不是任意字符区间**。PDF Expert / Acrobat 的
-Edit Text 都以段落为编辑单位，不是巧合。
+给"任意子行矩形集合"这个模型打补丁。根因是模型粒度错了：**以几何验证通过的段落块作为点击编辑的单位**。
 
 已有的地基（保留复用）：
 - 真删管线 `src/pdf/export/contentStreamEdit/`（tokenizer → textState →
@@ -83,8 +79,7 @@ paragraph 编辑需要的字段：
 - **justify**：检测做（左右缘 MAD ≤ 2pt 判定），v1 重排只实现
   left/center/right；justify 仅对"单样式、空格分词的拉丁文"用 Tw 实现，
   否则降级 left。
-- **连字符**：源行尾 soft hyphen 还原为连续词再重排（MuPDF
-  dehyphenate 同款）；硬连字符/负号/区间号保留。
+- **连字符**：源行尾 soft hyphen 还原为连续词再重排；硬连字符/负号/区间号保留。
 - **数学/符号字体行**：默认整块不可编辑（检测到 math 字体 run 即拒绝），
   这直接消掉"LaTeX 字体失效"类 bug。
 - **缺字**：同字体优先，缺 glyph 整段降级内置字体并内部标记降级，
@@ -101,9 +96,9 @@ paragraph 编辑需要的字段：
 
 ## 附：字体保真阶梯（2026-07-07 全部落地）
 
-商业编辑器的分层实践，Shiori 的对应实现：
+字体保真的实现分层如下。
 
-1. **内嵌字体优先**（Acrobat/PDF Expert 同款）：屏上 = pdf.js FontFace
+1. **内嵌字体优先**：屏上 = pdf.js FontFace
    前置（`ContentTextOverlay.sourceFontName` ↔ session 级
    `store.pdfFontFaces`，g_* 槽位名绝不持久化）；导出 = 主字体投票 +
    ToUnicode 反解逐字符校验（既有）。

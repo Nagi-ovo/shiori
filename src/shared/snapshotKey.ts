@@ -9,7 +9,11 @@ const LEGACY_MODEL_PREFIX = '{"pages":';
  * The JSON is transient; only the 71-character digest is persisted.
  */
 export function snapshotKeyFromJson(json: string): string {
-  return `${SNAPSHOT_KEY_PREFIX}${bytesToHex(sha256(new TextEncoder().encode(json)))}`;
+  return snapshotKeyFromBytes(new TextEncoder().encode(json));
+}
+
+export function snapshotKeyFromBytes(bytes: Uint8Array): string {
+  return `${SNAPSHOT_KEY_PREFIX}${bytesToHex(sha256(bytes))}`;
 }
 /** Migrate only the model JSON shape emitted by the pre-digest implementation. */
 export function normalizeLegacySnapshotKey(key: string): string {

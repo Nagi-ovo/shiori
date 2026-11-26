@@ -76,7 +76,7 @@ export function ExpandableColorPicker({
   // Debounce the commit path so that rapid previews from the native
   // color picker collapse into one onCommit. useRef makes the timer
   // survive re-renders; the cleanup in useEffect fires on unmount so
-  // HMR teardown doesn't leave a dangling timeout referencing the old
+  // HMR cleanup doesn't leave a dangling timeout referencing the old
   // closure.
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingCommitRef = useRef<string | null>(null);

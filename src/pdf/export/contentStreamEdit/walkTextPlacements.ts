@@ -1,0 +1,463 @@
+// Text-state interpreter for the glyph-removal export pass: walks tokenized
+// content ops tracking CTM + text state, and yields one placement per shown
+// glyph — its advance-box quad in content-stream user space plus everything
+// the rewrite needs to excise it (string location and the TJ compensation
+// that preserves the advance so following text does not shift).
+//
+// Fail-closed by design: any construct whose geometry we cannot model
+// EXACTLY (unresolvable fonts, clipping text render modes, ExtGState font
+// overrides, malformed operands — which also catch token-boundary damage
+// from /Contents coalescing) aborts the whole walk with { ok: false }. The
+// caller must then leave the page untouched. Approximating here would
+// silently delete the wrong glyphs.
+//
+// One exception keeps a single odd font from disabling the whole page: text
+// in a font glyphWidths cannot measure (a Standard-14 font without /Widths,
+// a vertical or CMap encoding) yields no placements and sets unplacedText,
+// so it is never removed. Its advance is unknown, so later shows on the same
+// line are unplaced too, until a line operator moves from the line start.
+// Stroked text remains uneditable, but known widths still advance tm. Its
+// separate placements let callers reject an addressed stroke without making
+// unrelated fill text unplaceable.
+
+import type { ContentOp, ContentOperand } from "./tokenizer";
+import type { ContentFontInfo, UnsupportedFont } from "./glyphWidths";
+import type {
+  Point,
+  GlyphPlacement,
+  XObjectUse,
+  InlineImageUse,
+  TextWalkResult,
+  TextWalkCallbacks,
+} from "./textStateTypes";
+import type { TextGraphicsState as GraphicsState } from './textGraphicsState';
+
+// Row-major affine matrix [a b c d e f] as in PDF: x' = a·x + c·y + e.
+type Matrix = [number, number, number, number, number, number];
+
+const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
+
+// Top of a glyph's core band, in em above the baseline: below the x-height
+// of common text faces, far below the next line's baseline.
+const CORE_TOP_EM = 0.4;
+
+function multiply(m: Matrix, n: Matrix): Matrix {
+  // Apply m first, then n.
+  return [
+    m[0] * n[0] + m[1] * n[2],
+    m[0] * n[1] + m[1] * n[3],
+    m[2] * n[0] + m[3] * n[2],
+    m[2] * n[1] + m[3] * n[3],
+    m[4] * n[0] + m[5] * n[2] + n[4],
+    m[4] * n[1] + m[5] * n[3] + n[5],
+  ];
+}
+
+function apply(m: Matrix, p: Point): Point {
+  return {
+    x: m[0] * p.x + m[2] * p.y + m[4],
+    y: m[1] * p.x + m[3] * p.y + m[5],
+  };
+}
+
+function operandNumbers(op: ContentOp, count: number): number[] | null {
+  if (op.operands.length !== count) return null;
+  const out: number[] = [];
+  for (const operand of op.operands) {
+    if (operand.kind !== "number") return null;
+    out.push(operand.value);
+  }
+  return out;
+}
+
+export function walkTextPlacements(
+  ops: ContentOp[],
+  callbacks: TextWalkCallbacks,
+): TextWalkResult {
+  const glyphs: GlyphPlacement[] = [];
+  const xobjects: XObjectUse[] = [];
+  const inlineImages: InlineImageUse[] = [];
+  type WalkState = GraphicsState & { useInheritedFont?: boolean };
+  const stack: WalkState[] = [];
+  let gs: WalkState = {
+    ctm: IDENTITY,
+    charSpacing: 0,
+    wordSpacing: 0,
+    horizontalScale: 1,
+    leading: 0,
+    rise: 0,
+    renderMode: 0,
+    fontName: null,
+    fontSize: 0,
+    fontTainted: false,
+    ...callbacks.initialState,
+    ...(callbacks.inspection ? { useInheritedFont: !!callbacks.inspection.inheritedFont } : {}),
+  };
+  let tm: Matrix = IDENTITY;
+  let tlm: Matrix = IDENTITY;
+  let inTextObject = false;
+  // Set once a show of unknown advance moved tm by an unknown amount.
+  let tmUnknown = false;
+  let unplacedText = false;
+  // Replaced, never mutated, so glyphs can share it.
+  let markedContent: readonly number[] = [];
+  const fontCache = new Map<string, ContentFontInfo | UnsupportedFont | null>();
+
+  const fail = (reason: string): TextWalkResult => ({ ok: false, reason });
+
+  const resolveFont = (
+    name: string,
+  ): ContentFontInfo | UnsupportedFont | null => {
+    if (!fontCache.has(name)) fontCache.set(name, callbacks.resolveFont(name));
+    return fontCache.get(name) ?? null;
+  };
+
+  const activeFont = () => gs.useInheritedFont
+    ? callbacks.inspection!.inheritedFont!
+    : gs.fontName === null ? null : resolveFont(gs.fontName);
+
+  const translateText = (tx: number, ty: number) => {
+    tm = multiply([1, 0, 0, 1, tx, ty], tm);
+  };
+
+  const nextLine = (tx: number, ty: number) => {
+    tlm = multiply([1, 0, 0, 1, tx, ty], tlm);
+    tm = tlm;
+    tmUnknown = false;
+  };
+
+  const show = (
+    bytes: Uint8Array,
+    opIndex: number,
+    arrayItemIndex: number,
+  ): string | null => {
+    if (!inTextObject) return "show-text outside BT/ET";
+    if (gs.fontName === null) return "show-text with no font set";
+    if (gs.renderMode >= 4 && !callbacks.inspection) {
+      // Clipping modes: deleting a glyph would change the clip path and
+      // repaint everything it masked.
+      return "text used as clipping path (Tr >= 4)";
+    }
+    const font = activeFont();
+    if (font === null) return `unresolvable font /${gs.fontName}`;
+    const stroked = gs.renderMode === 1 || gs.renderMode === 2;
+    const unplaced = {
+      fontName: gs.fontName,
+      opIndex, arrayItemIndex, origin: tmUnknown ? null : apply(multiply(tm, gs.ctm), { x: 0, y: gs.rise }),
+      fontSizePt: Math.abs(gs.fontSize * Math.hypot(tm[2] * gs.ctm[0] + tm[3] * gs.ctm[2], tm[2] * gs.ctm[1] + tm[3] * gs.ctm[3])),
+      ...(stroked ? { reason: 'graphics-effect-unsupported: stroked text (Tr 1/2)' } : {}),
+    };
+    if (gs.fontTainted || !font.ok || tmUnknown) {
+      unplacedText = true;
+      callbacks.onUnplaced?.({ ...unplaced, advanceKnown: false });
+      tmUnknown = true;
+      return null;
+    }
+    if (gs.fontSize === 0) return "show-text at font size 0";
+    if (font.bytesPerCode === 2 && bytes.length % 2 !== 0) {
+      return "odd byte count in 2-byte-code show string";
+    }
+    const widths = new Map<number, number>();
+    for (let offset = 0; offset < bytes.length; offset += font.bytesPerCode) {
+      const code = font.bytesPerCode === 1 ? bytes[offset]! : bytes[offset]! * 256 + bytes[offset + 1]!;
+      const width = font.widthOf(code);
+      if (!Number.isFinite(width)) {
+        unplacedText = true;
+        callbacks.onUnplaced?.({ ...unplaced, advanceKnown: false });
+        tmUnknown = true;
+        return null;
+      }
+      widths.set(code, width);
+    }
+    if (!stroked || callbacks.includeStroked) callbacks.onShow?.({ opIndex, arrayItemIndex, fontName: gs.fontName,
+      textMatrix: [...tm], lineMatrix: [...tlm], ctm: [...gs.ctm],
+      horizontalScale: gs.horizontalScale, leading: gs.leading, rise: gs.rise,
+      renderMode: gs.renderMode,
+      fontSizePt: gs.fontSize * Math.hypot(tm[2] * gs.ctm[0] + tm[3] * gs.ctm[2], tm[2] * gs.ctm[1] + tm[3] * gs.ctm[3]),
+      fontSize: gs.fontSize, charSpacing: gs.charSpacing, wordSpacing: gs.wordSpacing,
+      origin: apply(multiply(tm, gs.ctm), { x: 0, y: gs.rise }),
+      advanceVector: font.vertical
+        ? {x:tm[2]*gs.ctm[0]+tm[3]*gs.ctm[2],y:tm[2]*gs.ctm[1]+tm[3]*gs.ctm[3]}
+        : { x: gs.horizontalScale * (tm[0] * gs.ctm[0] + tm[1] * gs.ctm[2]),
+        y: gs.horizontalScale * (tm[0] * gs.ctm[1] + tm[1] * gs.ctm[3]) } });
+    const measured: GlyphPlacement[] = [];
+    for (let offset = 0; offset < bytes.length; offset += font.bytesPerCode) {
+      const code =
+        font.bytesPerCode === 1
+          ? bytes[offset]!
+          : bytes[offset]! * 256 + bytes[offset + 1]!;
+      const w0Em = widths.get(code)! / 1000;
+      const isWordSpaced =
+        font.appliesWordSpacing && code === 0x20 && gs.wordSpacing !== 0;
+      const spacing = gs.charSpacing + (isWordSpaced ? gs.wordSpacing : 0);
+      // Glyph space (em units) → text space → user space.
+      const trm = multiply(
+        multiply(
+          [
+            gs.fontSize * gs.horizontalScale,
+            0,
+            0,
+            gs.fontSize,
+            0,
+            gs.rise,
+          ],
+          tm,
+        ),
+        gs.ctm,
+      );
+      const vertical = font.vertical?.(code);
+      const vx = (vertical?.vx ?? 0) / 1000, vy = (vertical?.vy ?? 0) / 1000;
+      const quad: [Point, Point, Point, Point] = [
+        apply(trm, { x: -vx, y: font.descentEm-vy }),
+        apply(trm, { x: w0Em-vx, y: font.descentEm-vy }),
+        apply(trm, { x: w0Em-vx, y: font.ascentEm-vy }),
+        apply(trm, { x: -vx, y: font.ascentEm-vy }),
+      ];
+      const coreTopEm = Math.min(CORE_TOP_EM, font.ascentEm);
+      const coreQuad: [Point, Point, Point, Point] = vertical ? [
+        apply(trm,{x:0,y:0}),
+        apply(trm,{x:0,y:vertical.advance/1000}),
+        apply(trm,{x:coreTopEm,y:vertical.advance/1000}),
+        apply(trm,{x:coreTopEm,y:0}),
+      ] : [
+        apply(trm, { x: 0, y: 0 }),
+        apply(trm, { x: w0Em, y: 0 }),
+        apply(trm, { x: w0Em, y: coreTopEm }),
+        apply(trm, { x: 0, y: coreTopEm }),
+      ];
+      measured.push({
+        ...(vertical ? {pen:apply(multiply(tm,gs.ctm),{x:0,y:gs.rise})} : {}),
+        opIndex,
+        arrayItemIndex,
+        byteOffset: offset,
+        byteLength: font.bytesPerCode,
+        code,
+        fontName: gs.fontName,
+        quad,
+        coreQuad,
+        markedContent,
+        tjCompensation: vertical ? vertical.advance+1000*spacing/gs.fontSize : 1000*(w0Em+spacing/gs.fontSize),
+      });
+      const advance =
+        (w0Em * gs.fontSize + spacing) * gs.horizontalScale;
+      if(vertical) translateText(0,vertical.advance*gs.fontSize/1000+spacing);
+      else translateText(advance, 0);
+    }
+    if (stroked && !callbacks.includeStroked) {
+      unplacedText = true;
+      callbacks.onUnplaced?.({ ...unplaced, advanceKnown: true, glyphs: measured });
+    } else for (const glyph of measured) {
+      glyphs.push(glyph);
+      callbacks.inspection?.onGlyph(glyph);
+    }
+    return null;
+  };
+
+  for (let opIndex = 0; opIndex < ops.length; opIndex += 1) {
+    const op = ops[opIndex]!;
+    switch (op.operator) {
+      case "q":
+        stack.push({ ...gs });
+        break;
+      case "Q": {
+        const restored = stack.pop();
+        if (!restored) return fail("Q with empty graphics state stack");
+        gs = restored;
+        break;
+      }
+      case "cm": {
+        const nums = operandNumbers(op, 6);
+        if (!nums) return fail("malformed cm operands");
+        gs.ctm = multiply(nums as Matrix, gs.ctm);
+        break;
+      }
+      case "gs": {
+        const name =
+          op.operands.length === 1 && op.operands[0]!.kind === "name"
+            ? op.operands[0]!.value
+            : null;
+        if (name === null) return fail("malformed gs operands");
+        const setsFont = callbacks.extGStateSetsFont?.(name) ?? null;
+        if (setsFont !== false) gs.fontTainted = true;
+        break;
+      }
+      case "BT":
+        if (inTextObject) return fail("nested BT");
+        inTextObject = true;
+        tm = IDENTITY;
+        tlm = IDENTITY;
+        tmUnknown = false;
+        break;
+      case "ET":
+        if (!inTextObject) return fail("ET without BT");
+        inTextObject = false;
+        break;
+      case "Tc": {
+        const nums = operandNumbers(op, 1);
+        if (!nums) return fail("malformed Tc operands");
+        gs.charSpacing = nums[0]!;
+        break;
+      }
+      case "Tw": {
+        const nums = operandNumbers(op, 1);
+        if (!nums) return fail("malformed Tw operands");
+        gs.wordSpacing = nums[0]!;
+        break;
+      }
+      case "Tz": {
+        const nums = operandNumbers(op, 1);
+        if (!nums) return fail("malformed Tz operands");
+        gs.horizontalScale = nums[0]! / 100;
+        break;
+      }
+      case "TL": {
+        const nums = operandNumbers(op, 1);
+        if (!nums) return fail("malformed TL operands");
+        gs.leading = nums[0]!;
+        break;
+      }
+      case "Ts": {
+        const nums = operandNumbers(op, 1);
+        if (!nums) return fail("malformed Ts operands");
+        gs.rise = nums[0]!;
+        break;
+      }
+      case "Tr": {
+        const nums = operandNumbers(op, 1);
+        if (!nums) return fail("malformed Tr operands");
+        gs.renderMode = nums[0]!;
+        break;
+      }
+      case "Tf": {
+        if (
+          op.operands.length !== 2 ||
+          op.operands[0]!.kind !== "name" ||
+          op.operands[1]!.kind !== "number"
+        ) {
+          return fail("malformed Tf operands");
+        }
+        gs.fontName = op.operands[0]!.value;
+        gs.fontSize = op.operands[1]!.value;
+        gs.fontTainted = false;
+        if (callbacks.inspection) gs.useInheritedFont = false;
+        break;
+      }
+      case "Td": {
+        const nums = operandNumbers(op, 2);
+        if (!nums) return fail("malformed Td operands");
+        if (!inTextObject) return fail("Td outside BT/ET");
+        nextLine(nums[0]!, nums[1]!);
+        break;
+      }
+      case "TD": {
+        const nums = operandNumbers(op, 2);
+        if (!nums) return fail("malformed TD operands");
+        if (!inTextObject) return fail("TD outside BT/ET");
+        gs.leading = -nums[1]!;
+        nextLine(nums[0]!, nums[1]!);
+        break;
+      }
+      case "Tm": {
+        const nums = operandNumbers(op, 6);
+        if (!nums) return fail("malformed Tm operands");
+        if (!inTextObject) return fail("Tm outside BT/ET");
+        tm = nums as Matrix;
+        tlm = nums as Matrix;
+        tmUnknown = false;
+        break;
+      }
+      case "T*":
+        if (op.operands.length !== 0) return fail("malformed T* operands");
+        if (!inTextObject) return fail("T* outside BT/ET");
+        nextLine(0, -gs.leading);
+        break;
+      case "Tj": {
+        if (op.operands.length !== 1 || op.operands[0]!.kind !== "string") {
+          return fail("malformed Tj operands");
+        }
+        const error = show(op.operands[0]!.bytes, opIndex, -1);
+        if (error) return fail(error);
+        break;
+      }
+      case "'": {
+        if (op.operands.length !== 1 || op.operands[0]!.kind !== "string") {
+          return fail("malformed ' operands");
+        }
+        if (!inTextObject) return fail("' outside BT/ET");
+        nextLine(0, -gs.leading);
+        const error = show(op.operands[0]!.bytes, opIndex, -1);
+        if (error) return fail(error);
+        break;
+      }
+      case '"': {
+        if (
+          op.operands.length !== 3 ||
+          op.operands[0]!.kind !== "number" ||
+          op.operands[1]!.kind !== "number" ||
+          op.operands[2]!.kind !== "string"
+        ) {
+          return fail('malformed " operands');
+        }
+        if (!inTextObject) return fail('" outside BT/ET');
+        gs.wordSpacing = op.operands[0]!.value;
+        gs.charSpacing = op.operands[1]!.value;
+        nextLine(0, -gs.leading);
+        const error = show(op.operands[2]!.bytes, opIndex, -1);
+        if (error) return fail(error);
+        break;
+      }
+      case "TJ": {
+        if (op.operands.length !== 1 || op.operands[0]!.kind !== "array") {
+          return fail("malformed TJ operands");
+        }
+        const items: ContentOperand[] = op.operands[0]!.items;
+        const font=gs.fontName&&activeFont();
+        if(font&&font.ok&&font.vertical&&items.length&&items.every(item=>item.kind==='number'))return fail('vertical numeric-only TJ has engine-dependent advance');
+        for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
+          const item = items[itemIndex]!;
+          if (item.kind === "string") {
+            const error = show(item.bytes, opIndex, itemIndex);
+            if (error) return fail(error);
+          } else if (item.kind === "number") {
+            const font = gs.fontName && resolveFont(gs.fontName);
+            if(font && font.ok && font.vertical) translateText(0,(-item.value / 1000) * gs.fontSize);
+            else translateText((-item.value / 1000) * gs.fontSize * gs.horizontalScale,0);
+          } else {
+            return fail("TJ array item is neither string nor number");
+          }
+        }
+        break;
+      }
+      case "Do": {
+        const name =
+          op.operands.length === 1 && op.operands[0]!.kind === "name"
+            ? op.operands[0]!.value
+            : null;
+        if (name === null) return fail("malformed Do operands");
+        const use={ opIndex, name, ctm: [...gs.ctm] as Matrix };
+        xobjects.push(use);
+        callbacks.onXObject?.(use,{...gs,ctm:[...gs.ctm]});
+        callbacks.inspection?.onForm(use, {...gs, ctm: [...gs.ctm]}, gs.fontTainted ? null : activeFont());
+        break;
+      }
+      case "BI":
+        inlineImages.push({ opIndex, ctm: [...gs.ctm] });
+        break;
+      case "BMC":
+      case "BDC":
+        markedContent = [...markedContent, opIndex];
+        break;
+      case "EMC":
+        // An unbalanced EMC changes nothing PDFium draws; ignore it.
+        markedContent = markedContent.slice(0, -1);
+        break;
+      default:
+        // Painting, color, path, and marked-content point operators do not
+        // affect text geometry. Their bytes pass through the rewrite verbatim.
+        break;
+    }
+    if (['Tj','TJ',"'",'"'].includes(op.operator)) callbacks.onTextOpEnd?.(opIndex,{textMatrix:[...tm],lineMatrix:[...tlm]});
+  }
+  if (inTextObject) return fail("unterminated BT");
+  return { ok: true, glyphs, xobjects, inlineImages, unplacedText };
+}

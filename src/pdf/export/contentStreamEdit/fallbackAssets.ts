@@ -1,6 +1,19 @@
+/// <reference types="vite/client" />
 // These exact files already ship through DOCX defaultFonts. Explicit lazy
 // imports reuse Vite's existing asset URLs without adding another font copy.
 const metricUrls: Record<string, () => Promise<{ default: string }>> = {
+  'Carlito-Regular.ttf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/Carlito-Regular.ttf?url'),
+  'Carlito-Bold.ttf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/Carlito-Bold.ttf?url'),
+  'Carlito-Italic.ttf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/Carlito-Italic.ttf?url'),
+  'Carlito-BoldItalic.ttf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/Carlito-BoldItalic.ttf?url'),
+  'Caladea-Regular.ttf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/Caladea-Regular.ttf?url'),
+  'Caladea-Bold.ttf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/Caladea-Bold.ttf?url'),
+  'Caladea-Italic.ttf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/Caladea-Italic.ttf?url'),
+  'Caladea-BoldItalic.ttf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/Caladea-BoldItalic.ttf?url'),
+  'TeXGyreAdventor-Regular.otf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/TeXGyreAdventor-Regular.otf?url'),
+  'TeXGyreAdventor-Bold.otf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/TeXGyreAdventor-Bold.otf?url'),
+  'TeXGyreAdventor-Italic.otf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/TeXGyreAdventor-Italic.otf?url'),
+  'TeXGyreAdventor-BoldItalic.otf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/TeXGyreAdventor-BoldItalic.otf?url'),
   'LiberationSans-Regular.ttf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/LiberationSans-Regular.ttf?url'),
   'LiberationSans-Bold.ttf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/LiberationSans-Bold.ttf?url'),
   'LiberationSans-Italic.ttf': () => import('../../../../node_modules/@docx-editor.dev/fonts/assets/LiberationSans-Italic.ttf?url'),
@@ -19,6 +32,12 @@ export async function fallbackFontUrl(name: string): Promise<string> {
   const { cjkScExportFontUrl, cjkJpExportFontUrl } = await import('../fontAssets');
   if (name === 'NotoSansSC-Regular.otf') return cjkScExportFontUrl;
   if (name === 'NotoSansJP-Regular.otf') return cjkJpExportFontUrl;
+  if (name === 'NotoSansKR-Regular.otf') return new URL('../../../assets/fonts/NotoSansKR-Regular.otf',import.meta.url).href;
+  if (name === 'NotoSansSC-Bold.otf') return new URL('../../../assets/fonts/NotoSansSC-Bold.otf',import.meta.url).href;
+  if (name === 'NotoSansJP-Bold.otf') return new URL('../../../assets/fonts/NotoSansJP-Bold.otf',import.meta.url).href;
+  if (name === 'NotoSansKR-Bold.otf') return new URL('../../../assets/fonts/NotoSansKR-Bold.otf',import.meta.url).href;
+  if (name === 'NotoSansMath-Regular.ttf') return new URL('../../../assets/fonts/NotoSansMath-Regular.ttf',import.meta.url).href;
+  if (name === 'NotoSansSymbols2-Regular.ttf') return new URL('../../../assets/fonts/NotoSansSymbols2-Regular.ttf',import.meta.url).href;
   throw Error('bundled fallback font unavailable');
 }
 const bytesByName = new Map<string, Promise<Uint8Array>>();

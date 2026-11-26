@@ -222,7 +222,7 @@ changes, new dependencies (zustand is already used).
   and the exit completion from an effect and installs the menu with no other
   dependency, so tab switches and language changes never re-wire it. Three
   tests: the exit guard reports ready only after the exit channel is
-  subscribed, a teardown mid-install leaves nothing subscribed and the guard
+  subscribed, a cleanup mid-install leaves nothing subscribed and the guard
   off, an item acts on the document on screen when it fires. The menu path
   is desktop-only, so the wiring is covered by the tauri:dev checks alone
   (⌘Q with an unsaved edit, the Edit and View menu items in a text field and

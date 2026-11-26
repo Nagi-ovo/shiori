@@ -1,8 +1,5 @@
-// Paragraph/block detection over text runs — the foundation of
-// paragraph-level original-text editing (docs/PLAN-PARAGRAPH-CONTENT-TEXT-
-// 2026-07.md). Pure geometry: runs → lines → blocks, using the signals and
-// thresholds from docs/RESEARCH-PARAGRAPH-EDIT-2026-07.md (adapted from
-// PDFBox PDFTextStripper / pdfminer LAParams / MuPDF stext).
+// Group text runs on nearby baselines, then group adjacent lines into
+// paragraph blocks using their spacing, horizontal overlap and font size.
 //
 // Design contract: detect HIGH-CONFIDENCE blocks only. A block that trips
 // any anomaly signal is still returned but marked { confidence: "low" } with
@@ -14,8 +11,7 @@
 import { fontKeyName } from "../../pdf/engine/fontKey";
 import type { DisplayRect, TextRunDisplayBounds } from "./highlightRects";
 
-// Thresholds in POINTS (multiplied by the display scale internally).
-// Sources: RESEARCH doc "Suggested v1 thresholds".
+// Distance thresholds use PDF points and are converted by the display scale.
 export const PARAGRAPH_DETECT = {
   // Same-line: |baseline delta| <= max(floorPt, ratio × median font size).
   sameLineFloorPt: 1.5,
@@ -356,7 +352,13 @@ export function lineDisplayRect(line: DetectedLine): DisplayRect {
 // break (> ~0.2em, the typical word space being ~0.25em) and neither side
 // already provides whitespace.
 export function paragraphLineText(line: DetectedLine, scale: number): string {
+  return paragraphLineRuns(line, scale).text;
+}
+
+/** The line text plus where each run starts in it (shared with the caret hit). */
+export function paragraphLineRuns(line: DetectedLine, scale: number): { text: string; starts: number[] } {
   let out = "";
+  const starts: number[] = [];
   for (let i = 0; i < line.runs.length; i += 1) {
     const run = line.runs[i]!;
     if (i > 0) {
@@ -370,9 +372,10 @@ export function paragraphLineText(line: DetectedLine, scale: number): string {
         out += " ";
       }
     }
+    starts.push(out.length);
     out += run.text;
   }
-  return out;
+  return { text: out, starts };
 }
 
 export function detectParagraphs(

@@ -284,7 +284,7 @@ describe("useDraftSync disabled gate", () => {
     }
   });
 
-  // Undo back to the original deletes the saved draft, and teardown can cut
+  // Undo back to the original deletes the saved draft, and cleanup can cut
   // that deletion short just like a put. The synchronous tier must then
   // outrank the stale draft, or the undone highlight comes back on reopen.
   async function saveThenUndoWithRemovalHeld() {

@@ -1,57 +1,115 @@
-import { PDFDocument, PDFDict, PDFArray, PDFName, PDFNumber, PDFObjectCopier, type PDFPage } from 'pdf-lib';
-import { inspectRunPage, resolveRunFonts, markedContentProperties, type PageRunResult } from './replaceRunPage';
+import { PDFDocument, PDFDict, PDFName, PDFObjectCopier, type PDFPage } from 'pdf-lib';
+import { inspectRunPage, resolveRunFonts, runPageEnvironment, type PageRunResult } from './replaceRunPage';
 import { runResourceStamp } from './resourceStamp';
-import { replaceRuns } from './replaceRun';
-import { pageRunPlan, type PageRunPlan } from './pageRunPlan';
-import { fallbackFontName, prepareFallback, type FallbackOptions } from './fallbackFont';
+import {RunCompileError} from './runRefusal';
+import { type Refusal } from './replaceRun';
+import { type PageRunPlan } from './pageRunPlan';
+import { prepareFallback, type FallbackOptions } from './fallbackFont';
+import type { Type1Options } from '../fontCoverage/type1Support';
+import { compilePageReflows } from '../contentText/reflowBatch';
+import { type1FallbackSourceGuard } from '../fontCoverage/type1Surgical';
+import { fallbackClusters } from './fallbackClusters';
+import { tokenizeContentStream } from './tokenizer';
+import { genericFontForFit, resolveFont, withCachedLocalFonts, type FontChoice, type FontRequest } from '../fonts/fontService';
+import { fontChoiceKey } from '../fonts/localFonts';
+import { sourceFontReader } from '../fonts/sourceFontContext';
 
-export async function replaceRunPageWithFallback(page: PDFPage, plan: PageRunPlan, options: FallbackOptions = {}): Promise<PageRunResult> {
+export type RunPageOptions = FallbackOptions & { stage5Type1?: Type1Options };
+export const replaceRunPageWithFallback=(page:PDFPage,plan:PageRunPlan,options:RunPageOptions={})=>runPage(page,plan,options,true);
+export const compileRunPageWithFallback=(page:PDFPage,plan:PageRunPlan,options:RunPageOptions={})=>runPage(page,plan,options,false);
+async function runPage(page:PDFPage,plan:PageRunPlan,options:RunPageOptions,install:boolean):Promise<PageRunResult&{usedFallback?:boolean;fallbackFaces?:string[]}> {
   const source = inspectRunPage(page);
   if (!source.ok) return source;
   const originalResources = page.node.Resources();
   const originalContents = page.node.get(PDFName.of('Contents'));
   try {
     const resourceStamp = runResourceStamp(page);
-    const fonts = resolveRunFonts(page);
-    const resolvedPlan = { ...pageRunPlan(plan), markedContentProperties: markedContentProperties(page) };
-    const initial = replaceRuns(source.bytes,fonts,resolvedPlan);
-    if (initial.ok || initial.reason === 'replacement overflows available space') {
-      if (initial.ok && initial.bytes !== source.bytes) page.node.set(PDFName.of('Contents'),page.doc.context.register(page.doc.context.flateStream(initial.bytes)));
+    const recipes=[...(plan.reflow?[plan.reflow]:[]),...(plan.reflows??[])];
+    if(recipes.some(r=>r.proof.dependencyHash!==resourceStamp))return {ok:false,bytes:source.bytes,code:'stale-source',reason:'reflow dependencies changed'};
+    const fonts = resolveRunFonts(page, options.stage5Type1);
+    const resolvedPlan = { ...plan, ...runPageEnvironment(page) };
+    const initial = compilePageReflows(source.bytes,fonts,resolvedPlan);
+    const missingType1Source=!initial.ok&&!initial.terminal&&initial.diagnostic?.code==='glyph-unavailable';
+    if(initial.ok || initial.terminal || (initial.code!=='font-coverage'&&!missingType1Source)) {
+      if (install && initial.ok && initial.bytes !== source.bytes) page.node.set(PDFName.of('Contents'),page.doc.context.register(page.doc.context.flateStream(initial.bytes)));
       return initial;
     }
-    const groups = new Map<string,Set<string>>();
+    const readSourceFont = sourceFontReader(page, tokenizeContentStream(source.bytes));
+    const fontOptions = withCachedLocalFonts(options);
     const fontDict = originalResources?.lookupMaybe(PDFName.of('Font'),PDFDict);
+    type Candidate = { request: FontRequest; choice: FontChoice };
+    const choices = new Map<PageRunPlan['edits'][number], Candidate[]>();
     for (const edit of plan.edits) {
       const font = fonts.find(f => f.resourceName === edit.fontResource && f.objectId === edit.fontObject);
-      if (!font?.canEncode) return initial;
+      if (!font?.canEncode || font.substituteOnly) return initial;
       if (font.canEncode(edit.replacement).ok) continue;
-      const dict = fontDict?.lookupMaybe(PDFName.of(font.resourceName),PDFDict);
-      if (!dict) return initial;
-      const base = dict.lookupMaybe(PDFName.of('BaseFont'),PDFName)?.decodeText() ?? '';
-      const descendant = dict.lookupMaybe(PDFName.of('DescendantFonts'),PDFArray)?.lookup(0,PDFDict);
-      const descriptor = (descendant ?? dict).lookupMaybe(PDFName.of('FontDescriptor'),PDFDict);
-      const flags = descriptor?.lookupMaybe(PDFName.of('Flags'),PDFNumber)?.asNumber() ?? 0;
-      for (const { segment } of new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(edit.replacement)) {
-        if (font.canEncode(segment).ok) continue;
-        const name = fallbackFontName(base,flags,segment);
-        const set = groups.get(name) ?? new Set<string>(); set.add(segment); groups.set(name,set);
+      if (!fontDict?.lookupMaybe(PDFName.of(font.resourceName), PDFDict)) return initial;
+      const sourceFont = readSourceFont(font.resourceName, edit.opIndex);
+      const missing: Candidate[] = [];
+      for (const cluster of new Set(fallbackClusters(edit.replacement))) {
+        if (font.canEncode(cluster).ok) continue;
+        const request: FontRequest = { ...sourceFont, purpose: 'cluster-fallback', text: cluster };
+        missing.push({ request, choice: resolveFont(request, fontOptions) });
+      }
+      if (missing.length) choices.set(edit,missing);
+    }
+    if (!choices.size) return initial;
+    const retryFonts=missingType1Source?fonts.map(font=>({...font,assertSource:type1FallbackSourceGuard(font.assertSource)})):fonts;
+    const compile = async () => {
+      const groups = new Map<ReturnType<typeof fontChoiceKey>, { choice: FontChoice; resource: string; clusters: Set<string> }>();
+      let index = 0;
+      const edits = plan.edits.map(edit => {
+        const missing = choices.get(edit);
+        if (!missing) return edit;
+        const fallbackResources = new Map<string, string>();
+        for (const {request,choice} of missing) {
+          const key = fontChoiceKey(choice);
+          let group = groups.get(key);
+          if (!group) {
+            let resource: string;
+            do { resource = `ShioriFb${++index}`; } while (fontDict?.has(PDFName.of(resource)));
+            group = { choice, resource, clusters: new Set() };
+            groups.set(key, group);
+          }
+          group.clusters.add(request.text);
+          fallbackResources.set(request.text, group.resource);
+        }
+        return { ...edit, fallbackResources };
+      });
+      const scratch = await PDFDocument.create();
+      const prepared = [];
+      for (const { choice, resource, clusters } of groups.values()) {
+        prepared.push(await prepareFallback(scratch, resource, choice, [...clusters], fontOptions));
+      }
+      const fallbackFaces = [...new Set([...groups.values()].map(group => group.choice.name))];
+      const result = compilePageReflows(source.bytes,retryFonts,{ ...resolvedPlan, edits,
+        ...(missingType1Source?{allowExistingCodePermutation:false}:{}),fallbackFonts: prepared.map(f => f.resolved) });
+      return { scratch, prepared, fallbackFaces, result };
+    };
+    const primary = await compile();
+    let selected = primary;
+    // Only the failed slot may change faces on retry. A page with several
+    // failing slots proves them all again before any resources are installed.
+    while (!selected.result.ok && selected.result.code === 'overflow' && selected.result.overflowSlot) {
+      const {opIndex,itemIndex,byteStart} = selected.result.overflowSlot;
+      const edit = plan.edits.find(edit => edit.opIndex === opIndex && edit.itemIndex === itemIndex && edit.byteStart === byteStart);
+      const missing = edit && choices.get(edit);
+      if (!missing) break;
+      const alternate = missing.map(({request,choice}) => ({request,choice:genericFontForFit(request,choice) ?? choice}));
+      if (alternate.every(({choice},i) => choice === missing[i]!.choice)) break;
+      choices.set(edit,alternate);
+      try { selected = await compile(); } catch (error) {
+        if (!(error instanceof Error)) throw error;
+        return primary.result;
       }
     }
-    if (!groups.size) return initial;
-    const scratch = await PDFDocument.create();
-    const prepared = [];
-    let index = 0;
-    for (const [name,clusters] of groups) {
-      let resource: string;
-      do { resource = `ShioriFb${++index}`; } while (fontDict?.has(PDFName.of(resource)));
-      prepared.push(await prepareFallback(scratch,resource,name,[...clusters],options));
-    }
-    const result = replaceRuns(source.bytes,fonts,{ ...resolvedPlan, fallbackFonts: prepared.map(f => f.resolved) });
-    if (!result.ok) return result;
+    const {scratch,prepared,fallbackFaces,result} = selected;
+    if (!result.ok) return primary.result;
+    if(!install)return {...result,usedFallback:true,fallbackFaces};
     // Awaiting font preparation must never apply an old plan to a newer page.
     const current = inspectRunPage(page);
     if (!current.ok || current.sourceHash !== source.sourceHash || page.node.Resources() !== originalResources || page.node.get(PDFName.of('Contents')) !== originalContents || runResourceStamp(page) !== resourceStamp) {
-      return { ok:false, bytes:source.bytes, reason:'page changed during fallback preparation' };
+      return { ok:false, bytes:source.bytes, code:'stale-source', reason:'page changed during fallback preparation' };
     }
     const resources = originalResources?.clone() ?? page.doc.context.obj({});
     const patchedFonts = fontDict?.clone() ?? page.doc.context.obj({});
@@ -61,6 +119,11 @@ export async function replaceRunPageWithFallback(page: PDFPage, plan: PageRunPla
     const stream = page.doc.context.register(page.doc.context.flateStream(result.bytes));
     page.node.set(PDFName.of('Resources'),resources);
     page.node.set(PDFName.of('Contents'),stream);
-    return result;
-  } catch (error) { return { ok:false, bytes:source.bytes, reason:error instanceof Error ? error.message : String(error) }; }
+    return {...result,usedFallback:true,fallbackFaces};
+  } catch(error){
+    if(!(error instanceof RunCompileError))throw error;
+    const detail=error as RunCompileError&Partial<Refusal>;
+    return {ok:false,code:error.code,reason:error.message,bytes:source.bytes,
+      ...(detail.terminal!==undefined?{terminal:detail.terminal}:{}),...(detail.diagnostic?{diagnostic:detail.diagnostic}:{})};
+  }
 }

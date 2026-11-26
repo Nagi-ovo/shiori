@@ -1,4 +1,19 @@
 {
+  "sourceImage": {
+    "selected": "選択中の PDF 画像",
+    "moveHandle": "画像を移動",
+    "resizeHandle": "画像のサイズを変更",
+    "rotateHandle": "画像を回転",
+    "cropHandle": "切り抜きの角を調整",
+    "cropStartHandle": "切り抜きの反対側の角を調整",
+    "crop": "切り抜き",
+    "done": "完了",
+    "restoreCrop": "画像全体を表示",
+    "replace": "置き換え…",
+    "delete": "削除",
+    "invalidReplacement": "有効な PNG または JPEG 画像を選択してください。",
+    "previewUnavailable": "プレビューできない画像編集があります。"
+  },
   "app": {
     "brand": "Shiori",
     "subtitle": "栞"
@@ -490,7 +505,7 @@
       "rect": "ドラッグして描画 · 離して確定",
       "note": "選択して配置 · ダブルクリック / ダブルタップで編集",
       "callout": "テキストまたは範囲を選択して注釈を入力",
-      "select": "注釈を選択して編集 · Shift で複数選択 · ドラッグで移動 · ⌘ ドラッグで複製"
+      "select": "注釈やページ画像をクリックして編集 · Shift クリックで注釈を複数選択 · ⌘ ドラッグで注釈を複製"
     },
     "align": {
       "label": "配置",
@@ -669,7 +684,7 @@
     },
     "annot": {
       "editable": "編集可能な注釈",
-      "editableHint": "ハイライト、付箋、図形、ペン、テキストを PDF 注釈として保持します。Acrobat、Foxit、PDF Expert などで再編集できます。",
+      "editableHint": "ハイライト、付箋、図形、ペン、テキストを PDF 注釈として保持します。外部の PDF エディターで再編集できます。",
       "flatten": "ページに焼き込み",
       "flattenHint": "注釈をページ内容に焼き込みます。以後は削除も再編集もできません — 署名や押印向き。",
       "none": "元の PDF のみ",
@@ -701,11 +716,20 @@
     "lostCharsConfirmBody_other": "{{count}} 文字をエンコードできないため、書き出す PDF では「?」に置き換わります。",
     "lostCharsConfirmCancel": "戻って確認",
     "lostCharsConfirmAction": "置き換えて書き出す",
-    "unexcisedConfirmTitle": "元のテキストがファイルに残ります",
-    "unexcisedConfirmBody_other": "{{count}} か所の編集で元のテキストを削除できませんでした。新しいテキストの下に隠れていますが PDF には残っているため、検索やコピーで見つかります。",
+    "unexcisedConfirmTitle": "一部の文字編集は未対応です",
+    "unexcisedConfirmBody_other": "{{count}} か所の文字編集を適用できませんでした。書き出す PDF では元の文字がそのまま残ります。",
     "unexcisedConfirmAction": "このまま書き出す",
     "clippedConfirmTitle": "枠に収まらないテキストがあります",
     "clippedConfirmBody_other": "{{count}} 文字が枠からはみ出しているため、焼き込んだ PDF では切れて表示されません。戻ってテキストボックス・吹き出し・付箋の枠を広げると残せます。",
+    "review": {
+      "new-collision": "新たな重なり",
+      "overflow-envelope": "はみ出したテキストが周囲の内容と重なる可能性があります",
+      "uncertain-contact": "重なりの有無を確認できませんでした",
+      "stripped-equivalent": "代替テキストが削除されました",
+      "page": "書き出し先の {{page, number}} ページ目",
+      "region": "左下を原点とする領域（ポイント）· x {{x, number}}、y {{y, number}}、幅 {{w, number}}、高さ {{h, number}}",
+      "count_other": "{{count}} か所"
+    },
     "clippedPrintConfirm_other": "{{count}} 文字が枠からはみ出しているため、印刷すると切れてしまいます。このまま印刷しますか？",
     "lostCharsPrintConfirm_other": "{{count}} 文字をエンコードできないため、印刷内容では「?」に置き換わります。このまま印刷しますか？",
     "cjkAnnotationsHint": "annotations モードでは日本語文字はベクター輪郭として書き出されます。外部エディタでは文字列を取り出せますが、スタイルは再編集できません。編集可能な文字列が必要な場合は flatten を選んでください。",
@@ -1125,5 +1149,70 @@
     "viewerLabel": "Word 文書",
     "loadFailed": "この Word 文書を表示できませんでした。",
     "retry": "再読み込みして再試行"
+  },
+  "contentText": {
+    "draftOffPage": "ページには元のテキストが残ります。下書きはここで編集できます。",
+    "modes": {
+      "substituted": "代替フォント",
+      "reflowed": "再配置済み",
+      "in-place": "元の位置で編集",
+      "fallback-font": "代替フォントを埋め込み",
+      "retypeset": "再組版",
+      "unsupported": "未対応"
+    },
+    "notices": {
+      "substituted": "このテキストは代替フォントで書き直されました。",
+      "reflowed": "このテキストは編集後の段落に合わせて再配置されました。",
+      "retypeset": "レイアウトが変わる場合があります。",
+      "retypesetOverflow": "周囲の内容と文字が重なる場合があります。",
+      "newCollision": "編集したテキストが強調表示された範囲で周囲の内容と重なっています。",
+      "strippedEquivalent": "この編集で元のテキストに関連付けられた代替テキストが削除されます。",
+      "preExistingContact": "元のテキストはすでに周囲の内容と接していました。",
+      "uncertainContact": "この編集による重なりを確認できませんでした。",
+      "sourceSpacingAdjusted": "元の行に収まるよう文字間隔を詰めました。",
+      "substitutedFace": "代替フォント {{face}} で書き直しました。",
+      "fallbackFont": "不足している文字は同梱フォントを使用します。",
+      "fallbackFace": "不足している文字は同梱フォント {{face}} を使用します。",
+      "retypesetFace": "代替フォント {{face}} で組版しました。",
+      "sourceFontKept": "元のフォントを維持しています。",
+      "standardFontMetrics": "元の標準フォントを保持しました。表示は PDF ビューアーによって異なります。",
+      "frameOverflow": "テキストが元の枠からはみ出しています。",
+      "previewPending": "プレビュー更新中…"
+    },
+    "reasons": {
+      "source-mismatch": "選択したテキストが PDF の原文と一致しません。",
+      "ambiguous-match": "原文の文字を一意に特定できません。",
+      "glyph-boundary": "この変更は元の字形または推定された空白を分割します。",
+      "cross-item": "この変更は独立した PDF テキスト要素をまたぎます。",
+      "reflow-required": "この編集には行の再配置が必要です。",
+      "form-xobject": "Form XObject 内の文字は元の位置で編集できません。",
+      "unsupported-matrix": "この文字変換の編集には対応していません。",
+      "unsupported-state": "PDF のテキスト状態を安全に編集できません。",
+      "graphics-effect-unsupported": "輪郭線付きの PDF テキストを安全に編集できません。",
+      "font-unavailable": "元のフォントまたは Unicode マッピングを解決できません。",
+      "font-coverage": "元のフォントまたは代替フォントの字形を検証できません。",
+      "font-permission": "フォントのライセンスは編集可能な埋め込みを許可していません。",
+      "overflow": "置換テキストが元の領域を超えています。",
+      "style-change": "この書式変更には再組版が必要です。",
+      "stale-source": "元のページが変更されました。もう一度お試しください。",
+      "preview-unavailable": "編集後の PDF をプレビューできません。",
+      "missing-source-style": "元の書式情報がありません。",
+      "shared-text-object": "隣接する編集には段落の再組版が必要です。",
+      "annotation-anchor": "この編集で元の注釈が指す内容が移動します。",
+      "acceptance-strict": "厳格な書き出し設定により、元のテキストを保持しました。",
+      "unsupported-no-text-layer": "このページには編集可能なテキスト層がありません。注釈を追加するか、テキストを含む PDF を開いて編集してください。",
+      "unsupported-artwork-contact": "近くの画像や図形を保護するため、元のテキストを保持しました。",
+      "flow-ambiguous-frame": "リンクしたテキスト枠が重なっている、同じ段にない、またはテキストがありません。",
+      "flow-cross-page-unsupported": "ページをまたぐテキスト枠のリンクにはまだ対応していません。",
+      "semantic-dependency": "この編集は PDF のマーク付きテキストや構造参照を変更します。",
+      "flow-unsupported-text": "リンクした枠のテキストが回転・縦書き・非表示か、元のフォントで書き出せません。",
+      "flow-destination-obstacle": "次の枠内に描かれた要素が流し込むテキストと重なります。",
+      "flow-chain-exhausted": "元のサイズのままでは、テキストがリンクした枠に収まりません。",
+      "unsupported-unverified-text": "このテキストは読み取れますが、フォントや文字間隔を確認できません。修正するには、元の文書を編集して PDF を再度書き出すか、ここに注釈を追加してください。",
+      "unsupported-image-text": "このテキストはスキャン画像の一部です。修正内容は注釈として追加できます。",
+      "unsupported-form-xobject": "Form XObject 内の文字の編集にはまだ対応していません。",
+      "unsupported-unwritable": "この文字を安全に書き換えられませんでした。",
+      "unsupported-vertical-writing": "縦書きテキストの編集にはまだ対応していません。"
+    }
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DocumentModel, PageModel } from "../../pdf/model/types";
-import { chooseDraftRecovery } from "./recovery";
+import { chooseDraftRecovery, restoredDraftModel } from "./recovery";
 
 const page = (id: string, widthPt = 612): PageModel => ({
   id,
@@ -73,5 +73,36 @@ describe("chooseDraftRecovery", () => {
     const log = { lastTouched: 2, base: { lastTouched: 1, revision: null }, model: model("logged") };
 
     expect(chooseDraftRecovery(draft, log, [page("fresh")], [])?.pages[0]?.id).toBe("logged");
+  });
+});
+
+describe("chooseDraftRecovery with linked text frames", () => {
+  const chain = { id: "c1", frames: [
+    { id: "f0", pageId: "draft", rect: { x: 10, y: 60, w: 80, h: 30 } },
+    { id: "f1", pageId: "draft", rect: { x: 10, y: 10, w: 80, h: 40 } },
+  ] };
+  const chained = (id: string): DocumentModel => ({ ...model(id), flowChains: [chain] });
+
+  test("a restored draft keeps its chains and so does every snapshot beneath it", () => {
+    const draft = { lastTouched: 2, model: chained("draft"), history: [chained("draft"), model("draft")] };
+    const recovery = chooseDraftRecovery(draft, null, [page("fresh")], []);
+    expect(recovery?.flowChains).toEqual([chain]);
+    expect(recovery?.history.map((h) => (h as DocumentModel).flowChains)).toEqual([[chain], undefined]);
+  });
+
+  test("a newer crash log keeps its chains, and the draft beneath it keeps its own", () => {
+    const draft = { lastTouched: 1, model: chained("draft"), history: [] };
+    const log = { lastTouched: 2, model: model("logged") };
+    const recovery = chooseDraftRecovery(draft, log, [page("fresh")], []);
+    expect(recovery?.flowChains).toBeUndefined();
+    expect((recovery?.history[0] as DocumentModel).flowChains).toEqual([chain]);
+    const linkedLog = chooseDraftRecovery(draft, { lastTouched: 2, model: chained("logged") }, [page("fresh")], []);
+    expect(linkedLog?.flowChains).toEqual([chain]);
+  });
+
+  test("the committed restore states its chains, empty when the draft had none", () => {
+    const pages = [page("draft")];
+    expect(restoredDraftModel({ draftModelPages: pages, draftModelOverlays: [], draftModelFlowChains: [chain] }).flowChains).toEqual([chain]);
+    expect(restoredDraftModel({ draftModelPages: pages, draftModelOverlays: [] }).flowChains).toEqual([]);
   });
 });

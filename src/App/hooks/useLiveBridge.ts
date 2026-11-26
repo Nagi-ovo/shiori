@@ -20,7 +20,7 @@ import drafts from "../../storage/drafts";
  * Live API bridge connection lifecycle: owns the
  * context publisher and the three connection effects — publish the current
  * context on change, connect the annotation-request bridge (flipping
- * liveBridgeReady once listening), and clear native state on teardown.
+ * liveBridgeReady once listening), and clear native state on cleanup.
  * Extracted verbatim from the App God-component.
  *
  * The context itself (liveContext) and the active-PDF accessor
@@ -89,7 +89,7 @@ export function useLiveBridge(
 
   useEffect(
     () => () => {
-      // Clear native state on app teardown so the HTTP endpoint never exposes
+      // Clear native state on app cleanup so the HTTP endpoint never exposes
       // a document after the main webview can no longer service requests.
       liveContextPublisher.publish(null);
     },

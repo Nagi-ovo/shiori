@@ -1,0 +1,92 @@
+.sourceImageControls, .sourceImageOutline {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sourceImageControls {
+  z-index: 5;
+  color: #242729;
+  user-select: none;
+}
+
+.sourceImageOutline polygon {
+  stroke: #387bdb;
+  stroke-width: 1.5px;
+  fill: none;
+}
+
+.sourceImageOutline .sourceImageFullOutline {
+  stroke-dasharray: 4 3;
+  stroke: #5c6678;
+}
+
+.sourceImageHandle, .sourceImageActions button {
+  font: inherit;
+  color: inherit;
+  pointer-events: auto;
+  background: #fff;
+  border: 1px solid #aab7c9;
+  border-radius: 5px;
+}
+
+.sourceImageHandle {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border-color: #387bdb;
+  cursor: move;
+  touch-action: none;
+}
+
+.sourceImageHandle[data-handle="resize"],
+.sourceImageHandle[data-handle^="crop"] {
+  cursor: nwse-resize;
+}
+
+.sourceImageHandle[data-handle="rotate"] {
+  cursor: grab;
+}
+
+.sourceImageActions, .sourceImageNotice {
+  position: absolute;
+  margin-inline: auto;
+  left: 4px;
+  right: 4px;
+  width: max-content;
+  max-width: calc(100% - 8px);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  color: #242729;
+  font-size: 12px;
+}
+
+.sourceImageActions button {
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.sourceImageActions button[aria-pressed="true"] {
+  background: #dceaff;
+  border-color: #387bdb;
+}
+
+.sourceImageNotice, .sourceImageActions [role="status"] {
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: #fff3cd;
+}
+
+.sourceImageNotice {
+  top: 5px;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.is-gesture-zooming .sourceImageControls :is(button, input) {
+  pointer-events: none;
+}

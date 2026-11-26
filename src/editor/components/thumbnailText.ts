@@ -1,6 +1,5 @@
 import type {
   CalloutOverlay,
-  ContentTextOverlay,
   Overlay,
   TextOverlay,
 } from "../../pdf/model/types";
@@ -54,7 +53,7 @@ export function wrapThumbnailText(
   return lines;
 }
 
-type CanvasTextOverlay = TextOverlay | ContentTextOverlay | CalloutOverlay;
+type CanvasTextOverlay = TextOverlay | CalloutOverlay;
 
 export function canvasFontShorthand(
   overlay: CanvasTextOverlay,
@@ -96,13 +95,8 @@ export async function loadThumbnailOverlayFonts(
     requests.set(font, Array.from(combined).slice(0, 512).join(""));
   };
   for (const overlay of overlays) {
-    if (
-      overlay.type !== "text" &&
-      overlay.type !== "contentText" &&
-      overlay.type !== "callout"
-    ) {
-      continue;
-    }
+    // Page text edits are drawn by the PDF writer, not by canvas text.
+    if (overlay.type !== "text" && overlay.type !== "callout") continue;
     if (!overlay.text) continue;
     const sample = Array.from(overlay.text).slice(0, 512).join("");
     addRequest(canvasFontShorthand(overlay, 16), sample);

@@ -60,7 +60,7 @@ import { measureTextWidth, wrapText } from "./textWrap";
 import { drawPathText } from "./vectorText";
 
 // A thread turn as a standard Text reply: /IRT to the callout, /RT R —
-// Acrobat and friends render that as a comment thread. pdf.js folds "R"
+// Readers can display that as a comment thread. pdf.js folds "R"
 // replies into the parent's popup instead of painting a second icon, and
 // Shiori suppresses its own annotations' canvas painting anyway, so the
 // icon rect (tucked at the label corner) never actually draws. Role rides

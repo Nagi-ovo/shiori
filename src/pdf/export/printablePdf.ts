@@ -1,3 +1,4 @@
+import { createContentTextRenderer } from '../engine/contentTextRaster';
 import type { PdfEngine } from "../engine/types";
 import type { DocumentModel } from "../model/types";
 import { mayPrint } from "../security/permissions";
@@ -53,6 +54,8 @@ export async function exportPrintablePdf(
         mode: "flatten",
         quality: "standard",
         documentFiles: "omit",
+        renderContentText: createContentTextRenderer(engine),
+        readSourceGlyphs: async index => (await engine.pageText(opened.doc, index)).glyphs,
         unicodeFontUrl: fonts.unicodeFontUrl,
         unicodeJpFontUrl: fonts.unicodeJpFontUrl,
       });

@@ -1,5 +1,5 @@
 import type { HistoryEntry } from "../../editor/store/store";
-import type { DocumentModel, PageModel } from "../../pdf/model/types";
+import type { DocumentModel, Overlay, PageModel, TextFlowChain } from "../../pdf/model/types";
 
 function reconcileRecoveredPagesWithSource(
   recoveredPages: PageModel[],
@@ -36,6 +36,7 @@ function reconcileRecoveredHistoryWithSource(
     return {
       pages: reconcileRecoveredPagesWithSource(snapshot.pages, freshPages),
       overlays: snapshot.overlays,
+      ...(snapshot.flowChains ? { flowChains: snapshot.flowChains } : null),
     };
   });
 }
@@ -44,9 +45,21 @@ export type DraftRecovery = {
   lastTouched: number;
   pages: PageModel[];
   overlays: DocumentModel["overlays"];
+  /** Linked text frames of the recovered model; absent in older drafts. */
+  flowChains?: TextFlowChain[];
   history: HistoryEntry[];
   completedLiveOperationIds: string[];
 };
+
+/** The model a recovered draft commits. Chains are always stated, so a
+ * restore replaces the current session's chains instead of merging them. */
+export function restoredDraftModel(draft: {
+  draftModelPages: PageModel[];
+  draftModelOverlays: Overlay[];
+  draftModelFlowChains?: TextFlowChain[];
+}): DocumentModel {
+  return { pages: draft.draftModelPages, overlays: draft.draftModelOverlays, flowChains: draft.draftModelFlowChains ?? [] };
+}
 
 // Whether a log's writer last saw this very row. Logs from older builds name
 // no row and are trusted as before.
@@ -101,6 +114,7 @@ export function chooseDraftRecovery(
         freshPages,
       ),
       overlays: operationLog.model.overlays,
+      ...(operationLog.model.flowChains ? { flowChains: operationLog.model.flowChains } : null),
       history: reconcileRecoveredHistoryWithSource(
         draft ? [...draft.history, draft.model] : [],
         freshPages,
@@ -113,6 +127,7 @@ export function chooseDraftRecovery(
     lastTouched: draft.lastTouched,
     pages: reconcileRecoveredPagesWithSource(draft.model.pages, freshPages),
     overlays: draft.model.overlays,
+    ...(draft.model.flowChains ? { flowChains: draft.model.flowChains } : null),
     history: reconcileRecoveredHistoryWithSource(draft.history, freshPages),
     completedLiveOperationIds,
   };

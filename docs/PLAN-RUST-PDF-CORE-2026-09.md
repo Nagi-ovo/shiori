@@ -26,14 +26,13 @@ pdf.js 调用、修正阶段 1 的前提、记录新决策、改成可逐项勾�
    所以 4× 以上看到的是 4× 位图被 CSS 拉大，永远不会变清晰；一张封顶的整页位图是
    128 MB RGBA，双缓冲切换时 ×2。（2026-09-07 的版本以为只是"先糊后清"变慢，
    2026-09-25 核对代码后更正。）
-2. **手势中即时清晰。** Acrobat、Chrome 内置阅读器靠原生渲染器加分块（tile）渲染，
+2. **手势中即时清晰。** 原生分块（tile）渲染可控制手势期间的渲染开销，
    每帧只画视口内几块。pdf.js 在 JS 主线程重放整页操作列表，做不到逐帧。
 
 ## 已定决策
 
 | 日期 | 决策 | 原因 |
 |---|---|---|
-| 2026-09-07 | 不用 MuPDF | AGPL（与 MIT 分发不兼容）或付费商业授权 |
 | 2026-09-23 | Web 版把同一个 `shiori-core` 编译为 WASM，阶段 4 后 pdf.js 在各端都退出 | 一套代码；Firefox、Safari、Chrome 都支持 WASM。许可：PDFium BSD-3/Apache-2.0，pdfium-render MIT/Apache，pdfium-binaries MIT，随包附许可文本 |
 | 2026-09-25 | 体验最好、长期主义，不以工程量取舍 | Jesse |
 | 2026-09-25 | **tile 的门槛是底图预算**：整页位图超过 8 MP（Retina letter 页约 2×）就铺 tile，不等超出 32 MP 的画布预算（原 R1） | 实测 fable 4×：整页 111 ms、252 MB，tile 67 ms、106 MB；3× 同样 65 ms、106 MB。旧做法在 3–4× 每滚进一页也要整页重画约 100 ms，期间同样显示拉伸预览，所以 tile 没有新增模糊（`docs/PERF-zoom-tiles.md`）。Jesse 把技术取舍交给「体验最好」的标准，按此定；可推翻 |
@@ -312,7 +311,7 @@ renderRegion: (
     写成 CFF 版 OpenType，以只含这些字符的 `unicode-range` 加进同一字体族，其余字符照旧按字体栈
     逐字回退；关闭文档时这些面随之移除。cmap 由 Unicode 直接生成，所以没有 ToUnicode 的 TeX
     字体也映射得上。
-    证明：fixture 新增以裸 CFF（`/FontFile3 /Type1C`、WinAnsi、无 ToUnicode）嵌入的 Foxit Serif；
+    证明：fixture 新增以裸 CFF（`/FontFile3 /Type1C`、WinAnsi、无 ToUnicode）嵌入的测试字体；
     `tests/core.rs` 两个测试（字符顺序与去重、/Widths 步进、T / o / p 的轮廓形状与朝向、文字层字体名
     与重建名一致、只返回指名的嵌入字体）；wasm 测试把重建字体交给 Skia 排同一段文字，与 PDFium
     渲染逐像素比，裸 CFF 与 TrueType 子集差异 15% 以内（只在笔画边缘），度量兼容的 Times 超过 100%，
@@ -343,7 +342,7 @@ renderRegion: (
   尺寸）对导入结果不可见。`scripts/import/compare-annotation-readers.ts` 跑 `test-artifacts`
   全部 13 个文件逐页一致，文件读取者多数更快（fable-annotations 8 ms → 1 ms）。
   导出测试「INVISIBLE 不动」改为「INVISIBLE 的 Square 被替换」，回退旧规则即变红。
-  未覆盖：第三方工具（Acrobat、Preview、Foxit）写出的真实批注样本本机没有，只有合成用例。
+  未覆盖：其他阅读器写出的真实批注样本本机没有，只有合成用例。
 - [x] **4.5 查找与 Live 桥。** `FindPanel` 与 Live 桥的页面文字改走 `appPdfEngine.pageText`，
   桌面上随之由 PDFium 读（4.3c 已验证复制文本与 pdf.js 一致或更准）。`pageText` 加
   `textOnly`：只要文字的整文档扫描不取字形，pdf.js 实现跳过 operator list 并在读完后释放页面
@@ -490,7 +489,6 @@ renderRegion: (
 
 ## 不做的
 
-- MuPDF（见已定决策）。
 - 一次性重写：pdf.js 在阶段 4 完成前一直留在树里。
 - `bun build --compile` 换掉 Node SEA：`bun:ffi` 仍标记为实验性。
 - Markdown 迁到 Rust（2026-09-25 评估）：编辑器必须留在 WebView 里的 CodeMirror 6，它的高亮、

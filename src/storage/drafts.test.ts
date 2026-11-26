@@ -640,7 +640,7 @@ describe("draft storage", () => {
     const { default: drafts, __draftsTest, DraftSaveError } = await import("./drafts");
     await __draftsTest.reset();
 
-    // Second failure mimics Dexie aborting the retried transaction: the
+    // Second failure models Dexie aborting the retried transaction: the
     // wrapper itself is an AbortError carrying the quota DOMException on
     // `.inner`, so only walking the chain classifies it correctly.
     const writes = failDraftModelPuts(__draftsTest.db, [

@@ -9,8 +9,10 @@
 //
 // Scope is deliberately narrow. Operands the removal pass must understand —
 // numbers, names, strings, arrays, booleans/null — are parsed; dictionary
-// operands (BDC/DP property lists) record only each entry's key and byte
-// extent, so a rewrite can drop one entry verbatim. An inline image (BI…ID…EI) becomes a single opaque op. Anything
+// operands (BDC/DP property lists) record each entry's key and byte extent,
+// plus numeric and string values for semantic ownership and language lookup.
+// Rewrites still copy unmodified entries verbatim.
+// An inline image (BI…ID…EI) becomes a single opaque op. Anything
 // outside this grammar throws ContentStreamParseError, and callers must treat
 // that as "leave the whole page untouched" — a partial parse is never a
 // usable result.
@@ -26,7 +28,29 @@ export type ContentOperand =
 
 // One key/value pair of a dictionary operand: the key name and the byte
 // extent [start, end) from the key's slash through the end of its value.
-export type DictEntryExtent = { key: string; start: number; end: number };
+// Keep the value offset and scalar values used by marked-content properties.
+export type DictEntryExtent = {
+  key: string;
+  start: number;
+  valueStart: number;
+  end: number;
+  numberValue?: number;
+  stringBytes?: Uint8Array;
+};
+
+export type InlineImageData = {
+  entries: ReadonlyMap<string, ContentOperand>;
+  dictionaryStart: number;
+  dictionaryEnd: number;
+  dataStart: number;
+  dataEnd: number;
+};
+
+type ReadInlineImageData = (
+  bytes: Uint8Array,
+  entries: ReadonlyMap<string, ContentOperand>,
+  afterId: number,
+) => Pick<InlineImageData, "dataStart" | "dataEnd">;
 
 export type ContentOp = {
   operator: string;
@@ -36,6 +60,7 @@ export type ContentOp = {
   // extents of consecutive ops never overlap and appear in source order.
   start: number;
   end: number;
+  inlineImage?: InlineImageData;
 };
 
 export class ContentStreamParseError extends Error {
@@ -102,10 +127,12 @@ function hexValue(b: number): number {
 
 class Scanner {
   readonly bytes: Uint8Array;
+  readonly strict: boolean;
   pos = 0;
 
-  constructor(bytes: Uint8Array) {
+  constructor(bytes: Uint8Array, strict = false) {
     this.bytes = bytes;
+    this.strict = strict;
   }
 
   atEnd(): boolean {
@@ -162,6 +189,7 @@ class Scanner {
       }
     }
     if (digits === 0) this.fail("malformed number");
+    if (this.strict && !this.atEnd() && isRegular(this.peek())) this.fail("invalid number boundary");
     let text = "";
     for (let i = start; i < this.pos; i += 1) {
       text += String.fromCharCode(this.bytes[i]!);
@@ -274,6 +302,12 @@ class Scanner {
   }
 }
 
+// A PDFString carries the raw literal body from the file, including escapes.
+export function decodeLiteralString(body: string): Uint8Array {
+  const bytes = Uint8Array.from(body + ')', char => char.charCodeAt(0));
+  return new Scanner(bytes).readLiteralString();
+}
+
 // Parses one operand. Returns null if the next token is not an operand
 // (i.e. it's an operator keyword or a closing bracket handled by callers).
 function parseOperand(s: Scanner, terminator: "]" | ">>" | null): ContentOperand | null {
@@ -352,6 +386,7 @@ function scanDictBody(s: Scanner): DictEntryExtent[] {
     const operand = parseOperand(s, ">>");
     if (operand === null) {
       if (s.peek() === 0x3e && s.peek(1) === 0x3e) {
+        if (index % 2 !== 0) s.fail("dictionary key has no value");
         s.pos += 2;
         return entries;
       }
@@ -359,9 +394,14 @@ function scanDictBody(s: Scanner): DictEntryExtent[] {
       s.fail("unexpected token in dictionary");
     }
     if (index % 2 === 0) {
+      if (s.strict && operand.kind !== "name") s.fail("dictionary key must be a name");
       key = operand.kind === "name" ? { name: operand.value, start } : null;
     } else if (key !== null) {
-      entries.push({ key: key.name, start: key.start, end: s.pos });
+      entries.push({
+        key: key.name, start: key.start, valueStart: start, end: s.pos,
+        ...(operand.kind === 'number' ? { numberValue: operand.value } : {}),
+        ...(operand.kind === 'string' ? { stringBytes: operand.bytes } : {}),
+      });
     }
   }
 }
@@ -422,8 +462,31 @@ function skipInlineImage(s: Scanner): void {
   }
 }
 
-export function tokenizeContentStream(bytes: Uint8Array): ContentOp[] {
-  const s = new Scanner(bytes);
+function readInlineImage(s: Scanner, readData: ReadInlineImageData): InlineImageData {
+  const dictionaryStart = s.pos;
+  const entries = new Map<string, ContentOperand>();
+  while (true) {
+    const key = parseOperand(s, null);
+    if (key === null) break;
+    if (key.kind !== "name" || entries.has(key.value)) s.fail("invalid inline image key");
+    const value = parseOperand(s, null);
+    if (value === null) s.fail("missing inline image value");
+    entries.set(key.value, value);
+  }
+  const dictionaryEnd = s.pos;
+  if (s.readKeyword() !== "ID") s.fail("missing inline image ID");
+  const { dataStart, dataEnd } = readData(s.bytes, entries, s.pos);
+  if (dataStart < s.pos || dataEnd < dataStart || dataEnd > s.bytes.length) {
+    s.fail("invalid inline image data extent");
+  }
+  s.pos = dataEnd;
+  while (isWhitespace(s.peek())) s.pos += 1;
+  if (s.readKeyword() !== "EI") s.fail("missing inline image EI at data boundary");
+  return { entries, dictionaryStart, dictionaryEnd, dataStart, dataEnd };
+}
+
+export function tokenizeContentStream(bytes: Uint8Array, readInlineData?: ReadInlineImageData): ContentOp[] {
+  const s = new Scanner(bytes, readInlineData !== undefined);
   const ops: ContentOp[] = [];
   let operands: ContentOperand[] = [];
   let extentStart: number | null = null;
@@ -453,12 +516,14 @@ export function tokenizeContentStream(bytes: Uint8Array): ContentOp[] {
     }
     if (operator === "BI") {
       if (operands.length > 0) s.fail("BI takes no operands");
-      skipInlineImage(s);
+      const inlineImage = readInlineData ? readInlineImage(s, readInlineData) : undefined;
+      if (!inlineImage) skipInlineImage(s);
       ops.push({
         operator: "BI",
         operands: [],
         start: tokenStart,
         end: s.pos,
+        ...(inlineImage && { inlineImage }),
       });
       extentStart = null;
       continue;
