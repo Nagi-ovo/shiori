@@ -64,7 +64,11 @@ fs2 = "0.4"
 portable-pty = "0.9"
 tauri-plugin-process = "2"
 tauri-plugin-single-instance = "2"
-tauri-plugin-updater = "2"
+# Release bundles publish the raw .msi and .AppImage plus the macOS
+# .app.tar.gz (createUpdaterArtifacts without v1 compatibility), so the
+# plugin's optional `zip` archive support is never used; leaving it off keeps
+# the zip crate out of the dependency graph.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls"] }
 # Restores the main window's size/position/maximized/fullscreen across
 # launches (the tauri.conf.json width/height become first-launch defaults).
 # Desktop-only: mobile windows are OS-managed and have no persistent frame.
